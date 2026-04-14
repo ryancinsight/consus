@@ -1,0 +1,20 @@
+[package]
+name = "consus-io"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Sync and async I/O abstractions for the Consus scientific storage library"
+
+[features]
+default = ["std"]
+std = ["consus-core/std"]
+alloc = ["consus-core/alloc"]
+async-io = ["dep:tokio", "dep:futures-core", "std"]
+
+[dependencies]
+consus-core = { workspace = true }
+tokio = { workspace = true, optional = true }
+futures-core = { workspace = true, optional = true }

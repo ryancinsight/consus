@@ -1,0 +1,23 @@
+[package]
+name = "consus-compression"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Compression codec registry for the Consus scientific storage library"
+
+[features]
+default = ["std", "deflate"]
+std = ["consus-core/std", "alloc"]
+alloc = ["consus-core/alloc"]
+deflate = ["dep:flate2"]
+zstd = ["dep:zstd"]
+lz4 = ["dep:lz4_flex"]
+
+[dependencies]
+consus-core = { workspace = true }
+flate2 = { workspace = true, optional = true }
+zstd = { workspace = true, optional = true }
+lz4_flex = { workspace = true, optional = true }

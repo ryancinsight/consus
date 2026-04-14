@@ -1,0 +1,19 @@
+[package]
+name = "consus-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core types, traits, and error types for the Consus scientific storage library"
+
+[features]
+default = ["std"]
+std = ["alloc"]
+alloc = []
+
+[dependencies]
+byteorder = { workspace = true }
+smallvec = { workspace = true, features = ["const_generics"] }
+zerocopy = { workspace = true, features = ["derive"] }

@@ -1,0 +1,17 @@
+[package]
+name = "consus-parquet"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Apache Parquet interoperability layer for the Consus scientific storage library"
+
+[features]
+default = ["std"]
+std = ["alloc", "consus-core/std"]
+alloc = ["consus-core/alloc"]
+
+[dependencies]
+consus-core = { workspace = true }

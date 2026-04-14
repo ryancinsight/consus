@@ -1,0 +1,48 @@
+[package]
+name = "consus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description.workspace = true
+
+[features]
+default = ["std", "hdf5", "deflate"]
+std = [
+    "consus-core/std",
+    "consus-io/std",
+    "consus-compression/std",
+]
+alloc = [
+    "consus-core/alloc",
+    "consus-io/alloc",
+    "consus-compression/alloc",
+]
+
+# Format backends
+hdf5 = ["dep:consus-hdf5"]
+zarr = ["dep:consus-zarr"]
+netcdf = ["dep:consus-netcdf"]
+parquet = ["dep:consus-parquet"]
+
+# Compression codecs
+deflate = ["consus-compression/deflate"]
+zstd = ["consus-compression/zstd"]
+lz4 = ["consus-compression/lz4"]
+
+# Async I/O
+async-io = ["consus-io/async-io"]
+
+[dependencies]
+consus-core = { workspace = true }
+consus-io = { workspace = true }
+consus-compression = { workspace = true }
+consus-hdf5 = { workspace = true, optional = true }
+consus-zarr = { workspace = true, optional = true }
+consus-netcdf = { workspace = true, optional = true }
+consus-parquet = { workspace = true, optional = true }

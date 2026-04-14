@@ -1,0 +1,19 @@
+[package]
+name = "consus-zarr"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure-Rust Zarr v2/v3 format implementation for the Consus scientific storage library"
+
+[features]
+default = ["std"]
+std = ["alloc", "consus-core/std", "consus-io/std", "consus-compression/std"]
+alloc = ["consus-core/alloc", "consus-io/alloc", "consus-compression/alloc"]
+
+[dependencies]
+consus-core = { workspace = true }
+consus-io = { workspace = true }
+consus-compression = { workspace = true }

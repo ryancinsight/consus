@@ -1,0 +1,13 @@
+[build]
+# Default target for development
+# Uncomment for specific targets:
+# target = "wasm32-unknown-unknown"
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-cpu=native"]
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-cpu=native"]
+
+[alias]
+xtask = "run --package xtask --"

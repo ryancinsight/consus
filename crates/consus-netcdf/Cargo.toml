@@ -1,0 +1,18 @@
+[package]
+name = "consus-netcdf"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure-Rust netCDF-4 format implementation for the Consus scientific storage library"
+
+[features]
+default = ["std"]
+std = ["alloc", "consus-core/std", "consus-hdf5/std"]
+alloc = ["consus-core/alloc", "consus-hdf5/alloc"]
+
+[dependencies]
+consus-core = { workspace = true }
+consus-hdf5 = { workspace = true }

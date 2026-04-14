@@ -1,0 +1,68 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/consus",
+    "crates/consus-core",
+    "crates/consus-hdf5",
+    "crates/consus-zarr",
+    "crates/consus-netcdf",
+    "crates/consus-parquet",
+    "crates/consus-compression",
+    "crates/consus-io",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85.0"
+authors = ["Ryan Clanton <ryanclanton@outlook.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ryancinsight/consus"
+homepage = "https://github.com/ryancinsight/consus"
+keywords = ["hdf5", "zarr", "netcdf", "scientific-computing", "storage"]
+categories = ["science", "filesystem", "encoding", "no-std"]
+description = "Pure-Rust, no_std-compatible, memory-safe hierarchical and array-oriented storage formats"
+
+[workspace.dependencies]
+# Internal crates
+consus-core = { path = "crates/consus-core", version = "0.1.0" }
+consus-hdf5 = { path = "crates/consus-hdf5", version = "0.1.0" }
+consus-zarr = { path = "crates/consus-zarr", version = "0.1.0" }
+consus-netcdf = { path = "crates/consus-netcdf", version = "0.1.0" }
+consus-parquet = { path = "crates/consus-parquet", version = "0.1.0" }
+consus-compression = { path = "crates/consus-compression", version = "0.1.0" }
+consus-io = { path = "crates/consus-io", version = "0.1.0" }
+
+# External dependencies
+thiserror = { version = "2", default-features = false }
+bytes = { version = "1", default-features = false }
+smallvec = { version = "1", default-features = false }
+zerocopy = { version = "0.8", default-features = false }
+byteorder = { version = "1", default-features = false }
+
+# Compression (optional)
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+zstd = { version = "0.13", default-features = false }
+lz4_flex = { version = "0.11", default-features = false }
+
+# Async (optional)
+tokio = { version = "1", default-features = false, features = ["io-util", "fs"] }
+futures-core = { version = "0.3", default-features = false }
+
+# Parallelism (optional)
+rayon = { version = "1" }
+
+# Testing
+proptest = { version = "1" }
+criterion = { version = "0.5" }
+tempfile = { version = "3" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = 3
+strip = "symbols"
+
+[profile.bench]
+inherits = "release"
+debug = true
