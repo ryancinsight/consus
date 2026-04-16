@@ -21,3 +21,5 @@ byteorder = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+smallvec = { workspace = true }
+proptest = { workspace = true }

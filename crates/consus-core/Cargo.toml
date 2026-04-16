@@ -17,3 +17,6 @@ alloc = []
 byteorder = { workspace = true }
 smallvec = { workspace = true, features = ["const_generics"] }
 zerocopy = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+proptest = { workspace = true }

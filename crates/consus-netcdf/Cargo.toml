@@ -16,3 +16,7 @@ alloc = ["consus-core/alloc", "consus-hdf5/alloc"]
 [dependencies]
 consus-core = { workspace = true }
 consus-hdf5 = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+tempfile = { workspace = true }

@@ -1,0 +1,56 @@
+[package]
+name = "consus-integration-tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Integration tests for the Consus scientific storage library"
+publish = false
+
+[dependencies]
+consus-core = { path = "../crates/consus-core" }
+consus-io = { path = "../crates/consus-io" }
+consus-compression = { path = "../crates/consus-compression", features = ["deflate", "zstd", "lz4"] }
+consus-hdf5 = { path = "../crates/consus-hdf5", optional = true }
+consus-zarr = { path = "../crates/consus-zarr", optional = true }
+consus-netcdf = { path = "../crates/consus-netcdf", optional = true }
+consus-arrow = { path = "../crates/consus-arrow", optional = true }
+consus-parquet = { path = "../crates/consus-parquet", optional = true }
+
+proptest = { workspace = true }
+byteorder = { workspace = true }
+
+[features]
+default = ["std"]
+std = ["consus-core/std", "consus-io/std", "consus-compression/std"]
+
+# Format backends (enable individually based on testing needs)
+hdf5 = ["dep:consus-hdf5"]
+zarr = ["dep:consus-zarr"]
+netcdf = ["dep:consus-netcdf"]
+arrow = ["dep:consus-arrow"]
+parquet = ["dep:consus-parquet"]
+
+# Enable all formats for comprehensive testing
+all-formats = ["hdf5", "zarr", "netcdf", "arrow", "parquet"]
+
+# Compression features
+compression = ["consus-compression/deflate", "consus-compression/zstd", "consus-compression/lz4"]
+
+[[test]]
+name = "cross_format_interop"
+path = "cross_format_interop.rs"
+required-features = ["hdf5", "zarr"]
+
+[[test]]
+name = "end_to_end_reference"
+path = "end_to_end_reference.rs"
+
+[[test]]
+name = "property_integration"
+path = "property_integration.rs"
+
+[dev-dependencies]
+tempfile = { workspace = true }

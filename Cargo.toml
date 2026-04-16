@@ -7,6 +7,7 @@ members = [
     "crates/consus-zarr",
     "crates/consus-netcdf",
     "crates/consus-parquet",
+    "crates/consus-arrow",
     "crates/consus-compression",
     "crates/consus-io",
 ]
@@ -25,13 +26,14 @@ description = "Pure-Rust, no_std-compatible, memory-safe hierarchical and array-
 
 [workspace.dependencies]
 # Internal crates
-consus-core = { path = "crates/consus-core", version = "0.1.0" }
-consus-hdf5 = { path = "crates/consus-hdf5", version = "0.1.0" }
-consus-zarr = { path = "crates/consus-zarr", version = "0.1.0" }
-consus-netcdf = { path = "crates/consus-netcdf", version = "0.1.0" }
-consus-parquet = { path = "crates/consus-parquet", version = "0.1.0" }
-consus-compression = { path = "crates/consus-compression", version = "0.1.0" }
-consus-io = { path = "crates/consus-io", version = "0.1.0" }
+consus-core = { path = "crates/consus-core", version = "0.1.0", default-features = false }
+consus-hdf5 = { path = "crates/consus-hdf5", version = "0.1.0", default-features = false }
+consus-zarr = { path = "crates/consus-zarr", version = "0.1.0", default-features = false }
+consus-netcdf = { path = "crates/consus-netcdf", version = "0.1.0", default-features = false }
+consus-parquet = { path = "crates/consus-parquet", version = "0.1.0", default-features = false }
+consus-arrow = { path = "crates/consus-arrow", version = "0.1.0", default-features = false }
+consus-compression = { path = "crates/consus-compression", version = "0.1.0", default-features = false }
+consus-io = { path = "crates/consus-io", version = "0.1.0", default-features = false }
 
 # External dependencies
 thiserror = { version = "2", default-features = false }
@@ -39,6 +41,11 @@ bytes = { version = "1", default-features = false }
 smallvec = { version = "1", default-features = false }
 zerocopy = { version = "0.8", default-features = false }
 byteorder = { version = "1", default-features = false }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
+rusoto_core = { version = "0.48", default-features = false, features = ["native-tls"] }
+rusoto_s3 = { version = "0.48", default-features = false, features = ["native-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
 
 # Compression (optional)
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }

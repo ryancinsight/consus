@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 3d942ab228b29e292f9823edc8f0bc9893b6182c0c7a23ea635268aa5a52fe6e # shrinks to extents = [Unlimited { current: 5 }, Unlimited { current: 5725 }, Unlimited { current: 7944 }, Unlimited { current: 3087 }, Unlimited { current: 3659 }, Unlimited { current: 7182 }]
+cc 1c21e49b4bcfa11565739e0644ad186ca47e70ed1c380bbb57e018331677f8ef # shrinks to extents = [Unlimited { current: 62 }, Unlimited { current: 2615 }, Unlimited { current: 8335 }, Unlimited { current: 565 }, Unlimited { current: 3354 }, Unlimited { current: 7204 }]

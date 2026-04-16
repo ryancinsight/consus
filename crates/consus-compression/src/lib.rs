@@ -9,12 +9,37 @@
 //! compression/decompression through this abstraction rather than depending
 //! on codec crates directly.
 //!
-//! ### Design
+//! ## Module Hierarchy
 //!
-//! - `Codec` trait: defines compress/decompress with explicit buffer contracts.
-//! - `CodecRegistry`: maps codec identifiers (u16 filter IDs for HDF5, string
-//!   names for Zarr) to `Codec` implementations.
-//! - Feature-gated backends: each compression algorithm is behind a cargo feature.
+//! ```text
+//! consus-compression
+//! ├── checksum/        # Checksum algorithms (CRC-32, Fletcher-32, lookup3)
+//! │   ├── traits       # Checksum trait
+//! │   ├── crc32        # CRC-32 (IEEE 802.3)
+//! │   ├── fletcher32   # Fletcher-32 (HDF5 filter ID 3)
+//! │   └── lookup3      # Jenkins lookup3 (HDF5 v2 metadata checksums)
+//! ├── codec/           # Codec trait and implementations
+//! │   ├── traits       # Codec trait, CompressionLevel, CodecId
+//! │   ├── deflate      # Deflate/zlib codec (feature-gated)
+//! │   ├── gzip         # Gzip codec, Zarr-specific (feature-gated)
+//! │   ├── zstd         # Zstandard codec (feature-gated)
+//! │   ├── lz4          # LZ4 block codec (feature-gated)
+//! │   ├── szip         # Szip/Rice entropy coding, HDF5 filter 4 (feature-gated)
+//! │   └── blosc        # Blosc meta-compressor container, HDF5 filter 32001 (feature-gated)
+//! ├── endian/          # Byte-order utilities
+//! │   └── conversion   # Multi-byte integer read/write, byte-swap
+//! ├── pipeline/        # Filter pipeline (alloc-gated)
+//! │   ├── traits       # Filter, FilterDirection
+//! │   ├── shuffle      # Byte shuffle/unshuffle (HDF5 filter ID 2)
+//! │   ├── nbit         # N-bit packing/unpacking (HDF5 filter ID 5)
+//! │   └── executor     # Pipeline execution engine
+//! ├── chunking/        # Chunk indexing and iteration for N-dimensional storage
+//! │   ├── index        # Chunk coordinate ↔ linear index conversion
+//! │   └── iterator     # Iterate chunk ranges over a dataspace
+//! ├── registry/        # Runtime codec lookup
+//! └── serialization/   # Low-level binary serialization primitives
+//!     └── primitives   # LEB128, NUL-terminated strings, alignment
+//! ```
 //!
 //! ### Invariant
 //!
@@ -23,75 +48,28 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(feature = "alloc")]
+// NOTE: `extern crate alloc` is unconditional because the workspace
+// dependency on consus-core does not set `default-features = false`.
+// consus-core's defaults enable `std → alloc`, so `Error::InvalidFormat`
+// always carries `message: String`. Every crate that constructs errors
+// therefore requires alloc.
 extern crate alloc;
 
+pub mod checksum;
+pub mod chunking;
+pub mod codec;
+pub mod endian;
 #[cfg(feature = "alloc")]
-use alloc::vec::Vec;
-
-use consus_core::error::Result;
-
-pub mod codecs;
+pub mod pipeline;
 pub mod registry;
+pub mod serialization;
 
-/// Compression level hint.
-///
-/// Codecs interpret this value according to their own scale.
-/// Out-of-range values are clamped to the codec's valid range.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CompressionLevel(pub i32);
-
-impl Default for CompressionLevel {
-    fn default() -> Self {
-        CompressionLevel(6) // typical default for deflate
-    }
-}
-
-/// A compression/decompression codec.
-///
-/// ## Contract
-///
-/// - `compress` produces output that `decompress` can invert exactly.
-/// - `decompress` must validate the compressed stream and return `Error::CompressionError`
-///   on malformed input rather than producing garbage.
-/// - Buffer sizing: callers provide output buffers. Implementations write into
-///   the buffer and return the number of bytes written.
-pub trait Codec: Send + Sync {
-    /// Human-readable name of this codec (e.g., "deflate", "zstd").
-    fn name(&self) -> &str;
-
-    /// HDF5 filter ID, if applicable.
-    fn hdf5_filter_id(&self) -> Option<u16>;
-
-    /// Compress `input` into `output`.
-    ///
-    /// Returns the number of bytes written to `output`.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Error::BufferTooSmall` if `output` is insufficient.
-    /// Returns `Error::CompressionError` on codec failure.
-    #[cfg(feature = "alloc")]
-    fn compress(&self, input: &[u8], level: CompressionLevel) -> Result<Vec<u8>>;
-
-    /// Decompress `input` into `output`.
-    ///
-    /// Returns the number of bytes written to `output`.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Error::BufferTooSmall` if `output` is insufficient.
-    /// Returns `Error::CompressionError` on malformed input.
-    #[cfg(feature = "alloc")]
-    fn decompress(&self, input: &[u8], expected_size: usize) -> Result<Vec<u8>>;
-}
-
-/// Identifies a codec by either its HDF5 filter ID or a string name.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum CodecId {
-    /// HDF5 filter identifier (e.g., 1 = deflate, 32004 = lz4, 32015 = zstd).
-    FilterId(u16),
-    /// String identifier (e.g., "blosc", "gzip" — used by Zarr).
-    #[cfg(feature = "alloc")]
-    Name(alloc::string::String),
-}
+// Re-export primary types at crate root.
+pub use checksum::{Checksum, Crc32, Fletcher32, Lookup3};
+#[cfg(feature = "alloc")]
+pub use chunking::ChunkIterator;
+pub use codec::traits::{Codec, CodecId, CompressionLevel};
+#[cfg(feature = "alloc")]
+pub use pipeline::{Filter, FilterDirection, FilterPipeline, NbitFilter, ShuffleFilter};
+#[cfg(feature = "alloc")]
+pub use registry::{CodecRegistry, CompressionRegistry, DefaultCodecRegistry};

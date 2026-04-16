@@ -13,11 +13,25 @@
 //! - Object store backends (S3, GCS) via async adapters
 //! - `no_std` environments with custom I/O
 //!
+//! ## Module Hierarchy
+//!
+//! ```text
+//! consus-io
+//! ├── io/
+//! │   ├── traits/      # ReadAt, WriteAt, Length, Truncate, Seekable, SeekFrom, RandomAccess
+//! │   ├── sync/        # Synchronous positioned I/O implementations
+//! │   │   ├── cursor   # In-memory I/O source (MemCursor)
+//! │   │   ├── slice    # Read-only &[u8] adapter (SliceReader)
+//! │   │   ├── stream   # Cursor-based sequential reader (StreamReader)
+//! │   │   └── file     # std::fs::File positioned I/O implementation
+//! │   └── async_io/    # Asynchronous positioned I/O (feature-gated)
+//! ```
+//!
 //! ### Trait Hierarchy
 //!
 //! ```text
 //! ReadAt ──┐
-//!          ├── RandomAccess (read + write + seek)
+//!          ├── RandomAccess (read + write + length + truncate)
 //! WriteAt ─┘
 //! ```
 
@@ -26,8 +40,26 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-pub mod cursor;
-pub mod source;
+pub mod io;
 
+// ── Convenience re-exports at crate root ───────────────────────────
+
+// Sync traits
+pub use io::traits::{Length, RandomAccess, ReadAt, SeekFrom, Seekable, Truncate, WriteAt};
+
+// Sync implementations
+#[cfg(feature = "alloc")]
+pub use io::sync::cursor::MemCursor;
+pub use io::sync::slice::SliceReader;
+#[cfg(feature = "alloc")]
+pub use io::sync::stream::StreamReader;
+
+// Async trait re-exports
 #[cfg(feature = "async-io")]
-pub mod async_source;
+pub use io::traits::{
+    AsyncLength, AsyncRandomAccess, AsyncReadAt, AsyncSeekable, AsyncTruncate, AsyncWriteAt,
+};
+
+// Async implementation re-exports
+#[cfg(feature = "async-io")]
+pub use io::async_io::AsyncMemCursor;

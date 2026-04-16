@@ -10,10 +10,26 @@ description = "Pure-Rust Zarr v2/v3 format implementation for the Consus scienti
 
 [features]
 default = ["std"]
-std = ["alloc", "consus-core/std", "consus-io/std", "consus-compression/std"]
-alloc = ["consus-core/alloc", "consus-io/alloc", "consus-compression/alloc"]
+std = ["alloc", "consus-core/std", "consus-io/std", "consus-compression/std", "serde/std", "serde_json/std"]
+alloc = ["consus-core/alloc", "consus-io/alloc", "consus-compression/alloc", "serde/alloc", "serde_json/alloc"]
+s3 = ["std", "rusoto_s3", "rusoto_core", "tokio", "reqwest"]
 
 [dependencies]
 consus-core = { workspace = true }
 consus-io = { workspace = true }
 consus-compression = { workspace = true }
+# JSON parsing/serialization for Zarr metadata.
+serde = { workspace = true }
+serde_json = { workspace = true }
+# S3-compatible object store support.
+rusoto_core = { workspace = true, optional = true }
+rusoto_s3 = { workspace = true, optional = true }
+# Async runtime for S3 operations.
+tokio = { version = "1", default-features = false, features = ["rt"], optional = true }
+# HTTP client used by rusoto for S3.
+reqwest = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+proptest = { workspace = true }

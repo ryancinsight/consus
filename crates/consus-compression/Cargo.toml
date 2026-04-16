@@ -6,18 +6,25 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Compression codec registry for the Consus scientific storage library"
+description = "Compression codec registry and low-level utilities for the Consus scientific storage library"
 
 [features]
 default = ["std", "deflate"]
 std = ["consus-core/std", "alloc"]
 alloc = ["consus-core/alloc"]
 deflate = ["dep:flate2"]
+gzip = ["dep:flate2"]
 zstd = ["dep:zstd"]
 lz4 = ["dep:lz4_flex"]
+szip = ["alloc"]
+blosc = ["alloc"]
 
 [dependencies]
 consus-core = { workspace = true }
+byteorder = { workspace = true }
 flate2 = { workspace = true, optional = true }
 zstd = { workspace = true, optional = true }
 lz4_flex = { workspace = true, optional = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

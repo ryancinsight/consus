@@ -1,35 +1,81 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
 //! # consus-netcdf
 //!
-//! Pure-Rust implementation of the netCDF-4 data model.
+//! Authoritative netCDF-4 model and HDF5 semantic mapping layer.
 //!
-//! ## Specification
+//! ## Scope
 //!
-//! netCDF-4 is built on HDF5 with domain-specific conventions:
-//! - **Classic model**: dimensions, variables, attributes, unlimited dimensions
-//! - **Enhanced model**: groups, user-defined types, multiple unlimited dimensions
-//! - **CF conventions**: coordinate variables, cell methods, standard names
+//! This crate defines the canonical in-memory model for netCDF concepts:
+//! - dimensions
+//! - variables
+//! - groups
+//! - file-level models
+//! - HDF5 mapping descriptors
 //!
-//! Reference: <https://www.unidata.ucar.edu/software/netcdf/docs/file_format_specifications.html>
+//! The implementation is a thin semantic layer over `consus-core` and
+//! `consus-hdf5` conventions. It does not duplicate storage logic.
 //!
-//! ### netCDF-4 ↔ HDF5 Mapping
+//! ## Invariants
 //!
-//! | netCDF-4 concept | HDF5 representation |
-//! |------------------|---------------------|
-//! | Dimension | Dataset with `CLASS=DIMENSION_SCALE` attribute |
-//! | Variable | Dataset |
-//! | Group | Group |
-//! | Unlimited dimension | HDF5 unlimited dimension + chunked storage |
-//! | Attribute | HDF5 attribute |
+//! - Dimension names are unique within a group scope.
+//! - Variable dimension order is stable and rank-preserving.
+//! - Coordinate variables are rank-1 variables whose name matches their single dimension name.
+//! - Unlimited dimensions are represented explicitly and remain growable.
+//! - HDF5 mapping descriptors are derived from the canonical netCDF model.
+//!
+//! ## Module Structure
+//!
+//! ```text
+//! consus-netcdf
+//! ├── conventions/     # netCDF and CF constants + validation
+//! ├── dimension/       # dimension descriptor
+//! ├── variable/        # variable descriptor
+//! └── model/           # group/file model + HDF5 mappings
+//! ```
 //!
 //! ## Status
 //!
-//! Phase 2 — skeleton. Depends on `consus-hdf5` for file parsing.
-
-#![cfg_attr(not(feature = "std"), no_std)]
+//! This is the compileable authoritative crate root for the netCDF model.
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
 pub mod conventions;
 pub mod dimension;
+pub mod model;
 pub mod variable;
+
+pub use conventions::{
+    is_cf_attribute_name, is_dimension_scale_marker, is_recognized_convention, is_valid_name,
+    root_group_name, AXIS_ATTR, BOUNDS_ATTR, CELL_METHODS_ATTR, COORDINATES_ATTR,
+    CONVENTIONS_ATTR, DIMENSION_SCALE_CLASS, DIMENSION_SCALE_VALUE, FILL_VALUE_ATTR,
+    GRID_MAPPING_ATTR, LONG_NAME_ATTR, NETCDF_CONVENTIONS_VALUE, ROOT_GROUP_NAME,
+    STANDARD_NAME_ATTR, UNITS_ATTR,
+};
+
+pub use dimension::NetcdfDimension;
+pub use model::{
+    Hdf5DimensionMapping, Hdf5GroupMapping, Hdf5VariableMapping, NetcdfGroup, NetcdfModel,
+};
+pub use variable::NetcdfVariable;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn crate_exports_dimension_scale_marker() {
+        assert!(is_dimension_scale_marker(
+            DIMENSION_SCALE_CLASS,
+            DIMENSION_SCALE_VALUE
+        ));
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn root_model_constructs() {
+        let model = NetcdfModel::default();
+        assert_eq!(model.root.name, ROOT_GROUP_NAME);
+    }
+}

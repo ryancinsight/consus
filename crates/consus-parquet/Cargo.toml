@@ -15,3 +15,7 @@ alloc = ["consus-core/alloc"]
 
 [dependencies]
 consus-core = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+criterion = { workspace = true }

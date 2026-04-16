@@ -18,3 +18,7 @@ async-io = ["dep:tokio", "dep:futures-core", "std"]
 consus-core = { workspace = true }
 tokio = { workspace = true, optional = true }
 futures-core = { workspace = true, optional = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+tokio = { version = "1", features = ["macros", "rt"] }

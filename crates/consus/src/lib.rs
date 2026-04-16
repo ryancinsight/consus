@@ -1,75 +1,8 @@
-//! # Consus
-//!
-//! Pure-Rust, `no_std`-compatible, memory-safe hierarchical and array-oriented
-//! storage formats for scientific computing.
-//!
-//! ## Overview
-//!
-//! Consus provides a unified API for reading and writing scientific data across
-//! multiple storage formats:
-//!
-//! | Format | Feature | Status |
-//! |--------|---------|--------|
-//! | HDF5 | `hdf5` | Phase 1 (active) |
-//! | Zarr v2/v3 | `zarr` | Phase 2 |
-//! | netCDF-4 | `netcdf` | Phase 2 |
-//! | Apache Parquet | `parquet` | Phase 3 |
-//!
-//! ## Quick Start
-//!
-//! ```rust,no_run
-//! use consus::core::{
-//!     datatype::{ByteOrder, Datatype},
-//!     dimension::Shape,
-//!     storage::Compression,
-//! };
-//!
-//! // Core types are available without any format backend
-//! let shape = Shape::fixed(&[100, 200]);
-//! assert_eq!(shape.rank(), 2);
-//! assert_eq!(shape.num_elements(), 20_000);
-//!
-//! let dtype = Datatype::Float {
-//!     bits: core::num::NonZeroUsize::new(64).unwrap(),
-//!     byte_order: ByteOrder::LittleEndian,
-//! };
-//! assert_eq!(dtype.element_size(), Some(8));
-//! ```
-//!
-//! ## Architecture
-//!
-//! ```text
-//! consus (this crate — facade)
-//! ├── consus-core        → re-exported as consus::core
-//! ├── consus-io          → re-exported as consus::io
-//! ├── consus-compression → re-exported as consus::compression
-//! ├── consus-hdf5        → re-exported as consus::hdf5 (feature = "hdf5")
-//! ├── consus-zarr        → re-exported as consus::zarr (feature = "zarr")
-//! ├── consus-netcdf      → re-exported as consus::netcdf (feature = "netcdf")
-//! └── consus-parquet     → re-exported as consus::parquet (feature = "parquet")
-//! ```
-//!
-//! ## Feature Flags
-//!
-//! | Feature | Default | Description |
-//! |---------|---------|-------------|
-//! | `std` | ✓ | Enable `std::io` integration |
-//! | `hdf5` | ✓ | HDF5 format backend |
-//! | `deflate` | ✓ | Deflate/zlib compression |
-//! | `zarr` | | Zarr v2/v3 format backend |
-//! | `netcdf` | | netCDF-4 format backend |
-//! | `parquet` | | Apache Parquet interop |
-//! | `zstd` | | Zstandard compression |
-//! | `lz4` | | LZ4 compression |
-//! | `async-io` | | Async I/O traits (requires tokio) |
-//! | `alloc` | | `no_std` with allocator support |
-//!
-//! ## Minimum Supported Rust Version
-//!
-//! 1.85.0 (edition 2024)
-
 #![cfg_attr(not(feature = "std"), no_std)]
 #![doc = include_str!("../../../README.md")]
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
 
 /// Core types, traits, and error definitions.
 ///
@@ -98,8 +31,74 @@ pub use consus_netcdf as netcdf;
 #[cfg(feature = "parquet")]
 pub use consus_parquet as parquet;
 
-// Re-export commonly used types at crate root for convenience.
-pub use consus_core::datatype::Datatype;
-pub use consus_core::dimension::Shape;
-pub use consus_core::error::{Error, Result};
-pub use consus_core::storage::Compression;
+/// Apache Arrow interop layer.
+#[cfg(feature = "arrow")]
+pub use consus_arrow as arrow;
+
+pub mod builders;
+pub mod highlevel;
+pub mod sync;
+
+#[cfg(feature = "async-io")]
+pub mod r#async;
+
+pub use consus_core::{
+    ByteOrder, ChunkShape, Compression, Datatype, Error, Extent, Hyperslab, HyperslabDim, Layout,
+    LinkType, NodeType, PointSelection, ReferenceType, Result, Selection, Shape, StringEncoding,
+};
+
+#[cfg(feature = "alloc")]
+pub use builders::{
+    DatasetBuilder, DatasetBuilderSpec, FileBuilder, FileOpenOptions, GroupBuilder,
+};
+
+#[cfg(feature = "alloc")]
+pub use highlevel::{
+    BackendFactory, BackendRegistry, Dataset, DatasetCreateSpec, File, FileOptions, Group,
+    UnifiedBackend, ZeroCopyBytes,
+};
+
+pub use sync::{
+    ByteView as ZeroCopySlice, IoRange, TypedByteView, ZeroCopyRead, par_read_ranges,
+    partition_range, read_ranges, read_typed, selection_byte_len, source_len, write_ranges,
+};
+
+#[cfg(feature = "std")]
+use alloc::sync::Arc;
+
+/// Returns the process-wide default backend registry.
+///
+/// This crate contains no format-specific dispatch logic. The default registry
+/// is intentionally empty until backend adapter crates or application code
+/// register factories explicitly.
+#[cfg(all(feature = "alloc", feature = "std"))]
+pub fn default_backend_registry() -> BackendRegistry {
+    BackendRegistry::new()
+}
+
+/// Returns an empty shared backend registry handle.
+///
+/// This is the canonical entry point for applications that want to assemble
+/// their own registry once and share it across multiple `File` operations.
+#[cfg(all(feature = "alloc", feature = "std"))]
+pub fn shared_backend_registry() -> Arc<BackendRegistry> {
+    Arc::new(default_backend_registry())
+}
+
+/// Prelude for the unified facade API.
+pub mod prelude {
+    pub use crate::{Compression, Error, Result, Selection, Shape};
+
+    #[cfg(feature = "alloc")]
+    pub use crate::{
+        Dataset, DatasetBuilder, File, FileBuilder, FileOpenOptions, Group, GroupBuilder,
+    };
+
+    #[cfg(feature = "async-io")]
+    pub use crate::r#async::{
+        AsyncDataset, AsyncDatasetHandle, AsyncFile, AsyncFileHandle, AsyncGroup, AsyncGroupHandle,
+        ParallelReadPlan as AsyncParallelReadPlan, ZeroCopyBytes as AsyncZeroCopyBytes,
+    };
+
+    pub use crate::sync::{ByteView, IoRange, ZeroCopyRead};
+}
