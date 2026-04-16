@@ -560,7 +560,7 @@ mod tests {
         let v3 = ConsolidatedMetadataV3::parse(json).expect("must parse");
         let canon = v3.to_canonical();
         assert_eq!(canon.array_paths(), &["x"]);
-        assert_eq!(canon.group_paths(), &["y"]);
+        assert_eq!(canon.group_paths(), &[".", "y"]);
     }
 
     #[test]

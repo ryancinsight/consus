@@ -16,12 +16,12 @@
 //!
 //! | Name | Direction | Description |
 //! |------|-----------|-------------|
-//! | `"bytes"` | Both | Raw byte transport; handles endianness |
-//! | `"crc32"` | Read | Checksum filter; validates integrity |
-//! | `"gzip"` | Both | Gzip compression |
-//! | `"zstd"` | Both | Zstandard compression |
-//! | `"lz4"` | Both | LZ4 block compression |
-//! | `"blosc"` | Both | Blosc meta-compressor |
+//! | "bytes" | Both | Raw byte transport; handles endianness |
+//! | "crc32" | Read | Checksum filter; validates integrity |
+//! | "gzip" | Both | Gzip compression |
+//! | "zstd" | Both | Zstandard compression |
+//! | "lz4" | Both | LZ4 block compression |
+//! | "blosc" | Both | Blosc meta-compressor |
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -29,7 +29,7 @@
 extern crate alloc;
 
 #[cfg(feature = "alloc")]
-use alloc::{string::String, vec::Vec};
+use alloc::vec::Vec;
 
 #[cfg(feature = "alloc")]
 use consus_core::Result;

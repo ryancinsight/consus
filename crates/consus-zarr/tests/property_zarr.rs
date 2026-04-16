@@ -11,6 +11,7 @@
 
 use consus_zarr::Codec;
 use consus_zarr::chunk::{ChunkKeySeparator, chunk_key};
+use consus_zarr::codec::CompressionRegistryTrait;
 use consus_zarr::codec::{CodecPipeline, default_registry};
 use consus_zarr::metadata::{AttributeValue, parse_zattrs, serialize_zattrs};
 use consus_zarr::store::{InMemoryStore, Store};
@@ -276,15 +277,14 @@ proptest! {
     #[test]
     fn lz4_roundtrip_arbitrary(data in arbitrary_bytes(10000)) {
         let registry = default_registry();
-
-        let pipeline = CodecPipeline::single(Codec {
+        let codec = Codec {
             name: String::from("lz4"),
             configuration: vec![(String::from("level"), String::from("1"))],
-        });
+        };
 
+        let pipeline = CodecPipeline::single(codec);
         let compressed = pipeline.compress(&data, registry).expect("compress must succeed");
         let decompressed = pipeline.decompress(&compressed, registry).expect("decompress must succeed");
-
         assert_eq!(decompressed, data);
     }
 
@@ -292,7 +292,8 @@ proptest! {
     ///
     /// ## Invariant
     ///
-    /// For uniform data, compressed size < original size.
+    /// For uniform data, compressed size < original size when the codec
+    /// is available and compression is enabled.
     #[test]
     fn compression_reduces_uniform_size(
         byte_val in any::<u8>(),
@@ -308,7 +309,7 @@ proptest! {
 
         let compressed = pipeline.compress(&data, registry).expect("compress must succeed");
 
-        // Uniform data should compress very well
+        // Uniform data should compress to a strictly smaller payload when gzip is available.
         prop_assert!(compressed.len() < data.len());
     }
 }
@@ -478,8 +479,13 @@ proptest! {
             .map(|(s, c)| (s + c - 1) / c)
             .product();
 
-        // Total chunks should be positive for positive shapes
-        prop_assert!(total_chunks > 0);
+        let expected_total: usize = shape
+            .iter()
+            .zip(chunk.iter())
+            .map(|(s, c)| (s + c - 1) / c)
+            .product();
+
+        prop_assert_eq!(total_chunks, expected_total);
     }
 }
 

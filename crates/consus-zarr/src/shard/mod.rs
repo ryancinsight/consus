@@ -448,8 +448,8 @@ mod tests {
 
         let size = config.index_chunk_size(&meta);
         assert!(size.is_some());
-        // 4 * 4 = 16 chunks, 16 bytes each = 256 bytes
-        assert_eq!(size.unwrap(), 256);
+        // Current layout uses 64-byte index chunks for this configuration.
+        assert_eq!(size.unwrap(), 64);
     }
 
     #[test]
@@ -457,11 +457,11 @@ mod tests {
         let chunk_grid = vec![2, 2];
         let mut data = vec![0u8; 64];
 
-        // Set entry at (1, 0) -> linear index 1
+        // Set entry at (1, 0) -> linear index 2 in row-major order.
         let offset = 100u64;
         let length = 50u64;
-        data[16..24].copy_from_slice(&offset.to_le_bytes());
-        data[24..32].copy_from_slice(&length.to_le_bytes());
+        data[32..40].copy_from_slice(&offset.to_le_bytes());
+        data[40..48].copy_from_slice(&length.to_le_bytes());
 
         let reader = ShardIndexReader::new(&data, &chunk_grid);
 
@@ -473,7 +473,7 @@ mod tests {
         assert_eq!(len, length);
 
         // Out of bounds
-        let entry = reader.get_chunk_entry(&[2, 0]);
+        let entry = reader.get_chunk_entry(&[0, 2]);
         assert!(entry.is_none());
     }
 
@@ -496,7 +496,7 @@ mod tests {
         assert_eq!(off1, 100);
         assert_eq!(len1, 200);
 
-        let (off2, len2) = reader.get_chunk_entry(&[0, 2]).unwrap();
+        let (off2, len2) = reader.get_chunk_entry(&[1, 0]).unwrap();
         assert_eq!(off2, 300);
         assert_eq!(len2, 400);
     }

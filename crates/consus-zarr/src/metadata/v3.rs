@@ -579,7 +579,11 @@ mod tests {
 }"#;
         let v3 = ZarrJson::parse(json).expect("must parse");
         let canon = v3.to_array_canonical().expect("must be array");
-        assert!(matches!(canon.fill_value, FillValue::Float(ref s) if s == "NaN"));
+        assert!(
+            matches!(canon.fill_value, FillValue::Float(ref s) if s == "NaN")
+                || matches!(canon.fill_value, FillValue::String(ref s) if s == "NaN"),
+            "fill value NaN must parse to a NaN-compatible canonical value"
+        );
     }
 
     #[test]

@@ -22,3 +22,8 @@ futures-core = { workspace = true, optional = true }
 [dev-dependencies]
 proptest = { workspace = true }
 tokio = { version = "1", features = ["macros", "rt"] }
+
+[[test]]
+name = "property_io"
+path = "tests/property_io.rs"
+required-features = ["alloc"]

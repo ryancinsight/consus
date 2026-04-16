@@ -205,7 +205,7 @@ fn prop_length_after_write() {
         } else {
             core::cmp::max(len_before as u64, offset + data.len() as u64) as usize
         };
-        prop_assert_eq!(cursor.byte_len(), expected_len as usize);
+        prop_assert_eq!(cursor.byte_len(), expected_len);
     });
 }
 
