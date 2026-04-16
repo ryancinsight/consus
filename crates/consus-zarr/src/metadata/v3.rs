@@ -48,9 +48,7 @@ use alloc::{string::String, vec::Vec};
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "alloc")]
-use super::{
-    ArrayMetadata, AttributeValue, ChunkKeyEncoding, Codec, FillValue, GroupMetadata, ZarrVersion,
-};
+use super::{ArrayMetadata, ChunkKeyEncoding, Codec, FillValue, GroupMetadata, ZarrVersion};
 
 // ---------------------------------------------------------------------------
 // Top-level zarr.json — array or group node

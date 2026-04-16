@@ -114,10 +114,13 @@ pub enum FillValueJson {
     Uint(u64),
     /// Float fill value (may be a JSON number or a string like `"NaN"`).
     Float(f64),
+    /// Special floating-point values encoded as strings by zarr-python.
+    /// Must precede String(String) in declaration order so that serde's
+    /// untagged deserialization tries SpecialFillValue before falling through
+    /// to the generic String variant (which matches any JSON string).
+    Special(SpecialFillValue),
     /// String fill value.
     String(String),
-    /// Special floating-point values encoded as strings by zarr-python.
-    Special(SpecialFillValue),
 }
 
 /// Special floating-point fill values serialized as strings by zarr-python.
@@ -469,7 +472,7 @@ pub(crate) fn json_value_to_attribute(v: serde_json::Value) -> AttributeValue {
         serde_json::Value::String(s) => AttributeValue::String(s),
         serde_json::Value::Array(arr) => {
             // Try to determine the array element type from the first element.
-            let mut values: Vec<AttributeValue> =
+            let values: Vec<AttributeValue> =
                 arr.into_iter().map(json_value_to_attribute).collect();
             if values.is_empty() {
                 return AttributeValue::StringArray(vec![]);

@@ -20,7 +20,7 @@
 extern crate alloc;
 
 #[cfg(feature = "alloc")]
-use alloc::{string::String, vec, vec::Vec, collections::BTreeMap};
+use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
 #[cfg(feature = "alloc")]
 use crate::store::Store;
@@ -174,10 +174,8 @@ mod tests {
 
     #[test]
     fn from_entries() {
-        let store = InMemoryStore::from_entries([
-            ("a".to_string(), vec![1]),
-            ("b".to_string(), vec![2]),
-        ]);
+        let store =
+            InMemoryStore::from_entries([("a".to_string(), vec![1]), ("b".to_string(), vec![2])]);
         assert_eq!(store.get("a").unwrap(), &[1]);
         assert_eq!(store.get("b").unwrap(), &[2]);
     }

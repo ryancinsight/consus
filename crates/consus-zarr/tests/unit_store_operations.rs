@@ -343,9 +343,12 @@ fn prefixed_store_adds_prefix() {
 
     store.set(".zarray", b"{}").expect("set must succeed");
 
-    // Inner store should have the prefixed key
+    // PrefixedStore callers use unprefixed keys; the inner store receives the prefix.
+    assert!(store.contains(".zarray").expect("contains must succeed"));
+
+    let inner = store.into_inner();
     assert!(
-        store
+        inner
             .contains("my_data.zarr/.zarray")
             .expect("contains must succeed")
     );
