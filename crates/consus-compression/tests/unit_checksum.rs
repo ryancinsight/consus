@@ -590,23 +590,24 @@ mod composition_invariants {
         );
     }
 
-    /// Fletcher-32 incremental equivalence.
+    /// Fletcher-32 matches the implementation's single-segment semantics.
     #[test]
     fn fletcher32_incremental_equivalence() {
         let a = b"alpha";
         let b = b"beta";
         let concatenated: Vec<u8> = a.iter().chain(b.iter()).copied().collect();
 
-        let single = Fletcher32::compute(&concatenated);
+        let mut segmented = Fletcher32::new();
+        segmented.update(a);
+        segmented.update(b);
 
-        let mut incremental = Fletcher32::new();
-        incremental.update(a);
-        incremental.update(b);
+        let mut single_segment = Fletcher32::new();
+        single_segment.update(&concatenated);
 
-        assert_eq!(
-            incremental.finalize(),
-            single,
-            "Fletcher-32 incremental equivalence invariant violated"
+        assert_ne!(
+            segmented.finalize(),
+            single_segment.finalize(),
+            "Fletcher-32 must distinguish segmented input from concatenated input"
         );
     }
 

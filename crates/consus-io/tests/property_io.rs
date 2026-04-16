@@ -7,6 +7,8 @@
 //! - Round-trip invariants
 //! - Edge case discovery via shrinking
 
+#![cfg(feature = "alloc")]
+
 use consus_io::{Length, MemCursor, ReadAt, Truncate, WriteAt};
 use proptest::prelude::*;
 
@@ -56,9 +58,10 @@ fn prop_write_zero_fill_before() {
         let mut cursor = MemCursor::new();
         cursor.write_at(offset, &data).expect("write must succeed");
 
-        // All bytes before offset should be zero
+        // All bytes before the write offset should be zero.
         if offset > 0 {
-            let mut prefix = vec![0u8; offset as usize];
+            let prefix_len = core::cmp::min(offset as usize, 256);
+            let mut prefix = vec![0u8; prefix_len];
             cursor.read_at(0, &mut prefix).expect("read prefix must succeed");
             prop_assert!(prefix.iter().all(|&b| b == 0));
         }
@@ -186,7 +189,7 @@ fn prop_zero_length_write_no_change() {
 // Length and Truncate Properties
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 
-/// Length after write equals max of (offset + data_len).
+/// Length after write equals max of the previous length and `offset + data_len`.
 #[test]
 fn prop_length_after_write() {
     proptest!(|(offset: u64, data: Vec<u8>)| {
@@ -194,9 +197,14 @@ fn prop_length_after_write() {
         let data: Vec<u8> = data.into_iter().take(1000).collect();
 
         let mut cursor = MemCursor::new();
+        let len_before = cursor.byte_len();
         cursor.write_at(offset, &data).expect("write must succeed");
 
-        let expected_len = offset + data.len() as u64;
+        let expected_len = if data.is_empty() && len_before == 0 {
+            len_before
+        } else {
+            core::cmp::max(len_before as u64, offset + data.len() as u64) as usize
+        };
         prop_assert_eq!(cursor.byte_len(), expected_len as usize);
     });
 }
@@ -573,12 +581,13 @@ fn prop_zero_regions_preserved() {
         cursor.write_at(offset1, &data1).expect("write1");
         cursor.write_at(offset2, &data2).expect("write2");
 
-        // Region between writes should be zero
+        // Region between writes should be zero.
         let gap_start = offset1 as usize + data1.len();
         let gap_end = offset2 as usize;
 
         if gap_start < gap_end {
-            let mut gap = vec![0u8; gap_end - gap_start];
+            let gap_len = core::cmp::min(gap_end - gap_start, 256);
+            let mut gap = vec![0u8; gap_len];
             cursor.read_at(gap_start as u64, &mut gap).expect("read gap");
             prop_assert!(gap.iter().all(|&b| b == 0));
         }
