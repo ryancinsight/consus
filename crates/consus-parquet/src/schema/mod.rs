@@ -69,11 +69,8 @@ mod tests {
         let physical = ParquetPhysicalType::Boolean;
         assert_eq!(physical.width(), Some(1));
 
-        let field = FieldDescriptor::required(
-            FieldId::new(1),
-            "temperature",
-            ParquetPhysicalType::Double,
-        );
+        let field =
+            FieldDescriptor::required(FieldId::new(1), "temperature", ParquetPhysicalType::Double);
         assert_eq!(field.name(), "temperature");
         assert!(field.is_required());
     }

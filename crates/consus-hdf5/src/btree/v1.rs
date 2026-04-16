@@ -86,11 +86,7 @@ impl BTreeV1Header {
     /// - [`Error::InvalidFormat`] if the signature is not `b"TREE"`.
     /// - [`Error::InvalidFormat`] if the node type byte is not 0 or 1.
     /// - Any I/O error propagated from `source.read_at`.
-    pub fn parse<R: ReadAt>(
-        source: &R,
-        address: u64,
-        ctx: &ParseContext,
-    ) -> Result<Self> {
+    pub fn parse<R: ReadAt>(source: &R, address: u64, ctx: &ParseContext) -> Result<Self> {
         let hdr_size = Self::header_size(ctx);
         // Maximum possible header size: 8 + 2*8 = 24 bytes.
         // Use a stack buffer large enough for the largest case and

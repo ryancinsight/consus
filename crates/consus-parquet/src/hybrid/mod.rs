@@ -152,7 +152,11 @@ pub struct HybridDatasetLayout {
 impl HybridDatasetLayout {
     /// Create a layout descriptor.
     #[must_use]
-    pub fn new(column_count: usize, row_group_count: usize, physical_type: ParquetPhysicalType) -> Self {
+    pub fn new(
+        column_count: usize,
+        row_group_count: usize,
+        physical_type: ParquetPhysicalType,
+    ) -> Self {
         Self {
             column_count,
             row_group_count,
@@ -219,7 +223,9 @@ impl HybridStorageDescriptor {
     /// Returns `true` when the descriptor represents a columnar table.
     #[must_use]
     pub fn is_columnar(&self) -> bool {
-        self.dataset_layout.as_ref().map_or(false, HybridDatasetLayout::is_columnar)
+        self.dataset_layout
+            .as_ref()
+            .map_or(false, HybridDatasetLayout::is_columnar)
     }
 
     /// Borrow the table layout.

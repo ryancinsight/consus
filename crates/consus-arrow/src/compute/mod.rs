@@ -65,7 +65,11 @@ impl ComputeKernel {
     /// Create a new compute kernel descriptor.
     #[must_use]
     pub fn new(name: String, version: u16, mode: ComputeMode) -> Self {
-        Self { name, version, mode }
+        Self {
+            name,
+            version,
+            mode,
+        }
     }
 }
 

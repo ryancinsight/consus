@@ -418,7 +418,11 @@ impl ArrowDataType {
             #[cfg(feature = "alloc")]
             Self::Map(map) => Datatype::Compound {
                 fields: Vec::new(),
-                size: map.value_type.to_consus_datatype().element_size().unwrap_or(0),
+                size: map
+                    .value_type
+                    .to_consus_datatype()
+                    .element_size()
+                    .unwrap_or(0),
             },
             #[cfg(feature = "alloc")]
             Self::Struct(_) => Datatype::Compound {
@@ -466,11 +470,13 @@ mod tests {
     #[test]
     fn fixed_width_detection_matches_primitives() {
         assert!(ArrowDataType::Boolean.is_fixed_width());
-        assert!(ArrowDataType::Int {
-            bit_width: 32,
-            sign: IntSign::Signed
-        }
-        .is_fixed_width());
+        assert!(
+            ArrowDataType::Int {
+                bit_width: 32,
+                sign: IntSign::Signed
+            }
+            .is_fixed_width()
+        );
         assert!(ArrowDataType::Float { bit_width: 64 }.is_fixed_width());
         assert!(!ArrowDataType::Utf8.is_fixed_width());
         assert!(!ArrowDataType::Binary.is_fixed_width());
@@ -483,16 +489,15 @@ mod tests {
         #[cfg(feature = "alloc")]
         {
             assert!(ArrowDataType::List(ListType::new(ArrowDataType::Boolean, true)).is_nested());
-            assert!(ArrowDataType::Map(MapType::new(
-                ArrowDataType::Utf8,
-                ArrowDataType::Binary,
-                true
-            ))
-            .is_nested());
-            assert!(ArrowDataType::Struct(StructType {
-                fields: Vec::new(),
-            })
-            .is_nested());
+            assert!(
+                ArrowDataType::Map(MapType::new(
+                    ArrowDataType::Utf8,
+                    ArrowDataType::Binary,
+                    true
+                ))
+                .is_nested()
+            );
+            assert!(ArrowDataType::Struct(StructType { fields: Vec::new() }).is_nested());
         }
         assert!(!ArrowDataType::Boolean.is_nested());
     }

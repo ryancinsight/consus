@@ -123,7 +123,10 @@ impl ArrowSchema {
     /// Count nullable fields.
     #[must_use]
     pub fn nullable_field_count(&self) -> usize {
-        self.fields.iter().filter(|field| field.is_nullable()).count()
+        self.fields
+            .iter()
+            .filter(|field| field.is_nullable())
+            .count()
     }
 
     /// Count nested fields.
@@ -397,7 +400,11 @@ mod tests {
     #[cfg(feature = "alloc")]
     #[test]
     fn projection_preserves_requested_order() {
-        let schema = ArrowSchema::new(vec![sample_field("a"), sample_field("b"), sample_field("c")]);
+        let schema = ArrowSchema::new(vec![
+            sample_field("a"),
+            sample_field("b"),
+            sample_field("c"),
+        ]);
 
         let projected = schema.project(&["c", "a"]).unwrap();
         assert_eq!(projected.field_count(), 2);

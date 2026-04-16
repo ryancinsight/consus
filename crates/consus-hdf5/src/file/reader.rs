@@ -35,6 +35,8 @@ use consus_io::ReadAt;
 #[cfg(feature = "alloc")]
 use crate::address::ParseContext;
 #[cfg(feature = "alloc")]
+use crate::constants::UNDEFINED_ADDRESS;
+#[cfg(feature = "alloc")]
 use crate::object_header::message_types;
 #[cfg(feature = "alloc")]
 use crate::object_header::{HeaderMessage, OHDR_SIGNATURE, ObjectHeader};
@@ -198,18 +200,35 @@ pub fn read_dataset_metadata(
 /// Extract all attributes from an object header.
 ///
 /// Iterates over all attribute messages (0x000C) and parses each one.
-/// Returns attributes in the order they appear in the header.
+/// Also enumerates dense attributes via the Attribute Info message (0x0015)
+/// when present: uses the fractal heap + v2 B-tree (record type 8) as the
+/// authoritative attribute store for that object.
+/// Returns attributes in the order they appear in the header, compact first.
 #[cfg(feature = "alloc")]
-pub fn read_attributes(
+pub fn read_attributes<R: ReadAt>(
+    source: &R,
     header: &ObjectHeader,
     ctx: &ParseContext,
 ) -> Result<Vec<crate::attribute::Hdf5Attribute>> {
+    let mut attrs = Vec::new();
+
+    // Compact attributes: direct attribute messages (0x000C).
     let attr_msgs = find_messages(header, message_types::ATTRIBUTE);
-    let mut attrs = Vec::with_capacity(attr_msgs.len());
     for msg in attr_msgs {
         let attr = crate::attribute::Hdf5Attribute::parse(&msg.data, ctx)?;
         attrs.push(attr);
     }
+
+    // Dense attributes: Attribute Info message (0x0015) -> fractal heap + B-tree v2.
+    if let Some(ai_msg) = find_message(header, message_types::ATTRIBUTE_INFO) {
+        if let Ok(attr_info) = crate::attribute::info::AttributeInfo::parse(&ai_msg.data, ctx) {
+            if attr_info.fractal_heap_address != UNDEFINED_ADDRESS {
+                let dense = collect_dense_attributes(source, &attr_info, ctx)?;
+                attrs.extend(dense);
+            }
+        }
+    }
+
     Ok(attrs)
 }
 
@@ -353,33 +372,150 @@ pub fn list_group_v2<R: ReadAt>(
     source: &R,
     header: &ObjectHeader,
     ctx: &ParseContext,
-) -> Result<Vec<(String, u64, consus_core::LinkType)>> {
-    let _ = source; // used in future dense-storage path
-
+) -> Result<Vec<(String, u64, consus_core::LinkType, Option<String>)>> {
     let mut children = Vec::new();
 
-    // Try compact storage first: direct link messages.
+    // Compact storage: direct link messages (0x0006).
     let link_msgs = find_messages(header, message_types::LINK);
     if !link_msgs.is_empty() {
         for msg in link_msgs {
             let link = crate::link::Hdf5Link::parse(&msg.data, ctx)?;
-            let addr = link
-                .hard_link_address
-                .unwrap_or(crate::constants::UNDEFINED_ADDRESS);
-            children.push((link.name, addr, link.link_type));
+            let addr = link.hard_link_address.unwrap_or(UNDEFINED_ADDRESS);
+            children.push((link.name, addr, link.link_type, link.soft_link_target));
         }
         return Ok(children);
     }
 
-    // Dense storage: link info message → fractal heap + B-tree v2.
-    // Parse the link info to obtain addresses for future traversal.
+    // Dense storage: Link Info message (0x0002) -> fractal heap + B-tree v2.
     if let Some(li_msg) = find_message(header, message_types::LINK_INFO) {
-        let _link_info = crate::attribute::info::AttributeInfo::parse(&li_msg.data, ctx);
-        // Full dense-link enumeration requires fractal heap traversal
-        // which is tracked as a follow-up work item.
+        if let Ok(link_info) = crate::link::LinkInfo::parse(&li_msg.data, ctx) {
+            if link_info.fractal_heap_address != UNDEFINED_ADDRESS {
+                let dense = collect_dense_links(source, &link_info, ctx)?;
+                children.extend(dense);
+            }
+        }
     }
 
     Ok(children)
+}
+
+// ---------------------------------------------------------------------------
+// Dense link enumeration (v2 groups with fractal heap + B-tree v2)
+// ---------------------------------------------------------------------------
+
+/// Enumerate links from dense storage: fractal heap + B-tree v2 (record type 5).
+///
+/// ### B-tree v2 type-5 record layout
+///
+/// | Offset | Size           | Field          |
+/// |--------|----------------|----------------|
+/// | 0      | 4              | Name hash      |
+/// | 4      | heap_id_length | Heap ID        |
+///
+/// Each managed or tiny object is a raw link message payload.
+/// Huge objects return [].
+#[cfg(feature = "alloc")]
+fn collect_dense_links<R: ReadAt>(
+    source: &R,
+    link_info: &crate::link::LinkInfo,
+    ctx: &ParseContext,
+) -> Result<Vec<(String, u64, consus_core::LinkType, Option<String>)>> {
+    use crate::btree::v2::{BTreeV2Header, collect_all_records};
+    use crate::heap::fractal::{
+        FractalHeapHeader, FractalHeapId, decode_heap_id, read_huge_object, read_managed_object,
+    };
+
+    let heap_header = FractalHeapHeader::parse(source, link_info.fractal_heap_address, ctx)?;
+    let btree_header = BTreeV2Header::parse(source, link_info.name_btree_address, ctx)?;
+    let records = collect_all_records(source, &btree_header, ctx)?;
+
+    let heap_id_len = heap_header.heap_id_length as usize;
+    let mut links = Vec::with_capacity(records.len());
+
+    for record in &records {
+        // Type-5 record: hash(4) + heap_id(heap_id_len).
+        if record.data.len() < 4 + heap_id_len {
+            continue;
+        }
+        let heap_id_bytes = &record.data[4..4 + heap_id_len];
+        let heap_id = decode_heap_id(heap_id_bytes, &heap_header)?;
+
+        let raw_bytes = match heap_id {
+            FractalHeapId::Managed { offset, length } => {
+                read_managed_object(source, &heap_header, offset, length, ctx)?
+            }
+            FractalHeapId::Tiny { data } => data,
+            FractalHeapId::Huge { btree_key } => {
+                read_huge_object(source, &heap_header, btree_key, ctx)?
+            }
+        };
+
+        let link = crate::link::Hdf5Link::parse(&raw_bytes, ctx)?;
+        let addr = link.hard_link_address.unwrap_or(UNDEFINED_ADDRESS);
+        links.push((link.name, addr, link.link_type, link.soft_link_target));
+    }
+
+    Ok(links)
+}
+
+// ---------------------------------------------------------------------------
+// Dense attribute enumeration (objects with fractal heap + B-tree v2)
+// ---------------------------------------------------------------------------
+
+/// Enumerate attributes from dense storage: fractal heap + B-tree v2 (record type 8).
+///
+/// ### B-tree v2 type-8 record layout
+///
+/// | Offset | Size           | Field          |
+/// |--------|----------------|----------------|
+/// | 0      | 4              | Name hash      |
+/// | 4      | heap_id_length | Heap ID        |
+///
+/// Each heap object is a raw attribute message payload.
+#[cfg(feature = "alloc")]
+fn collect_dense_attributes<R: ReadAt>(
+    source: &R,
+    attr_info: &crate::attribute::info::AttributeInfo,
+    ctx: &ParseContext,
+) -> Result<Vec<crate::attribute::Hdf5Attribute>> {
+    use crate::btree::v2::{BTreeV2Header, collect_all_records};
+    use crate::heap::fractal::{
+        FractalHeapHeader, FractalHeapId, decode_heap_id, read_huge_object, read_managed_object,
+    };
+
+    // Heap ID within a type-8 B-tree record starts after the 4-byte name hash.
+    const HEAP_ID_OFFSET: usize = 4;
+
+    let heap_header = FractalHeapHeader::parse(source, attr_info.fractal_heap_address, ctx)?;
+    let btree_header = BTreeV2Header::parse(source, attr_info.name_btree_address, ctx)?;
+    let records = collect_all_records(source, &btree_header, ctx)?;
+
+    let heap_id_len = heap_header.heap_id_length as usize;
+    let mut attrs = Vec::with_capacity(records.len());
+
+    for record in &records {
+        // Type-8 record: hash(4) + heap_id(heap_id_len).
+        if record.data.len() < HEAP_ID_OFFSET + heap_id_len {
+            continue;
+        }
+        let heap_id_bytes = &record.data[HEAP_ID_OFFSET..HEAP_ID_OFFSET + heap_id_len];
+        let heap_id = decode_heap_id(heap_id_bytes, &heap_header)?;
+
+        let raw_bytes = match heap_id {
+            FractalHeapId::Managed { offset, length } => {
+                read_managed_object(source, &heap_header, offset, length, ctx)?
+            }
+            FractalHeapId::Tiny { data } => data,
+            FractalHeapId::Huge { btree_key } => {
+                read_huge_object(source, &heap_header, btree_key, ctx)?
+            }
+        };
+
+        let attr = crate::attribute::Hdf5Attribute::parse(&raw_bytes, ctx)?;
+        attrs.push(attr);
+    }
+
+    Ok(attrs)
 }
 
 // ---------------------------------------------------------------------------
@@ -667,5 +803,131 @@ mod tests {
 
         let fv = read_fill_value(&header).expect("fill value must be present");
         assert_eq!(fv, vec![0xDE, 0xAD, 0xBE, 0xEF]);
+    }
+    /// Build a minimal valid FractalHeapHeader at offset 0 in .
+    ///
+    /// Sets signature, version, and heap_id_length. All other fields
+    /// default to zero, which causes collect_all_records to return
+    /// immediately (total_records == 0 after B-tree header is built with
+    /// build_bthd_empty_in_buf). The buffer is pre-allocated by the caller.
+    #[cfg(feature = "alloc")]
+    fn build_frhp_in_buf(buf: &mut [u8], heap_id_len: u16, _base: usize) {
+        use byteorder::{ByteOrder, LittleEndian};
+        // Signature: "FRHP"
+        buf[0..4].copy_from_slice(b"FRHP");
+        // Version 0
+        buf[4] = 0;
+        // heap_id_length
+        LittleEndian::write_u16(&mut buf[5..7], heap_id_len);
+        // io_filter_size = 0, flags = 0, max_managed_object_size = 0
+        // Variable-width fields (8-byte lengths, 8-byte offsets):
+        //   next_huge_id (14..22): 0
+        //   huge_object_btree_address (22..30): UNDEFINED
+        for b in &mut buf[22..30] {
+            *b = 0xFF;
+        }
+        //   free_space_manager_address (30..38): UNDEFINED
+        for b in &mut buf[30..38] {
+            *b = 0xFF;
+        }
+        //   managed_space, allocated_managed_space, iter_offset,
+        //   managed_object_count, huge/tiny sizes and counts: all 0
+        // table_width (102..104): 4 (non-zero to avoid division issues)
+        LittleEndian::write_u16(&mut buf[102..104], 4);
+        // starting_block_size (104..112): 512
+        LittleEndian::write_u64(&mut buf[104..112], 512);
+        // max_direct_block_size (112..120): 65536
+        LittleEndian::write_u64(&mut buf[112..120], 65536);
+        // max_heap_size_bits (120..122): 32
+        LittleEndian::write_u16(&mut buf[120..122], 32);
+        // starting_rows (122..124): 0
+        // root_block_address (124..132): UNDEFINED
+        for b in &mut buf[124..132] {
+            *b = 0xFF;
+        }
+        // root_indirect_rows (132..134): 0
+    }
+
+    /// Build a minimal empty BTreeV2Header at  in .
+    ///
+    /// Sets signature, version, record_type, and leaves total_records == 0
+    /// and root_address == UNDEFINED_ADDRESS so that collect_all_records
+    /// returns immediately with an empty Vec.
+    #[cfg(feature = "alloc")]
+    fn build_bthd_empty_in_buf(buf: &mut [u8], offset: usize, rt: u8) {
+        use byteorder::{ByteOrder, LittleEndian};
+        // Signature: "BTHD"
+        buf[offset..offset + 4].copy_from_slice(b"BTHD");
+        // Version 0
+        buf[offset + 4] = 0;
+        // Record type
+        buf[offset + 5] = rt;
+        // node_size = 512
+        LittleEndian::write_u32(&mut buf[offset + 6..offset + 10], 512);
+        // record_size = 11 (typical for type-5 with heap_id_len=7: 4+7)
+        LittleEndian::write_u16(&mut buf[offset + 10..offset + 12], 11);
+        // depth = 0, split_percent = 0, merge_percent = 0
+        // root_address = UNDEFINED_ADDRESS (causes early return)
+        for b in &mut buf[offset + 16..offset + 24] {
+            *b = 0xFF;
+        }
+        // root_num_records = 0, total_records = 0, checksum = 0
+    }
+
+    /// collect_dense_links returns empty Vec for an empty B-tree.
+    ///
+    /// Synthetic source layout (8-byte offsets/lengths):
+    /// - offset 0:   FractalHeapHeader (256-byte read window, heap_id_len=7)
+    /// - offset 256: BTreeV2Header with total_records=0 (UNDEFINED root)
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn collect_dense_links_empty_btree() {
+        use consus_io::MemCursor;
+
+        let mut buf = vec![0u8; 512];
+        build_frhp_in_buf(&mut buf, 7, 0); // heap at 0, root_block irrelevant (no records)
+        build_bthd_empty_in_buf(&mut buf, 256, 5); // btree (type 5 = LINK_NAME) at 256
+
+        let ctx = ParseContext::new(8, 8);
+        let link_info = crate::link::LinkInfo {
+            flags: 0,
+            max_creation_index: None,
+            fractal_heap_address: 0,
+            name_btree_address: 256,
+            creation_order_btree_address: None,
+        };
+
+        let cursor = MemCursor::from_bytes(buf);
+        let result = collect_dense_links(&cursor, &link_info, &ctx)
+            .expect("collect_dense_links must succeed");
+        assert!(result.is_empty(), "empty btree must yield no links");
+    }
+
+    /// collect_dense_attributes with an empty B-tree returns an empty Vec.
+    ///
+    /// Same layout as collect_dense_links_empty_btree but uses record type 8.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn collect_dense_attributes_empty_btree() {
+        use crate::attribute::info::AttributeInfo;
+        use consus_io::MemCursor;
+
+        let mut buf = vec![0u8; 512];
+        build_frhp_in_buf(&mut buf, 7, 0);
+        build_bthd_empty_in_buf(&mut buf, 256, 8); // type 8 = ATTRIBUTE_NAME
+
+        let ctx = ParseContext::new(8, 8);
+        let attr_info = AttributeInfo {
+            flags: 0,
+            max_creation_order: None,
+            fractal_heap_address: 0,
+            name_btree_address: 256,
+            creation_order_btree_address: None,
+        };
+
+        let cursor = MemCursor::from_bytes(buf);
+        let result = collect_dense_attributes(&cursor, &attr_info, &ctx)
+            .expect("collect_dense_attributes must succeed");
+        assert!(result.is_empty(), "empty btree must yield no attributes");
     }
 }

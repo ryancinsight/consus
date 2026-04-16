@@ -381,7 +381,12 @@ mod tests {
     fn bridge_counts_zero_copy_fields() {
         let schema = SchemaDescriptor::new(vec![
             FieldDescriptor::required(FieldId::new(1), "temperature", ParquetPhysicalType::Double),
-            FieldDescriptor::optional(FieldId::new(2), "quality", ParquetPhysicalType::Boolean, None),
+            FieldDescriptor::optional(
+                FieldId::new(2),
+                "quality",
+                ParquetPhysicalType::Boolean,
+                None,
+            ),
         ]);
 
         let bridge = ArrowBridge::new(schema);

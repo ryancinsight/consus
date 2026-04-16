@@ -108,7 +108,10 @@ impl LogicalType {
     /// Returns `true` if the logical type is temporal.
     #[must_use]
     pub fn is_temporal(&self) -> bool {
-        matches!(self, Self::Date | Self::Time { .. } | Self::Timestamp { .. })
+        matches!(
+            self,
+            Self::Date | Self::Time { .. } | Self::Timestamp { .. }
+        )
     }
 
     /// Returns `true` if the logical type is numeric.
@@ -233,31 +236,39 @@ mod tests {
     #[test]
     fn temporal_types_are_detected() {
         assert!(LogicalType::Date.is_temporal());
-        assert!(LogicalType::Time {
-            unit: TimeUnit::Milliseconds,
-            is_adjusted_to_utc: false,
-        }
-        .is_temporal());
-        assert!(LogicalType::Timestamp {
-            unit: TimeUnit::Microseconds,
-            is_adjusted_to_utc: true,
-        }
-        .is_temporal());
+        assert!(
+            LogicalType::Time {
+                unit: TimeUnit::Milliseconds,
+                is_adjusted_to_utc: false,
+            }
+            .is_temporal()
+        );
+        assert!(
+            LogicalType::Timestamp {
+                unit: TimeUnit::Microseconds,
+                is_adjusted_to_utc: true,
+            }
+            .is_temporal()
+        );
         assert!(!LogicalType::String.is_temporal());
     }
 
     #[test]
     fn numeric_types_are_detected() {
-        assert!(LogicalType::Decimal {
-            precision: 10,
-            scale: 2,
-        }
-        .is_numeric());
-        assert!(LogicalType::Integer {
-            bit_width: 32,
-            signed: true,
-        }
-        .is_numeric());
+        assert!(
+            LogicalType::Decimal {
+                precision: 10,
+                scale: 2,
+            }
+            .is_numeric()
+        );
+        assert!(
+            LogicalType::Integer {
+                bit_width: 32,
+                signed: true,
+            }
+            .is_numeric()
+        );
         assert!(LogicalType::UnsignedInteger { bit_width: 16 }.is_numeric());
         assert!(!LogicalType::Uuid.is_numeric());
     }

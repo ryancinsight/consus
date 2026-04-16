@@ -13,4 +13,6 @@ pub use fractal::FractalHeapHeader;
 #[cfg(feature = "alloc")]
 pub use fractal::FractalHeapId;
 pub use global::{GLOBAL_HEAP_SIGNATURE, GlobalHeapObject};
+#[cfg(feature = "alloc")]
+pub use global::resolve_vl_references;
 pub use local::{LOCAL_HEAP_SIGNATURE, LocalHeap};

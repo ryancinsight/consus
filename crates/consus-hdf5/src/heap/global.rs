@@ -190,6 +190,133 @@ impl GlobalHeapCollection {
 }
 
 // ---------------------------------------------------------------------------
+// VL Reference Resolution
+// ---------------------------------------------------------------------------
+
+/// Resolve variable-length data references from raw dataset bytes.
+///
+/// Each VL reference occupies `4 + offset_size + 4` bytes:
+/// - 4-byte sequence length (u32 LE, number of elements in the VL object)
+/// - `offset_size` bytes: file address of the GCOL collection
+/// - 4-byte object index (u32 LE, 1-based)
+///
+/// ## Algorithm
+///
+/// 1. Compute `ref_size = 4 + ctx.offset_bytes() + 4`.
+/// 2. Validate `raw_data.len() % ref_size == 0`.
+/// 3. For each `ref_size`-byte chunk in `raw_data`:
+///    a. Read `sequence_length` (u32 LE, bytes `0..4`).
+///    b. Read `heap_collection_address` via `ctx.read_offset(&chunk[4..])`.
+///    c. Read `object_index` (u32 LE, bytes `4+offset_bytes..4+offset_bytes+4`).
+///    d. If `heap_collection_address` equals the offset-size-specific undefined
+///       sentinel or `sequence_length == 0`, push an empty `Vec<u8>`.
+///    e. Otherwise call [`GlobalHeapCollection::parse`], then `get_data`, and
+///       clone the returned slice.
+///       Returns [`Error::InvalidFormat`] if the object index is absent.
+/// 4. Return `Vec<Vec<u8>>` - one entry per VL element.
+///
+/// ## Undefined Address Sentinel
+///
+/// The sentinel is offset-size-dependent: all bits set within the
+/// `offset_bytes`-wide address field.
+///
+/// | offset_bytes | sentinel value |
+/// |---|---|
+/// | 4 | `0xFFFF_FFFF` |
+/// | 8 | `0xFFFF_FFFF_FFFF_FFFF` |
+///
+/// This matches the HDF5 specification and the `UNDEFINED_ADDRESS` constant
+/// for 8-byte offset files.
+///
+/// ## Errors
+///
+/// - [`Error::InvalidFormat`] if `raw_data.len()` is not a multiple of `ref_size`.
+/// - [`Error::InvalidFormat`] if `object_index` does not fit in `u16`.
+/// - [`Error::InvalidFormat`] if the heap object is absent from the collection.
+/// - Propagates I/O and format errors from [`GlobalHeapCollection::parse`].
+#[cfg(feature = "alloc")]
+pub fn resolve_vl_references<R: ReadAt>(
+    source: &R,
+    raw_data: &[u8],
+    ctx: &ParseContext,
+) -> Result<Vec<Vec<u8>>> {
+    let offset_bytes = ctx.offset_bytes();
+    let ref_size = 4 + offset_bytes + 4;
+
+    if raw_data.len() % ref_size != 0 {
+        return Err(Error::InvalidFormat {
+            message: alloc::format!(
+                "VL raw data length {} is not a multiple of ref_size {} (offset_size={})",
+                raw_data.len(),
+                ref_size,
+                offset_bytes,
+            ),
+        });
+    }
+
+    // Offset-size-specific undefined address: all `offset_bytes` bits set.
+    // For 4-byte offsets: 0xFFFF_FFFF; for 8-byte offsets: u64::MAX.
+    // The guard `offset_bytes == 8` prevents the `1u64 << 64` overflow.
+    let undef_addr: u64 = if offset_bytes == 8 {
+        u64::MAX
+    } else {
+        // offset_bytes in {2, 4} => shift in {16, 32} => no overflow.
+        (1u64 << (offset_bytes * 8)).wrapping_sub(1)
+    };
+
+    let n = raw_data.len() / ref_size;
+    let mut result = Vec::with_capacity(n);
+
+    for i in 0..n {
+        let base = i * ref_size;
+        let chunk = &raw_data[base..base + ref_size];
+
+        let sequence_length =
+            u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+        let heap_collection_address = ctx.read_offset(&chunk[4..]);
+        let idx_base = 4 + offset_bytes;
+        let object_index = u32::from_le_bytes([
+            chunk[idx_base],
+            chunk[idx_base + 1],
+            chunk[idx_base + 2],
+            chunk[idx_base + 3],
+        ]);
+
+        if heap_collection_address == undef_addr || sequence_length == 0 {
+            result.push(Vec::new());
+            continue;
+        }
+
+        // object_index is stored as u32 in the VL reference but the GCOL
+        // indexes objects with a u16 field; a value > u16::MAX indicates
+        // file corruption.
+        let obj_idx = u16::try_from(object_index).map_err(|_| Error::InvalidFormat {
+            message: alloc::format!(
+                "VL object index {} exceeds u16::MAX at element {} (heap addr {})",
+                object_index,
+                i,
+                heap_collection_address,
+            ),
+        })?;
+
+        let coll = GlobalHeapCollection::parse(source, heap_collection_address, ctx)?;
+
+        let data = coll.get_data(obj_idx).ok_or_else(|| Error::InvalidFormat {
+            message: alloc::format!(
+                "VL object index {} not found in heap collection at address {} (element {})",
+                obj_idx,
+                heap_collection_address,
+                i,
+            ),
+        })?;
+
+        result.push(Vec::from(data));
+    }
+
+    Ok(result)
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -396,6 +523,161 @@ mod tests {
             let coll = GlobalHeapCollection::parse(&cursor, offset, &ctx).unwrap();
             assert_eq!(coll.objects.len(), 1);
             assert_eq!(coll.objects[0].data, obj_data.as_slice());
+        }
+
+        // -----------------------------------------------------------------------
+        // resolve_vl_references tests
+        // -----------------------------------------------------------------------
+
+        /// One valid VL reference (8-byte offsets) resolves to the expected payload.
+        #[test]
+        fn resolve_vl_single_ref_8byte() {
+            let ctx = ctx8();
+            let payload = b"hello";
+            let collection_buf = build_collection_one_object(&ctx, payload);
+
+            // ref_size = 4 + 8 + 4 = 16
+            let ref_size = 4 + ctx.offset_bytes() + 4;
+            let mut raw_data = vec![0u8; ref_size];
+            // sequence_length = 5 (number of elements)
+            raw_data[0..4].copy_from_slice(&(payload.len() as u32).to_le_bytes());
+            // heap_collection_address = 0 (collection is at file offset 0)
+            raw_data[4..12].copy_from_slice(&0u64.to_le_bytes());
+            // object_index = 1 (1-based)
+            raw_data[12..16].copy_from_slice(&1u32.to_le_bytes());
+
+            let cursor = MemCursor::from_bytes(collection_buf);
+            let result = resolve_vl_references(&cursor, &raw_data, &ctx).unwrap();
+
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0], payload.as_slice());
+        }
+
+        /// One valid VL reference (4-byte offsets) resolves to the expected payload.
+        #[test]
+        fn resolve_vl_single_ref_4byte() {
+            let ctx = ctx4();
+            let payload = b"four";
+            let collection_buf = build_collection_one_object(&ctx, payload);
+
+            // ref_size = 4 + 4 + 4 = 12
+            let ref_size = 4 + ctx.offset_bytes() + 4;
+            assert_eq!(ref_size, 12);
+            let mut raw_data = vec![0u8; ref_size];
+            raw_data[0..4].copy_from_slice(&(payload.len() as u32).to_le_bytes());
+            raw_data[4..8].copy_from_slice(&0u32.to_le_bytes()); // 4-byte addr = 0
+            raw_data[8..12].copy_from_slice(&1u32.to_le_bytes());
+
+            let cursor = MemCursor::from_bytes(collection_buf);
+            let result = resolve_vl_references(&cursor, &raw_data, &ctx).unwrap();
+
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0], payload.as_slice());
+        }
+
+        /// sequence_length == 0 must yield an empty inner vec without reading the heap.
+        #[test]
+        fn resolve_vl_zero_sequence_length_yields_empty() {
+            let ctx = ctx8();
+            let ref_size = 4 + ctx.offset_bytes() + 4;
+            let mut raw_data = vec![0u8; ref_size];
+            raw_data[0..4].copy_from_slice(&0u32.to_le_bytes()); // sequence_length = 0
+            raw_data[4..12].copy_from_slice(&0u64.to_le_bytes()); // addr = 0
+            raw_data[12..16].copy_from_slice(&1u32.to_le_bytes()); // object_index = 1
+
+            // Empty source: parse must not be attempted; if it were, it would I/O error.
+            let cursor = MemCursor::from_bytes(vec![]);
+            let result = resolve_vl_references(&cursor, &raw_data, &ctx).unwrap();
+
+            assert_eq!(result.len(), 1);
+            assert!(result[0].is_empty());
+        }
+
+        /// UNDEFINED_ADDRESS (8-byte) with non-zero sequence_length yields empty.
+        #[test]
+        fn resolve_vl_undefined_address_yields_empty() {
+            let ctx = ctx8();
+            let ref_size = 4 + ctx.offset_bytes() + 4;
+            let mut raw_data = vec![0u8; ref_size];
+            raw_data[0..4].copy_from_slice(&1u32.to_le_bytes()); // sequence_length = 1
+            raw_data[4..12].copy_from_slice(&u64::MAX.to_le_bytes()); // UNDEFINED_ADDRESS
+            raw_data[12..16].copy_from_slice(&1u32.to_le_bytes());
+
+            let cursor = MemCursor::from_bytes(vec![]);
+            let result = resolve_vl_references(&cursor, &raw_data, &ctx).unwrap();
+
+            assert_eq!(result.len(), 1);
+            assert!(result[0].is_empty());
+        }
+
+        /// 4-byte offset UNDEFINED_ADDRESS (0xFFFF_FFFF) yields empty inner vec.
+        #[test]
+        fn resolve_vl_undefined_address_4byte_yields_empty() {
+            let ctx = ctx4();
+            let ref_size = 4 + ctx.offset_bytes() + 4;
+            let mut raw_data = vec![0u8; ref_size];
+            raw_data[0..4].copy_from_slice(&1u32.to_le_bytes()); // sequence_length = 1
+            raw_data[4..8].copy_from_slice(&u32::MAX.to_le_bytes()); // 4-byte undef addr
+            raw_data[8..12].copy_from_slice(&1u32.to_le_bytes());
+
+            let cursor = MemCursor::from_bytes(vec![]);
+            let result = resolve_vl_references(&cursor, &raw_data, &ctx).unwrap();
+
+            assert_eq!(result.len(), 1);
+            assert!(result[0].is_empty());
+        }
+
+        /// raw_data length not a multiple of ref_size returns InvalidFormat.
+        #[test]
+        fn resolve_vl_bad_length_returns_error() {
+            let ctx = ctx8(); // ref_size = 16
+            let raw_data = vec![0u8; 7]; // 7 % 16 != 0
+            let cursor = MemCursor::from_bytes(vec![]);
+            let err = resolve_vl_references(&cursor, &raw_data, &ctx).unwrap_err();
+            match err {
+                Error::InvalidFormat { message } => {
+                    assert!(message.contains("multiple"), "message was: {message}");
+                }
+                other => panic!("expected InvalidFormat, got: {other:?}"),
+            }
+        }
+
+        /// Two refs in one call: first valid, second has zero sequence_length.
+        #[test]
+        fn resolve_vl_multiple_refs_mixed() {
+            let ctx = ctx8();
+            let payload = b"world";
+            let collection_buf = build_collection_one_object(&ctx, payload);
+
+            // ref_size = 16; two refs = 32 bytes total
+            let ref_size = 4 + ctx.offset_bytes() + 4;
+            let mut raw_data = vec![0u8; ref_size * 2];
+
+            // Ref 0: valid - points to collection at offset 0, object 1
+            raw_data[0..4].copy_from_slice(&(payload.len() as u32).to_le_bytes());
+            raw_data[4..12].copy_from_slice(&0u64.to_le_bytes());
+            raw_data[12..16].copy_from_slice(&1u32.to_le_bytes());
+
+            // Ref 1: zero sequence_length - must not touch the heap
+            raw_data[16..20].copy_from_slice(&0u32.to_le_bytes());
+            raw_data[20..28].copy_from_slice(&0u64.to_le_bytes());
+            raw_data[28..32].copy_from_slice(&1u32.to_le_bytes());
+
+            let cursor = MemCursor::from_bytes(collection_buf);
+            let result = resolve_vl_references(&cursor, &raw_data, &ctx).unwrap();
+
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0], payload.as_slice());
+            assert!(result[1].is_empty());
+        }
+
+        /// Empty raw_data returns an empty outer vec (zero VL elements).
+        #[test]
+        fn resolve_vl_empty_raw_data() {
+            let ctx = ctx8();
+            let cursor = MemCursor::from_bytes(vec![]);
+            let result = resolve_vl_references(&cursor, &[], &ctx).unwrap();
+            assert!(result.is_empty());
         }
     }
 }

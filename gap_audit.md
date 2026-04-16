@@ -38,6 +38,7 @@
 | G-023 | B-tree v2 bit-width formula | ✅ Fixed usize::BITS / u32 mixing bug |
 | G-024 | Scalar chunk uncompressed size | ✅ Corrected empty-product to 1 (one scalar element) |
 | G-025 | Integration tests | ✅ 13 integration tests; 213 unit tests — 226 total, 0 failures |
+| G-103 | Variable-Length Datatype Read | ✅ `resolve_vl_references` in `src/heap/global.rs`; offset-size-aware undefined sentinel; 8 unit tests; re-exported from `src/heap/mod.rs` |
 
 ---
 
@@ -61,11 +62,6 @@
 - **Required**: Allocate and write a B-tree v1 (or B-tree v2 for v4 layout) chunk index after writing chunk data blocks.
 - **Effort**: ~300 lines.
 
-### G-103: Variable-Length Datatype Read (Severity: HIGH)
-- **Current state**: `Datatype::VarLen` is parsed correctly but `read_chunk_raw` and the contiguous read path return raw VL heap references (8-byte global heap object IDs) without resolving them through the global heap.
-- **Impact**: VL string and VL sequence datasets return raw bytes instead of the actual variable-length values.
-- **Required**: After reading raw data, detect `Datatype::VarLen`, resolve each 8-byte GHEAP reference via `GlobalHeapCollection::parse` and `get_data`.
-- **Effort**: ~150 lines.
 
 ### G-104: Chunk Index v4 B-tree v2 Lookup (Severity: MEDIUM)
 - **Current state**: `read_dataset_metadata` parses v4 layout `chunk_index_address` but no reader resolves it. `collect_btree_v1_leaves` is specific to group B-trees (record type 0) and does not handle chunk record types (3, 4, 10, 11).
@@ -129,12 +125,12 @@
 
 | Metric | Value |
 |--------|-------|
-| Total unit tests | 213 |
+| Total unit tests | 221 |
 | Integration tests | 13 |
-| Total passing | 226 |
+| Total passing | 234 |
 | Total failing | 0 |
 | Compile warnings | 0 |
-| Open gaps | 11 |
-| High-severity open gaps | 4 (G-100, G-101, G-102, G-103) |
+| Open gaps | 10 |
+| High-severity open gaps | 3 (G-100, G-101, G-102) |
 | Medium-severity open gaps | 4 (G-104, G-105, G-107, G-109) |
 | Low-severity open gaps | 3 (G-106, G-108, G-110, G-111) |

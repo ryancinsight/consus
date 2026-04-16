@@ -327,11 +327,8 @@ mod tests {
 
     #[test]
     fn scalar_descriptor_validates() {
-        let field = FieldDescriptor::required(
-            FieldId::new(1),
-            "temperature",
-            ParquetPhysicalType::Double,
-        );
+        let field =
+            FieldDescriptor::required(FieldId::new(1), "temperature", ParquetPhysicalType::Double);
         assert_eq!(field.name(), "temperature");
         assert!(field.is_required());
         field.validate().unwrap();
@@ -340,7 +337,8 @@ mod tests {
     #[test]
     fn group_descriptor_validates() {
         let child = FieldDescriptor::required(FieldId::new(2), "x", ParquetPhysicalType::Int32);
-        let field = FieldDescriptor::group(FieldId::new(1), "point", Repetition::Required, vec![child]);
+        let field =
+            FieldDescriptor::group(FieldId::new(1), "point", Repetition::Required, vec![child]);
         assert!(field.is_group());
         field.validate().unwrap();
     }

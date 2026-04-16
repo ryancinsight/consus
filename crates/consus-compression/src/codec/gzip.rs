@@ -141,7 +141,10 @@ mod tests {
             input.len(),
             "decompressed length must equal original"
         );
-        assert_eq!(decompressed, input, "round-trip at level 0 must be lossless");
+        assert_eq!(
+            decompressed, input,
+            "round-trip at level 0 must be lossless"
+        );
     }
 
     /// Round-trip at maximum compression level 9.
@@ -172,7 +175,10 @@ mod tests {
             input.len(),
             "decompressed length must equal original"
         );
-        assert_eq!(decompressed, input, "round-trip at level 9 must be lossless");
+        assert_eq!(
+            decompressed, input,
+            "round-trip at level 9 must be lossless"
+        );
     }
 
     /// Out-of-range compression levels are clamped without error.

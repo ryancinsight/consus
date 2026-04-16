@@ -466,13 +466,19 @@ proptest! {
     /// ## Invariant
     ///
     /// Total chunks = ceil(shape[i] / chunk[i]) for each dimension.
+    ///
+    /// Both  and  are generated with the same length  via
+    /// , guaranteeing  without
+    ///  and eliminating the global-reject storm that occurs when
+    /// two independently-length-chosen vecs are required to match.
     #[test]
     fn total_chunks_consistent(
-        shape in prop::collection::vec(1usize..=1000usize, 1..=5),
-        chunk in prop::collection::vec(1usize..=100usize, 1..=5)
+        (shape, chunk) in (1usize..=5usize).prop_flat_map(|ndim| (
+            prop::collection::vec(1usize..=1000usize, ndim..=ndim),
+            prop::collection::vec(1usize..=100usize, ndim..=ndim),
+        ))
     ) {
-        prop_assume!(shape.len() == chunk.len());
-
+        // shape.len() == chunk.len() is guaranteed by construction.
         let total_chunks: usize = shape
             .iter()
             .zip(chunk.iter())

@@ -391,7 +391,8 @@ pub fn dtype_to_element_size(dtype: &str) -> Option<usize> {
     match dt.as_str() {
         "bool" | "bool_" => return Some(1),
         "int8" => return Some(1),
-        "uint8" | "uint8" | "i1" | "u1" => return Some(1),
+
+        "uint8" | "i1" | "u1" => return Some(1),
         "int16" | "i2" => return Some(2),
         "uint16" | "u2" => return Some(2),
         "int32" | "i4" => return Some(4),
@@ -479,7 +480,7 @@ pub fn dtype_to_element_size(dtype: &str) -> Option<usize> {
                     .take_while(|&&c| c.is_ascii_digit())
                     .map(|&c| c as char)
                     .collect();
-                size_str.parse().map(|s: usize| s / 8 * 2).ok()
+                size_str.parse().ok()
             } else {
                 None
             }
@@ -498,7 +499,7 @@ pub fn dtype_to_element_size(dtype: &str) -> Option<usize> {
             }
         }
         // Void / opaque
-        b'V' => {
+        b'v' => {
             if rest.len() >= 2 {
                 let size_str: alloc::string::String = rest[1..]
                     .iter()
@@ -511,9 +512,9 @@ pub fn dtype_to_element_size(dtype: &str) -> Option<usize> {
             }
         }
         // Object reference
-        b'O' => Some(8),
+        b'o' => Some(8),
         // Date/time (8 bytes)
-        b'M' | b'm' => Some(8),
+        b'm' => Some(8),
         // Timedelta (8 bytes)
         b't' => Some(8),
         // Bitfield

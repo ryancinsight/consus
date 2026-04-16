@@ -102,7 +102,25 @@ pub fn read_chunk_raw<R: consus_io::ReadAt>(
     uncompressed_size: usize,
     filter_ids: &[u16],
     registry: &dyn consus_compression::CompressionRegistry,
+    fill_value: Option<&[u8]>,
 ) -> Result<Vec<u8>> {
+    // Uninitialized chunk: address is undefined (chunk not yet written).
+    // Return a buffer filled with the fill value pattern, or zeros if no fill value.
+    if location.address == crate::constants::UNDEFINED_ADDRESS {
+        let mut buf = vec![0u8; uncompressed_size];
+        if let Some(fv) = fill_value {
+            if !fv.is_empty() {
+                // Tile the fill value pattern across the buffer.
+                // Invariant: element_size divides uncompressed_size.
+                for chunk in buf.chunks_mut(fv.len()) {
+                    let copy_len = chunk.len().min(fv.len());
+                    chunk[..copy_len].copy_from_slice(&fv[..copy_len]);
+                }
+            }
+        }
+        return Ok(buf);
+    }
+
     // 1. Read raw on-disk data.
     let disk_size = location.size as usize;
     let mut compressed = vec![0u8; disk_size];
@@ -484,7 +502,7 @@ mod tests {
             filter_mask: 0,
         };
         let registry = consus_compression::DefaultCodecRegistry::new();
-        let result = read_chunk_raw(&cursor, &loc, data.len(), &[], &registry).unwrap();
+        let result = read_chunk_raw(&cursor, &loc, data.len(), &[], &registry, None).unwrap();
         assert_eq!(result, data);
     }
 
@@ -516,7 +534,7 @@ mod tests {
         // On-disk size should be original + 4 checksum bytes.
         assert_eq!(loc.size, data.len() as u64 + 4);
 
-        let result = read_chunk_raw(&cursor, &loc, data.len(), &[3], &registry).unwrap();
+        let result = read_chunk_raw(&cursor, &loc, data.len(), &[3], &registry, None).unwrap();
         assert_eq!(result, data);
     }
 
@@ -533,7 +551,43 @@ mod tests {
         };
         let registry = consus_compression::DefaultCodecRegistry::new();
         // Even though filter_ids has deflate(1), the mask says it wasn't applied.
-        let result = read_chunk_raw(&cursor, &loc, data.len(), &[1], &registry).unwrap();
+        let result = read_chunk_raw(&cursor, &loc, data.len(), &[1], &registry, None).unwrap();
         assert_eq!(result, data);
     }
+    /// read_chunk_raw returns fill-value-tiled buffer for undefined address.
+    ///
+    /// Invariant: UNDEFINED_ADDRESS causes early return without I/O;
+    /// the buffer is tiled with the fill value pattern.
+    /// Also verifies that None fill value yields all-zero buffer.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn read_chunk_fill_value_for_undefined_address() {
+        use consus_io::MemCursor;
+        // address = u64::MAX is UNDEFINED_ADDRESS per constants.
+        let loc = ChunkLocation {
+            address: u64::MAX,
+            size: 0,
+            filter_mask: 0,
+        };
+        let registry = consus_compression::DefaultCodecRegistry::new();
+        let empty_source = MemCursor::from_bytes(vec![]);
+
+        // With fill_value = Some(&[0xFF, 0x00]): buffer tiled with pattern.
+        let fv: &[u8] = &[0xFF, 0x00];
+        let result = read_chunk_raw(&empty_source, &loc, 8, &[], &registry, Some(fv)).unwrap();
+        assert_eq!(
+            result,
+            vec![0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00],
+            "fill pattern must tile across buffer"
+        );
+
+        // With fill_value = None: buffer is all zeros.
+        let zeros = read_chunk_raw(&empty_source, &loc, 8, &[], &registry, None).unwrap();
+        assert_eq!(
+            zeros,
+            vec![0u8; 8],
+            "none fill value must yield zero buffer"
+        );
+    }
+
 }

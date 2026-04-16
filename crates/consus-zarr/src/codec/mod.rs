@@ -176,13 +176,13 @@ impl CodecPipeline {
             "zstd" => {
                 let level = codec.zstd_level().unwrap_or(3) as i32;
                 registry
-                    .get_by_name("zstd")
+                    .get_by_name(&codec.name)
                     .and_then(|c| c.compress(data, CompressionLevel(level)))
             }
             "lz4" => {
                 let level = codec.lz4_level().unwrap_or(0) as i32;
                 registry
-                    .get_by_name("lz4")
+                    .get_by_name(&codec.name)
                     .and_then(|c| c.compress(data, CompressionLevel(level)))
             }
             // blosc, deflate, etc. — look up by name

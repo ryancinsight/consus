@@ -54,6 +54,7 @@ fn prop_write_zero_fill_before() {
     proptest!(|(offset: u64, data: Vec<u8>)| {
         let offset = (offset % 1000) + 1; // Ensure offset > 0
         let data: Vec<u8> = data.into_iter().take(100).collect();
+        prop_assume!(!data.is_empty()); // empty writes are no-ops; cursor not extended
 
         let mut cursor = MemCursor::new();
         cursor.write_at(offset, &data).expect("write must succeed");
@@ -576,6 +577,7 @@ fn prop_zero_regions_preserved() {
         let offset2 = (offset2 % 100) + 200; // Non-overlapping
         let data1: Vec<u8> = data1.into_iter().take(50).collect();
         let data2: Vec<u8> = data2.into_iter().take(50).collect();
+        prop_assume!(!data1.is_empty() && !data2.is_empty()); // both writes must extend cursor for gap to be readable
 
         let mut cursor = MemCursor::new();
         cursor.write_at(offset1, &data1).expect("write1");

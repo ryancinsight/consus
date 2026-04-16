@@ -103,7 +103,7 @@ impl<R: ReadAt> Hdf5File<R> {
         let header = self.root_object_header()?;
         let children = reader::list_group_v2(&self.source, &header, &self.ctx)?;
         if !children.is_empty() {
-            return Ok(children);
+            return Ok(children.into_iter().map(|(n, a, lt, _)| (n, a, lt)).collect());
         }
 
         let v1_children = reader::list_group_v1(&self.source, &header, &self.ctx)?;
@@ -126,7 +126,7 @@ impl<R: ReadAt> Hdf5File<R> {
     #[cfg(feature = "alloc")]
     pub fn attributes_at(&self, object_header_address: u64) -> Result<Vec<Hdf5Attribute>> {
         let header = reader::read_object_header(&self.source, object_header_address, &self.ctx)?;
-        reader::read_attributes(&header, &self.ctx)
+        reader::read_attributes(&self.source, &header, &self.ctx)
     }
 
     /// Read raw bytes from a contiguous dataset region.
@@ -150,38 +150,88 @@ impl<R: ReadAt> Hdf5File<R> {
     /// Navigate to an object by slash-separated path, returning its
     /// object header address.
     ///
-    /// Leading `/` is accepted and ignored. Empty components (double
-    /// slashes) are skipped. Returns `Error::NotFound` if any component
+    /// Leading  is accepted and ignored. Empty components (double
+    /// slashes) are skipped. Returns  if any component
     /// is absent.
     ///
-    /// ## Algorithm
+    /// ## Soft Link Resolution
     ///
-    /// Starting from `root_group_address`, each path component is
-    /// matched against the hard links reported by `list_group_at`.
-    /// The first matching hard link address becomes the current object.
+    /// Soft links (type 1) are resolved recursively up to a depth of 40
+    /// hops to break potential cycles. Absolute soft link targets (beginning
+    /// with ) are resolved from the root group. Relative targets are
+    /// resolved within the current group.
+    ///
+    /// External links return .
     ///
     /// ## Errors
     ///
-    /// - [`Error::NotFound`] if any path component is missing.
-    /// - [`Error::InvalidFormat`] if an object header is malformed.
-    #[cfg(feature = "alloc")]
+    /// -  if any path component is missing.
+    /// -  if an object header is malformed or a
+    ///   soft link cycle exceeds the maximum depth of 40.
+    /// -  if an external link is traversed.
+        #[cfg(feature = "alloc")]
     pub fn open_path(&self, path: &str) -> Result<u64> {
-        let mut current = self.superblock.root_group_address;
+        self.open_path_from(self.superblock.root_group_address, path, 0)
+    }
+
+    /// Resolve a path from a given group address with cycle-break depth tracking.
+    ///
+    /// Called by [] and recursively for soft link resolution.
+    ///  increments on each soft link hop; exceeding 
+    /// returns [] to break cycles.
+    #[cfg(feature = "alloc")]
+    #[cfg(feature = "alloc")]
+    fn open_path_from(&self, start: u64, path: &str, depth: usize) -> Result<u64> {
+        const MAX_LINK_DEPTH: usize = 40;
+        if depth > MAX_LINK_DEPTH {
+            return Err(Error::InvalidFormat {
+                message: alloc::string::String::from(
+                    "soft link cycle detected: maximum link depth exceeded",
+                ),
+            });
+        }
+
+        let mut current = start;
         for component in path.split('/').filter(|s| !s.is_empty()) {
             let header = reader::read_object_header(&self.source, current, &self.ctx)?;
             let mut found: Option<u64> = None;
 
             // Try v2 link messages first (dense or compact).
             let v2 = reader::list_group_v2(&self.source, &header, &self.ctx)?;
-            for (name, addr, _) in &v2 {
+            for (name, addr, link_type, soft_target) in &v2 {
                 if name == component {
-                    found = Some(*addr);
+                    match link_type {
+                        consus_core::LinkType::Hard => {
+                            found = Some(*addr);
+                        }
+                        consus_core::LinkType::Soft => {
+                            if let Some(target) = soft_target {
+                                let resolved = if target.starts_with('/') {
+                                    self.open_path_from(
+                                        self.superblock.root_group_address,
+                                        target,
+                                        depth + 1,
+                                    )?
+                                } else {
+                                    self.open_path_from(current, target, depth + 1)?
+                                };
+                                found = Some(resolved);
+                            }
+                        }
+                        consus_core::LinkType::External => {
+                            return Err(Error::UnsupportedFeature {
+                                feature: alloc::string::String::from(
+                                    "external link resolution",
+                                ),
+                            });
+                        }
+                    }
                     break;
                 }
             }
 
             // Fall back to v1 symbol table. v2 groups have no SYMBOL_TABLE
-            // message, so list_group_v1 returns InvalidFormat in that case —
+            // message, so list_group_v1 returns InvalidFormat in that case
             // treat failure as an empty list rather than propagating the error.
             if found.is_none() {
                 if let Ok(v1) = reader::list_group_v1(&self.source, &header, &self.ctx) {
@@ -201,7 +251,7 @@ impl<R: ReadAt> Hdf5File<R> {
         Ok(current)
     }
 
-    /// List children of a group at the given object header address.
+        /// List children of a group at the given object header address.
     ///
     /// Returns `(name, object_header_address, link_type)` triples.
     /// Tries v2 links first; falls back to v1 symbol table.
@@ -211,7 +261,7 @@ impl<R: ReadAt> Hdf5File<R> {
 
         let v2 = reader::list_group_v2(&self.source, &header, &self.ctx)?;
         if !v2.is_empty() {
-            return Ok(v2);
+            return Ok(v2.into_iter().map(|(n, a, lt, _)| (n, a, lt)).collect());
         }
 
         let v1 = reader::list_group_v1(&self.source, &header, &self.ctx)?;

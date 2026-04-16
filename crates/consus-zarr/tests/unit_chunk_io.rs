@@ -475,21 +475,21 @@ fn chunk_linear_index() {
     });
     assert_eq!(linear, 0);
 
-    // (1, 0) -> 1
+    // (1, 0) -> 10  (row 1, col 0, C-order: 1 * 10 + 0 = 10)
     let coords = vec![1, 0];
     let linear: usize = coords.iter().enumerate().fold(0, |acc, (i, &c)| {
         let multiplier: usize = grid_shape[i + 1..].iter().product();
         acc + c * multiplier
     });
-    assert_eq!(linear, 1);
+    assert_eq!(linear, 10);
 
-    // (0, 1) -> 10
+    // (0, 1) -> 1  (row 0, col 1, C-order: 0 * 10 + 1 = 1)
     let coords = vec![0, 1];
     let linear: usize = coords.iter().enumerate().fold(0, |acc, (i, &c)| {
         let multiplier: usize = grid_shape[i + 1..].iter().product();
         acc + c * multiplier
     });
-    assert_eq!(linear, 10);
+    assert_eq!(linear, 1);
 
     // (5, 3) -> 53
     let coords = vec![5, 3];

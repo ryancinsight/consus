@@ -362,7 +362,11 @@ fn reader_helpers_extract_messages_and_attributes() {
     let link = reader::find_message(&header, 0x0006).expect("link message");
     assert_eq!(link.message_type, 0x0006);
 
-    let attrs = reader::read_attributes(&header, &consus_hdf5::address::ParseContext::new(8, 8))
+    let attrs = reader::read_attributes(
+        &MemCursor::from_bytes(vec![]),
+        &header,
+        &consus_hdf5::address::ParseContext::new(8, 8),
+    )
         .expect("read attributes");
     assert_eq!(attrs.len(), 1);
     assert_eq!(attrs[0].name, "units");
@@ -562,4 +566,28 @@ fn dataset_with_attributes_roundtrip() {
         }),
         42
     );
+}
+
+#[test]
+fn open_path_resolves_soft_link() {
+    // build_compact_group_file creates:
+    //   hard link  data       -> dataset_address
+    //   soft link  soft_data  -> /data  (absolute)
+    // Resolving /soft_data must return the same address as /data.
+    let (cursor, _, dataset_address) = build_compact_group_file();
+    let file = Hdf5File::open(cursor).expect("open");
+
+    let soft_addr = file.open_path("/soft_data").expect("soft link must resolve");
+    assert_eq!(
+        soft_addr,
+        dataset_address,
+        "soft_data must resolve to the same address as data"
+    );
+
+    // Navigating through an external link must return UnsupportedFeature.
+    let ext_result = file.open_path("/external_data");
+    match ext_result {
+        Err(consus_core::Error::UnsupportedFeature { .. }) => {}
+        other => panic!("expected UnsupportedFeature for external link, got {:?}", other),
+    }
 }

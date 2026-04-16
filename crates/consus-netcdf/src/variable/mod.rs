@@ -186,11 +186,8 @@ mod tests {
     #[cfg(feature = "alloc")]
     #[test]
     fn validate_rejects_empty_name() {
-        let variable = NetcdfVariable::new(
-            String::from(""),
-            Datatype::Boolean,
-            vec![String::from("x")],
-        );
+        let variable =
+            NetcdfVariable::new(String::from(""), Datatype::Boolean, vec![String::from("x")]);
         let err = variable.validate().unwrap_err();
         match err {
             Error::InvalidFormat { .. } => {}

@@ -55,15 +55,17 @@ use alloc::{string::String, vec::Vec};
 use alloc::string::ToString;
 
 #[cfg(feature = "s3")]
-use rusoto_s3::{
-    DeleteObjectRequest, GetObjectError, GetObjectRequest, HeadObjectError,
-    HeadObjectRequest, ListObjectsV2Request, PutObjectRequest, S3Client, S3,
-};
+use alloc::sync::Arc;
 #[cfg(feature = "s3")]
-use rusoto_core::{Region, RusotoError};
-
 #[cfg(feature = "alloc")]
 use consus_core::Result;
+#[cfg(feature = "s3")]
+use rusoto_core::{Region, RusotoError};
+#[cfg(feature = "s3")]
+use rusoto_s3::{
+    DeleteObjectRequest, GetObjectError, GetObjectRequest, HeadObjectError, HeadObjectRequest,
+    ListObjectsV2Request, PutObjectRequest, S3, S3Client,
+};
 
 #[cfg(feature = "alloc")]
 use crate::store::Store;
@@ -84,7 +86,6 @@ use crate::store::Store;
 ///     .build()?;
 /// ```
 #[cfg(feature = "s3")]
-#[derive(Debug, Clone)]
 pub struct S3Store {
     /// S3 client.
     client: S3Client,
@@ -97,6 +98,34 @@ pub struct S3Store {
     /// Whether to require that written objects are immediately readable.
     /// Disabling this skips the read-after-write verification.
     read_after_write: bool,
+    /// Tokio runtime for blocking S3 operations.
+    rt: alloc::sync::Arc<tokio::runtime::Runtime>,
+}
+
+#[cfg(feature = "s3")]
+impl core::fmt::Debug for S3Store {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("S3Store")
+            .field("bucket", &self.bucket)
+            .field("prefix", &self.prefix)
+            .field("compute_md5", &self.compute_md5)
+            .field("read_after_write", &self.read_after_write)
+            .finish()
+    }
+}
+
+#[cfg(feature = "s3")]
+impl Clone for S3Store {
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+            bucket: self.bucket.clone(),
+            prefix: self.prefix.clone(),
+            compute_md5: self.compute_md5,
+            read_after_write: self.read_after_write,
+            rt: self.rt.clone(),
+        }
+    }
 }
 
 /// Errors specific to S3 store operations.
@@ -106,7 +135,7 @@ pub enum S3StoreError {
     /// The object was not found in the bucket.
     NotFound { key: String },
     /// A Rusoto-level S3 error occurred.
-    Rusoto(RusotoError<GetObjectError>),
+    Rusoto(Box<dyn core::error::Error + Send + Sync>),
     /// An I/O error (e.g., MD5 computation failure).
     Io(String),
 }
@@ -126,7 +155,7 @@ impl core::fmt::Display for S3StoreError {
 impl std::error::Error for S3StoreError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Rusoto(e) => Some(e),
+            Self::Rusoto(e) => Some(e.as_ref()),
             _ => None,
         }
     }
@@ -135,7 +164,7 @@ impl std::error::Error for S3StoreError {
 #[cfg(feature = "s3")]
 impl From<RusotoError<GetObjectError>> for S3StoreError {
     fn from(e: RusotoError<GetObjectError>) -> Self {
-        Self::Rusoto(e)
+        Self::Rusoto(Box::new(e))
     }
 }
 
@@ -146,18 +175,27 @@ impl S3Store {
         Self::with_client(S3Client::new(Region::UsEast1), bucket)
     }
 
+    fn with_runtime(client: S3Client, bucket: String, prefix: String) -> Self {
+        let rt = Arc::new(
+            tokio::runtime::Runtime::new()
+                .expect("failed to create tokio runtime for S3 operations"),
+        );
+        Self {
+            client,
+            bucket,
+            prefix,
+            compute_md5: false,
+            read_after_write: false,
+            rt,
+        }
+    }
+
     /// Create an S3Store with an explicit `S3Client`.
     ///
     /// Use this when you need a custom HTTP client, specific Region
     /// configuration, or STS token-based credentials.
     pub fn with_client(client: S3Client, bucket: impl Into<String>) -> Self {
-        Self {
-            client,
-            bucket: bucket.into(),
-            prefix: String::new(),
-            compute_md5: false,
-            read_after_write: false,
-        }
+        Self::with_runtime(client, bucket.into(), String::new())
     }
 
     /// Set the key prefix for all operations.
@@ -167,11 +205,7 @@ impl S3Store {
     /// set `prefix` to the container name with trailing slash.
     pub fn with_prefix(mut self, prefix: impl Into<String>) -> Self {
         let p = prefix.into();
-        self.prefix = if p.ends_with('/') {
-            p
-        } else {
-            p + "/"
-        };
+        self.prefix = if p.ends_with('/') { p } else { p + "/" };
         self
     }
 
@@ -222,10 +256,16 @@ impl S3Store {
 
     /// Compute the MD5 hex digest of the given data.
     fn md5_hex(data: &[u8]) -> String {
-        use std::io::Write;
-        let mut ctx = md5::Context::new();
-        ctx.write_all(data).expect("write to MD5 context");
-        hex_encode(ctx.compute().bytes())
+        // md5::compute returns md5::Digest which is GenericArray<u8, 16>
+        // Convert to hex via the Digest trait's output.
+        use md5::Digest;
+        let hash = md5::compute(data);
+        let mut hex = alloc::string::String::with_capacity(32);
+        for byte in hash.iter() {
+            use alloc::format;
+            hex.push_str(&format!("{:02x}", byte));
+        }
+        hex
     }
 }
 
@@ -251,9 +291,8 @@ impl Store for S3Store {
         };
 
         let result = self
-            .client
-            .get_object(req)
-            .sync()
+            .rt
+            .block_on(self.client.get_object(req))
             .map_err(|e| match e {
                 RusotoError::Service(GetObjectError::NoSuchKey(_)) => {
                     consus_core::Error::NotFound {
@@ -268,24 +307,30 @@ impl Store for S3Store {
                 }
                 _ => consus_core::Error::Io(std::io::Error::new(
                     std::io::ErrorKind::Other,
-                    S3StoreError::Rusoto(e),
+                    S3StoreError::Rusoto(Box::new(e)),
                 )),
             })?;
 
-        let body = result.body.ok_or_else(|| consus_core::Error::InvalidFormat {
-            message: "S3 GetObject returned empty body".to_string(),
-        })?;
+        let body = result
+            .body
+            .ok_or_else(|| consus_core::Error::InvalidFormat {
+                message: "S3 GetObject returned empty body".to_string(),
+            })?;
 
-        use std::io::Read;
-        let mut buf = Vec::new();
-        body.into_reader().read_to_end(&mut buf).map_err(|e| {
+        use futures::stream::TryStreamExt;
+        let body_bytes: Vec<bytes::Bytes> = self.rt.block_on(body.try_collect()).map_err(|e| {
             consus_core::Error::Io(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                S3StoreError::Io(e.to_string()),
+                S3StoreError::Io(format!("S3 body read: {:?}", e)),
             ))
         })?;
-
-        Ok(buf)
+        // Flatten all chunks into a single Vec<u8>
+        let total_len = body_bytes.iter().map(|b| b.len()).sum();
+        let mut result = Vec::with_capacity(total_len);
+        for chunk in body_bytes {
+            result.extend_from_slice(&chunk);
+        }
+        Ok(result)
     }
 
     fn set(&mut self, key: &str, value: &[u8]) -> Result<()> {
@@ -307,15 +352,12 @@ impl Store for S3Store {
             ..Default::default()
         };
 
-        self.client
-            .put_object(req)
-            .sync()
-            .map_err(|e| {
-                consus_core::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    S3StoreError::Rusoto(RusotoError::from(e)),
-                ))
-            })?;
+        self.rt.block_on(self.client.put_object(req)).map_err(|e| {
+            consus_core::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                S3StoreError::Rusoto(Box::new(e)),
+            ))
+        })?;
 
         if self.read_after_write {
             // Verify the object is readable via HEAD request
@@ -324,12 +366,14 @@ impl Store for S3Store {
                 key: full_key,
                 ..Default::default()
             };
-            self.client.head_object(head).sync().map_err(|e| {
-                consus_core::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    S3StoreError::Rusoto(RusotoError::from(e)),
-                ))
-            })?;
+            self.rt
+                .block_on(self.client.head_object(head))
+                .map_err(|e| {
+                    consus_core::Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        S3StoreError::Rusoto(Box::new(e)),
+                    ))
+                })?;
         }
 
         Ok(())
@@ -343,12 +387,14 @@ impl Store for S3Store {
             ..Default::default()
         };
 
-        self.client.delete_object(req).sync().map_err(|e| {
-            consus_core::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                S3StoreError::Rusoto(RusotoError::from(e)),
-            ))
-        })?;
+        self.rt
+            .block_on(self.client.delete_object(req))
+            .map_err(|e| {
+                consus_core::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    S3StoreError::Rusoto(Box::new(e)),
+                ))
+            })?;
 
         Ok(())
     }
@@ -366,12 +412,15 @@ impl Store for S3Store {
                 ..Default::default()
             };
 
-            let result = self.client.list_objects_v2(req).sync().map_err(|e| {
-                consus_core::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    S3StoreError::Rusoto(RusotoError::from(e)),
-                ))
-            })?;
+            let result = self
+                .rt
+                .block_on(self.client.list_objects_v2(req))
+                .map_err(|e| {
+                    consus_core::Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        S3StoreError::Rusoto(Box::new(e)),
+                    ))
+                })?;
 
             if let Some(contents) = result.contents {
                 for obj in contents {
@@ -409,12 +458,12 @@ impl Store for S3Store {
             ..Default::default()
         };
 
-        match self.client.head_object(req).sync() {
+        match self.rt.block_on(self.client.head_object(req)) {
             Ok(_) => Ok(true),
-            Err(RusotoError::Service(HeadObjectError::NotFound(_))) => Ok(false),
+            Err(RusotoError::Service(HeadObjectError::NoSuchKey(_))) => Ok(false),
             Err(e) => Err(consus_core::Error::Io(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                S3StoreError::Rusoto(RusotoError::from(e)),
+                S3StoreError::Rusoto(Box::new(e)),
             ))),
         }
     }
@@ -422,8 +471,7 @@ impl Store for S3Store {
 
 /// Encode bytes as base64.
 fn base64_encode(data: &[u8]) -> String {
-    const ALPHABET: &[u8] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
     let mut result = alloc::string::String::new();
     for chunk in data.chunks(3) {
