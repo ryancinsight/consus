@@ -1,0 +1,7 @@
+
+#[cfg(all(feature = "parallel-io", feature = "alloc"))]
+impl<R: ReadAt + Sync> Hdf5File<R> {
+    pub fn read_chunked_dataset_all_bytes(&self, object_header_address: u64) -> Result<Vec<u8>> {
+        use crate::dataset::chunk::{edge_chunk_dims, ChunkLocation};
+        use crate::dataset::parallel::{execute_parallel, ChunkTask};
+
