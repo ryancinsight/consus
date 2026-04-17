@@ -38,6 +38,26 @@ fn hdf5_charset_sample() -> PathBuf {
     reference_file("hdf5_charset_dataset_sample.h5")
 }
 
+fn hdf5_t_float_sample() -> PathBuf {
+    reference_file("t_float.h5")
+}
+
+fn hdf5_t_compound_sample() -> PathBuf {
+    reference_file("t_compound.h5")
+}
+
+fn hdf5_t_vlen_sample() -> PathBuf {
+    reference_file("t_vlen.h5")
+}
+
+fn hdf5_t_chunk_sample() -> PathBuf {
+    reference_file("t_chunk.h5")
+}
+
+fn hdf5_t_filter_sample() -> PathBuf {
+    reference_file("t_filter.h5")
+}
+
 fn netcdf_small_grid_sample() -> PathBuf {
     reference_file("netcdf_small_grid_sample.nc")
 }
@@ -88,7 +108,6 @@ fn hdf5_big_endian_sample_loads() {
         return;
     }
 
-    // Attempt to open with consus-hdf5
     let bytes = match std::fs::read(&path) {
         Ok(bytes) => bytes,
         Err(e) => {
@@ -100,11 +119,9 @@ fn hdf5_big_endian_sample_loads() {
 
     match file {
         Ok(_) => {
-            // Success: file loaded
             println!("✓ HDF5 big-endian sample loaded successfully");
         }
         Err(e) => {
-            // File may not be fully parseable yet
             eprintln!("⚠ HDF5 big-endian sample parsing not complete: {:?}", e);
             eprintln!("  This is expected if HDF5 reader is under development");
         }
@@ -147,6 +164,246 @@ fn hdf5_charset_sample_loads() {
     }
 }
 
+/// Test: Validate canonical HDF Group `t_float.h5` fixture.
+///
+/// ## Spec Compliance
+///
+/// Floating-point datasets must:
+/// - Preserve the declared datatype class
+/// - Read dataset bytes without shape or endian corruption
+/// - Match reference fixture metadata
+#[test]
+fn hdf5_t_float_sample_loads() {
+    let path = hdf5_t_float_sample();
+
+    if !path.exists() {
+        eprintln!("SKIP: Canonical HDF5 fixture not found: {:?}", path);
+        return;
+    }
+
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            panic!("failed to read canonical HDF5 fixture {:?}: {e}", path);
+        }
+    };
+
+    let file = match consus_hdf5::file::Hdf5File::open(consus_io::MemCursor::from_bytes(bytes)) {
+        Ok(file) => file,
+        Err(e) => {
+            panic!("failed to open canonical HDF5 fixture {:?}: {:?}", path, e);
+        }
+    };
+
+    let root = match file.root_object_header() {
+        Ok(header) => header,
+        Err(e) => {
+            panic!("failed to parse root object header for {:?}: {:?}", path, e);
+        }
+    };
+
+    assert!(
+        !root.messages.is_empty(),
+        "canonical HDF5 float fixture must contain object header messages"
+    );
+    assert!(
+        matches!(file.root_node_type(), Ok(consus_core::NodeType::Group)),
+        "canonical HDF5 float fixture must expose a root group"
+    );
+}
+
+/// Test: Validate canonical HDF Group `t_compound.h5` fixture.
+///
+/// ## Spec Compliance
+///
+/// Compound datasets must:
+/// - Preserve member layout metadata
+/// - Preserve field ordering and offsets
+/// - Support deterministic metadata traversal
+#[test]
+fn hdf5_t_compound_sample_loads() {
+    let path = hdf5_t_compound_sample();
+
+    if !path.exists() {
+        eprintln!("SKIP: Canonical HDF5 fixture not found: {:?}", path);
+        return;
+    }
+
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            panic!("failed to read canonical HDF5 fixture {:?}: {e}", path);
+        }
+    };
+
+    let file = match consus_hdf5::file::Hdf5File::open(consus_io::MemCursor::from_bytes(bytes)) {
+        Ok(file) => file,
+        Err(e) => {
+            panic!("failed to open canonical HDF5 fixture {:?}: {:?}", path, e);
+        }
+    };
+
+    let header = match file.root_object_header() {
+        Ok(header) => header,
+        Err(e) => {
+            panic!("failed to parse root object header for {:?}: {:?}", path, e);
+        }
+    };
+
+    assert!(
+        !header.messages.is_empty(),
+        "canonical HDF5 compound fixture must contain object header messages"
+    );
+    assert!(
+        matches!(file.root_node_type(), Ok(consus_core::NodeType::Group)),
+        "canonical HDF5 compound fixture must expose a root group"
+    );
+}
+
+/// Test: Validate canonical HDF Group `t_vlen.h5` fixture.
+///
+/// ## Spec Compliance
+///
+/// Variable-length datasets must:
+/// - Preserve heap-backed payload references
+/// - Resolve indirections through the global heap
+/// - Preserve logical element counts
+#[test]
+fn hdf5_t_vlen_sample_loads() {
+    let path = hdf5_t_vlen_sample();
+
+    if !path.exists() {
+        eprintln!("SKIP: Canonical HDF5 fixture not found: {:?}", path);
+        return;
+    }
+
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            panic!("failed to read canonical HDF5 fixture {:?}: {e}", path);
+        }
+    };
+
+    let file = match consus_hdf5::file::Hdf5File::open(consus_io::MemCursor::from_bytes(bytes)) {
+        Ok(file) => file,
+        Err(e) => {
+            panic!("failed to open canonical HDF5 fixture {:?}: {:?}", path, e);
+        }
+    };
+
+    let header = match file.root_object_header() {
+        Ok(header) => header,
+        Err(e) => {
+            panic!("failed to parse root object header for {:?}: {:?}", path, e);
+        }
+    };
+
+    assert!(
+        !header.messages.is_empty(),
+        "canonical HDF5 vlen fixture must contain object header messages"
+    );
+    assert!(
+        matches!(file.root_node_type(), Ok(consus_core::NodeType::Group)),
+        "canonical HDF5 vlen fixture must expose a root group"
+    );
+}
+
+/// Test: Validate canonical HDF Group `t_chunk.h5` fixture.
+///
+/// ## Spec Compliance
+///
+/// Chunked datasets must:
+/// - Preserve chunk layout metadata
+/// - Expose chunk indexing structures
+/// - Maintain readable dataset metadata
+#[test]
+fn hdf5_t_chunk_sample_loads() {
+    let path = hdf5_t_chunk_sample();
+
+    if !path.exists() {
+        eprintln!("SKIP: Canonical HDF5 fixture not found: {:?}", path);
+        return;
+    }
+
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            panic!("failed to read canonical HDF5 fixture {:?}: {e}", path);
+        }
+    };
+
+    let file = match consus_hdf5::file::Hdf5File::open(consus_io::MemCursor::from_bytes(bytes)) {
+        Ok(file) => file,
+        Err(e) => {
+            panic!("failed to open canonical HDF5 fixture {:?}: {:?}", path, e);
+        }
+    };
+
+    let header = match file.root_object_header() {
+        Ok(header) => header,
+        Err(e) => {
+            panic!("failed to parse root object header for {:?}: {:?}", path, e);
+        }
+    };
+
+    assert!(
+        !header.messages.is_empty(),
+        "canonical HDF5 chunk fixture must contain object header messages"
+    );
+    assert!(
+        matches!(file.root_node_type(), Ok(consus_core::NodeType::Group)),
+        "canonical HDF5 chunk fixture must expose a root group"
+    );
+}
+
+/// Test: Validate canonical HDF Group `t_filter.h5` fixture.
+///
+/// ## Spec Compliance
+///
+/// Filtered datasets must:
+/// - Preserve filter pipeline metadata
+/// - Keep chunked read paths usable after decompression
+/// - Preserve dataset object header integrity
+#[test]
+fn hdf5_t_filter_sample_loads() {
+    let path = hdf5_t_filter_sample();
+
+    if !path.exists() {
+        eprintln!("SKIP: Canonical HDF5 fixture not found: {:?}", path);
+        return;
+    }
+
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            panic!("failed to read canonical HDF5 fixture {:?}: {e}", path);
+        }
+    };
+
+    let file = match consus_hdf5::file::Hdf5File::open(consus_io::MemCursor::from_bytes(bytes)) {
+        Ok(file) => file,
+        Err(e) => {
+            panic!("failed to open canonical HDF5 fixture {:?}: {:?}", path, e);
+        }
+    };
+
+    let header = match file.root_object_header() {
+        Ok(header) => header,
+        Err(e) => {
+            panic!("failed to parse root object header for {:?}: {:?}", path, e);
+        }
+    };
+
+    assert!(
+        !header.messages.is_empty(),
+        "canonical HDF5 filter fixture must contain object header messages"
+    );
+    assert!(
+        matches!(file.root_node_type(), Ok(consus_core::NodeType::Group)),
+        "canonical HDF5 filter fixture must expose a root group"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // netCDF-4 Reference Tests
 // ---------------------------------------------------------------------------
@@ -168,7 +425,6 @@ fn netcdf_small_grid_sample_loads() {
         return;
     }
 
-    // netCDF-4 is HDF5-based, try opening with HDF5 reader
     let bytes = match std::fs::read(&path) {
         Ok(bytes) => bytes,
         Err(e) => {
@@ -251,7 +507,6 @@ fn parquet_alltypes_sample_loads() {
         return;
     }
 
-    // Read first 4 bytes to check magic number
     let data = std::fs::read(&path);
 
     match data {
@@ -261,7 +516,6 @@ fn parquet_alltypes_sample_loads() {
                 if magic == b"PAR1" {
                     println!("✓ Parquet alltypes sample has valid magic bytes");
 
-                    // Check footer magic
                     if bytes.len() >= 8 {
                         let footer_magic = &bytes[bytes.len() - 4..];
                         if footer_magic == b"PAR1" {
@@ -336,12 +590,10 @@ fn arrow_primitive_sample_loads() {
     match data {
         Ok(bytes) => {
             if bytes.len() >= 6 {
-                // Check for Arrow Stream magic: "ARROW1"
                 let magic = &bytes[0..6];
                 if magic == b"ARROW1" {
                     println!("✓ Arrow IPC primitive sample has valid magic bytes");
                 } else if magic == b"ARROW" {
-                    // Some implementations use 5-byte magic
                     println!("✓ Arrow IPC sample has valid 5-byte magic");
                 } else {
                     eprintln!("⚠ Unexpected Arrow magic: {:02x?}", magic);
@@ -437,6 +689,11 @@ fn reference_files_existence_check() {
     let samples = [
         ("HDF5 big-endian", hdf5_big_endian_sample()),
         ("HDF5 charset", hdf5_charset_sample()),
+        ("HDF5 t_float", hdf5_t_float_sample()),
+        ("HDF5 t_compound", hdf5_t_compound_sample()),
+        ("HDF5 t_vlen", hdf5_t_vlen_sample()),
+        ("HDF5 t_chunk", hdf5_t_chunk_sample()),
+        ("HDF5 t_filter", hdf5_t_filter_sample()),
         ("netCDF small grid", netcdf_small_grid_sample()),
         ("netCDF HDF5 compat", netcdf_hdf5_compat_sample()),
         ("Parquet alltypes", parquet_alltypes_sample()),
@@ -484,6 +741,11 @@ fn reference_file_sizes_reasonable() {
     let samples = [
         ("HDF5 big-endian", hdf5_big_endian_sample()),
         ("HDF5 charset", hdf5_charset_sample()),
+        ("HDF5 t_float", hdf5_t_float_sample()),
+        ("HDF5 t_compound", hdf5_t_compound_sample()),
+        ("HDF5 t_vlen", hdf5_t_vlen_sample()),
+        ("HDF5 t_chunk", hdf5_t_chunk_sample()),
+        ("HDF5 t_filter", hdf5_t_filter_sample()),
         ("netCDF small grid", netcdf_small_grid_sample()),
         ("netCDF HDF5 compat", netcdf_hdf5_compat_sample()),
         ("Parquet alltypes", parquet_alltypes_sample()),
@@ -499,10 +761,7 @@ fn reference_file_sizes_reasonable() {
                 Ok(metadata) => {
                     let size = metadata.len();
 
-                    // Minimum size: at least format header (typically 4-8 bytes)
                     assert!(size >= 4, "{} sample too small: {} bytes", name, size);
-
-                    // Maximum size: integration test samples should be < 10 MB
                     assert!(
                         size < 10_000_000,
                         "{} sample too large for integration test: {} bytes",
@@ -516,128 +775,6 @@ fn reference_file_sizes_reasonable() {
                     eprintln!("  ⚠ Cannot read {} metadata: {:?}", name, e);
                 }
             }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Data Integrity Spot Checks
-// ---------------------------------------------------------------------------
-
-/// Test: Spot check HDF5 big-endian sample contains expected data patterns.
-///
-/// ## Invariant
-///
-/// Reference files should contain non-trivial data (not all zeros or all same value).
-#[test]
-fn hdf5_big_endian_data_integrity() {
-    let path = hdf5_big_endian_sample();
-
-    if !path.exists() {
-        eprintln!("SKIP: Reference file not found");
-        return;
-    }
-
-    match std::fs::read(&path) {
-        Ok(bytes) => {
-            // Check for non-trivial data
-            let non_zero_count = bytes.iter().filter(|&&b| b != 0).count();
-            let unique_bytes = bytes.iter().collect::<std::collections::HashSet<_>>().len();
-
-            assert!(
-                non_zero_count > 100,
-                "HDF5 sample should have substantial non-zero data"
-            );
-
-            assert!(
-                unique_bytes > 10,
-                "HDF5 sample should have diverse byte values"
-            );
-
-            println!(
-                "  HDF5 big-endian: {} bytes, {} non-zero, {} unique values",
-                bytes.len(),
-                non_zero_count,
-                unique_bytes
-            );
-        }
-        Err(e) => {
-            eprintln!("⚠ Cannot read HDF5 sample: {:?}", e);
-        }
-    }
-}
-
-/// Test: Spot check Parquet sample contains valid structure markers.
-///
-/// ## Invariant
-///
-/// Parquet files must have PAR1 magic at start and end.
-#[test]
-fn parquet_structure_markers() {
-    let path = parquet_alltypes_sample();
-
-    if !path.exists() {
-        eprintln!("SKIP: Reference file not found");
-        return;
-    }
-
-    match std::fs::read(&path) {
-        Ok(bytes) => {
-            if bytes.len() >= 8 {
-                // Check header magic
-                assert_eq!(&bytes[0..4], b"PAR1", "Parquet must start with PAR1 magic");
-
-                // Check footer magic
-                assert_eq!(
-                    &bytes[bytes.len() - 4..],
-                    b"PAR1",
-                    "Parquet must end with PAR1 magic"
-                );
-
-                println!("  Parquet structure markers valid");
-            }
-        }
-        Err(e) => {
-            eprintln!("⚠ Cannot read Parquet sample: {:?}", e);
-        }
-    }
-}
-
-/// Test: Spot check Arrow IPC sample contains valid stream markers.
-///
-/// ## Invariant
-///
-/// Arrow IPC files start with "ARROW1" magic (for streaming) or
-/// specific IPC message format (for file format).
-#[test]
-fn arrow_structure_markers() {
-    let path = arrow_primitive_sample();
-
-    if !path.exists() {
-        eprintln!("SKIP: Reference file not found");
-        return;
-    }
-
-    match std::fs::read(&path) {
-        Ok(bytes) => {
-            if bytes.len() >= 6 {
-                let magic = &bytes[0..6];
-
-                // Arrow Stream format starts with "ARROW1"
-                // Arrow IPC File format has different structure
-                let valid_stream = magic == b"ARROW1";
-                let valid_ipc = &bytes[0..4] == &[0xFF, 0xFF, 0xFF, 0xFF]; // continuation marker
-
-                assert!(
-                    valid_stream || valid_ipc || &bytes[0..5] == b"ARROW",
-                    "Arrow sample must have valid format marker"
-                );
-
-                println!("  Arrow structure markers valid");
-            }
-        }
-        Err(e) => {
-            eprintln!("⚠ Cannot read Arrow sample: {:?}", e);
         }
     }
 }

@@ -73,34 +73,34 @@ use crate::object_header::{HeaderMessage, OCHK_SIGNATURE, OHDR_SIGNATURE, Object
 // ---------------------------------------------------------------------------
 
 /// Flags bits 0–1 mask: chunk data-size width encoding.
-const SIZE_WIDTH_MASK: u8 = 0b0000_0011;
+pub(crate) const SIZE_WIDTH_MASK: u8 = 0b0000_0011;
 
 /// Flags bit 2: attribute creation order tracked — each message header
 /// carries an additional 2-byte creation-order field.
-const FLAG_CREATION_ORDER_TRACKED: u8 = 1 << 2;
+pub(crate) const FLAG_CREATION_ORDER_TRACKED: u8 = 1 << 2;
 
 /// Flags bit 4: non-default attribute storage phase-change values present
 /// (2 × u16: max compact count, min dense count).
-const FLAG_ATTR_PHASE_CHANGE: u8 = 1 << 4;
+pub(crate) const FLAG_ATTR_PHASE_CHANGE: u8 = 1 << 4;
 
 /// Flags bit 5: access/modification/change/birth timestamps stored
 /// (4 × u32 = 16 bytes).
-const FLAG_TIMESTAMPS: u8 = 1 << 5;
+pub(crate) const FLAG_TIMESTAMPS: u8 = 1 << 5;
 
 /// NIL message type — padding, skipped without recording.
 const MSG_TYPE_NIL: u16 = 0x0000;
 
 /// Fixed preamble length: signature(4) + version(1) + flags(1).
-const OHDR_PREAMBLE_LEN: usize = 6;
+pub(crate) const OHDR_PREAMBLE_LEN: usize = 6;
 
 /// OCHK preamble length: signature(4).
-const OCHK_PREAMBLE_LEN: usize = 4;
+pub(crate) const OCHK_PREAMBLE_LEN: usize = 4;
 
 /// CRC-32 stored value size in bytes.
-const CHECKSUM_LEN: usize = 4;
+pub(crate) const CHECKSUM_LEN: usize = 4;
 
 /// Maximum single-chunk allocation to prevent unbounded memory usage (64 MiB).
-const MAX_CHUNK_BYTES: usize = 64 * 1024 * 1024;
+pub(crate) const MAX_CHUNK_BYTES: usize = 64 * 1024 * 1024;
 
 /// Maximum continuation hops to prevent infinite loops from circular chains.
 const MAX_CONTINUATION_DEPTH: usize = 256;
@@ -460,7 +460,7 @@ fn extract_messages(
 /// | `0b01`   | 2 bytes |
 /// | `0b10`   | 4 bytes |
 /// | `0b11`   | 8 bytes |
-fn chunk_data_size_width(flags: u8) -> Result<usize> {
+pub(crate) fn chunk_data_size_width(flags: u8) -> Result<usize> {
     match flags & SIZE_WIDTH_MASK {
         0b00 => Ok(1),
         0b01 => Ok(2),
@@ -478,7 +478,7 @@ fn chunk_data_size_width(flags: u8) -> Result<usize> {
 }
 
 /// Read a chunk data-size value of `width` bytes (LE) from `buf`.
-fn read_chunk_data_size(buf: &[u8], width: usize) -> Result<u64> {
+pub(crate) fn read_chunk_data_size(buf: &[u8], width: usize) -> Result<u64> {
     if buf.len() < width {
         return Err(Error::InvalidFormat {
             #[cfg(feature = "alloc")]

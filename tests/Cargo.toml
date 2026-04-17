@@ -47,6 +47,7 @@ required-features = ["hdf5", "zarr"]
 [[test]]
 name = "end_to_end_reference"
 path = "end_to_end_reference.rs"
+required-features = ["hdf5"]
 
 [[test]]
 name = "property_integration"
