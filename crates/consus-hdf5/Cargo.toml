@@ -12,19 +12,27 @@ description = "Pure-Rust HDF5 format implementation for the Consus scientific st
 default = ["std"]
 std = ["alloc", "consus-core/std", "consus-io/std", "consus-compression/std"]
 alloc = ["consus-core/alloc", "consus-io/alloc", "consus-compression/alloc"]
+async-io = ["alloc", "consus-io/async-io"]
+parallel-io = ["alloc", "dep:rayon"]
 
 [dependencies]
 consus-core = { workspace = true }
 consus-io = { workspace = true }
 consus-compression = { workspace = true }
 byteorder = { workspace = true }
+rayon = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
 smallvec = { workspace = true }
 proptest = { workspace = true }
 criterion = { workspace = true }
+tokio = { version = "1", features = ["macros", "rt"] }
 
 [[bench]]
 name = "hdf5_read"
 harness = false
+[[test]]
+name = "async_hdf5"
+path = "tests/async_hdf5.rs"
+required-features = ["async-io"]

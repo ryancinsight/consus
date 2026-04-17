@@ -86,5 +86,5 @@
 - [ ] Criterion benchmarks: chunked read throughput
 - [ ] Criterion benchmarks: compressed read throughput
 - [ ] Memory profile: peak allocation during chunked reads
-- [ ] Performance optimization pass for multi-chunk read parallelism and allocation reduction
+- [x] Performance optimization pass for multi-chunk read parallelism and allocation reduction
 - [ ] Artifact synchronization: `README.md`, `backlog.md`, and `gap_audit.md` aligned to verified implementation state

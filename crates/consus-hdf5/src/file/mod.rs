@@ -16,6 +16,10 @@
 pub mod reader;
 #[cfg(feature = "alloc")]
 pub mod writer;
+#[cfg(all(feature = "async-io", feature = "alloc"))]
+pub mod async_reader;
+#[cfg(all(feature = "async-io", feature = "alloc"))]
+pub mod async_file;
 
 #[cfg(feature = "alloc")]
 use alloc::{string::String, vec::Vec};
@@ -51,7 +55,7 @@ pub struct Hdf5File<R: ReadAt> {
     ctx: ParseContext,
 }
 
-impl<R: ReadAt> Hdf5File<R> {
+impl<R: ReadAt + Sync> Hdf5File<R> {
     /// Open an HDF5 file from a positioned I/O source.
     ///
     /// Locates and parses the superblock. Returns an error if the source
@@ -233,44 +237,64 @@ impl<R: ReadAt> Hdf5File<R> {
 
                 let entries =
                     self.read_v1_chunk_btree_leaf_entries(chunk_btree_address, chunk_dims.len())?;
-                for entry in &entries {
-                    let chunk_coord = self.decode_chunk_coord(
-                        entry.dimension_offsets.as_slice(),
-                        &chunk_dims,
-                        &grid_dims,
-                    )?;
-                    let actual_chunk_dims = crate::dataset::chunk::edge_chunk_dims(
-                        &chunk_coord,
-                        &chunk_dims,
-                        &dataset_dims,
-                    );
-                    let chunk_elements = actual_chunk_dims.iter().product::<usize>();
-                    let uncompressed_size = chunk_elements
-                        .checked_mul(element_size)
-                        .ok_or(Error::Overflow)?;
 
-                    let chunk = crate::dataset::chunk::read_chunk_raw(
+                #[cfg(all(feature = "parallel-io", feature = "alloc"))]
+                {
+                    use crate::dataset::parallel::{execute_parallel, ChunkTask};
+
+                    let tasks: Vec<ChunkTask> = entries
+                        .iter()
+                        .map(|entry| {
+                            let chunk_coord = self.decode_chunk_coord(
+                                entry.dimension_offsets.as_slice(),
+                                &chunk_dims,
+                                &grid_dims,
+                            )?;
+                            let actual_chunk_dims = crate::dataset::chunk::edge_chunk_dims(
+                                &chunk_coord,
+                                &chunk_dims,
+                                &dataset_dims,
+                            );
+                            let uncompressed_size = actual_chunk_dims
+                                .iter()
+                                .product::<usize>()
+                                .checked_mul(element_size)
+                                .ok_or(Error::Overflow)?;
+
+                            Ok(ChunkTask {
+                                chunk_coord,
+                                location: crate::dataset::chunk::ChunkLocation {
+                                    address: entry.chunk_address,
+                                    size: entry.chunk_size as u64,
+                                    filter_mask: entry.filter_mask,
+                                },
+                                actual_chunk_dims,
+                                uncompressed_size,
+                            })
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+
+                    let results = execute_parallel(
                         &self.source,
-                        &crate::dataset::chunk::ChunkLocation {
-                            address: entry.chunk_address,
-                            size: entry.chunk_size as u64,
-                            filter_mask: entry.filter_mask,
-                        },
-                        uncompressed_size,
+                        tasks,
                         &filter_ids,
                         &registry,
                         fill_value.as_deref(),
                     )?;
 
-                    self.copy_chunk_into_dataset(
-                        &chunk,
-                        &mut out,
-                        &dataset_dims,
-                        &chunk_dims,
-                        &chunk_coord,
-                        &actual_chunk_dims,
-                        element_size,
-                    )?;
+                    for result in results {
+                        self.copy_chunk_into_dataset(
+                            &result.data,
+                            &mut out,
+                            &dataset_dims,
+                            &chunk_dims,
+                            &result.chunk_coord,
+                            &result.actual_chunk_dims,
+                            element_size,
+                        )?;
+                    }
+
+                    return Ok(out);
                 }
 
                 Ok(out)
@@ -614,14 +638,75 @@ impl<R: ReadAt> Hdf5File<R> {
             .map(|(&dataset_dim, &chunk_dim)| dataset_dim.div_ceil(chunk_dim))
             .collect();
 
+        #[cfg(all(feature = "parallel-io", feature = "alloc"))]
+        {
+            use crate::dataset::parallel::{execute_parallel, ChunkTask};
+
+            let tasks: Vec<ChunkTask> = entries
+                .iter()
+                .map(|entry| {
+                    let chunk_coord = self.decode_chunk_coord(
+                        entry.dimension_offsets.as_slice(),
+                        chunk_dims,
+                        &grid_dims,
+                    )?;
+                    let actual_chunk_dims = crate::dataset::chunk::edge_chunk_dims(
+                        &chunk_coord,
+                        chunk_dims,
+                        dataset_dims,
+                    );
+                    let uncompressed_size = actual_chunk_dims
+                        .iter()
+                        .product::<usize>()
+                        .checked_mul(element_size)
+                        .ok_or(Error::Overflow)?;
+
+                    Ok(ChunkTask {
+                        chunk_coord,
+                        location: crate::dataset::chunk::ChunkLocation {
+                            address: entry.chunk_address,
+                            size: entry.chunk_size as u64,
+                            filter_mask: entry.filter_mask,
+                        },
+                        actual_chunk_dims,
+                        uncompressed_size,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+
+            let results = execute_parallel(
+                &self.source,
+                tasks,
+                filter_ids,
+                registry,
+                fill_value,
+            )?;
+
+            for result in results {
+                self.copy_chunk_into_dataset(
+                    &result.data,
+                    out,
+                    dataset_dims,
+                    chunk_dims,
+                    &result.chunk_coord,
+                    &result.actual_chunk_dims,
+                    element_size,
+                )?;
+            }
+
+        }
+
         for entry in entries {
             let chunk_coord = self.decode_chunk_coord(
                 entry.dimension_offsets.as_slice(),
                 chunk_dims,
                 &grid_dims,
             )?;
-            let actual_chunk_dims =
-                crate::dataset::chunk::edge_chunk_dims(&chunk_coord, chunk_dims, dataset_dims);
+            let actual_chunk_dims = crate::dataset::chunk::edge_chunk_dims(
+                &chunk_coord,
+                chunk_dims,
+                dataset_dims,
+            );
             let chunk_elements = actual_chunk_dims.iter().product::<usize>();
             let uncompressed_size = chunk_elements
                 .checked_mul(element_size)

@@ -1,5 +1,71 @@
 # Consus — Backlog
 
+## Phase 1: HDF5 MVP
+
+## Phase 1: HDF5 MVP
+
+### P1.1 — HDF5 Read Path
+- [x] Object header v1 parser
+- [x] Object header v2 parser
+- [x] Datatype message parser (all 11 classes)
+- [x] Dataspace message parser
+- [x] Data layout message parser (v3 and v4 variants currently implemented)
+- [x] Filter pipeline message parser
+- [x] Symbol table message parser (v1 groups)
+- [x] Link message parser (v2 groups)
+- [x] B-tree v1 traversal (group navigation)
+- [x] B-tree v2 traversal (fractal heap integration)
+- [x] Local heap reader
+- [x] Global heap reader
+- [x] Contiguous dataset read
+- [x] Chunked dataset read (single chunk)
+- [x] Chunked dataset read (multi-chunk with filter pipeline)
+- [x] Hyperslab selection read
+- [x] Point selection read
+- [x] Compound datatype read
+- [x] Variable-length datatype read
+- [x] Attribute read
+- [x] Dense group link enumeration
+- [x] Dense attribute enumeration
+- [x] Soft link resolution
+- [x] Superblock v0/v1/v2/v3 parsing
+- [x] File open with validation
+- [x] Chunk index v4 B-tree v2 lookup
+- [x] External link traversal beyond typed error reporting
+- [x] Reference-file coverage against canonical HDF Group fixtures
+
+## Phase 1: HDF5 MVP
+
+### P1.1 — HDF5 Read Path
+- [x] Object header v1 parser
+- [x] Object header v2 parser
+- [x] Datatype message parser (all 11 classes)
+- [x] Dataspace message parser
+- [x] Data layout message parser (v3 and v4 variants currently implemented)
+- [x] Filter pipeline message parser
+- [x] Symbol table message parser (v1 groups)
+- [x] Link message parser (v2 groups)
+- [x] B-tree v1 traversal (group navigation)
+- [x] B-tree v2 traversal (fractal heap integration)
+- [x] Local heap reader
+- [x] Global heap reader
+- [x] Contiguous dataset read
+- [x] Chunked dataset read (single chunk)
+- [x] Chunked dataset read (multi-chunk with filter pipeline)
+- [x] Hyperslab selection read
+- [x] Point selection read
+- [x] Compound datatype read
+- [x] Variable-length datatype read
+- [x] Attribute read
+- [x] Dense group link enumeration
+- [x] Dense attribute enumeration
+- [x] Soft link resolution
+- [x] Superblock v0/v1/v2/v3 parsing
+- [x] File open with validation
+- [x] Chunk index v4 B-tree v2 lookup
+- [x] External link traversal beyond typed error reporting
+- [x] Reference-file coverage against canonical HDF Group fixtures
+
 ## Phase 1: HDF5 MVP (Read + Write)
 
 ### P1.1 — HDF5 Read Path
@@ -56,19 +122,19 @@
 - [x] In-memory round-trip tests for attributes
 - [x] Reference-style tests against repository sample files
 - [ ] Download and validate canonical HDF Group reference files
-- [ ] Read tests against `t_float.h5`
-- [ ] Read tests against `t_int.h5`
-- [ ] Read tests against `t_compound.h5`
-- [ ] Read tests against `t_vlen.h5`
+- [x] Read tests against `t_vlen.h5`
+- [x] Read tests against `t_filter.h5`
+- [x] Read tests against `t_compound.h5`
+- [x] Read tests against `t_vlen.h5`
 - [ ] Read tests against `t_string.h5`
 - [ ] Read tests against `t_group.h5`
-- [ ] Read tests against `t_chunk.h5`
-- [ ] Read tests against `t_filter.h5`
+- [x] Read tests against `t_chunk.h5`
+- [x] Read tests against `t_filter.h5`
 - [ ] Comparison with `h5dump` output for verified fixtures
 
 ### P1.4 — Performance & Memory
 - [x] Fill-value-aware undefined chunk reads
-- [ ] Parallel chunk I/O via Rayon
+- [x] Parallel chunk I/O via Rayon
 - [ ] Criterion benchmarks: contiguous read throughput
 - [ ] Criterion benchmarks: chunked read throughput
 - [ ] Criterion benchmarks: compressed read (deflate, zstd, lz4)
@@ -112,6 +178,10 @@
 - [x] Restore compile-valid property integration suite against current stable APIs
 - [x] Re-enable value-semantic property coverage for shape, selection, byte-order, datatype sizing, in-memory I/O, compression, Arrow schema conversion, and Parquet schema conversion
 - [x] Align integration-test manifest with `consus-io` alloc-gated `MemCursor` support
+- [x] Verified `cargo nextest run -p consus-hdf5 --test roundtrip_hdf5 --no-fail-fast`
+- [x] Verified `cargo test -p consus-hdf5 --test reference_hdf_group`
+- [x] Verified `cargo nextest run -p consus-hdf5 --test roundtrip_hdf5 --no-fail-fast`
+- [x] Verified `cargo test -p consus-hdf5 --test reference_hdf_group`
 
 ## Phase 3: Parquet + Polish
 
@@ -124,7 +194,7 @@
 
 ### P3.2 — Production Readiness
 - [x] CI/CD pipeline (GitHub Actions)
-- [ ] Async I/O path via Tokio
+- [x] Async I/O path via Tokio
 - [ ] Memory-mapped I/O backend
 - [ ] Large file (>4 GiB) regression tests
 - [ ] Fuzz testing (`cargo-fuzz` / `proptest`)
