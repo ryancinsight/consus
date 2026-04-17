@@ -20,7 +20,8 @@ Consus replaces C-dependent bindings (hdf5-rs, netCDF-sys, etc.) with a native R
 
 | Format | Status | Spec Compliance |
 |--------|--------|-----------------|
-| HDF5 | Phase 1 (in progress) | 100% target |
+| HDF5 | Phase 1 (in progress) | Read path substantially implemented; contiguous write path implemented; chunked write path not yet complete |
+| FITS | Phase 2 – Complete | Full read/write for primary images, IMAGE extensions, ASCII tables, and binary tables |
 | Zarr v2/v3 | Phase 2 (planned) | Full read/write |
 | netCDF-4 | Phase 2 (planned) | Classic + Enhanced |
 | Apache Parquet | Phase 3 (planned) | Columnar interop |
@@ -51,13 +52,24 @@ fn main() -> consus::Result<()> {
     let data: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0];
     group.create_dataset("temperature")
         .shape(&[2, 2])
-        .chunks(&[1, 2])
-        .compression(consus::Compression::Zstd { level: 3 })
         .write(&data)?;
 
     Ok(())
 }
 ```
+
+## Current HDF5 Verification Status
+
+Current repository verification indicates:
+
+- HDF5 read support covers superblocks, object headers, datatype parsing, dataspace parsing, link traversal, attribute parsing, contiguous dataset reads, chunk metadata parsing, dense link and dense attribute enumeration, and soft-link path resolution.
+- HDF5 write support currently covers superblock v2 writing, object header v2 writing, datatype/dataspace/layout encoding, contiguous dataset data blocks, hard-link encoding, soft-link encoding, and attribute encoding.
+- Chunked dataset metadata can be emitted in object headers, but the HDF5 chunked write path is not complete because the chunk index address is still a placeholder and the high-level builder writes dataset payloads through the contiguous data path.
+- Compression and chunk declarations in examples should therefore not be interpreted as verified end-to-end HDF5 chunked-write capability yet.
+
+## HDF5 Write-Path Limitation
+
+At present, the verified HDF5 builder path is the contiguous dataset path. If you need chunked or compressed HDF5 dataset creation, treat that capability as in progress until chunk index serialization and end-to-end chunked round-trip validation are completed.
 
 ## Target Users
 
@@ -74,6 +86,8 @@ fn main() -> consus::Result<()> {
 - **Supply-chain security**: Minimal, auditable dependency tree
 - **Cross-compilation**: Targets WASM, ARM, RISC-V without toolchain pain
 - **Memory safety**: Zero unsafe in format logic; ownership-driven resource management
+- **Astronomy pipeline interoperability**: FITS support enables direct ingestion of telescope image products, calibration frames, and catalog tables into the same unified API used for other scientific formats
+- **Spectral and survey R&D continuity**: One storage facade now spans astronomy archive interchange and downstream analysis workflows, reducing format-specific glue code in spectral reduction, sky survey processing, and observatory data engineering
 
 ## Minimum Supported Rust Version
 

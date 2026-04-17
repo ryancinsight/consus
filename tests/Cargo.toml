@@ -11,7 +11,7 @@ publish = false
 
 [dependencies]
 consus-core = { path = "../crates/consus-core" }
-consus-io = { path = "../crates/consus-io" }
+consus-io = { path = "../crates/consus-io", features = ["alloc"] }
 consus-compression = { path = "../crates/consus-compression", features = ["deflate", "zstd", "lz4"] }
 consus-hdf5 = { path = "../crates/consus-hdf5", optional = true }
 consus-zarr = { path = "../crates/consus-zarr", optional = true }

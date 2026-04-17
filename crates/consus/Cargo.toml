@@ -12,7 +12,7 @@ categories.workspace = true
 description.workspace = true
 
 [features]
-default = ["std", "hdf5", "deflate"]
+default = ["std", "hdf5", "fits", "deflate"]
 std = [
     "alloc",
     "consus-core/std",
@@ -31,6 +31,7 @@ zarr = ["dep:consus-zarr"]
 netcdf = ["dep:consus-netcdf"]
 parquet = ["dep:consus-parquet"]
 arrow = ["dep:consus-arrow"]
+fits = ["dep:consus-fits"]
 
 # Compression codecs
 deflate = ["consus-compression/deflate"]
@@ -49,6 +50,7 @@ consus-zarr = { workspace = true, optional = true }
 consus-netcdf = { workspace = true, optional = true }
 consus-parquet = { workspace = true, optional = true }
 consus-arrow = { workspace = true, optional = true }
+consus-fits = { workspace = true, optional = true }
 rayon = { workspace = true }
 
 [package.metadata.docs.rs]

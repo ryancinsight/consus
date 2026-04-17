@@ -35,6 +35,56 @@ pub use consus_parquet as parquet;
 #[cfg(feature = "arrow")]
 pub use consus_arrow as arrow;
 
+/// FITS format backend and convenience facade.
+#[cfg(feature = "fits")]
+pub mod fits {
+    pub use consus_fits::*;
+
+    #[cfg(all(feature = "alloc", feature = "std"))]
+    pub use crate::builders::FileBuilder;
+
+    #[cfg(all(feature = "alloc", feature = "std"))]
+    pub use crate::highlevel::{BackendRegistry, File, FileOptions};
+
+    /// Open a FITS file through the unified `consus` facade using an explicit registry.
+    #[cfg(all(feature = "alloc", feature = "std"))]
+    pub fn open_with_registry(
+        path: impl AsRef<str>,
+        registry: &BackendRegistry,
+        options: FileOptions,
+    ) -> crate::Result<File> {
+        File::open_with_registry(path, registry, options)
+    }
+
+    /// Create a FITS file through the unified `consus` facade using an explicit registry.
+    #[cfg(all(feature = "alloc", feature = "std"))]
+    pub fn create_with_registry(
+        path: impl AsRef<str>,
+        registry: &BackendRegistry,
+        options: FileOptions,
+    ) -> crate::Result<File> {
+        File::create_with_registry(path, registry, options)
+    }
+
+    /// Start a fluent FITS file-open builder matching the existing facade style.
+    #[cfg(all(feature = "alloc", feature = "std"))]
+    pub fn builder() -> FileBuilder {
+        FileBuilder::new()
+    }
+
+    /// Open a FITS file with default read-only options through the unified facade.
+    #[cfg(all(feature = "alloc", feature = "std"))]
+    pub fn open(path: impl AsRef<str>) -> crate::Result<File> {
+        File::open(path)
+    }
+
+    /// Create a FITS file with canonical create-new writable options through the unified facade.
+    #[cfg(all(feature = "alloc", feature = "std"))]
+    pub fn create(path: impl AsRef<str>) -> crate::Result<File> {
+        File::create(path)
+    }
+}
+
 pub mod builders;
 pub mod highlevel;
 pub mod sync;
@@ -95,10 +145,7 @@ pub mod prelude {
     };
 
     #[cfg(feature = "async-io")]
-    pub use crate::r#async::{
-        AsyncDataset, AsyncDatasetHandle, AsyncFile, AsyncFileHandle, AsyncGroup, AsyncGroupHandle,
-        ParallelReadPlan as AsyncParallelReadPlan, ZeroCopyBytes as AsyncZeroCopyBytes,
-    };
+    pub use crate::r#async::AsyncFacadeUnavailable;
 
     pub use crate::sync::{ByteView, IoRange, ZeroCopyRead};
 }

@@ -163,11 +163,11 @@ fn decompose_simple_hyperslab(
 
     // Odometer iteration over chunk coordinates (row-major order).
     let mut chunk_coord: Vec<usize> = chunk_ranges.iter().map(|(f, _)| *f).collect();
+    let mut c_start = vec![0usize; rank];
+    let mut c_count = vec![0usize; rank];
+    let mut o_start = vec![0usize; rank];
 
     for _ in 0..total_chunks {
-        let mut c_start = vec![0usize; rank];
-        let mut c_count = vec![0usize; rank];
-        let mut o_start = vec![0usize; rank];
         let mut valid = true;
 
         for d in 0..rank {
@@ -196,8 +196,8 @@ fn decompose_simple_hyperslab(
                 chunk_coord: chunk_coord.clone(),
                 chunk_start: c_start.clone(),
                 chunk_count: c_count.clone(),
-                output_start: o_start,
-                output_count: c_count,
+                output_start: o_start.clone(),
+                output_count: c_count.clone(),
             });
         }
 
@@ -223,6 +223,11 @@ fn decompose_strided_hyperslab(
     let total_blocks: usize = hyperslab.dims.iter().map(|d| d.count).product();
 
     let mut result = Vec::new();
+    let ranges: Vec<(usize, usize)> = hyperslab
+        .dims
+        .iter()
+        .map(|d| (0, d.count.saturating_sub(1)))
+        .collect();
 
     // Enumerate all blocks via an odometer over `count` per dimension.
     let mut block_idx = vec![0usize; rank];
@@ -246,6 +251,7 @@ fn decompose_strided_hyperslab(
 
         let block_slab = Hyperslab::new(&block_dims);
         let sub_slices = decompose_simple_hyperslab(&block_slab, chunk_dims)?;
+        result.reserve(sub_slices.len());
 
         // Adjust output offsets to account for the block's position.
         for mut s in sub_slices {
@@ -256,11 +262,6 @@ fn decompose_strided_hyperslab(
         }
 
         // Advance block odometer.
-        let ranges: Vec<(usize, usize)> = hyperslab
-            .dims
-            .iter()
-            .map(|d| (0, d.count.saturating_sub(1)))
-            .collect();
         advance_odometer(&mut block_idx, &ranges);
     }
 
@@ -318,16 +319,13 @@ fn decompose_points(
             });
         }
 
-        let chunk_coord: Vec<usize> = point
-            .iter()
-            .zip(chunk_dims.iter())
-            .map(|(&p, &c)| p / c)
-            .collect();
-        let chunk_start: Vec<usize> = point
-            .iter()
-            .zip(chunk_dims.iter())
-            .map(|(&p, &c)| p % c)
-            .collect();
+        let mut chunk_coord = Vec::with_capacity(rank);
+        let mut chunk_start = Vec::with_capacity(rank);
+        for (&p, &c) in point.iter().zip(chunk_dims.iter()) {
+            chunk_coord.push(p / c);
+            chunk_start.push(p % c);
+        }
+
         let chunk_count: Vec<usize> = vec![1; rank];
         // Output is a 1-D sequence: point_idx-th slot.
         let output_start: Vec<usize> = vec![point_idx];

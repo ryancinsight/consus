@@ -4,12 +4,14 @@ members = [
     "crates/consus",
     "crates/consus-core",
     "crates/consus-hdf5",
+    "crates/consus-fits",
     "crates/consus-zarr",
     "crates/consus-netcdf",
     "crates/consus-parquet",
     "crates/consus-arrow",
     "crates/consus-compression",
     "crates/consus-io",
+    "tests",
 ]
 
 [workspace.package]
@@ -28,6 +30,7 @@ description = "Pure-Rust, no_std-compatible, memory-safe hierarchical and array-
 # Internal crates
 consus-core = { path = "crates/consus-core", version = "0.1.0", default-features = false }
 consus-hdf5 = { path = "crates/consus-hdf5", version = "0.1.0", default-features = false }
+consus-fits = { path = "crates/consus-fits", version = "0.1.0", default-features = false }
 consus-zarr = { path = "crates/consus-zarr", version = "0.1.0", default-features = false }
 consus-netcdf = { path = "crates/consus-netcdf", version = "0.1.0", default-features = false }
 consus-parquet = { path = "crates/consus-parquet", version = "0.1.0", default-features = false }

@@ -2,66 +2,79 @@
 
 ## Phase 1: HDF5 MVP (Read + Write)
 
-### P1.1 — HDF5 Read Path (Critical)
-- [ ] Object header v1 parser (traverse header messages)
-- [ ] Object header v2 parser (OHDR/OCHK chunk parsing)
-- [ ] Datatype message parser (all 11 classes)
-- [ ] Dataspace message parser ✅ (basic implementation exists)
-- [ ] Data layout message parser (compact, contiguous, chunked)
-- [ ] Filter pipeline message parser
-- [ ] Symbol table message parser (v1 groups)
-- [ ] Link message parser (v2 groups)
-- [ ] B-tree v1 traversal (group + chunk index)
-- [ ] B-tree v2 traversal (fractal heap integration)
-- [ ] Local heap reader (group member names)
-- [ ] Global heap reader (VL data)
-- [ ] Contiguous dataset read
-- [ ] Chunked dataset read (single chunk)
-- [ ] Chunked dataset read (multi-chunk with filter pipeline)
-- [ ] Hyperslab selection read (strided subarray)
-- [ ] Point selection read
-- [ ] Compound datatype read
-- [ ] Variable-length datatype read
-- [ ] Attribute read
-- [ ] Superblock v0/v1/v2/v3 parsing ✅ (v0/v1/v2/v3 implemented)
-- [ ] File open with validation ✅ (basic implementation exists)
+### P1.1 — HDF5 Read Path
+- [x] Object header v1 parser
+- [x] Object header v2 parser
+- [x] Datatype message parser (all 11 classes)
+- [x] Dataspace message parser
+- [x] Data layout message parser (v3 and v4 variants currently implemented)
+- [x] Filter pipeline message parser
+- [x] Symbol table message parser (v1 groups)
+- [x] Link message parser (v2 groups)
+- [x] B-tree v1 traversal (group navigation)
+- [x] B-tree v2 traversal (fractal heap integration)
+- [x] Local heap reader
+- [x] Global heap reader
+- [x] Contiguous dataset read
+- [x] Chunked dataset read (single chunk)
+- [x] Chunked dataset read (multi-chunk with filter pipeline)
+- [x] Hyperslab selection read
+- [x] Point selection read
+- [x] Compound datatype read
+- [x] Variable-length datatype read
+- [x] Attribute read
+- [x] Dense group link enumeration
+- [x] Dense attribute enumeration
+- [x] Soft link resolution
+- [x] Superblock v0/v1/v2/v3 parsing
+- [x] File open with validation
+- [ ] Chunk index v4 B-tree v2 lookup
+- [ ] External link traversal beyond typed error reporting
+- [ ] Reference-file coverage against canonical HDF Group fixtures
 
 ### P1.2 — HDF5 Write Path
-- [ ] Superblock v2 writer
-- [ ] Object header v2 writer
-- [ ] Datatype message writer
-- [ ] Dataspace message writer
-- [ ] Data layout message writer (contiguous)
-- [ ] Data layout message writer (chunked)
-- [ ] Filter pipeline message writer
-- [ ] B-tree v2 writer (chunk index)
-- [ ] Local heap writer
-- [ ] Contiguous dataset write
-- [ ] Chunked dataset write (with compression)
-- [ ] Group creation
-- [ ] Attribute write
-- [ ] File creation (new file from scratch)
-- [ ] File close with flush and checksum
+- [x] Superblock v2 writer
+- [x] Object header v2 writer
+- [x] Datatype message writer
+- [x] Dataspace message writer
+- [x] Data layout message writer (contiguous)
+- [x] Data layout message writer (chunked with materialized v1 chunk index in current scope)
+- [x] Contiguous dataset write
+- [x] Group creation at root via link messages
+- [x] Attribute write
+- [x] File creation (new file from scratch)
+- [x] File close with flush and checksum
+- [x] Filter pipeline message writer
+- [x] Chunk index writer for chunked datasets (v1 raw-data chunk B-tree leaf in current scope)
+- [x] Chunked dataset write with persisted chunk index and end-to-end value roundtrip in current scope
+- [ ] Chunked dataset compression roundtrip coverage
+- [ ] Local heap writer for v1 group emission
 
-### P1.3 — HDF5 Reference File Testing
-- [ ] Download HDF5 reference test files from HDF Group
-- [ ] Read tests against t_float.h5 (floating-point dataset)
-- [ ] Read tests against t_int.h5 (integer dataset)
-- [ ] Read tests against t_compound.h5 (compound datatype)
-- [ ] Read tests against t_vlen.h5 (variable-length)
-- [ ] Read tests against t_string.h5 (string dataset)
-- [ ] Read tests against t_group.h5 (hierarchical groups)
-- [ ] Read tests against t_chunk.h5 (chunked storage)
-- [ ] Read tests against t_filter.h5 (compressed dataset)
-- [ ] Write-then-read round-trip tests
-- [ ] Comparison with h5dump output
+### P1.3 — HDF5 Verification
+- [x] In-memory round-trip tests for contiguous datasets
+- [x] In-memory round-trip tests for chunked datasets (v3 layout, single-leaf v1 chunk B-tree scope)
+- [x] In-memory round-trip tests for attributes
+- [x] Reference-style tests against repository sample files
+- [ ] Download and validate canonical HDF Group reference files
+- [ ] Read tests against `t_float.h5`
+- [ ] Read tests against `t_int.h5`
+- [ ] Read tests against `t_compound.h5`
+- [ ] Read tests against `t_vlen.h5`
+- [ ] Read tests against `t_string.h5`
+- [ ] Read tests against `t_group.h5`
+- [ ] Read tests against `t_chunk.h5`
+- [ ] Read tests against `t_filter.h5`
+- [ ] Comparison with `h5dump` output for verified fixtures
 
-### P1.4 — Benchmarks
+### P1.4 — Performance & Memory
+- [x] Fill-value-aware undefined chunk reads
+- [ ] Parallel chunk I/O via Rayon
 - [ ] Criterion benchmarks: contiguous read throughput
 - [ ] Criterion benchmarks: chunked read throughput
 - [ ] Criterion benchmarks: compressed read (deflate, zstd, lz4)
-- [ ] Comparison with HDF5 C library via hdf5-rs bindings
-- [ ] Comparison with Python h5py
+- [x] Allocation reduction in object-header and writer message assembly
+- [ ] Comparison with HDF5 C library via `hdf5-rs`
+- [ ] Comparison with Python `h5py`
 
 ## Phase 2: Zarr + netCDF-4
 
@@ -95,6 +108,11 @@
 - [ ] netCDF-4 write path
 - [ ] Comparison with Unidata netCDF-C reference files
 
+## Phase 1.5 — Workspace Test Integrity
+- [x] Restore compile-valid property integration suite against current stable APIs
+- [x] Re-enable value-semantic property coverage for shape, selection, byte-order, datatype sizing, in-memory I/O, compression, Arrow schema conversion, and Parquet schema conversion
+- [x] Align integration-test manifest with `consus-io` alloc-gated `MemCursor` support
+
 ## Phase 3: Parquet + Polish
 
 ### P3.1 — Parquet Interop
@@ -104,14 +122,13 @@
 - [ ] Hybrid mode: Parquet tables inside Consus containers
 - [ ] Arrow array bridge (zero-copy)
 
-### P3.2 — Performance & Production Readiness
-- [ ] Parallel chunk I/O via Rayon
+### P3.2 — Production Readiness
+- [x] CI/CD pipeline (GitHub Actions)
 - [ ] Async I/O path via Tokio
 - [ ] Memory-mapped I/O backend
 - [ ] Large file (>4 GiB) regression tests
-- [ ] Fuzz testing (cargo-fuzz / proptest)
+- [ ] Fuzz testing (`cargo-fuzz` / `proptest`)
 - [ ] WASM target validation
-- [ ] no_std smoke tests (thumbv7em-none-eabihf)
-- [ ] CI/CD pipeline (GitHub Actions)
+- [ ] `no_std` smoke tests (`thumbv7em-none-eabihf`)
 - [ ] Documentation site
 - [ ] crates.io publication

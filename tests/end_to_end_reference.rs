@@ -25,6 +25,7 @@ use std::path::PathBuf;
 /// Get path to reference data file.
 fn reference_file(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
         .join("data")
         .join(name)
 }
@@ -88,7 +89,14 @@ fn hdf5_big_endian_sample_loads() {
     }
 
     // Attempt to open with consus-hdf5
-    let file = consus_hdf5::Hdf5File::open(&path);
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            eprintln!("⚠ Failed to read HDF5 big-endian sample: {:?}", e);
+            return;
+        }
+    };
+    let file = consus_hdf5::file::Hdf5File::open(consus_io::MemCursor::from_bytes(bytes));
 
     match file {
         Ok(_) => {
@@ -120,7 +128,14 @@ fn hdf5_charset_sample_loads() {
         return;
     }
 
-    let file = consus_hdf5::Hdf5File::open(&path);
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            eprintln!("⚠ Failed to read HDF5 charset sample: {:?}", e);
+            return;
+        }
+    };
+    let file = consus_hdf5::file::Hdf5File::open(consus_io::MemCursor::from_bytes(bytes));
 
     match file {
         Ok(_) => {
@@ -154,7 +169,14 @@ fn netcdf_small_grid_sample_loads() {
     }
 
     // netCDF-4 is HDF5-based, try opening with HDF5 reader
-    let file = consus_hdf5::Hdf5File::open(&path);
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            eprintln!("⚠ Failed to read netCDF-4 small grid sample: {:?}", e);
+            return;
+        }
+    };
+    let file = consus_hdf5::file::Hdf5File::open(consus_io::MemCursor::from_bytes(bytes));
 
     match file {
         Ok(_) => {
@@ -186,7 +208,14 @@ fn netcdf_hdf5_compat_sample_loads() {
         return;
     }
 
-    let file = consus_hdf5::Hdf5File::open(&path);
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            eprintln!("⚠ Failed to read netCDF-4 HDF5 compat sample: {:?}", e);
+            return;
+        }
+    };
+    let file = consus_hdf5::file::Hdf5File::open(consus_io::MemCursor::from_bytes(bytes));
 
     match file {
         Ok(_) => {

@@ -1,7 +1,7 @@
 # Consus — Gap Audit
 
-## Audit Date: 2025-07-14
-## Scope: Phase 1 — HDF5 MVP (post-sprint update)
+## Audit Date: 2026-04-17
+## Scope: Phase 1 — HDF5 MVP (synchronized with current implementation)
 
 ---
 
@@ -37,73 +37,75 @@
 | G-022 | decode_value() on Hdf5Attribute | ✅ Integer (signed/unsigned), float (f32/f64), fixed-string, boolean; array variants |
 | G-023 | B-tree v2 bit-width formula | ✅ Fixed usize::BITS / u32 mixing bug |
 | G-024 | Scalar chunk uncompressed size | ✅ Corrected empty-product to 1 (one scalar element) |
-| G-025 | Integration tests | ✅ 13 integration tests; 213 unit tests — 226 total, 0 failures |
+| G-025 | Integration tests | ✅ Integration coverage exists across `tests/integration.rs`, `tests/reference_hdf_group.rs`, and `tests/roundtrip_hdf5.rs` |
 | G-103 | Variable-Length Datatype Read | ✅ `resolve_vl_references` in `src/heap/global.rs`; offset-size-aware undefined sentinel; 8 unit tests; re-exported from `src/heap/mod.rs` |
 
 ---
 
 ## Open Gaps
 
-### G-100: Dense Group Link Storage (Severity: HIGH)
-- **Current state**: `list_group_v2` reads compact links (direct link messages) only. Dense storage (fractal heap + B-tree v2 with record type 5/6) is not traversed.
-- **Impact**: Groups with more than `max_compact_links` (default 8) links report only 0 children when using dense storage.
-- **Required**: Traverse B-tree v2 (record type 5: link name index) and decode link objects from the fractal heap.
-- **Effort**: ~200 lines. `FractalHeapHeader::parse` and `read_managed_object` already exist.
-
-### G-101: Dense Attribute Storage (Severity: HIGH)
-- **Current state**: `read_attributes` only reads inline attribute messages (type 0x000C). When `AttributeInfo` (type 0x0015) is present with a fractal heap address, dense attributes are silently skipped.
-- **Impact**: Objects with more than `max_compact_attrs` (default 8) attributes return an incomplete attribute list.
-- **Required**: When `AttributeInfo.fractal_heap_address` is defined, traverse the name-index B-tree v2 (record type 8) and decode attribute objects from the fractal heap.
-- **Effort**: ~250 lines.
-
-### G-102: Chunked Dataset Write Path (Severity: HIGH)
-- **Current state**: `encode_layout` emits a placeholder `UNDEFINED_ADDRESS` for the B-tree v1 address in chunked layout messages. `Hdf5FileBuilder` does not support chunked datasets.
-- **Impact**: Cannot create compressed or chunked datasets in the write path.
-- **Required**: Allocate and write a B-tree v1 (or B-tree v2 for v4 layout) chunk index after writing chunk data blocks.
-- **Effort**: ~300 lines.
-
+### G-102: Chunked Dataset Write Path (Severity: RESOLVED IN CURRENT WRITER SCOPE)
+- **Previous state**: `encode_layout` emitted `UNDEFINED_ADDRESS` for the version-3 chunk index address, and `Hdf5FileBuilder::add_dataset` always wrote one contiguous data block even when `DatasetCreationProps.layout == Chunked`.
+- **Resolution**: The writer now materializes per-chunk payloads, serializes a version-3 raw-data chunk B-tree v1 leaf index, emits the resolved chunk index address in the layout message, and includes filter pipeline metadata when chunk filters/compression are configured. The roundtrip suite now verifies chunked dataset values, not metadata only.
+- **Verification**: `cargo test -p consus-hdf5 --test roundtrip_hdf5` passes with `chunked_dataset_value_roundtrip` asserting exact value preservation.
+- **Residual scope**: The implemented writer path is verified for the current builder scope using version-3 chunked layout with a single-leaf raw-data chunk B-tree. Broader interoperability for other chunk index forms remains tracked separately under `G-104`.
 
 ### G-104: Chunk Index v4 B-tree v2 Lookup (Severity: MEDIUM)
-- **Current state**: `read_dataset_metadata` parses v4 layout `chunk_index_address` but no reader resolves it. `collect_btree_v1_leaves` is specific to group B-trees (record type 0) and does not handle chunk record types (3, 4, 10, 11).
-- **Impact**: Datasets written by HDF5 library ≥ 1.10 with v4 layout and B-tree v2 chunk indexing cannot be read.
-- **Required**: Implement chunk record parsing for B-tree v2 record types 3 (non-filtered) and 4 (filtered); extend reader to use these when `DataLayout.chunk_index_type == BTREE_V2`.
+- **Current state**: `read_dataset_metadata` parses v4 layout `chunk_index_address`, but the read path does not resolve B-tree v2 chunk index record types for dataset chunk lookup.
+- **Impact**: Datasets written by HDF5 library ≥ 1.10 with v4 layout and B-tree v2 chunk indexing cannot be read through the chunked path.
+- **Required**: Implement chunk record parsing for B-tree v2 record types 3 (non-filtered) and 4 (filtered), and route chunk lookup through `DataLayout.chunk_index_type == BTREE_V2`.
 - **Effort**: ~200 lines.
 
-### G-105: Soft and External Link Resolution (Severity: MEDIUM)
-- **Current state**: `open_path` follows only hard links. Soft and external links stored in `list_group_v2` return `UNDEFINED_ADDRESS` and `open_path` treats them as dead ends.
-- **Impact**: Files with soft-linked groups or cross-file references cannot be fully traversed.
-- **Required**: In `open_path`, detect `LinkType::Soft` and recursively resolve the target path. For external links, return a typed error pointing to the external file.
-- **Effort**: ~80 lines.
-
-### G-106: Fill Value Application to Reads (Severity: LOW)
-- **Current state**: `read_fill_value` parses fill value messages but the read path never uses the result. Uninitialized regions (e.g., edge chunks) return zero bytes instead of the declared fill value.
-- **Required**: After reading and decompressing a chunk, if the chunk address is `UNDEFINED_ADDRESS`, fill the output buffer with the decoded fill value.
-- **Effort**: ~50 lines.
-
 ### G-107: Reference File Compatibility Tests (Severity: MEDIUM)
-- **Current state**: All tests use hand-crafted in-memory HDF5 images. No tests validate against files produced by the HDF5 C library or h5py.
-- **Required**: Download canonical test files (t_float.h5, t_compound.h5, t_vlen.h5, t_chunk.h5, t_filter.h5) from the HDF Group; add read tests comparing output against h5dump.
+- **Current state**: Reference coverage exists, including `tests/reference_hdf_group.rs`, but the canonical HDF Group compatibility matrix in the backlog is not yet present.
+- **Impact**: Parser correctness is validated against in-repo samples and round-trip images, but not yet against the broader set of authoritative HDF5 reference fixtures.
+- **Required**: Add canonical test files such as `t_float.h5`, `t_compound.h5`, `t_vlen.h5`, `t_chunk.h5`, and `t_filter.h5`, then assert decoded values against known outputs.
 - **Effort**: ~300 lines of test code + test data files.
 
 ### G-108: Benchmarks (Severity: LOW)
-- **Current state**: No Criterion benchmarks exist.
-- **Required**: Criterion benchmarks for contiguous read throughput, chunked read throughput, compressed read (deflate/zstd/lz4).
+- **Current state**: No Criterion benchmarks are present for `consus-hdf5`.
+- **Required**: Add benchmarks for contiguous read throughput, chunked read throughput, and compressed read throughput (deflate/zstd/lz4).
 - **Effort**: ~150 lines.
 
-### G-109: CI/CD Pipeline (Severity: MEDIUM)
-- **Current state**: No automated quality gates.
-- **Required**: GitHub Actions workflow: `cargo check`, `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`, MSRV (1.85), no_std smoke test.
-- **Effort**: ~60 lines of YAML.
-
 ### G-110: Async I/O Path (Severity: LOW)
-- **Current state**: All I/O is synchronous through `ReadAt`/`WriteAt`. The `async-io` feature in `consus-io` is present but unused in `consus-hdf5`.
-- **Required**: Implement `AsyncReadAt`-backed variants of the key read functions.
-- **Effort**: ~400 lines. Blocked on finalising the async trait design in `consus-io`.
+- **Current state**: All HDF5 I/O remains synchronous through `ReadAt`/`WriteAt`. The async capability in `consus-io` is not yet integrated into `consus-hdf5`.
+- **Required**: Implement async read variants for the file traversal and dataset read path once the async trait boundary is finalized.
+- **Effort**: ~400 lines. Blocked on final async trait design in `consus-io`.
 
 ### G-111: Parallel Chunk I/O (Severity: LOW)
-- **Current state**: Chunked reads decompose the selection but process one chunk at a time.
-- **Required**: Rayon-parallel chunk decompression for multi-chunk selections.
-- **Effort**: ~80 lines (Rayon `.par_iter()` over `ChunkSlice` list).
+- **Current state**: Chunked reads decompose selections correctly, but chunk processing remains serial.
+- **Required**: Parallelize independent chunk reads and decompression with Rayon while preserving deterministic output assembly.
+- **Effort**: ~80 lines.
+
+### G-112: Workspace Integration-Test API Drift (Severity: RESOLVED)
+- **Previous state**: The workspace integration-test package resolved as a workspace member, but `tests/property_integration.rs` targeted obsolete APIs and invalid helper constructors.
+- **Resolution**: Rewrote `tests/property_integration.rs` against the current stable workspace API surface, enabled the required `consus-io` `alloc` feature in `tests/Cargo.toml`, and replaced obsolete assumptions with value-semantic property tests covering shape semantics, hyperslab construction, byte-order roundtrips, datatype size invariants, `MemCursor` positioned I/O, compression roundtrips, and Arrow/Parquet schema cardinality preservation.
+- **Verification**: `cargo test -p consus-integration-tests --test property_integration --features compression,arrow,parquet` passes with 17/17 tests passing.
+- **Residual scope**: `tests/end_to_end_reference.rs` remains separately tracked by fixture and backend coverage gaps, not by API drift in the property suite.
+
+---
+
+## Closed Since Previous Audit
+
+### G-100: Dense Group Link Storage
+- **Status**: ✅ Closed.
+- **Evidence**: `list_group_v2` traverses dense storage through `collect_dense_links`, using fractal heap objects and B-tree v2 records.
+
+### G-101: Dense Attribute Storage
+- **Status**: ✅ Closed.
+- **Evidence**: `read_attributes` resolves `ATTRIBUTE_INFO` and enumerates dense attributes through `collect_dense_attributes`.
+
+### G-105: Soft and External Link Resolution
+- **Status**: ✅ Closed.
+- **Evidence**: `open_path` resolves soft links recursively and returns a typed unsupported-feature error for external links.
+
+### G-106: Fill Value Application to Reads
+- **Status**: ✅ Closed.
+- **Evidence**: `dataset::chunk::read_chunk_raw` fills undefined chunks from the declared fill value pattern when provided.
+
+### G-109: CI/CD Pipeline
+- **Status**: ✅ Closed.
+- **Evidence**: `.github/workflows/ci.yml` runs formatting, clippy with warnings denied, cargo check, cargo test, and MSRV validation.
 
 ---
 
@@ -111,12 +113,13 @@
 
 | Risk | Probability | Impact | Status |
 |------|-------------|--------|--------|
-| HDF5 spec ambiguity in dense storage | Medium | High | Mitigated by fractal heap + B-tree v2 parsers already in place |
+| Chunked write metadata/data mismatch | Low | Medium | Reduced by verified v3 chunked write-path implementation; continue validating broader interoperability via G-104 |
+| HDF5 v4 chunk index interoperability | Medium | High | Open until G-104 is implemented |
 | Endianness edge cases | Low | Medium | `read_int_le` / `read_uint_le` handle both orders |
-| Large file (>4 GiB) addressing | Low | High | All offsets use u64; no truncation observed |
-| Checksum validation failures | Low | Medium | CRC-32 validated on every v2 OHDR/OCHK chunk |
-| VL type heap exhaustion | Medium | Medium | No bounds on GHEAP traversal yet (G-103) |
-| B-tree v2 depth overflow | Low | Medium | MAX_CONTINUATION_DEPTH guard in v2 parser |
+| Large file (>4 GiB) addressing | Low | High | All offsets use `u64`; no truncation observed |
+| Checksum validation failures | Low | Medium | CRC-32 validated on v2 OHDR/OCHK chunks and superblock v2 writer path |
+| VL type heap exhaustion | Medium | Medium | Managed by current parsing logic; continue validating against external fixtures |
+| B-tree v2 depth overflow | Low | Medium | Depth and continuation guards exist in parser paths |
 | Free-space manager interaction | Low | Low | Append-only write path avoids free-space entirely |
 
 ---
@@ -125,12 +128,12 @@
 
 | Metric | Value |
 |--------|-------|
-| Total unit tests | 221 |
-| Integration tests | 13 |
-| Total passing | 234 |
-| Total failing | 0 |
-| Compile warnings | 0 |
-| Open gaps | 10 |
-| High-severity open gaps | 3 (G-100, G-101, G-102) |
-| Medium-severity open gaps | 4 (G-104, G-105, G-107, G-109) |
-| Low-severity open gaps | 3 (G-106, G-108, G-110, G-111) |
+| Total unit tests | Audit artifact requires refresh from current test run output |
+| Integration tests | Audit artifact requires refresh from current test run output |
+| Total passing | Audit artifact requires refresh from current test run output |
+| Total failing | 0 at last recorded audit snapshot |
+| Compile warnings | 0 at last recorded audit snapshot |
+| Open gaps | 5 |
+| High-severity open gaps | 0 |
+| Medium-severity open gaps | 2 (G-104, G-107) |
+| Low-severity open gaps | 3 (G-108, G-110, G-111) |

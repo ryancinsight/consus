@@ -5,16 +5,15 @@ use core::num::NonZeroUsize;
 use byteorder::{ByteOrder, LittleEndian};
 use consus_core::{ByteOrder as CoreByteOrder, Datatype, LinkType, Shape};
 use consus_hdf5::attribute::Hdf5Attribute;
+use consus_hdf5::dataset::StorageLayout;
 use consus_hdf5::file::Hdf5File;
 use consus_hdf5::file::reader;
 use consus_hdf5::file::writer::{
-    WriteState, update_superblock_eof, write_contiguous_data, write_dataset_header,
-    write_group_header, write_superblock,
+    FileCreationProps, Hdf5FileBuilder, WriteState, update_superblock_eof, write_contiguous_data,
+    write_dataset_header, write_group_header, write_superblock,
 };
 use consus_hdf5::object_header::{HeaderMessage, ObjectHeader};
-use consus_hdf5::property_list::{
-    DatasetCreationProps, DatasetLayout, FileCreationProps, GroupCreationProps,
-};
+use consus_hdf5::property_list::{DatasetCreationProps, DatasetLayout, GroupCreationProps};
 use consus_io::{MemCursor, WriteAt};
 
 fn u32_le_datatype() -> Datatype {
@@ -23,6 +22,59 @@ fn u32_le_datatype() -> Datatype {
         byte_order: CoreByteOrder::LittleEndian,
         signed: false,
     }
+}
+
+#[test]
+fn v4_chunked_dataset_value_roundtrip() {
+    use core::num::NonZeroUsize;
+
+    let dt = Datatype::Integer {
+        bits: NonZeroUsize::new(32).unwrap(),
+        byte_order: CoreByteOrder::LittleEndian,
+        signed: true,
+    };
+    let shape = consus_core::Shape::fixed(&[4, 4]);
+    let values: Vec<u32> = (0..16).collect();
+    let raw: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+    let dcpl = DatasetCreationProps {
+        layout: DatasetLayout::Chunked,
+        chunk_dims: Some(vec![2, 2]),
+        ..DatasetCreationProps::default()
+    };
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset("v4_chunked", &dt, &shape, &raw, &dcpl)
+        .expect("write chunked dataset");
+
+    let bytes = builder.finish().expect("finish file");
+    let file = Hdf5File::open(MemCursor::from_bytes(bytes)).expect("open file");
+
+    let datasets = file.list_root_group().expect("list root");
+    let addr = datasets
+        .iter()
+        .find(|(name, _, _)| name == "v4_chunked")
+        .map(|(_, addr, _)| *addr)
+        .expect("dataset link");
+
+    let dataset = file.dataset_at(addr).expect("dataset metadata");
+    assert_eq!(dataset.layout, StorageLayout::Chunked);
+    assert_eq!(dataset.shape.current_dims().as_slice(), &[4, 4]);
+    assert_eq!(
+        dataset.chunk_shape.as_ref().expect("chunk shape").dims(),
+        &[2, 2]
+    );
+
+    let read_buf = file
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read v4 chunked dataset");
+    let read_values: Vec<u32> = read_buf
+        .chunks_exact(4)
+        .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+        .collect();
+
+    assert_eq!(read_values, values);
 }
 
 fn make_scalar_u32_attribute(name: &str, value: u32) -> Vec<u8> {
@@ -367,7 +419,7 @@ fn reader_helpers_extract_messages_and_attributes() {
         &header,
         &consus_hdf5::address::ParseContext::new(8, 8),
     )
-        .expect("read attributes");
+    .expect("read attributes");
     assert_eq!(attrs.len(), 1);
     assert_eq!(attrs[0].name, "units");
     assert_eq!(LittleEndian::read_u32(&attrs[0].raw_data), 7);
@@ -577,10 +629,11 @@ fn open_path_resolves_soft_link() {
     let (cursor, _, dataset_address) = build_compact_group_file();
     let file = Hdf5File::open(cursor).expect("open");
 
-    let soft_addr = file.open_path("/soft_data").expect("soft link must resolve");
+    let soft_addr = file
+        .open_path("/soft_data")
+        .expect("soft link must resolve");
     assert_eq!(
-        soft_addr,
-        dataset_address,
+        soft_addr, dataset_address,
         "soft_data must resolve to the same address as data"
     );
 
@@ -588,6 +641,9 @@ fn open_path_resolves_soft_link() {
     let ext_result = file.open_path("/external_data");
     match ext_result {
         Err(consus_core::Error::UnsupportedFeature { .. }) => {}
-        other => panic!("expected UnsupportedFeature for external link, got {:?}", other),
+        other => panic!(
+            "expected UnsupportedFeature for external link, got {:?}",
+            other
+        ),
     }
 }

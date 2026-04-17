@@ -14,6 +14,20 @@ jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - consus
+          - consus-core
+          - consus-hdf5
+          - consus-fits
+          - consus-zarr
+          - consus-netcdf
+          - consus-parquet
+          - consus-arrow
+          - consus-compression
+          - consus-io
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -22,34 +36,61 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: cargo fmt
         run: cargo fmt --all -- --check
-      - name: cargo clippy
-        run: cargo clippy --workspace --all-features -- -D warnings
-      - name: cargo check (default features)
-        run: cargo check --workspace
-      - name: cargo check (all features)
-        run: cargo check --workspace --all-features
+      - name: cargo clippy (${{ matrix.package }})
+        run: cargo clippy -p ${{ matrix.package }} --all-features -- -D warnings
+      - name: cargo check (${{ matrix.package }}, default features)
+        run: cargo check -p ${{ matrix.package }}
+      - name: cargo check (${{ matrix.package }}, all features)
+        run: cargo check -p ${{ matrix.package }} --all-features
       - name: cargo check (no_std core)
+        if: matrix.package == 'consus-core'
         run: cargo check -p consus-core --no-default-features
 
   test:
     name: Test
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+        package:
+          - consus
+          - consus-core
+          - consus-hdf5
+          - consus-fits
+          - consus-zarr
+          - consus-netcdf
+          - consus-parquet
+          - consus-arrow
+          - consus-compression
+          - consus-io
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: cargo test
-        run: cargo test --workspace --all-features
+      - name: cargo test (${{ matrix.package }})
+        run: cargo test -p ${{ matrix.package }} --all-features
 
   msrv:
     name: MSRV (1.85.0)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - consus
+          - consus-core
+          - consus-hdf5
+          - consus-fits
+          - consus-zarr
+          - consus-netcdf
+          - consus-parquet
+          - consus-arrow
+          - consus-compression
+          - consus-io
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.85.0
       - uses: Swatinem/rust-cache@v2
-      - name: cargo check
-        run: cargo check --workspace
+      - name: cargo check (${{ matrix.package }})
+        run: cargo check -p ${{ matrix.package }}

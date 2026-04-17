@@ -1,12 +1,15 @@
 [package]
-name = "consus-hdf5"
+name = "consus-fits"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Pure-Rust HDF5 format implementation for the Consus scientific storage library"
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Pure-Rust FITS format implementation for the Consus scientific storage library"
 
 [features]
 default = ["std"]
@@ -17,14 +20,6 @@ alloc = ["consus-core/alloc", "consus-io/alloc", "consus-compression/alloc"]
 consus-core = { workspace = true }
 consus-io = { workspace = true }
 consus-compression = { workspace = true }
-byteorder = { workspace = true }
 
-[dev-dependencies]
-tempfile = { workspace = true }
-smallvec = { workspace = true }
-proptest = { workspace = true }
-criterion = { workspace = true }
-
-[[bench]]
-name = "hdf5_read"
-harness = false
+[package.metadata.docs.rs]
+all-features = true

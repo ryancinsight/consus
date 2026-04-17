@@ -8,7 +8,7 @@
 //!
 //! - Contiguous dataset creation → read → verify values (scalar, 1D, 2D, 3D)
 //! - Multiple datasets at root level
-//! - Chunked dataset metadata roundtrip
+//! - Chunked dataset value roundtrip
 //! - Dataset attributes roundtrip
 //! - Array attributes roundtrip
 //! - Global (root group) attributes roundtrip
@@ -247,10 +247,11 @@ fn contiguous_3d_dataset_roundtrip() {
 }
 
 // ---------------------------------------------------------------------------
-// Chunked Dataset Metadata Roundtrip
+// Chunked Dataset Value Roundtrip
 // ---------------------------------------------------------------------------
 
-/// Verify that a dataset written with chunked DCPL has correct metadata.
+/// Verify that a dataset written with chunked DCPL roundtrips both metadata
+/// and raw values.
 ///
 /// ## Spec Compliance
 ///
@@ -258,10 +259,10 @@ fn contiguous_3d_dataset_roundtrip() {
 /// - Storage class = Chunked (2)
 /// - Correct chunk dimensionality
 ///
-/// Note: end-to-end chunked data read-back through B-tree traversal is
-/// not yet supported by the builder; this test validates metadata only.
+/// The chunk index and chunk payloads must also be readable end-to-end so the
+/// reconstructed dataset bytes equal the original logical dataset bytes.
 #[test]
-fn chunked_dataset_metadata_roundtrip() {
+fn chunked_dataset_value_roundtrip() {
     let data: Vec<i32> = (0..100).collect();
     let dt = Datatype::Integer {
         bits: NonZeroUsize::new(32).unwrap(),
@@ -289,9 +290,24 @@ fn chunked_dataset_metadata_roundtrip() {
     assert_eq!(dataset.shape.current_dims().as_slice(), &[10, 10]);
     assert_eq!(dataset.layout, StorageLayout::Chunked, "must be chunked");
 
-    // Chunk shape must match DCPL
     let cs = dataset.chunk_shape.as_ref().expect("must have chunk shape");
     assert_eq!(cs.dims(), &[5, 5]);
+
+    let read_buf = file
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read full chunked dataset");
+
+    assert_eq!(read_buf.len(), raw.len(), "chunked byte length must match");
+
+    let read_values: Vec<i32> = read_buf
+        .chunks_exact(4)
+        .map(|chunk| i32::from_le_bytes(chunk.try_into().unwrap()))
+        .collect();
+
+    assert_eq!(
+        read_values, data,
+        "chunked dataset values must roundtrip exactly"
+    );
 }
 
 // ---------------------------------------------------------------------------

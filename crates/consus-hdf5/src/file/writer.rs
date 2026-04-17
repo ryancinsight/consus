@@ -32,7 +32,7 @@ use alloc::{string::String, vec, vec::Vec};
 use byteorder::{ByteOrder, LittleEndian};
 
 #[cfg(feature = "alloc")]
-use consus_core::{Datatype, Error, Extent, Result, Shape};
+use consus_core::{Compression, Datatype, Error, Extent, Result, Shape};
 
 #[cfg(feature = "alloc")]
 use consus_io::WriteAt;
@@ -41,6 +41,10 @@ use consus_io::WriteAt;
 use crate::address::ParseContext;
 #[cfg(feature = "alloc")]
 use crate::constants::{HDF5_MAGIC, UNDEFINED_ADDRESS};
+#[cfg(feature = "alloc")]
+use crate::dataset::chunk::{ChunkLocation, edge_chunk_dims, write_chunk_raw};
+#[cfg(feature = "alloc")]
+use crate::object_header::message_types;
 #[cfg(feature = "alloc")]
 use crate::property_list::{DatasetLayout, GroupCreationProps};
 
@@ -344,44 +348,46 @@ pub fn write_dataset_header<W: WriteAt>(
     data_address: u64,
     props: &DatasetCreationProps,
 ) -> Result<u64> {
-    // Encode messages
     let dt_bytes = encode_datatype(datatype)?;
     let ds_bytes = encode_dataspace(shape)?;
-    let layout_bytes = encode_layout(data_address, props, &state.ctx)?;
+    let filter_ids = dataset_filter_ids(props);
+    let layout_bytes = match props.layout {
+        DatasetLayout::Chunked => {
+            let element_size =
+                datatype
+                    .element_size()
+                    .ok_or_else(|| Error::UnsupportedFeature {
+                        feature: String::from("chunked write requires fixed-size element datatype"),
+                    })?;
+            encode_layout_with_chunk_index(
+                data_address,
+                props,
+                &state.ctx,
+                Some(data_address),
+                Some(element_size as u32),
+            )?
+        }
+        _ => encode_layout(data_address, props, &state.ctx)?,
+    };
 
-    // Each v2 message: type(2) + size(2) + flags(1) = 5 byte header + payload
-    let msg_overhead = 5;
-    let chunk_data_size = (msg_overhead + dt_bytes.len())
-        + (msg_overhead + ds_bytes.len())
-        + (msg_overhead + layout_bytes.len());
+    let filter_bytes = if filter_ids.is_empty() {
+        None
+    } else {
+        Some(encode_filter_pipeline(&filter_ids)?)
+    };
 
-    let (csf_width, csf_flags) = chunk_size_encoding(chunk_data_size);
-    let total = 4 + 1 + 1 + csf_width + chunk_data_size + 4; // OHDR + ver + flags + csf + data + crc
+    let mut messages: Vec<(u16, Vec<u8>)> = vec![
+        (message_types::DATATYPE, dt_bytes),
+        (message_types::DATASPACE, ds_bytes),
+        (message_types::DATA_LAYOUT, layout_bytes),
+    ];
 
-    let addr = state.allocate_aligned(total as u64);
-    let mut buf = vec![0u8; total];
+    if let Some(filter_bytes) = filter_bytes {
+        messages.push((message_types::FILTER_PIPELINE, filter_bytes));
+    }
 
-    // OHDR header
-    buf[0..4].copy_from_slice(b"OHDR");
-    buf[4] = 2;
-    buf[5] = csf_flags;
-    let mut pos = 6;
-    write_chunk_size(&mut buf[pos..], csf_width, chunk_data_size);
-    pos += csf_width;
-
-    // Datatype message (0x0003)
-    pos += write_v2_message(&mut buf, pos, 0x0003, 0, &dt_bytes);
-    // Dataspace message (0x0001)
-    pos += write_v2_message(&mut buf, pos, 0x0001, 0, &ds_bytes);
-    // Layout message (0x0008)
-    pos += write_v2_message(&mut buf, pos, 0x0008, 0, &layout_bytes);
-
-    // CRC-32
-    let checksum = consus_compression::Crc32::compute_slice(&buf[..pos]);
-    buf[pos..pos + 4].copy_from_slice(&checksum.to_le_bytes());
-
-    sink.write_at(addr, &buf)?;
-    Ok(addr)
+    let msg_refs: Vec<(u16, &[u8])> = messages.iter().map(|(t, d)| (*t, d.as_slice())).collect();
+    write_object_header_v2(sink, state, &msg_refs)
 }
 
 // ---------------------------------------------------------------------------
@@ -595,6 +601,17 @@ pub fn encode_layout(
     props: &DatasetCreationProps,
     ctx: &ParseContext,
 ) -> Result<Vec<u8>> {
+    encode_layout_with_chunk_index(data_address, props, ctx, None, None)
+}
+
+#[cfg(feature = "alloc")]
+pub fn encode_layout_with_chunk_index(
+    data_address: u64,
+    props: &DatasetCreationProps,
+    ctx: &ParseContext,
+    chunk_index_address: Option<u64>,
+    chunk_element_size: Option<u32>,
+) -> Result<Vec<u8>> {
     let s = ctx.offset_bytes();
 
     match props.layout {
@@ -624,6 +641,14 @@ pub fn encode_layout(
                         "chunked layout requires chunk_dims in DatasetCreationProps",
                     ),
                 })?;
+            let element_size = chunk_element_size.ok_or_else(|| Error::InvalidFormat {
+                message: String::from(
+                    "chunked layout requires a resolved element size in the terminal dimension",
+                ),
+            })?;
+            let btree_address = chunk_index_address.ok_or_else(|| Error::InvalidFormat {
+                message: String::from("chunked layout requires a materialized chunk index address"),
+            })?;
             // Dimensionality = rank + 1 (extra element for type size)
             let ndims = chunk_dims.len() + 1;
             let total = 3 + s + 4 * ndims;
@@ -631,14 +656,13 @@ pub fn encode_layout(
             buf[0] = 3; // version 3
             buf[1] = 2; // chunked
             buf[2] = ndims as u8; // dimensionality
-            write_offset(&mut buf[3..], s, UNDEFINED_ADDRESS); // B-tree placeholder
+            write_offset(&mut buf[3..], s, btree_address);
             let mut pos = 3 + s;
             for &d in chunk_dims {
                 LittleEndian::write_u32(&mut buf[pos..], d as u32);
                 pos += 4;
             }
-            // Element size dimension (placeholder 1 byte; overridden per dataset)
-            LittleEndian::write_u32(&mut buf[pos..], 1);
+            LittleEndian::write_u32(&mut buf[pos..], element_size);
             Ok(buf)
         }
     }
@@ -661,6 +685,339 @@ pub fn write_contiguous_data<W: WriteAt>(
     let addr = state.allocate_aligned(data.len() as u64);
     sink.write_at(addr, data)?;
     Ok(addr)
+}
+
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone)]
+struct ChunkIndexEntry {
+    chunk_offsets: Vec<u64>,
+    filter_mask: u32,
+    chunk_size: u32,
+    chunk_address: u64,
+}
+
+#[cfg(feature = "alloc")]
+fn dataset_filter_ids(props: &DatasetCreationProps) -> Vec<u16> {
+    let mut filter_ids = Vec::with_capacity(props.filters.len() + 1);
+    match props.compression {
+        Compression::None => {}
+        Compression::Deflate { .. } => filter_ids.push(1),
+        Compression::Zstd { .. } => filter_ids.push(32015),
+        Compression::Lz4 => filter_ids.push(32004),
+        Compression::Gzip { .. } => filter_ids.push(1),
+    }
+    for &filter_id in &props.filters {
+        if !filter_ids.contains(&filter_id) {
+            filter_ids.push(filter_id);
+        }
+    }
+    filter_ids
+}
+
+#[cfg(feature = "alloc")]
+fn encode_filter_pipeline(filter_ids: &[u16]) -> Result<Vec<u8>> {
+    let mut buf = vec![0u8; 2];
+    buf[0] = 2; // version 2
+    buf[1] = filter_ids.len() as u8;
+
+    for &filter_id in filter_ids {
+        let client_data: &[u32] = &[];
+        let name_length: u16 = 0;
+        let flags: u16 = 0;
+        let num_client_data = client_data.len() as u16;
+
+        let start = buf.len();
+        buf.resize(start + 8 + client_data.len() * 4, 0);
+
+        LittleEndian::write_u16(&mut buf[start..start + 2], filter_id);
+        LittleEndian::write_u16(&mut buf[start + 2..start + 4], name_length);
+        LittleEndian::write_u16(&mut buf[start + 4..start + 6], flags);
+        LittleEndian::write_u16(&mut buf[start + 6..start + 8], num_client_data);
+
+        let mut pos = start + 8;
+        for &value in client_data {
+            LittleEndian::write_u32(&mut buf[pos..pos + 4], value);
+            pos += 4;
+        }
+    }
+
+    Ok(buf)
+}
+
+#[cfg(feature = "alloc")]
+fn linear_index(coords: &[usize], dims: &[usize]) -> usize {
+    let mut index = 0usize;
+    for (&coord, &dim) in coords.iter().zip(dims.iter()) {
+        index = index * dim + coord;
+    }
+    index
+}
+
+#[cfg(feature = "alloc")]
+fn increment_chunk_coord(coord: &mut [usize], grid_dims: &[usize]) -> bool {
+    if coord.is_empty() {
+        return false;
+    }
+
+    for dim in (0..coord.len()).rev() {
+        coord[dim] += 1;
+        if coord[dim] < grid_dims[dim] {
+            return true;
+        }
+        coord[dim] = 0;
+    }
+
+    false
+}
+
+#[cfg(feature = "alloc")]
+fn extract_chunk_bytes(
+    raw_data: &[u8],
+    dataset_dims: &[usize],
+    chunk_coord: &[usize],
+    chunk_dims: &[usize],
+    element_size: usize,
+) -> Result<Vec<u8>> {
+    let actual_chunk_dims = edge_chunk_dims(chunk_coord, chunk_dims, dataset_dims);
+    let chunk_elements = actual_chunk_dims.iter().product::<usize>();
+    let mut chunk = vec![0u8; chunk_elements * element_size];
+
+    if dataset_dims.is_empty() {
+        if raw_data.len() != element_size {
+            return Err(Error::InvalidFormat {
+                message: String::from("scalar dataset raw byte length does not match element size"),
+            });
+        }
+        chunk.copy_from_slice(raw_data);
+        return Ok(chunk);
+    }
+
+    let rank = dataset_dims.len();
+    let chunk_origin: Vec<usize> = chunk_coord
+        .iter()
+        .zip(chunk_dims.iter())
+        .map(|(&coord, &dim)| coord.checked_mul(dim).ok_or(Error::Overflow))
+        .collect::<Result<Vec<usize>>>()?;
+
+    let mut local_coord = vec![0usize; rank];
+    let mut done = false;
+
+    while !done {
+        let mut dataset_coord = Vec::with_capacity(rank);
+        for d in 0..rank {
+            dataset_coord.push(
+                chunk_origin[d]
+                    .checked_add(local_coord[d])
+                    .ok_or(Error::Overflow)?,
+            );
+        }
+
+        let dataset_linear = linear_index(&dataset_coord, dataset_dims);
+        let chunk_linear = linear_index(&local_coord, &actual_chunk_dims);
+
+        let src_start = dataset_linear
+            .checked_mul(element_size)
+            .ok_or(Error::Overflow)?;
+        let src_end = src_start.checked_add(element_size).ok_or(Error::Overflow)?;
+        let dst_start = chunk_linear
+            .checked_mul(element_size)
+            .ok_or(Error::Overflow)?;
+        let dst_end = dst_start.checked_add(element_size).ok_or(Error::Overflow)?;
+
+        chunk[dst_start..dst_end].copy_from_slice(&raw_data[src_start..src_end]);
+
+        for dim in (0..rank).rev() {
+            local_coord[dim] += 1;
+            if local_coord[dim] < actual_chunk_dims[dim] {
+                break;
+            }
+            local_coord[dim] = 0;
+            if dim == 0 {
+                done = true;
+            }
+        }
+    }
+
+    Ok(chunk)
+}
+
+#[cfg(feature = "alloc")]
+fn write_chunk_btree_v1<W: WriteAt>(
+    sink: &mut W,
+    state: &mut WriteState,
+    chunk_dims: &[usize],
+    entries: &[ChunkIndexEntry],
+) -> Result<u64> {
+    let s = state.ctx.offset_bytes();
+    let ndims = chunk_dims.len() + 1;
+    let key_size = 4 + 4 + 8 * ndims;
+    let header_size = 8 + 2 * s;
+    let node_size = header_size + key_size + entries.len() * (s + key_size);
+
+    let addr = state.allocate_aligned(node_size as u64);
+    let mut buf = vec![0u8; node_size];
+
+    buf[0..4].copy_from_slice(b"TREE");
+    buf[4] = 1;
+    buf[5] = 0;
+    LittleEndian::write_u16(&mut buf[6..8], entries.len() as u16);
+    write_offset(&mut buf[8..8 + s], s, UNDEFINED_ADDRESS);
+    write_offset(&mut buf[8 + s..8 + 2 * s], s, UNDEFINED_ADDRESS);
+
+    let mut pos = header_size;
+
+    let first = entries.first().ok_or_else(|| Error::InvalidFormat {
+        message: String::from("chunked dataset requires at least one chunk index entry"),
+    })?;
+    LittleEndian::write_u32(&mut buf[pos..pos + 4], first.chunk_size);
+    pos += 4;
+    LittleEndian::write_u32(&mut buf[pos..pos + 4], first.filter_mask);
+    pos += 4;
+    for &offset in &first.chunk_offsets {
+        LittleEndian::write_u64(&mut buf[pos..pos + 8], offset);
+        pos += 8;
+    }
+    LittleEndian::write_u64(&mut buf[pos..pos + 8], 0);
+    pos += 8;
+
+    for entry in entries {
+        write_offset(&mut buf[pos..pos + s], s, entry.chunk_address);
+        pos += s;
+
+        LittleEndian::write_u32(&mut buf[pos..pos + 4], entry.chunk_size);
+        pos += 4;
+        LittleEndian::write_u32(&mut buf[pos..pos + 4], entry.filter_mask);
+        pos += 4;
+        for &offset in &entry.chunk_offsets {
+            LittleEndian::write_u64(&mut buf[pos..pos + 8], offset);
+            pos += 8;
+        }
+        LittleEndian::write_u64(&mut buf[pos..pos + 8], 0);
+        pos += 8;
+    }
+
+    sink.write_at(addr, &buf)?;
+    Ok(addr)
+}
+
+#[cfg(feature = "alloc")]
+fn write_chunked_data<W: WriteAt>(
+    sink: &mut W,
+    state: &mut WriteState,
+    datatype: &Datatype,
+    shape: &Shape,
+    raw_data: &[u8],
+    props: &DatasetCreationProps,
+) -> Result<u64> {
+    let chunk_dims = props
+        .chunk_dims
+        .as_ref()
+        .ok_or_else(|| Error::InvalidFormat {
+            message: String::from("chunked dataset write requires chunk dimensions"),
+        })?;
+
+    if chunk_dims.len() != shape.rank() {
+        return Err(Error::ShapeError {
+            message: alloc::format!(
+                "chunk rank mismatch: dataset rank {}, chunk rank {}",
+                shape.rank(),
+                chunk_dims.len()
+            ),
+        });
+    }
+
+    let element_size = datatype
+        .element_size()
+        .ok_or_else(|| Error::UnsupportedFeature {
+            feature: String::from("chunked write requires fixed-size element datatype"),
+        })?;
+    let dataset_dims = shape.current_dims();
+    let expected_len = shape
+        .num_elements()
+        .checked_mul(element_size)
+        .ok_or(Error::Overflow)?;
+    if raw_data.len() != expected_len {
+        return Err(Error::ShapeError {
+            message: alloc::format!(
+                "dataset payload byte length mismatch: expected {expected_len}, found {}",
+                raw_data.len()
+            ),
+        });
+    }
+
+    let grid_dims: Vec<usize> = if dataset_dims.is_empty() {
+        Vec::new()
+    } else {
+        dataset_dims
+            .iter()
+            .zip(chunk_dims.iter())
+            .map(|(&dataset_dim, &chunk_dim)| dataset_dim.div_ceil(chunk_dim))
+            .collect()
+    };
+
+    let filter_ids = dataset_filter_ids(props);
+    let registry = consus_compression::DefaultCodecRegistry::new();
+    let mut entries = Vec::new();
+
+    if dataset_dims.is_empty() {
+        let chunk_addr = state.allocate_aligned(raw_data.len() as u64);
+        let location = write_chunk_raw(
+            sink,
+            chunk_addr,
+            raw_data,
+            &filter_ids,
+            element_size,
+            &registry,
+        )?;
+        entries.push(ChunkIndexEntry {
+            chunk_offsets: Vec::new(),
+            filter_mask: location.filter_mask,
+            chunk_size: location.size as u32,
+            chunk_address: location.address,
+        });
+    } else {
+        let mut chunk_coord = vec![0usize; grid_dims.len()];
+        loop {
+            let chunk_bytes = extract_chunk_bytes(
+                raw_data,
+                &dataset_dims,
+                &chunk_coord,
+                chunk_dims,
+                element_size,
+            )?;
+            let chunk_addr = state.allocate_aligned(chunk_bytes.len() as u64);
+            let location: ChunkLocation = write_chunk_raw(
+                sink,
+                chunk_addr,
+                &chunk_bytes,
+                &filter_ids,
+                element_size,
+                &registry,
+            )?;
+
+            let chunk_offsets: Vec<u64> = chunk_coord
+                .iter()
+                .zip(chunk_dims.iter())
+                .map(|(&coord, &dim)| {
+                    u64::try_from(coord.checked_mul(dim).ok_or(Error::Overflow)?)
+                        .map_err(|_| Error::Overflow)
+                })
+                .collect::<Result<Vec<u64>>>()?;
+
+            entries.push(ChunkIndexEntry {
+                chunk_offsets,
+                filter_mask: location.filter_mask,
+                chunk_size: location.size as u32,
+                chunk_address: location.address,
+            });
+
+            if !increment_chunk_coord(&mut chunk_coord, &grid_dims) {
+                break;
+            }
+        }
+    }
+
+    write_chunk_btree_v1(sink, state, chunk_dims, &entries)
 }
 
 // ---------------------------------------------------------------------------
@@ -971,7 +1328,12 @@ impl Hdf5FileBuilder {
         raw_data: &[u8],
         dcpl: &DatasetCreationProps,
     ) -> Result<u64> {
-        let data_addr = write_contiguous_data(&mut self.sink, &mut self.state, raw_data)?;
+        let data_addr = match dcpl.layout {
+            DatasetLayout::Chunked => {
+                write_chunked_data(&mut self.sink, &mut self.state, dt, shape, raw_data, dcpl)?
+            }
+            _ => write_contiguous_data(&mut self.sink, &mut self.state, raw_data)?,
+        };
         let header_addr =
             write_dataset_header(&mut self.sink, &mut self.state, dt, shape, data_addr, dcpl)?;
         self.root_links.push((String::from(name), header_addr));
@@ -991,23 +1353,49 @@ impl Hdf5FileBuilder {
         dcpl: &DatasetCreationProps,
         attributes: &[(&str, &Datatype, &Shape, &[u8])],
     ) -> Result<u64> {
-        let data_addr = write_contiguous_data(&mut self.sink, &mut self.state, raw_data)?;
+        let data_addr = match dcpl.layout {
+            DatasetLayout::Chunked => {
+                write_chunked_data(&mut self.sink, &mut self.state, dt, shape, raw_data, dcpl)?
+            }
+            _ => write_contiguous_data(&mut self.sink, &mut self.state, raw_data)?,
+        };
 
-        // Encode all messages: datatype + dataspace + layout + attribute msgs.
         let dt_bytes = encode_datatype(dt)?;
         let ds_bytes = encode_dataspace(shape)?;
         let ctx = self.state.ctx;
-        let layout_bytes = encode_layout(data_addr, dcpl, &ctx)?;
+        let filter_ids = dataset_filter_ids(dcpl);
+        let layout_bytes = match dcpl.layout {
+            DatasetLayout::Chunked => {
+                let element_size = dt.element_size().ok_or_else(|| Error::UnsupportedFeature {
+                    feature: String::from("chunked write requires fixed-size element datatype"),
+                })?;
+                encode_layout_with_chunk_index(
+                    data_addr,
+                    dcpl,
+                    &ctx,
+                    Some(data_addr),
+                    Some(element_size as u32),
+                )?
+            }
+            _ => encode_layout(data_addr, dcpl, &ctx)?,
+        };
 
         let mut msgs: Vec<(u16, Vec<u8>)> = vec![
-            (0x0003, dt_bytes),
-            (0x0001, ds_bytes),
-            (0x0008, layout_bytes),
+            (message_types::DATATYPE, dt_bytes),
+            (message_types::DATASPACE, ds_bytes),
+            (message_types::DATA_LAYOUT, layout_bytes),
         ];
+
+        if !filter_ids.is_empty() {
+            msgs.push((
+                message_types::FILTER_PIPELINE,
+                encode_filter_pipeline(&filter_ids)?,
+            ));
+        }
 
         for (attr_name, attr_dt, attr_shape, attr_data) in attributes {
             let attr_bytes = encode_attribute(attr_name, attr_dt, attr_shape, attr_data)?;
-            msgs.push((0x000C, attr_bytes));
+            msgs.push((message_types::ATTRIBUTE, attr_bytes));
         }
 
         let msg_refs: Vec<(u16, &[u8])> = msgs.iter().map(|(t, d)| (*t, d.as_slice())).collect();
@@ -1188,6 +1576,25 @@ mod tests {
 
     #[cfg(feature = "alloc")]
     #[test]
+    fn encode_chunked_layout_with_materialized_index() {
+        let ctx = ParseContext::new(8, 8);
+        let props = DatasetCreationProps {
+            layout: DatasetLayout::Chunked,
+            chunk_dims: Some(vec![5, 7]),
+            ..DatasetCreationProps::default()
+        };
+        let bytes = encode_layout_with_chunk_index(0, &props, &ctx, Some(0x4000), Some(4)).unwrap();
+        assert_eq!(bytes[0], 3);
+        assert_eq!(bytes[1], 2);
+        assert_eq!(bytes[2], 3);
+        assert_eq!(LittleEndian::read_u64(&bytes[3..11]), 0x4000);
+        assert_eq!(LittleEndian::read_u32(&bytes[11..15]), 5);
+        assert_eq!(LittleEndian::read_u32(&bytes[15..19]), 7);
+        assert_eq!(LittleEndian::read_u32(&bytes[19..23]), 4);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
     fn write_superblock_roundtrip() {
         let mut cursor = consus_io::MemCursor::new();
         let props = FileCreationProps::default();
@@ -1277,5 +1684,31 @@ mod tests {
         assert_eq!(bytes[8], 2); // superblock version 2
         // Root group address at offset 36 (12 + 3*8) must be non-zero.
         assert_ne!(LittleEndian::read_u64(&bytes[36..44]), 0);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn write_chunk_btree_v1_leaf_header() {
+        let mut cursor = consus_io::MemCursor::new();
+        let props = FileCreationProps::default();
+        let mut state = WriteState::new(props);
+        state.eof = 64;
+
+        let entries = vec![ChunkIndexEntry {
+            chunk_offsets: vec![0, 0],
+            filter_mask: 0,
+            chunk_size: 16,
+            chunk_address: 0x2000,
+        }];
+
+        let addr = write_chunk_btree_v1(&mut cursor, &mut state, &[2, 2], &entries).unwrap();
+        let bytes = cursor.as_bytes();
+        assert_eq!(&bytes[addr as usize..addr as usize + 4], b"TREE");
+        assert_eq!(bytes[addr as usize + 4], 1);
+        assert_eq!(bytes[addr as usize + 5], 0);
+        assert_eq!(
+            LittleEndian::read_u16(&bytes[addr as usize + 6..addr as usize + 8]),
+            1
+        );
     }
 }

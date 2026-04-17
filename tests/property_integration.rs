@@ -1,490 +1,54 @@
-//! Property-based integration tests across formats.
+//! Property-based integration tests across stable Consus APIs.
 //!
-//! ## Specification Reference
+//! ## Specification
 //!
-//! These tests use property-based testing (proptest) to validate invariants
-//! across format conversions and I/O operations:
+//! These tests validate algebraic and byte-level invariants that are stable
+//! across the current public API surface exposed by the workspace test crate:
 //!
-//! - Arbitrary data shapes and sizes
-//! - Random data patterns
-//! - Cross-format roundtrip invariants
-//! - Metadata preservation under random inputs
+//! - shape element-count semantics
+//! - hyperslab determinism and bounds-sensitive element counting
+//! - byte-order roundtrips
+//! - datatype element-size consistency
+//! - in-memory random-access I/O correctness
+//! - compression roundtrip correctness and size reduction on repetitive input
+//! - Arrow and Parquet schema conversion cardinality preservation
 //!
-//! ## Coverage
+//! ## Scope
 //!
-//! - HDF5 roundtrip properties
-//! - Zarr roundtrip properties
-//! - netCDF-4 roundtrip properties
-//! - Arrow ↔ Parquet schema compatibility
-//! - Compression preservation
+//! This file intentionally avoids obsolete backend-specific writer APIs that no
+//! longer match the current repository surface. Every assertion inspects
+//! computed values.
 
 use proptest::prelude::*;
 
-// ---------------------------------------------------------------------------
-// Proptest Strategies
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// Shared strategies
+// -----------------------------------------------------------------------------
 
-/// Strategy for generating small array shapes (1D to 3D).
-fn shape_strategy() -> impl Strategy<Value = Vec<usize>> {
-    prop::collection::vec(1usize..=100, 1..=3)
+fn non_scalar_shape_strategy() -> impl Strategy<Value = Vec<usize>> {
+    prop::collection::vec(1usize..=32, 1..=4)
 }
 
-/// Strategy for generating chunk shapes (smaller than dataset shape).
-fn chunk_shape_strategy(shape: &[usize]) -> impl Strategy<Value = Vec<usize>> {
-    let shape_owned = shape.to_vec();
-    prop::collection::vec(
-        prop::usize::between(1, shape_owned.iter().map(|&d| d.max(1)).collect::<Vec<_>>()),
-        shape.len(),
-    )
+fn maybe_scalar_shape_strategy() -> impl Strategy<Value = Vec<usize>> {
+    prop::collection::vec(1usize..=32, 0..=4)
 }
 
-/// Strategy for generating f32 data.
-fn f32_data_strategy(count: usize) -> impl Strategy<Value = Vec<f32>> {
-    prop::collection::vec(prop::num::f32::ANY, count)
+#[cfg(feature = "compression")]
+fn compression_payload_strategy() -> impl Strategy<Value = Vec<u8>> {
+    prop::collection::vec(any::<u8>(), 0..=65536)
 }
 
-/// Strategy for generating i32 data.
-fn i32_data_strategy(count: usize) -> impl Strategy<Value = Vec<i32>> {
-    prop::collection::vec(prop::num::i32::ANY, count)
-}
-
-/// Strategy for generating u8 data.
-fn u8_data_strategy(count: usize) -> impl Strategy<Value = Vec<u8>> {
-    prop::collection::vec(prop::num::u8::ANY, count)
-}
-
-/// Strategy for generating compression levels.
-fn compression_level_strategy() -> impl Strategy<Value = u32> {
-    prop::num::u32::between(1, 9)
-}
-
-/// Strategy for generating dimension names.
-fn dimension_name_strategy() -> impl Strategy<Value = String> {
-    prop::string::string_regex("[a-z][a-z0-9_]{0,15}").unwrap()
-}
-
-/// Strategy for generating dataset names.
-fn dataset_name_strategy() -> impl Strategy<Value = String> {
-    prop::string::string_regex("[a-z][a-z0-9_]{0,15}").unwrap()
-}
-
-// ---------------------------------------------------------------------------
-// HDF5 Roundtrip Property Tests
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// Shape and selection properties
+// -----------------------------------------------------------------------------
 
 proptest! {
-    /// Test that arbitrary f32 data roundtrips through HDF5.
-    ///
-    /// ## Invariant
-    ///
-    /// For any f32 array with shape [N], write to HDF5 and read back
-    /// must produce identical values (bitwise for non-NaN).
-    #[cfg(feature = "hdf5")]
-    #[test]
-    fn hdf5_f32_roundtrip_preserves_values(
-        shape in shape_strategy(),
-        data in prop::collection::vec(prop::num::f32::ANY, 0..=10000)
-    ) {
-        use consus_core::{Datatype, Selection, Shape};
-        use consus_io::MemCursor;
-
-        // Adjust data length to match shape
-        let total_elements: usize = if shape.is_empty() {
-            1
-        } else {
-            shape.iter().product()
-        };
-
-        // Pad or truncate data to match shape
-        let mut data = data;
-        data.resize(total_elements, 0.0f32);
-
-        // Write to HDF5
-        let mut buffer = vec![0u8; total_elements * 4 + 8192];
-        let mut cursor = MemCursor::new(buffer);
-
-        {
-            let mut writer = match consus_hdf5::Hdf5FileBuilder::new()
-                .build_writer(&mut cursor)
-            {
-                Ok(w) => w,
-                Err(_) => return Ok(()), // Skip if writer unavailable
-            };
-
-            let dataset = match writer.root_group().create_dataset(
-                "data",
-                Datatype::Float {
-                    bits: core::num::NonZeroUsize::new(32).expect("non-zero"),
-                    byte_order: consus_core::ByteOrder::LittleEndian,
-                },
-                if shape.is_empty() { Shape::scalar() } else { Shape::fixed(&shape) },
-            ) {
-                Ok(ds) => ds,
-                Err(_) => return Ok(()),
-            };
-
-            let bytes: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
-            let _ = dataset.write(&Selection::all(), &bytes);
-            let _ = writer.finish();
-        }
-
-        // Read back
-        let _ = cursor.seek(std::io::SeekFrom::Start(0));
-        let file = match consus_hdf5::Hdf5File::open(cursor) {
-            Ok(f) => f,
-            Err(_) => return Ok(()),
-        };
-
-        let dataset = match file.root_group().get_dataset("data") {
-            Ok(ds) => ds,
-            Err(_) => return Ok(()),
-        };
-
-        let mut read_buf = vec![0u8; total_elements * 4];
-        if dataset.read(&Selection::all(), &mut read_buf).is_err() {
-            return Ok(());
-        }
-
-        let read_values: Vec<f32> = read_buf
-            .chunks_exact(4)
-            .map(|c| f32::from_le_bytes(c.try_into().expect("4 bytes")))
-            .collect();
-
-        // Verify values match
-        for (original, roundtrip) in data.iter().zip(read_values.iter()) {
-            // For NaN, check both are NaN
-            if original.is_nan() {
-                prop_assert!(roundtrip.is_nan());
-            } else {
-                prop_assert!((original - roundtrip).abs() < f32::EPSILON);
-            }
-        }
-    }
-
-    /// Test that arbitrary i32 data roundtrips through HDF5.
-    ///
-    /// ## Invariant
-    ///
-    /// Integer values must roundtrip exactly (bit-identical).
-    #[cfg(feature = "hdf5")]
-    #[test]
-    fn hdf5_i32_roundtrip_preserves_values(
-        shape in shape_strategy(),
-        data in prop::collection::vec(prop::num::i32::ANY, 0..=10000)
-    ) {
-        use consus_core::{Datatype, Selection, Shape};
-        use consus_io::MemCursor;
-
-        let total_elements: usize = if shape.is_empty() {
-            1
-        } else {
-            shape.iter().product()
-        };
-
-        let mut data = data;
-        data.resize(total_elements, 0i32);
-
-        let mut buffer = vec![0u8; total_elements * 4 + 8192];
-        let mut cursor = MemCursor::new(buffer);
-
-        {
-            let mut writer = match consus_hdf5::Hdf5FileBuilder::new()
-                .build_writer(&mut cursor)
-            {
-                Ok(w) => w,
-                Err(_) => return Ok(()),
-            };
-
-            let dataset = match writer.root_group().create_dataset(
-                "data",
-                Datatype::Integer {
-                    bits: core::num::NonZeroUsize::new(32).expect("non-zero"),
-                    byte_order: consus_core::ByteOrder::LittleEndian,
-                    signed: true,
-                },
-                if shape.is_empty() { Shape::scalar() } else { Shape::fixed(&shape) },
-            ) {
-                Ok(ds) => ds,
-                Err(_) => return Ok(()),
-            };
-
-            let bytes: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
-            let _ = dataset.write(&Selection::all(), &bytes);
-            let _ = writer.finish();
-        }
-
-        let _ = cursor.seek(std::io::SeekFrom::Start(0));
-        let file = match consus_hdf5::Hdf5File::open(cursor) {
-            Ok(f) => f,
-            Err(_) => return Ok(()),
-        };
-
-        let dataset = match file.root_group().get_dataset("data") {
-            Ok(ds) => ds,
-            Err(_) => return Ok(()),
-        };
-
-        let mut read_buf = vec![0u8; total_elements * 4];
-        if dataset.read(&Selection::all(), &mut read_buf).is_err() {
-            return Ok(());
-        }
-
-        let read_values: Vec<i32> = read_buf
-            .chunks_exact(4)
-            .map(|c| i32::from_le_bytes(c.try_into().expect("4 bytes")))
-            .collect();
-
-        prop_assert_eq!(data, read_values);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Zarr Roundtrip Property Tests
-// ---------------------------------------------------------------------------
-
-proptest! {
-    /// Test that arbitrary data roundtrips through Zarr.
-    ///
-    /// ## Invariant
-    ///
-    /// Data values must be preserved through Zarr write/read cycle.
-    #[cfg(feature = "zarr")]
-    #[test]
-    fn zarr_f64_roundtrip_preserves_values(
-        size in 1usize..=1000,
-        data in prop::collection::vec(prop::num::f64::NORMAL, 1..=1000)
-    ) {
-        use consus_zarr::{ArrayMetadataV3, InMemoryStore, ZarrArray};
-
-        let mut data = data;
-        data.resize(size, 0.0f64);
-
-        let mut store = InMemoryStore::new();
-
-        let array = match ZarrArray::create(
-            &mut store,
-            "data",
-            ArrayMetadataV3 {
-                shape: vec![size],
-                data_type: "float64".to_string(),
-                chunk_grid: vec![size.min(100)],
-                fill_value: 0.0,
-                codecs: vec![],
-            },
-        ) {
-            Ok(a) => a,
-            Err(_) => return Ok(()),
-        };
-
-        let bytes: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
-
-        // Write chunk(s)
-        let chunk_size = size.min(100);
-        for (chunk_idx, chunk_data) in bytes.chunks(chunk_size * 8).enumerate() {
-            if array.write_chunk(&[chunk_idx as u64], chunk_data).is_err() {
-                return Ok(());
-            }
-        }
-
-        // Read back
-        let mut read_data = Vec::new();
-        let num_chunks = (size + chunk_size - 1) / chunk_size;
-
-        for chunk_idx in 0..num_chunks {
-            match array.read_chunk(&[chunk_idx as u64]) {
-                Ok(chunk) => read_data.extend_from_slice(&chunk),
-                Err(_) => return Ok(()),
-            }
-        }
-
-        let read_values: Vec<f64> = read_data
-            .chunks_exact(8)
-            .map(|c| f64::from_le_bytes(c.try_into().expect("8 bytes")))
-            .collect();
-
-        // Resize to match original
-        let read_values: Vec<f64> = read_values.into_iter().take(size).collect();
-
-        for (original, roundtrip) in data.iter().zip(read_values.iter()) {
-            prop_assert!((original - roundtrip).abs() < f64::EPSILON);
-        }
-    }
-
-    /// Test Zarr chunk key encoding.
-    ///
-    /// ## Invariant
-    ///
-    /// Chunk keys must correctly encode chunk coordinates.
-    #[cfg(feature = "zarr")]
-    #[test]
-    fn zarr_chunk_key_encoding(
-        x in 0u64..=1000,
-        y in 0u64..=1000,
-        z in 0u64..=1000
-    ) {
-        use consus_zarr::metadata::ChunkKeyEncoding;
-
-        // Test default (dot-separated) encoding
-        let key = ChunkKeyEncoding::default().encode(&[x, y, z]);
-        let expected = format!("{}/{}/{}", x, y, z);
-
-        prop_assert!(key.contains(&expected) || key.contains(&format!("{}.{}.{}", x, y, z)));
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Arrow ↔ Parquet Schema Property Tests
-// ---------------------------------------------------------------------------
-
-proptest! {
-    /// Test Arrow to Core schema conversion preserves field count.
-    ///
-    /// ## Invariant
-    ///
-    /// Number of fields must be preserved through conversion.
-    #[cfg(feature = "arrow")]
-    #[test]
-    fn arrow_schema_field_count_preserved(
-        num_fields in 1usize..=20
-    ) {
-        use consus_arrow::{ArrowFieldBuilder, ArrowFieldId, ArrowFieldKind, ArrowSchema};
-        use consus_core::{ByteOrder, Datatype};
-
-        let mut fields = Vec::new();
-        for i in 0..num_fields {
-            let field = ArrowFieldBuilder::new(
-                ArrowFieldId::new(i as u32 + 1),
-                format!("field_{}", i),
-                ArrowFieldKind::Int,
-                Datatype::Integer {
-                    bits: core::num::NonZeroUsize::new(32).expect("non-zero"),
-                    byte_order: ByteOrder::LittleEndian,
-                    signed: true,
-                },
-            )
-            .nullable(true)
-            .build();
-
-            if let Ok(f) = field {
-                fields.push(f);
-            }
-        }
-
-        let schema = ArrowSchema::new(fields);
-        let core_pairs = consus_arrow::conversion::arrow_schema_to_core_pairs(&schema);
-
-        prop_assert_eq!(core_pairs.len(), num_fields);
-    }
-
-    /// Test Parquet to Core schema conversion preserves column count.
-    ///
-    /// ## Invariant
-    ///
-    /// Number of columns must be preserved through conversion.
-    #[cfg(feature = "parquet")]
-    #[test]
-    fn parquet_schema_column_count_preserved(
-        num_cols in 1usize..=20
-    ) {
-        use consus_parquet::{FieldDescriptor, FieldId, ParquetPhysicalType, SchemaDescriptor};
-
-        let mut fields = Vec::new();
-        for i in 0..num_cols {
-            fields.push(FieldDescriptor::required(
-                FieldId::new(i as u32 + 1),
-                format!("col_{}", i),
-                ParquetPhysicalType::Int32,
-            ));
-        }
-
-        let schema = SchemaDescriptor::new(fields);
-        let core_pairs = consus_parquet::conversion::parquet_schema_to_core_pairs(&schema);
-
-        prop_assert_eq!(core_pairs.len(), num_cols);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Compression Property Tests
-// ---------------------------------------------------------------------------
-
-proptest! {
-    /// Test deflate compression roundtrip with arbitrary data.
-    ///
-    /// ## Invariant
-    ///
-    /// compress(decompress(data)) == data for any input.
-    #[cfg(feature = "compression")]
-    #[test]
-    fn deflate_roundtrip_arbitrary_data(
-        data in prop::collection::vec(prop::num::u8::ANY, 0..=100000)
-    ) {
-        use consus_compression::codec::traits::Codec;
-
-        let codec = match consus_compression::codec::DeflateCodec::new(6) {
-            Ok(c) => c,
-            Err(_) => return Ok(()),
-        };
-
-        let compressed = match codec.compress(&data) {
-            Ok(c) => c,
-            Err(_) => return Ok(()),
-        };
-
-        let decompressed = match codec.decompress(&compressed) {
-            Ok(d) => d,
-            Err(_) => return Ok(()),
-        };
-
-        prop_assert_eq!(data, decompressed);
-    }
-
-    /// Test that compression reduces size for compressible data.
-    ///
-    /// ## Invariant
-    ///
-    /// Repetitive patterns should compress well.
-    #[cfg(feature = "compression")]
-    #[test]
-    fn compression_reduces_repetitive_data(
-        value in prop::num::u8::ANY,
-        count in 100usize..=10000
-    ) {
-        use consus_compression::codec::traits::Codec;
-
-        let data: Vec<u8> = vec![value; count];
-
-        let codec = match consus_compression::codec::DeflateCodec::new(9) {
-            Ok(c) => c,
-            Err(_) => return Ok(()),
-        };
-
-        let compressed = match codec.compress(&data) {
-            Ok(c) => c,
-            Err(_) => return Ok(()),
-        };
-
-        // Compressed size should be much smaller for repetitive data
-        // (unless the data is very small)
-        if count >= 100 {
-            prop_assert!(compressed.len() < data.len());
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Shape and Selection Property Tests
-// ---------------------------------------------------------------------------
-
-proptest! {
-    /// Test that Shape::element_count matches product of dimensions.
-    ///
-    /// ## Invariant
-    ///
-    /// element_count(dims) = product(dims)
+    /// Invariant:
+    /// `Shape::element_count()` equals the product of extents, with scalar shape
+    /// contributing exactly one element.
     #[test]
     fn shape_element_count_product(
-        dims in prop::collection::vec(1usize..=1000, 0..=5)
+        dims in maybe_scalar_shape_strategy()
     ) {
         use consus_core::Shape;
 
@@ -494,83 +58,107 @@ proptest! {
             Shape::fixed(&dims)
         };
 
-        let expected: usize = if dims.is_empty() {
+        let expected = if dims.is_empty() {
             1
         } else {
             dims.iter().product()
         };
 
-        prop_assert_eq!(shape.element_count(), expected);
+        prop_assert_eq!(shape.num_elements(), expected);
     }
 
-    /// Test hyperslab selection bounds.
-    ///
-    /// ## Invariant
-    ///
-    /// Hyperslab start + count must not exceed shape bounds.
+    /// Invariant:
+    /// A 1-D hyperslab with `stride = 1` and valid `start/count` has element
+    /// count equal to `count`.
     #[test]
-    fn hyperslab_selection_bounds(
-        dim_size in 10usize..=1000,
-        start in 0usize..=100,
-        count in 1usize..=50
+    fn hyperslab_selection_bounds_and_count(
+        dim_size in 1usize..=1024,
+        start_seed in 0usize..=2048,
+        count_seed in 1usize..=2048
     ) {
-        use consus_core::Selection;
+        use consus_core::{Hyperslab, HyperslabDim, Selection, Shape};
 
-        // Adjust start and count to be valid
-        let start = start.min(dim_size - 1);
+        let start = start_seed % dim_size;
         let max_count = dim_size - start;
-        let count = count.min(max_count);
+        let count = count_seed.min(max_count.max(1));
 
-        let selection = Selection::hyperslab(
-            &[start],
-            &[count],
-            &[1],
-        );
+        let selection = Selection::Hyperslab(Hyperslab::new(&[HyperslabDim::range(start, count)]));
+        let shape = Shape::fixed(&[dim_size]);
 
-        // Selection should be valid for this shape
-        let shape = consus_core::Shape::fixed(&[dim_size]);
-
-        // Calculate expected element count
-        let expected_count = count;
-
-        prop_assert!(selection.element_count(&shape).is_some());
-
-        if let Some(elem_count) = selection.element_count(&shape) {
-            prop_assert_eq!(elem_count, expected_count);
-        }
+        let actual = selection.num_elements(&shape);
+        prop_assert_eq!(actual, count);
     }
 
-    /// Test that hyperslab selections are deterministic.
-    ///
-    /// ## Invariant
-    ///
-    /// Same hyperslab parameters produce same selection.
+    /// Invariant:
+    /// Equal hyperslab constructor inputs produce equal selections.
     #[test]
     fn hyperslab_selection_deterministic(
-        start in 0usize..=100,
-        count in 1usize..=100,
-        stride in 1usize..=10
+        start in 0usize..=128,
+        count in 1usize..=128,
+        stride in 1usize..=16
     ) {
-        use consus_core::Selection;
+        use consus_core::{Hyperslab, HyperslabDim, Selection};
 
-        let sel1 = Selection::hyperslab(&[start], &[count], &[stride]);
-        let sel2 = Selection::hyperslab(&[start], &[count], &[stride]);
+        let dim = HyperslabDim {
+            start,
+            stride,
+            count,
+            block: 1,
+        };
+        let left = Selection::Hyperslab(Hyperslab::new(&[dim.clone()]));
+        let right = Selection::Hyperslab(Hyperslab::new(&[dim]));
 
-        // Selections with same parameters should be equal
-        prop_assert_eq!(sel1, sel2);
+        prop_assert_eq!(left, right);
+    }
+
+    /// Invariant:
+    /// For any non-scalar shape, a full-range 1-D hyperslab over the first axis
+    /// counts exactly that axis extent.
+    #[test]
+    fn first_axis_full_hyperslab_count_matches_extent(
+        dims in non_scalar_shape_strategy()
+    ) {
+        use consus_core::{Hyperslab, HyperslabDim, Selection, Shape};
+
+        let shape = Shape::fixed(&dims);
+        let first_extent = dims[0];
+        let selection = Selection::Hyperslab(Hyperslab::new(&[HyperslabDim::range(0, first_extent)]));
+
+        prop_assert_eq!(selection.num_elements(&Shape::fixed(&[first_extent])), first_extent);
+        prop_assert!(shape.num_elements() >= first_extent);
     }
 }
 
-// ---------------------------------------------------------------------------
-// Byte Order Property Tests
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// Datatype and byte-order properties
+// -----------------------------------------------------------------------------
 
 proptest! {
-    /// Test little-endian byte conversion roundtrip.
-    ///
-    /// ## Invariant
-    ///
-    /// to_le_bytes → from_le_bytes must be identity.
+    /// Invariant:
+    /// Integer and float datatype element sizes equal `bits / 8`.
+    #[test]
+    fn datatype_size_consistency(
+        bits in prop::sample::select(vec![8usize, 16, 32, 64])
+    ) {
+        use consus_core::{ByteOrder, Datatype};
+        use core::num::NonZeroUsize;
+
+        let int_type = Datatype::Integer {
+            bits: NonZeroUsize::new(bits).expect("bits are non-zero"),
+            byte_order: ByteOrder::LittleEndian,
+            signed: true,
+        };
+        prop_assert_eq!(int_type.element_size(), Some(bits / 8));
+
+        let float_type = Datatype::Float {
+            bits: NonZeroUsize::new(bits).expect("bits are non-zero"),
+            byte_order: ByteOrder::LittleEndian,
+        };
+        prop_assert_eq!(float_type.element_size(), Some(bits / 8));
+    }
+
+    /// Invariant:
+    /// `to_le_bytes` followed by `from_le_bytes` is identity.
     #[test]
     fn little_endian_roundtrip_u32(value: u32) {
         let bytes = value.to_le_bytes();
@@ -578,11 +166,8 @@ proptest! {
         prop_assert_eq!(value, recovered);
     }
 
-    /// Test big-endian byte conversion roundtrip.
-    ///
-    /// ## Invariant
-    ///
-    /// to_be_bytes → from_be_bytes must be identity.
+    /// Invariant:
+    /// `to_be_bytes` followed by `from_be_bytes` is identity.
     #[test]
     fn big_endian_roundtrip_u32(value: u32) {
         let bytes = value.to_be_bytes();
@@ -590,153 +175,243 @@ proptest! {
         prop_assert_eq!(value, recovered);
     }
 
-    /// Test float byte conversion roundtrip.
-    ///
-    /// ## Invariant
-    ///
-    /// Float bytes must roundtrip exactly (including NaN patterns).
+    /// Invariant:
+    /// `f64` byte roundtrip preserves the exact bit pattern.
     #[test]
-    fn float_roundtrip_f64(value: f64) {
+    fn float_roundtrip_f64_bits(value: f64) {
         let bytes = value.to_le_bytes();
         let recovered = f64::from_le_bytes(bytes);
-
-        if value.is_nan() {
-            prop_assert!(recovered.is_nan());
-        } else {
-            prop_assert_eq!(value, recovered);
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Stress Tests
-// ---------------------------------------------------------------------------
-
-proptest! {
-    #![proptest_config(ProptestConfig::with_cases(50))]
-
-    /// Stress test: many small operations in sequence.
-    ///
-    /// ## Invariant
-    ///
-    /// Sequential operations must maintain consistency.
-    #[cfg(feature = "io")]
-    #[test]
-    fn stress_sequential_operations(
-        ops in prop::collection::vec(
-            (prop::num::usize::between(0, 1000), prop::num::usize::between(1, 100)),
-            0..=100
-        )
-    ) {
-        use consus_io::{MemCursor, ReadAt, WriteAt};
-
-        let mut cursor = MemCursor::new(vec![0u8; 100000]);
-
-        for (offset, size) in ops {
-            // Write data
-            let data: Vec<u8> = (0..size).map(|i| (i % 256) as u8).collect();
-            let _ = cursor.write_at(offset as u64, &data);
-
-            // Read back
-            let mut read_buf = vec![0u8; size];
-            if cursor.read_at(offset as u64, &mut read_buf).is_ok() {
-                prop_assert_eq!(read_buf, data);
-            }
-        }
+        prop_assert_eq!(value.to_bits(), recovered.to_bits());
     }
 
-    /// Stress test: random data patterns through compression.
-    ///
-    /// ## Invariant
-    ///
-    /// Compression must handle any input without corruption.
-    #[cfg(feature = "compression")]
-    #[test]
-    fn stress_compression_random_patterns(
-        patterns in prop::collection::vec(
-            prop::collection::vec(prop::num::u8::ANY, 100..=10000),
-            1..=20
-        )
-    ) {
-        use consus_compression::codec::traits::Codec;
-
-        let codec = match consus_compression::codec::DeflateCodec::new(1) {
-            Ok(c) => c,
-            Err(_) => return Ok(()),
-        };
-
-        for data in patterns {
-            let compressed = match codec.compress(&data) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-
-            let decompressed = match codec.decompress(&compressed) {
-                Ok(d) => d,
-                Err(_) => continue,
-            };
-
-            prop_assert_eq!(data, decompressed);
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Cross-Format Consistency Tests
-// ---------------------------------------------------------------------------
-
-proptest! {
-    /// Test that datatype size calculations are consistent.
-    ///
-    /// ## Invariant
-    ///
-    /// Datatype::element_size() must match expected size for all types.
-    #[test]
-    fn datatype_size_consistency(
-        bits in prop::sample::select(&[8u32, 16, 32, 64] as &[u32])
-    ) {
-        use consus_core::{ByteOrder, Datatype};
-        use core::num::NonZeroUsize;
-
-        let int_type = Datatype::Integer {
-            bits: NonZeroUsize::new(bits as usize).expect("non-zero"),
-            byte_order: ByteOrder::LittleEndian,
-            signed: true,
-        };
-
-        prop_assert_eq!(int_type.element_size(), bits as usize / 8);
-
-        let float_type = Datatype::Float {
-            bits: NonZeroUsize::new(bits as usize).expect("non-zero"),
-            byte_order: ByteOrder::LittleEndian,
-        };
-
-        prop_assert_eq!(float_type.element_size(), bits as usize / 8);
-    }
-
-    /// Test that shape comparisons are transitive.
-    ///
-    /// ## Invariant
-    ///
-    /// If A == B and B == C, then A == C.
+    /// Invariant:
+    /// Shape equality is reflexive and transitive for identical extents.
     #[test]
     fn shape_equality_transitive(
-        dims1 in prop::collection::vec(1usize..=100, 1..=5),
-        dims2 in prop::collection::vec(1usize..=100, 1..=5)
+        dims in non_scalar_shape_strategy()
     ) {
         use consus_core::Shape;
 
-        let shape_a = Shape::fixed(&dims1);
-        let shape_b = Shape::fixed(&dims1); // Same as A
-        let shape_c = Shape::fixed(&dims2);
+        let a = Shape::fixed(&dims);
+        let b = Shape::fixed(&dims);
+        let c = Shape::fixed(&dims);
 
-        prop_assert_eq!(shape_a, shape_b);
+        prop_assert_eq!(a.clone(), b.clone());
+        prop_assert_eq!(b.clone(), c.clone());
+        prop_assert_eq!(a, c);
+    }
+}
 
-        // If dims1 == dims2, then shape_a == shape_c
-        if dims1 == dims2 {
-            prop_assert_eq!(shape_a, shape_c);
-        } else {
-            prop_assert_ne!(shape_a, shape_c);
+// -----------------------------------------------------------------------------
+// In-memory I/O properties
+// -----------------------------------------------------------------------------
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+
+    /// Invariant:
+    /// Writing bytes at an offset and reading the same range returns identical
+    /// bytes.
+    #[test]
+    fn memcursor_write_then_read_roundtrip(
+        offset in 0usize..=4096,
+        data in prop::collection::vec(any::<u8>(), 0..=512)
+    ) {
+        use consus_io::{MemCursor, ReadAt, WriteAt};
+
+        let capacity = offset + data.len() + 32;
+        let mut cursor = MemCursor::with_capacity(capacity);
+
+        cursor
+            .write_at(offset as u64, &data)
+            .expect("write_at must succeed within allocated capacity");
+
+        let mut read_back = vec![0u8; data.len()];
+        cursor
+            .read_at(offset as u64, &mut read_back)
+            .expect("read_at must succeed for written range");
+        prop_assert_eq!(read_back, data);
+    }
+
+    /// Invariant:
+    /// Sequential non-overlapping writes preserve each written segment exactly.
+    #[test]
+    fn memcursor_sequential_non_overlapping_writes_preserve_segments(
+        first in prop::collection::vec(any::<u8>(), 0..=256),
+        second in prop::collection::vec(any::<u8>(), 0..=256),
+        gap in 0usize..=64
+    ) {
+        use consus_io::{MemCursor, ReadAt, WriteAt};
+
+        let first_offset = 17usize;
+        let second_offset = first_offset + first.len() + gap;
+        let capacity = second_offset + second.len() + 17;
+
+        let mut cursor = MemCursor::with_capacity(capacity);
+
+        cursor.write_at(first_offset as u64, &first).expect("first write must succeed");
+        cursor.write_at(second_offset as u64, &second).expect("second write must succeed");
+
+        let mut first_read = vec![0u8; first.len()];
+        let mut second_read = vec![0u8; second.len()];
+
+        cursor.read_at(first_offset as u64, &mut first_read).expect("first read must succeed");
+        cursor.read_at(second_offset as u64, &mut second_read).expect("second read must succeed");
+        prop_assert_eq!(first_read, first);
+        prop_assert_eq!(second_read, second);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Compression properties
+// -----------------------------------------------------------------------------
+
+#[cfg(feature = "compression")]
+proptest! {
+    /// Invariant:
+    /// Deflate decompress(compress(data)) == data for arbitrary byte input.
+    #[test]
+    fn deflate_roundtrip_arbitrary_data(
+        data in compression_payload_strategy()
+    ) {
+        use consus_compression::codec::deflate::DeflateCodec;
+        use consus_compression::codec::traits::{Codec, CompressionLevel};
+
+        let codec = DeflateCodec;
+        let compressed = codec
+            .compress(&data, CompressionLevel(6))
+            .expect("deflate compression must succeed");
+        let decompressed = codec
+            .decompress(&compressed, data.len())
+            .expect("deflate decompression must succeed");
+
+        prop_assert_eq!(decompressed, data);
+    }
+
+    /// Invariant:
+    /// Highly repetitive data compresses to fewer bytes than the original.
+    #[test]
+    fn deflate_reduces_repetitive_data(
+        value in any::<u8>(),
+        count in 128usize..=16384
+    ) {
+        use consus_compression::codec::deflate::DeflateCodec;
+        use consus_compression::codec::traits::{Codec, CompressionLevel};
+
+        let data = vec![value; count];
+        let codec = DeflateCodec;
+        let compressed = codec
+            .compress(&data, CompressionLevel(9))
+            .expect("deflate compression must succeed");
+
+        prop_assert!(compressed.len() < data.len());
+    }
+
+    /// Invariant:
+    /// LZ4 decompress(compress(data)) == data for arbitrary byte input.
+    #[test]
+    fn lz4_roundtrip_arbitrary_data(
+        data in compression_payload_strategy()
+    ) {
+        use consus_compression::codec::lz4::Lz4Codec;
+        use consus_compression::codec::traits::{Codec, CompressionLevel};
+
+        let codec = Lz4Codec;
+        let compressed = codec
+            .compress(&data, CompressionLevel::default())
+            .expect("lz4 compression must succeed");
+        let decompressed = codec
+            .decompress(&compressed, data.len())
+            .expect("lz4 decompression must succeed");
+
+        prop_assert_eq!(decompressed, data);
+    }
+
+    /// Invariant:
+    /// Zstd decompress(compress(data)) == data for arbitrary byte input.
+    #[test]
+    fn zstd_roundtrip_arbitrary_data(
+        data in compression_payload_strategy()
+    ) {
+        use consus_compression::codec::traits::{Codec, CompressionLevel};
+        use consus_compression::codec::zstd::ZstdCodec;
+
+        let codec = ZstdCodec;
+        let compressed = codec
+            .compress(&data, CompressionLevel(3))
+            .expect("zstd compression must succeed");
+        let decompressed = codec
+            .decompress(&compressed, data.len())
+            .expect("zstd decompression must succeed");
+
+        prop_assert_eq!(decompressed, data);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Arrow and Parquet schema conversion properties
+// -----------------------------------------------------------------------------
+
+#[cfg(feature = "arrow")]
+proptest! {
+    /// Invariant:
+    /// Arrow-to-core conversion preserves field cardinality.
+    #[test]
+    fn arrow_schema_field_count_preserved(
+        num_fields in 1usize..=20
+    ) {
+        use consus_arrow::{ArrowFieldBuilder, ArrowFieldId, ArrowFieldKind, ArrowSchema};
+        use consus_core::{ByteOrder, Datatype};
+        use core::num::NonZeroUsize;
+
+        let mut fields = Vec::with_capacity(num_fields);
+        for i in 0..num_fields {
+            let field = ArrowFieldBuilder::new(
+                ArrowFieldId::new(i as u32 + 1),
+                format!("field_{i}"),
+                ArrowFieldKind::Int,
+                Datatype::Integer {
+                    bits: NonZeroUsize::new(32).expect("32 is non-zero"),
+                    byte_order: ByteOrder::LittleEndian,
+                    signed: true,
+                },
+            )
+            .nullable(true)
+            .build()
+            .expect("field construction must succeed");
+
+            fields.push(field);
         }
+
+        let schema = ArrowSchema::new(fields);
+        let core_pairs = consus_arrow::conversion::arrow_schema_to_core_pairs(&schema);
+
+        prop_assert_eq!(core_pairs.len(), num_fields);
+    }
+}
+
+#[cfg(feature = "parquet")]
+proptest! {
+    /// Invariant:
+    /// Parquet-to-core conversion preserves column cardinality.
+    #[test]
+    fn parquet_schema_column_count_preserved(
+        num_cols in 1usize..=20
+    ) {
+        use consus_parquet::{FieldDescriptor, FieldId, ParquetPhysicalType, SchemaDescriptor};
+
+        let mut fields = Vec::with_capacity(num_cols);
+        for i in 0..num_cols {
+            fields.push(FieldDescriptor::required(
+                FieldId::new(i as u32 + 1),
+                format!("col_{i}"),
+                ParquetPhysicalType::Int32,
+            ));
+        }
+
+        let schema = SchemaDescriptor::new(fields);
+        let core_pairs = consus_parquet::conversion::parquet_schema_to_core_pairs(&schema);
+
+        prop_assert_eq!(core_pairs.len(), num_cols);
     }
 }
