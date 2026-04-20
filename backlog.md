@@ -92,6 +92,7 @@
 - [x] Compression pipeline (Zarr codec chain)
 - [x] Full array read with selection
 - [x] Partial selection read semantics across chunk boundaries
+- [x] Partial selection write semantics across chunk boundaries
 - [x] Zarr v2 write path
 - [x] Chunk-grid bounds validation for `read_chunk` and `write_chunk`
 - [ ] Round-trip tests against Python zarr library output

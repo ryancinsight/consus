@@ -22,7 +22,7 @@ Consus replaces C-dependent bindings (hdf5-rs, netCDF-sys, etc.) with a native R
 |--------|--------|-----------------|
 | HDF5 | Phase 1 (in progress) | Read path implemented (v1/v2 groups, all datatype classes, multi-chunk with filter pipeline); Write path implemented (contiguous + chunked with v3 layout); async I/O path implemented |
 | FITS | Phase 2 – Complete | Full read/write for primary images, IMAGE extensions, ASCII tables, and binary tables |
-| Zarr v2/v3 | Phase 2 (in progress) | Metadata parsing, codec pipeline, chunk read/write, full-array read/write, and verified partial read support |
+| Zarr v2/v3 | Phase 2 (in progress) | Metadata parsing, codec pipeline, chunk read/write, full-array read/write, and verified partial read/write selection support |
 | netCDF-4 | Phase 2 (planned) | Classic + Enhanced |
 | Apache Parquet | Phase 3 (planned) | Columnar interop |
 

@@ -25,7 +25,7 @@
 - [x] Multi-chunk assembly for full-array reads
 - [x] Uninitialized chunk handling via fill-value materialization
 - [x] Partial selection read semantics across chunk boundaries
-- [ ] Partial selection write semantics beyond current full-array coverage
+- [x] Partial selection write semantics beyond current full-array coverage
 
 ### Milestone 4: Verification
 - [x] Library unit tests for chunk key generation
@@ -35,6 +35,10 @@
 - [x] Library unit tests for contiguous partial selection reads across chunk boundaries
 - [x] Library unit tests for strided partial selection reads across chunk boundaries
 - [x] Library unit tests for fill-value materialization in partial selection reads over uninitialized chunks
+- [x] Library unit tests for contiguous partial selection writes across chunk boundaries
+- [x] Library unit tests for strided partial selection writes across chunk boundaries
+- [x] Library unit tests for fill-value materialization in partial selection writes over uninitialized chunks
+- [x] Library unit tests for invalid partial selection write input length rejection
 - [x] Verified `cargo test -p consus-zarr --lib`
 - [ ] Integration tests against Python zarr-produced fixtures
 - [ ] Zarr v3 sharding interop coverage through high-level array API

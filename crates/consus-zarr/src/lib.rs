@@ -145,7 +145,7 @@ pub mod chunk;
 
 pub use chunk::{
     ChunkError, ChunkKeySeparator, Selection, SelectionStep, chunk_key, expand_fill_value,
-    read_array, read_chunk, write_array, write_chunk,
+    read_array, read_chunk, write_array, write_array_selection, write_chunk,
 };
 
 /// Compression codec pipeline execution.

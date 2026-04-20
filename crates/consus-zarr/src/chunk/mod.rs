@@ -338,6 +338,80 @@ fn copy_chunk_selection_to_output(
     Ok(())
 }
 
+/// Internal helper: copies selected elements from the input buffer into a chunk buffer.
+fn copy_selection_input_to_chunk(
+    input: &[u8],
+    selection_indices: &[Vec<u64>],
+    chunk_origin: &[u64],
+    chunk_extent: &[usize],
+    chunk_data: &mut [u8],
+    element_size: usize,
+) -> Result<(), ChunkError> {
+    let chunk_strides = compute_strides(chunk_extent);
+    let selection_shape: Vec<usize> = selection_indices.iter().map(Vec::len).collect();
+    let input_strides = compute_strides(&selection_shape);
+
+    if selection_indices.is_empty() {
+        if input.len() != element_size || chunk_data.len() != element_size {
+            return Err(ChunkError::UnexpectedLength);
+        }
+        chunk_data.copy_from_slice(input);
+        return Ok(());
+    }
+
+    let mut selection_position = vec![0usize; selection_indices.len()];
+
+    loop {
+        let mut in_chunk = true;
+        let mut chunk_linear = 0usize;
+        let mut input_linear = 0usize;
+
+        for dim in 0..selection_indices.len() {
+            let absolute_index = selection_indices[dim][selection_position[dim]];
+            let chunk_start = chunk_origin[dim];
+            let chunk_end = chunk_start + chunk_extent[dim] as u64;
+            if absolute_index < chunk_start || absolute_index >= chunk_end {
+                in_chunk = false;
+                break;
+            }
+
+            let local_index = (absolute_index - chunk_start) as usize;
+            chunk_linear += local_index * chunk_strides[dim];
+            input_linear += selection_position[dim] * input_strides[dim];
+        }
+
+        if in_chunk {
+            let chunk_byte_start = chunk_linear * element_size;
+            let chunk_byte_end = chunk_byte_start + element_size;
+            let input_byte_start = input_linear * element_size;
+            let input_byte_end = input_byte_start + element_size;
+
+            if chunk_byte_end > chunk_data.len() || input_byte_end > input.len() {
+                return Err(ChunkError::UnexpectedLength);
+            }
+
+            chunk_data[chunk_byte_start..chunk_byte_end]
+                .copy_from_slice(&input[input_byte_start..input_byte_end]);
+        }
+
+        let mut advanced = false;
+        for dim in (0..selection_position.len()).rev() {
+            selection_position[dim] += 1;
+            if selection_position[dim] < selection_indices[dim].len() {
+                advanced = true;
+                break;
+            }
+            selection_position[dim] = 0;
+        }
+
+        if !advanced {
+            break;
+        }
+    }
+
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -591,6 +665,108 @@ pub fn read_array<S: Store>(
     }
 
     Ok(output)
+}
+
+/// Writes data to an array using a selection.
+#[cfg(feature = "alloc")]
+pub fn write_array_selection<S: Store>(
+    store: &mut S,
+    array_key: &str,
+    selection: &Selection,
+    meta: &ArrayMetadata,
+    data: &[u8],
+) -> Result<(), ChunkError> {
+    let selection_steps = selection.normalized_steps(&meta.shape)?;
+    let num_elements = if selection_steps.is_empty() {
+        1usize
+    } else {
+        selection_steps
+            .iter()
+            .map(|step| step.count as usize)
+            .product()
+    };
+
+    let element_size = crate::metadata::dtype_to_element_size(&meta.dtype).unwrap_or(8);
+    let expected_len = num_elements * element_size;
+    if data.len() != expected_len {
+        return Err(ChunkError::UnexpectedLength);
+    }
+
+    let chunk_grid: Vec<u64> = meta
+        .shape
+        .iter()
+        .zip(meta.chunks.iter())
+        .map(|(&shape, &chunk)| shape.div_ceil(chunk) as u64)
+        .collect();
+    let selection_indices = selection_indices(&selection_steps);
+    let mut chunk_indices: Vec<u64> = vec![0; meta.shape.len()];
+
+    loop {
+        let chunk_origin: Vec<u64> = chunk_indices
+            .iter()
+            .zip(meta.chunks.iter())
+            .map(|(&index, &chunk)| index * chunk as u64)
+            .collect();
+
+        let mut chunk_extent = vec![0usize; meta.shape.len()];
+        for dim in 0..meta.shape.len() {
+            let remaining = meta.shape[dim].saturating_sub(chunk_origin[dim] as usize);
+            chunk_extent[dim] = remaining.min(meta.chunks[dim]);
+        }
+
+        if chunk_intersects_selection(&chunk_origin, &chunk_extent, &selection_steps) {
+            let chunk_elements = if chunk_extent.is_empty() {
+                1
+            } else {
+                chunk_extent.iter().product()
+            };
+            let chunk_bytes = chunk_elements * element_size;
+
+            let mut chunk_data = match read_chunk(store, array_key, &chunk_indices, meta) {
+                Ok(existing) => {
+                    if existing.len() != chunk_bytes {
+                        return Err(ChunkError::UnexpectedLength);
+                    }
+                    existing
+                }
+                Err(ChunkError::Uninitialized) => {
+                    expand_fill_value(&meta.fill_value, &meta.dtype, chunk_elements as u64)
+                }
+                Err(e) => return Err(e),
+            };
+
+            if chunk_data.len() != chunk_bytes {
+                return Err(ChunkError::UnexpectedLength);
+            }
+
+            copy_selection_input_to_chunk(
+                data,
+                &selection_indices,
+                &chunk_origin,
+                &chunk_extent,
+                &mut chunk_data,
+                element_size,
+            )?;
+
+            write_chunk(store, array_key, &chunk_indices, meta, &chunk_data)?;
+        }
+
+        let mut advanced = false;
+        for dim in (0..chunk_indices.len()).rev() {
+            chunk_indices[dim] += 1;
+            if chunk_indices[dim] < chunk_grid[dim] {
+                advanced = true;
+                break;
+            }
+            chunk_indices[dim] = 0;
+        }
+
+        if !advanced {
+            break;
+        }
+    }
+
+    Ok(())
 }
 
 /// Writes data to an entire array.
@@ -1089,6 +1265,185 @@ mod tests {
             .collect();
 
         assert_eq!(values, vec![0, 1, -1, -1, 4, 5, -1, -1]);
+    }
+
+    #[test]
+    fn write_array_selection_contiguous_across_chunks() {
+        let mut store = InMemoryStore::new();
+        let meta = ArrayMetadata {
+            version: ZarrVersion::V3,
+            shape: vec![4, 4],
+            chunks: vec![2, 2],
+            dtype: "<i4".to_string(),
+            fill_value: FillValue::Int(0),
+            order: 'C',
+            codecs: vec![],
+            chunk_key_encoding: ChunkKeyEncoding::default(),
+        };
+
+        let initial: Vec<u8> = (0..16i32).flat_map(|value| value.to_le_bytes()).collect();
+        write_array(&mut store, "test_array", &meta, &initial).unwrap();
+
+        let selection = Selection::from_steps(vec![
+            SelectionStep {
+                start: 1,
+                count: 2,
+                stride: 1,
+            },
+            SelectionStep {
+                start: 1,
+                count: 2,
+                stride: 1,
+            },
+        ]);
+        let patch: Vec<u8> = [100i32, 101, 102, 103]
+            .into_iter()
+            .flat_map(|value| value.to_le_bytes())
+            .collect();
+
+        write_array_selection(&mut store, "test_array", &selection, &meta, &patch).unwrap();
+
+        let read_back = read_array(&store, "test_array", &Selection::full(2), &meta).unwrap();
+        let values: Vec<i32> = read_back
+            .chunks_exact(4)
+            .map(|chunk| i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+            .collect();
+
+        assert_eq!(
+            values,
+            vec![0, 1, 2, 3, 4, 100, 101, 7, 8, 102, 103, 11, 12, 13, 14, 15]
+        );
+    }
+
+    #[test]
+    fn write_array_selection_strided_across_chunks() {
+        let mut store = InMemoryStore::new();
+        let meta = ArrayMetadata {
+            version: ZarrVersion::V3,
+            shape: vec![4, 4],
+            chunks: vec![2, 2],
+            dtype: "<i4".to_string(),
+            fill_value: FillValue::Int(0),
+            order: 'C',
+            codecs: vec![],
+            chunk_key_encoding: ChunkKeyEncoding::default(),
+        };
+
+        let initial: Vec<u8> = (0..16i32).flat_map(|value| value.to_le_bytes()).collect();
+        write_array(&mut store, "test_array", &meta, &initial).unwrap();
+
+        let selection = Selection::from_steps(vec![
+            SelectionStep {
+                start: 0,
+                count: 2,
+                stride: 2,
+            },
+            SelectionStep {
+                start: 1,
+                count: 2,
+                stride: 2,
+            },
+        ]);
+        let patch: Vec<u8> = [200i32, 201, 202, 203]
+            .into_iter()
+            .flat_map(|value| value.to_le_bytes())
+            .collect();
+
+        write_array_selection(&mut store, "test_array", &selection, &meta, &patch).unwrap();
+
+        let read_back = read_array(&store, "test_array", &Selection::full(2), &meta).unwrap();
+        let values: Vec<i32> = read_back
+            .chunks_exact(4)
+            .map(|chunk| i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+            .collect();
+
+        assert_eq!(
+            values,
+            vec![0, 200, 2, 201, 4, 5, 6, 7, 8, 202, 10, 203, 12, 13, 14, 15]
+        );
+    }
+
+    #[test]
+    fn write_array_selection_uninitialized_chunks_materialize_fill_value() {
+        let mut store = InMemoryStore::new();
+        let meta = ArrayMetadata {
+            version: ZarrVersion::V3,
+            shape: vec![4, 4],
+            chunks: vec![2, 2],
+            dtype: "<i4".to_string(),
+            fill_value: FillValue::Int(-1),
+            order: 'C',
+            codecs: vec![],
+            chunk_key_encoding: ChunkKeyEncoding::default(),
+        };
+
+        let selection = Selection::from_steps(vec![
+            SelectionStep {
+                start: 1,
+                count: 2,
+                stride: 1,
+            },
+            SelectionStep {
+                start: 1,
+                count: 2,
+                stride: 1,
+            },
+        ]);
+        let patch: Vec<u8> = [50i32, 51, 52, 53]
+            .into_iter()
+            .flat_map(|value| value.to_le_bytes())
+            .collect();
+
+        write_array_selection(&mut store, "test_array", &selection, &meta, &patch).unwrap();
+
+        let read_back = read_array(&store, "test_array", &Selection::full(2), &meta).unwrap();
+        let values: Vec<i32> = read_back
+            .chunks_exact(4)
+            .map(|chunk| i32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+            .collect();
+
+        assert_eq!(
+            values,
+            vec![
+                -1, -1, -1, -1, -1, 50, 51, -1, -1, 52, 53, -1, -1, -1, -1, -1
+            ]
+        );
+    }
+
+    #[test]
+    fn write_array_selection_rejects_invalid_input_length() {
+        let mut store = InMemoryStore::new();
+        let meta = ArrayMetadata {
+            version: ZarrVersion::V3,
+            shape: vec![4, 4],
+            chunks: vec![2, 2],
+            dtype: "<i4".to_string(),
+            fill_value: FillValue::Int(0),
+            order: 'C',
+            codecs: vec![],
+            chunk_key_encoding: ChunkKeyEncoding::default(),
+        };
+
+        let selection = Selection::from_steps(vec![
+            SelectionStep {
+                start: 1,
+                count: 2,
+                stride: 1,
+            },
+            SelectionStep {
+                start: 1,
+                count: 2,
+                stride: 1,
+            },
+        ]);
+        let invalid_patch: Vec<u8> = [1i32, 2, 3]
+            .into_iter()
+            .flat_map(|value| value.to_le_bytes())
+            .collect();
+
+        let result =
+            write_array_selection(&mut store, "test_array", &selection, &meta, &invalid_patch);
+        assert!(matches!(result, Err(ChunkError::UnexpectedLength)));
     }
 
     #[test]
