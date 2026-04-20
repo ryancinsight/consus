@@ -181,18 +181,26 @@ fn chunk_key_for_array(
     coords: &[u64],
     chunk_key_encoding: &crate::metadata::ChunkKeyEncoding,
 ) -> String {
+    let coord_parts: Vec<String> = coords.iter().map(|c| c.to_string()).collect();
+
     if chunk_key_encoding.name == "v2" || chunk_key_encoding.separator == '.' {
-        // v2 style: array.c/0/0/0
-        let parts: Vec<String> = std::iter::once(array_key.to_string())
-            .chain(coords.iter().map(|c| c.to_string()))
-            .collect();
-        format!("{}.c/{}", array_key, &parts[1..].join("/"))
+        if array_key.is_empty() || array_key == "." {
+            coord_parts.join(".")
+        } else {
+            format!("{}/{}", array_key, coord_parts.join("."))
+        }
     } else {
-        // v3 default style: array/c/0/0/0
-        let parts: Vec<String> = std::iter::once(array_key.to_string())
-            .chain(coords.iter().map(|c| c.to_string()))
-            .collect();
-        format!("{}/c/{}", array_key, &parts[1..].join("/"))
+        let chunk_suffix = if coord_parts.is_empty() {
+            String::from("c")
+        } else {
+            format!("c/{}", coord_parts.join("/"))
+        };
+
+        if array_key.is_empty() || array_key == "." {
+            chunk_suffix
+        } else {
+            format!("{}/{}", array_key, chunk_suffix)
+        }
     }
 }
 
@@ -579,13 +587,21 @@ pub fn read_array<S: Store>(
         if chunk_intersects_selection(&chunk_origin, &chunk_extent, &selection_steps) {
             match read_chunk(store, array_key, &chunk_indices, meta) {
                 Ok(chunk_data) => {
+                    let padded_chunk_elements = if meta.chunks.is_empty() {
+                        1
+                    } else {
+                        meta.chunks.iter().product()
+                    };
+                    let padded_chunk_bytes = padded_chunk_elements * element_size;
                     let chunk_elements = if chunk_extent.is_empty() {
                         1
                     } else {
                         chunk_extent.iter().product()
                     };
                     let expected_chunk_bytes = chunk_elements * element_size;
-                    if chunk_data.len() != expected_chunk_bytes {
+                    if chunk_data.len() != expected_chunk_bytes
+                        && chunk_data.len() != padded_chunk_bytes
+                    {
                         return Err(ChunkError::UnexpectedLength);
                     }
 
@@ -721,21 +737,30 @@ pub fn write_array_selection<S: Store>(
                 chunk_extent.iter().product()
             };
             let chunk_bytes = chunk_elements * element_size;
+            let padded_chunk_elements = if meta.chunks.is_empty() {
+                1
+            } else {
+                meta.chunks.iter().product()
+            };
+            let padded_chunk_bytes = padded_chunk_elements * element_size;
 
             let mut chunk_data = match read_chunk(store, array_key, &chunk_indices, meta) {
                 Ok(existing) => {
-                    if existing.len() != chunk_bytes {
+                    if existing.len() == chunk_bytes {
+                        existing
+                    } else if existing.len() == padded_chunk_bytes {
+                        existing
+                    } else {
                         return Err(ChunkError::UnexpectedLength);
                     }
-                    existing
                 }
                 Err(ChunkError::Uninitialized) => {
-                    expand_fill_value(&meta.fill_value, &meta.dtype, chunk_elements as u64)
+                    expand_fill_value(&meta.fill_value, &meta.dtype, padded_chunk_elements as u64)
                 }
                 Err(e) => return Err(e),
             };
 
-            if chunk_data.len() != chunk_bytes {
+            if chunk_data.len() != chunk_bytes && chunk_data.len() != padded_chunk_bytes {
                 return Err(ChunkError::UnexpectedLength);
             }
 
@@ -922,24 +947,45 @@ mod tests {
 
     #[test]
     fn chunk_key_v2() {
-        // Using actual ChunkKeyEncoding structure
         let encoding = ChunkKeyEncoding {
             name: "v2".to_string(),
             separator: '.',
         };
         let key = chunk_key_for_array("arr", &[0u64, 0u64, 0u64], &encoding);
-        assert_eq!(key, "arr.c/0/0/0");
+        assert_eq!(key, "arr/0.0.0");
 
         let key = chunk_key_for_array("myarray", &[1u64, 2u64, 3u64], &encoding);
-        assert_eq!(key, "myarray.c/1/2/3");
+        assert_eq!(key, "myarray/1.2.3");
     }
 
     #[test]
     fn chunk_key_default() {
-        // Default encoding uses slash separator
         let encoding = ChunkKeyEncoding::default();
         let key = chunk_key_for_array("arr", &[0u64, 0u64, 0u64], &encoding);
         assert_eq!(key, "arr/c/0/0/0");
+    }
+
+    #[test]
+    fn chunk_key_v2_root_relative() {
+        let encoding = ChunkKeyEncoding {
+            name: "v2".to_string(),
+            separator: '.',
+        };
+        let key = chunk_key_for_array(".", &[1u64, 2u64], &encoding);
+        assert_eq!(key, "1.2");
+
+        let key = chunk_key_for_array("", &[3u64, 4u64], &encoding);
+        assert_eq!(key, "3.4");
+    }
+
+    #[test]
+    fn chunk_key_default_root_relative() {
+        let encoding = ChunkKeyEncoding::default();
+        let key = chunk_key_for_array(".", &[1u64, 2u64], &encoding);
+        assert_eq!(key, "c/1/2");
+
+        let key = chunk_key_for_array("", &[3u64, 4u64], &encoding);
+        assert_eq!(key, "c/3/4");
     }
 
     #[test]

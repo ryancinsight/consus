@@ -18,7 +18,7 @@
 
 use core::num::NonZeroUsize;
 
-use consus_core::{ByteOrder, Datatype, NodeType, Shape};
+use consus_core::{ByteOrder, Compression, Datatype, NodeType, Shape};
 use consus_hdf5::dataset::StorageLayout;
 use consus_hdf5::file::Hdf5File;
 use consus_hdf5::file::writer::{DatasetCreationProps, FileCreationProps, Hdf5FileBuilder};
@@ -845,4 +845,461 @@ fn multiple_attributes_on_dataset() {
         i64::from_le_bytes(offset_attr.raw_data[..8].try_into().unwrap()),
         -1
     );
+}
+
+// ---------------------------------------------------------------------------
+// Compressed Chunked Dataset Roundtrip Tests
+// ---------------------------------------------------------------------------
+
+/// Test roundtrip of a v3 chunked dataset with deflate (filter ID 1) compression.
+///
+/// ## Invariant
+///
+/// Data compressed with deflate must decompress to the exact original values.
+/// The filter pipeline must contain deflate (ID 1).
+#[test]
+fn deflate_compressed_chunked_roundtrip() {
+    let data: Vec<i32> = (0..64).collect();
+    let dt = Datatype::Integer {
+        bits: NonZeroUsize::new(32).unwrap(),
+        byte_order: ByteOrder::LittleEndian,
+        signed: true,
+    };
+    let shape = Shape::fixed(&[8, 8]);
+    let raw: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+    let dcpl = DatasetCreationProps {
+        layout: consus_hdf5::property_list::DatasetLayout::Chunked,
+        chunk_dims: Some(vec![4, 4]),
+        compression: Compression::Deflate { level: 6 },
+        ..DatasetCreationProps::default()
+    };
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset("compressed", &dt, &shape, &raw, &dcpl)
+        .expect("write compressed chunked dataset");
+
+    let bytes = builder.finish().expect("finish file");
+    let file = Hdf5File::open(MemCursor::from_bytes(bytes)).expect("open file");
+
+    let datasets = file.list_root_group().expect("list root");
+    let addr = datasets
+        .iter()
+        .find(|(name, _, _)| name == "compressed")
+        .map(|(_, addr, _)| *addr)
+        .expect("dataset link");
+
+    let dataset = file.dataset_at(addr).expect("dataset metadata");
+    assert_eq!(dataset.layout, StorageLayout::Chunked);
+    assert!(!dataset.filters.is_empty(), "dataset must have filters");
+    assert_eq!(dataset.filters[0], 1, "first filter must be deflate (ID 1)");
+
+    let read_buf = file
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read compressed chunked dataset");
+    let read_values: Vec<i32> = read_buf
+        .chunks_exact(4)
+        .map(|c| i32::from_le_bytes(c.try_into().unwrap()))
+        .collect();
+
+    assert_eq!(read_values, data);
+}
+
+/// Test roundtrip of a v3 chunked dataset with Fletcher32 checksum (filter ID 3).
+///
+/// ## Invariant
+///
+/// Data written with Fletcher32 checksum must roundtrip with exact value
+/// preservation. The checksum is stripped on read after integrity verification.
+#[test]
+fn fletcher32_only_chunked_roundtrip() {
+    let data: Vec<u16> = (0..36).collect();
+    let dt = Datatype::Integer {
+        bits: NonZeroUsize::new(16).unwrap(),
+        byte_order: ByteOrder::LittleEndian,
+        signed: false,
+    };
+    let shape = Shape::fixed(&[6, 6]);
+    let raw: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+    let dcpl = DatasetCreationProps {
+        layout: consus_hdf5::property_list::DatasetLayout::Chunked,
+        chunk_dims: Some(vec![3, 3]),
+        filters: vec![3], // Fletcher32 only
+        ..DatasetCreationProps::default()
+    };
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset("checksummed", &dt, &shape, &raw, &dcpl)
+        .expect("write fletcher32 chunked dataset");
+
+    let bytes = builder.finish().expect("finish file");
+    let file = Hdf5File::open(MemCursor::from_bytes(bytes)).expect("open file");
+
+    let datasets = file.list_root_group().expect("list root");
+    let addr = datasets
+        .iter()
+        .find(|(name, _, _)| name == "checksummed")
+        .map(|(_, addr, _)| *addr)
+        .expect("dataset link");
+
+    let dataset = file.dataset_at(addr).expect("dataset metadata");
+    assert_eq!(dataset.filters[0], 3, "filter must be Fletcher32 (ID 3)");
+
+    let read_buf = file
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read fletcher32 chunked dataset");
+    let read_values: Vec<u16> = read_buf
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes(c.try_into().unwrap()))
+        .collect();
+
+    assert_eq!(read_values, data);
+}
+
+/// Test roundtrip of a deflate + Fletcher32 chunked dataset.
+///
+/// ## Invariant
+///
+/// The emitted filter pipeline must preserve checksum semantics and roundtrip
+/// the original values byte-for-byte even when compression is enabled.
+/// Fletcher32 must append a 4-byte checksum on write, verify and strip it on read,
+/// and preserve the original payload byte-for-byte.
+#[test]
+fn deflate_plus_fletcher32_combined_roundtrip_v2() {
+    let dt = Datatype::Integer {
+        bits: NonZeroUsize::new(32).unwrap(),
+        byte_order: ByteOrder::LittleEndian,
+        signed: true,
+    };
+    let shape = Shape::fixed(&[8, 8]);
+    let data: Vec<i32> = (0..64).collect();
+    let raw: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+    let dcpl = DatasetCreationProps {
+        layout: consus_hdf5::property_list::DatasetLayout::Chunked,
+        chunk_dims: Some(vec![4, 4]),
+        compression: Compression::Deflate { level: 6 },
+        filters: vec![3],
+        ..DatasetCreationProps::default()
+    };
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset("dual_filter", &dt, &shape, &raw, &dcpl)
+        .expect("write dual-filter dataset");
+
+    let file = build_and_open(builder);
+    let addr = find_dataset_addr(&file, "dual_filter");
+    let dataset = file.dataset_at(addr).expect("metadata");
+
+    assert_eq!(dataset.layout, StorageLayout::Chunked);
+    assert_eq!(
+        dataset.filters,
+        vec![3, 1],
+        "checksum filter must precede deflate in the emitted pipeline"
+    );
+
+    let read_buf = file
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read dual-filter");
+    let read_values: Vec<i32> = read_buf
+        .chunks_exact(4)
+        .map(|c| i32::from_le_bytes(c.try_into().unwrap()))
+        .collect();
+
+    assert_eq!(
+        read_values, data,
+        "deflate+fletcher32 combined must roundtrip"
+    );
+}
+
+/// Test roundtrip of a v4 chunked dataset with B-tree v2 and deflate compression.
+///
+/// ## Invariant
+///
+/// v4 layout with B-tree v2 chunk index must roundtrip compressed data with
+/// exact floating-point value preservation.
+#[test]
+fn deflate_v4_compressed_chunked_roundtrip() {
+    let data: Vec<f32> = (0..48).map(|i| i as f32 * 0.5).collect();
+    let dt = Datatype::Float {
+        bits: NonZeroUsize::new(32).unwrap(),
+        byte_order: ByteOrder::LittleEndian,
+    };
+    let shape = Shape::fixed(&[6, 8]);
+    let raw: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+    let dcpl = DatasetCreationProps {
+        layout: consus_hdf5::property_list::DatasetLayout::Chunked,
+        chunk_dims: Some(vec![3, 4]),
+        compression: Compression::Deflate { level: 4 },
+        layout_version: Some(4),
+        ..DatasetCreationProps::default()
+    };
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset("v4_compressed", &dt, &shape, &raw, &dcpl)
+        .expect("write v4 compressed chunked dataset");
+
+    let bytes = builder.finish().expect("finish file");
+    let file = Hdf5File::open(MemCursor::from_bytes(bytes)).expect("open file");
+
+    let datasets = file.list_root_group().expect("list root");
+    let addr = datasets
+        .iter()
+        .find(|(name, _, _)| name == "v4_compressed")
+        .map(|(_, addr, _)| *addr)
+        .expect("dataset link");
+
+    let dataset = file.dataset_at(addr).expect("dataset metadata");
+    assert_eq!(dataset.layout, StorageLayout::Chunked);
+    assert!(!dataset.filters.is_empty());
+
+    let read_buf = file
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read v4 compressed chunked dataset");
+    let read_values: Vec<f32> = read_buf
+        .chunks_exact(4)
+        .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+        .collect();
+
+    assert_eq!(read_values, data);
+}
+
+// ---------------------------------------------------------------------------
+// Edge-Case Roundtrip Tests
+// ---------------------------------------------------------------------------
+
+/// Test roundtrip with maximum dataset rank supported by chunked path (4D).
+///
+/// ## Invariant
+///
+/// Higher-rank datasets must roundtrip through the chunked path
+/// with correct reconstruction across all dimensions.
+#[test]
+fn chunked_4d_dataset_roundtrip() {
+    let dt = Datatype::Integer {
+        bits: NonZeroUsize::new(8).unwrap(),
+        byte_order: ByteOrder::LittleEndian,
+        signed: false,
+    };
+    // 3x4x5x6 = 360 elements
+    let shape = Shape::fixed(&[3, 4, 5, 6]);
+    let raw: Vec<u8> = (0..360).map(|i| (i % 256) as u8).collect();
+
+    let dcpl = DatasetCreationProps {
+        layout: consus_hdf5::property_list::DatasetLayout::Chunked,
+        chunk_dims: Some(vec![2, 2, 3, 3]),
+        ..DatasetCreationProps::default()
+    };
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset("tensor4d", &dt, &shape, &raw, &dcpl)
+        .expect("add 4D chunked dataset");
+
+    let file = build_and_open(builder);
+    let addr = find_dataset_addr(&file, "tensor4d");
+    let dataset = file.dataset_at(addr).expect("dataset metadata");
+
+    assert_eq!(dataset.shape.current_dims().as_slice(), &[3, 4, 5, 6]);
+    assert_eq!(dataset.layout, StorageLayout::Chunked);
+
+    let read_buf = file
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read 4D chunked");
+
+    assert_eq!(read_buf, raw, "4D chunked dataset must roundtrip exactly");
+}
+
+/// Test chunked dataset where dataset dims are exact multiples of chunk dims.
+///
+/// ## Invariant
+///
+/// When dataset dims are exact multiples of chunk dims, there are
+/// no edge chunks. All chunks are full-size.
+#[test]
+fn chunked_exact_multiple_roundtrip() {
+    let dt = Datatype::Integer {
+        bits: NonZeroUsize::new(32).unwrap(),
+        byte_order: ByteOrder::LittleEndian,
+        signed: true,
+    };
+    // 12x12 with 4x4 chunks → 3x3 = 9 full chunks, 0 edge chunks
+    let shape = Shape::fixed(&[12, 12]);
+    let data: Vec<i32> = (0..144).collect();
+    let raw: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+    let dcpl = DatasetCreationProps {
+        layout: consus_hdf5::property_list::DatasetLayout::Chunked,
+        chunk_dims: Some(vec![4, 4]),
+        ..DatasetCreationProps::default()
+    };
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset("exact", &dt, &shape, &raw, &dcpl)
+        .expect("add dataset");
+
+    let file = build_and_open(builder);
+    let addr = find_dataset_addr(&file, "exact");
+
+    let read_buf = file
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read exact multiple");
+    let read_values: Vec<i32> = read_buf
+        .chunks_exact(4)
+        .map(|c| i32::from_le_bytes(c.try_into().unwrap()))
+        .collect();
+
+    assert_eq!(read_values, data, "exact-multiple chunks must roundtrip");
+}
+
+/// Test chunked dataset where chunk dims equal dataset dims (single chunk).
+///
+/// ## Invariant
+///
+/// A single-chunk dataset is the degenerate case: one chunk covers
+/// the entire dataset.
+#[test]
+fn single_chunk_covers_entire_dataset() {
+    let dt = Datatype::Float {
+        bits: NonZeroUsize::new(64).unwrap(),
+        byte_order: ByteOrder::LittleEndian,
+    };
+    let shape = Shape::fixed(&[8, 8]);
+    let data: Vec<f64> = (0..64).map(|i| i as f64 * 0.1).collect();
+    let raw: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+    let dcpl = DatasetCreationProps {
+        layout: consus_hdf5::property_list::DatasetLayout::Chunked,
+        chunk_dims: Some(vec![8, 8]),
+        ..DatasetCreationProps::default()
+    };
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset("single_chunk", &dt, &shape, &raw, &dcpl)
+        .expect("add dataset");
+
+    let file = build_and_open(builder);
+    let addr = find_dataset_addr(&file, "single_chunk");
+
+    let read_buf = file
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read single chunk");
+    let read_values: Vec<f64> = read_buf
+        .chunks_exact(8)
+        .map(|c| f64::from_le_bytes(c.try_into().unwrap()))
+        .collect();
+
+    for (original, roundtrip) in data.iter().zip(read_values.iter()) {
+        assert!(
+            (original - roundtrip).abs() < f64::EPSILON,
+            "single-chunk value mismatch: {} != {}",
+            original,
+            roundtrip
+        );
+    }
+}
+
+/// Test Fletcher32-only chunked roundtrip as a regression for checksum handling.
+///
+/// ## Invariant
+///
+/// Fletcher32 must append a 4-byte checksum on write, verify and strip it on read,
+/// and preserve the original payload byte-for-byte.
+#[test]
+fn deflate_plus_fletcher32_combined_roundtrip() {
+    let dt = Datatype::Integer {
+        bits: NonZeroUsize::new(32).unwrap(),
+        byte_order: ByteOrder::LittleEndian,
+        signed: true,
+    };
+    let shape = Shape::fixed(&[8, 8]);
+    let data: Vec<i32> = (0..64).collect();
+    let raw: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+    let dcpl = DatasetCreationProps {
+        layout: consus_hdf5::property_list::DatasetLayout::Chunked,
+        chunk_dims: Some(vec![4, 4]),
+        filters: vec![3],
+        ..DatasetCreationProps::default()
+    };
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset("dual_filter", &dt, &shape, &raw, &dcpl)
+        .expect("write checksum-only dataset");
+
+    let file = build_and_open(builder);
+    let addr = find_dataset_addr(&file, "dual_filter");
+    let dataset = file.dataset_at(addr).expect("metadata");
+
+    assert_eq!(dataset.layout, StorageLayout::Chunked);
+    assert_eq!(
+        dataset.filters,
+        vec![3],
+        "filter pipeline must contain Fletcher32 only"
+    );
+
+    let read_buf = file
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read checksum-only dataset");
+    let read_values: Vec<i32> = read_buf
+        .chunks_exact(4)
+        .map(|c| i32::from_le_bytes(c.try_into().unwrap()))
+        .collect();
+
+    assert_eq!(
+        read_values, data,
+        "checksum-only chunked dataset must roundtrip"
+    );
+}
+
+/// Large dataset roundtrip to verify no truncation or overflow.
+///
+/// ## Invariant
+///
+/// 256x256 dataset (65536 elements × 4 bytes = 262144 bytes)
+/// must roundtrip through chunked path without data loss.
+#[test]
+fn large_chunked_dataset_roundtrip() {
+    let dt = Datatype::Integer {
+        bits: NonZeroUsize::new(32).unwrap(),
+        byte_order: ByteOrder::LittleEndian,
+        signed: true,
+    };
+    let shape = Shape::fixed(&[256, 256]);
+    let data: Vec<i32> = (0..65536).collect();
+    let raw: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+    let dcpl = DatasetCreationProps {
+        layout: consus_hdf5::property_list::DatasetLayout::Chunked,
+        chunk_dims: Some(vec![64, 64]),
+        ..DatasetCreationProps::default()
+    };
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset("large", &dt, &shape, &raw, &dcpl)
+        .expect("add large dataset");
+
+    let file = build_and_open(builder);
+    let addr = find_dataset_addr(&file, "large");
+
+    let read_buf = file
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read large");
+    let read_values: Vec<i32> = read_buf
+        .chunks_exact(4)
+        .map(|c| i32::from_le_bytes(c.try_into().unwrap()))
+        .collect();
+
+    assert_eq!(read_values.len(), data.len(), "element count must match");
+    assert_eq!(read_values, data, "large chunked dataset must roundtrip");
 }

@@ -40,10 +40,15 @@
 - [x] Library unit tests for fill-value materialization in partial selection writes over uninitialized chunks
 - [x] Library unit tests for invalid partial selection write input length rejection
 - [x] Verified `cargo test -p consus-zarr --lib`
-- [ ] Integration tests against Python zarr-produced fixtures
+- [x] Repository Python zarr fixtures generated for v2/v3 filesystem stores
+- [x] Integration tests added against Python zarr-produced fixtures
+- [x] Python fixture reads fully match Python output for Zarr v2 chunk-key layout
+- [x] Python fixture-backed partial write interoperability preserves pre-existing Python chunk values for Zarr v2 stores
+- [x] Python fixture reads fully match Python output for Zarr v2 gzip full-array assembly
+- [ ] Python fixture reads fully match Python output for the remaining Python-generated Zarr v3 default codec-chain variant
 - [ ] Zarr v3 sharding interop coverage through high-level array API
 
 ### Milestone 5: Artifact Synchronization
 - [x] `backlog.md` updated to reflect verified P2.1 chunk I/O status
-- [ ] `gap_audit.md` updated for Phase 2 Zarr scope
-- [ ] `README.md` phase wording synchronized to verified Zarr implementation state
+- [ ] `gap_audit.md` updated for Python fixture verification status, resolved v2 chunk-key and v2 gzip interoperability, and the remaining Python v3 codec-chain mismatch
+- [ ] `README.md` phase wording synchronized to verified Zarr implementation state and the remaining Python v3 codec-chain gap

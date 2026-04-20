@@ -13,13 +13,13 @@
 //! 3. Read: resolve dataset metadata, read raw data through selection
 //! 4. Close: flush and release resources
 
+#[cfg(all(feature = "async-io", feature = "alloc"))]
+pub mod async_file;
+#[cfg(all(feature = "async-io", feature = "alloc"))]
+pub mod async_reader;
 pub mod reader;
 #[cfg(feature = "alloc")]
 pub mod writer;
-#[cfg(all(feature = "async-io", feature = "alloc"))]
-pub mod async_reader;
-#[cfg(all(feature = "async-io", feature = "alloc"))]
-pub mod async_file;
 
 #[cfg(feature = "alloc")]
 use alloc::{string::String, vec::Vec};
@@ -33,7 +33,7 @@ use crate::attribute::Hdf5Attribute;
 #[cfg(feature = "alloc")]
 use crate::btree::v1::{BTreeV1Header, BTreeV1Type};
 #[cfg(feature = "alloc")]
-use crate::btree::{BTreeV2Header, BTreeV2LeafNode, btree_v2_record_type};
+use crate::btree::{BTreeV2Header, btree_v2_record_type, collect_all_btree_v2_records};
 #[cfg(feature = "alloc")]
 use crate::dataset::Hdf5Dataset;
 use crate::group::Hdf5Group;
@@ -238,9 +238,9 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                 let entries =
                     self.read_v1_chunk_btree_leaf_entries(chunk_btree_address, chunk_dims.len())?;
 
-                #[cfg(all(feature = "parallel-io", feature = "alloc"))]
+                #[cfg(feature = "alloc")]
                 {
-                    use crate::dataset::parallel::{execute_parallel, ChunkTask};
+                    use crate::dataset::parallel::ChunkTask;
 
                     let tasks: Vec<ChunkTask> = entries
                         .iter()
@@ -274,7 +274,17 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                         })
                         .collect::<Result<Vec<_>>>()?;
 
-                    let results = execute_parallel(
+                    #[cfg(feature = "parallel-io")]
+                    let results = crate::dataset::parallel::execute_parallel(
+                        &self.source,
+                        tasks,
+                        &filter_ids,
+                        &registry,
+                        fill_value.as_deref(),
+                    )?;
+
+                    #[cfg(not(feature = "parallel-io"))]
+                    let results = crate::dataset::parallel::execute_serial(
                         &self.source,
                         tasks,
                         &filter_ids,
@@ -296,8 +306,6 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
 
                     return Ok(out);
                 }
-
-                Ok(out)
             }
             (4, _, Some(indexing_type), Some(index_address))
                 if indexing_type == crate::dataset::layout::chunk_index_type::BTREE_V2 =>
@@ -534,21 +542,16 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
             });
         }
 
-        let leaf = BTreeV2LeafNode::parse(
-            &self.source,
-            header.root_address,
-            &header,
-            header.root_num_records,
-        )?;
+        let records = collect_all_btree_v2_records(&self.source, &header, &self.ctx)?;
 
-        let rank =
-            self.read_v4_chunk_rank(&leaf, &header)?
-                .ok_or_else(|| Error::InvalidFormat {
-                    message: String::from("unable to determine v4 chunk rank from record size"),
-                })?;
+        let rank = self
+            .read_v4_chunk_rank(&header)?
+            .ok_or_else(|| Error::InvalidFormat {
+                message: String::from("unable to determine v4 chunk rank from record size"),
+            })?;
 
-        let mut entries = Vec::with_capacity(leaf.records.len());
-        for record in &leaf.records {
+        let mut entries = Vec::with_capacity(records.len());
+        for record in &records {
             let (dimension_offsets, filter_mask, chunk_address, chunk_size) =
                 self.parse_v4_chunk_record(&record.data, rank, &header)?;
             entries.push(ChunkIndexEntry {
@@ -563,26 +566,34 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
     }
 
     #[cfg(feature = "alloc")]
-    fn read_v4_chunk_rank(
-        &self,
-        leaf: &BTreeV2LeafNode,
-        header: &BTreeV2Header,
-    ) -> Result<Option<usize>> {
-        if leaf.records.is_empty() {
+    fn read_v4_chunk_rank(&self, header: &BTreeV2Header) -> Result<Option<usize>> {
+        if header.total_records == 0 {
             return Ok(None);
         }
 
         let record_size = header.record_size as usize;
-        if record_size < 16 {
+        let o = self.ctx.offset_bytes();
+
+        let overhead = if header.record_type == btree_v2_record_type::CHUNK_V4_FILTERED {
+            // Type 11: address(O) + chunk_size(L) + filter_mask(4)
+            o + self.ctx.length_bytes() + 4
+        } else {
+            // Type 10: address(O)
+            o
+        };
+
+        if record_size < overhead {
             return Err(Error::InvalidFormat {
-                message: String::from("v4 chunk record is too small"),
+                message: String::from("v4 chunk record too small for context sizes"),
             });
         }
 
-        let payload = record_size - 16;
+        let payload = record_size - overhead;
         if payload % 8 != 0 {
             return Err(Error::InvalidFormat {
-                message: String::from("v4 chunk record payload is not aligned to 64-bit offsets"),
+                message: String::from(
+                    "v4 chunk record scaled-offset payload is not aligned to 8-byte offsets",
+                ),
             });
         }
 
@@ -603,14 +614,30 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
             });
         }
 
+        let o = self.ctx.offset_bytes();
         let mut pos = 0usize;
-        let filter_mask = LittleEndian::read_u32(&data[pos..pos + 4]);
-        pos += 4;
-        let chunk_size = LittleEndian::read_u32(&data[pos..pos + 4]);
-        pos += 4;
-        let chunk_address = LittleEndian::read_u64(&data[pos..pos + 8]);
-        pos += 8;
 
+        // Address (offset_size bytes)
+        let chunk_address = self.ctx.read_offset(&data[pos..]);
+        pos += o;
+
+        // For filtered records (type 11): chunk size + filter mask
+        let (chunk_size, filter_mask) =
+            if header.record_type == btree_v2_record_type::CHUNK_V4_FILTERED {
+                let l = self.ctx.length_bytes();
+                // Chunk size after filtering (length_size bytes)
+                let size = self.ctx.read_length(&data[pos..]);
+                pos += l;
+                // Filter mask (4 bytes)
+                let mask = LittleEndian::read_u32(&data[pos..pos + 4]);
+                pos += 4;
+                (size as u32, mask)
+            } else {
+                // Non-filtered: no size or mask in record
+                (0u32, 0u32)
+            };
+
+        // Scaled dimension offsets (rank x 8 bytes)
         let mut dimension_offsets = Vec::with_capacity(rank);
         for _ in 0..rank {
             dimension_offsets.push(LittleEndian::read_u64(&data[pos..pos + 8]));
@@ -640,14 +667,13 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
 
         #[cfg(all(feature = "parallel-io", feature = "alloc"))]
         {
-            use crate::dataset::parallel::{execute_parallel, ChunkTask};
+            use crate::dataset::parallel::{ChunkTask, execute_parallel};
 
             let tasks: Vec<ChunkTask> = entries
                 .iter()
                 .map(|entry| {
-                    let chunk_coord = self.decode_chunk_coord(
+                    let chunk_coord = Self::decode_v4_scaled_offsets(
                         entry.dimension_offsets.as_slice(),
-                        chunk_dims,
                         &grid_dims,
                     )?;
                     let actual_chunk_dims = crate::dataset::chunk::edge_chunk_dims(
@@ -665,7 +691,11 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                         chunk_coord,
                         location: crate::dataset::chunk::ChunkLocation {
                             address: entry.chunk_address,
-                            size: entry.chunk_size as u64,
+                            size: if entry.chunk_size == 0 {
+                                uncompressed_size as u64
+                            } else {
+                                entry.chunk_size as u64
+                            },
                             filter_mask: entry.filter_mask,
                         },
                         actual_chunk_dims,
@@ -674,13 +704,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                 })
                 .collect::<Result<Vec<_>>>()?;
 
-            let results = execute_parallel(
-                &self.source,
-                tasks,
-                filter_ids,
-                registry,
-                fill_value,
-            )?;
+            let results = execute_parallel(&self.source, tasks, filter_ids, registry, fill_value)?;
 
             for result in results {
                 self.copy_chunk_into_dataset(
@@ -694,19 +718,14 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                 )?;
             }
 
+            return Ok(());
         }
 
         for entry in entries {
-            let chunk_coord = self.decode_chunk_coord(
-                entry.dimension_offsets.as_slice(),
-                chunk_dims,
-                &grid_dims,
-            )?;
-            let actual_chunk_dims = crate::dataset::chunk::edge_chunk_dims(
-                &chunk_coord,
-                chunk_dims,
-                dataset_dims,
-            );
+            let chunk_coord =
+                Self::decode_v4_scaled_offsets(entry.dimension_offsets.as_slice(), &grid_dims)?;
+            let actual_chunk_dims =
+                crate::dataset::chunk::edge_chunk_dims(&chunk_coord, chunk_dims, dataset_dims);
             let chunk_elements = actual_chunk_dims.iter().product::<usize>();
             let uncompressed_size = chunk_elements
                 .checked_mul(element_size)
@@ -716,7 +735,11 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                 &self.source,
                 &crate::dataset::chunk::ChunkLocation {
                     address: entry.chunk_address,
-                    size: entry.chunk_size as u64,
+                    size: if entry.chunk_size == 0 {
+                        uncompressed_size as u64
+                    } else {
+                        entry.chunk_size as u64
+                    },
                     filter_mask: entry.filter_mask,
                 },
                 uncompressed_size,
@@ -737,6 +760,32 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
         }
 
         Ok(())
+    }
+
+    /// Decode v4 B-tree v2 scaled offsets into chunk grid coordinates.
+    ///
+    /// V4 chunk index records store scaled offsets that are already chunk
+    /// grid indices (unlike v3 byte offsets which must be divided by chunk
+    /// dimensions). This method validates the indices against the grid
+    /// dimensions.
+    #[cfg(feature = "alloc")]
+    fn decode_v4_scaled_offsets(scaled_offsets: &[u64], grid_dims: &[usize]) -> Result<Vec<usize>> {
+        if scaled_offsets.len() != grid_dims.len() {
+            return Err(Error::ShapeError {
+                message: String::from("v4 chunk record rank mismatch with dataset grid dimensions"),
+            });
+        }
+
+        let mut coord = Vec::with_capacity(grid_dims.len());
+        for (dim, &scaled) in scaled_offsets.iter().enumerate() {
+            let idx = usize::try_from(scaled).map_err(|_| Error::Overflow)?;
+            if idx >= grid_dims[dim] {
+                return Err(Error::SelectionOutOfBounds);
+            }
+            coord.push(idx);
+        }
+
+        Ok(coord)
     }
 
     #[cfg(feature = "alloc")]

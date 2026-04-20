@@ -10,11 +10,14 @@
 //! - Full array write and read operations
 
 use consus_zarr::Codec;
-use consus_zarr::chunk::{ChunkKeySeparator, chunk_key};
+use consus_zarr::chunk::{
+    ChunkKeySeparator, Selection, SelectionStep, chunk_key, read_array, write_array_selection,
+};
 use consus_zarr::codec::{CodecPipeline, default_registry};
 use consus_zarr::metadata::{ArrayMetadataV2, GroupMetadataV2, ZarrJson};
 use consus_zarr::metadata::{parse_zattrs, serialize_zattrs};
-use consus_zarr::store::{InMemoryStore, Store};
+use consus_zarr::store::{FsStore, InMemoryStore, Store};
+use std::path::PathBuf;
 use tempfile::TempDir;
 
 // ---------------------------------------------------------------------------
@@ -691,6 +694,378 @@ fn v3_filesystem_roundtrip() {
             }
         }
     }
+}
+
+fn fixture_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/zarr_python_fixtures/generated")
+}
+
+fn load_v2_fixture_metadata(store: &FsStore) -> consus_zarr::metadata::ArrayMetadata {
+    let zarray = store.get(".zarray").expect("fixture .zarray must exist");
+    let parsed = ArrayMetadataV2::parse(std::str::from_utf8(&zarray).expect("utf8"))
+        .expect("fixture .zarray must parse");
+    parsed.to_canonical()
+}
+
+fn load_v3_fixture_metadata(store: &FsStore) -> consus_zarr::metadata::ArrayMetadata {
+    let zarr_json = store
+        .get("zarr.json")
+        .expect("fixture zarr.json must exist");
+    let parsed = ZarrJson::parse(std::str::from_utf8(&zarr_json).expect("utf8"))
+        .expect("fixture zarr.json must parse");
+    parsed
+        .to_array_canonical()
+        .expect("fixture zarr.json must describe an array")
+}
+
+fn bytes_to_i32_vec(bytes: &[u8]) -> Vec<i32> {
+    bytes
+        .chunks_exact(4)
+        .map(|chunk| i32::from_le_bytes(chunk.try_into().expect("4-byte i32 chunk")))
+        .collect()
+}
+
+fn bytes_to_f64_vec(bytes: &[u8]) -> Vec<f64> {
+    bytes
+        .chunks_exact(8)
+        .map(|chunk| f64::from_le_bytes(chunk.try_into().expect("8-byte f64 chunk")))
+        .collect()
+}
+
+#[test]
+fn python_fixture_v2_uncompressed_i4_full_and_partial_reads() {
+    let store =
+        FsStore::open(fixture_root().join("v2_uncompressed_i4")).expect("open must succeed");
+    let meta = load_v2_fixture_metadata(&store);
+
+    let full = read_array(&store, ".", &Selection::full(2), &meta).expect("full read must succeed");
+    assert_eq!(
+        bytes_to_i32_vec(&full),
+        vec![
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+        ]
+    );
+
+    let contiguous = read_array(
+        &store,
+        ".",
+        &Selection::from_steps(vec![
+            SelectionStep {
+                start: 1,
+                count: 3,
+                stride: 1,
+            },
+            SelectionStep {
+                start: 2,
+                count: 4,
+                stride: 1,
+            },
+        ]),
+        &meta,
+    )
+    .expect("contiguous selection read must succeed");
+    assert_eq!(
+        bytes_to_i32_vec(&contiguous),
+        vec![8, 9, 10, 11, 14, 15, 16, 17, 20, 21, 22, 23]
+    );
+
+    let strided = read_array(
+        &store,
+        ".",
+        &Selection::from_steps(vec![
+            SelectionStep {
+                start: 0,
+                count: 2,
+                stride: 2,
+            },
+            SelectionStep {
+                start: 1,
+                count: 3,
+                stride: 2,
+            },
+        ]),
+        &meta,
+    )
+    .expect("strided selection read must succeed");
+    assert_eq!(bytes_to_i32_vec(&strided), vec![1, 3, 5, 13, 15, 17]);
+}
+
+#[test]
+fn python_fixture_v2_gzip_f8_full_and_partial_reads() {
+    let store = FsStore::open(fixture_root().join("v2_gzip_f8")).expect("open must succeed");
+    let meta = load_v2_fixture_metadata(&store);
+
+    assert_eq!(meta.shape, vec![5, 4]);
+    assert_eq!(meta.chunks, vec![2, 2]);
+    assert_eq!(meta.dtype, "<f8");
+    assert_eq!(meta.chunk_grid(), vec![3, 2]);
+
+    let direct_chunk_00 = store.get("0.0").expect("fixture chunk 0.0 must exist");
+    let direct_chunk_00_decoded = CodecPipeline::single(Codec {
+        name: String::from("gzip"),
+        configuration: vec![(String::from("level"), String::from("1"))],
+    })
+    .decompress(&direct_chunk_00, default_registry())
+    .expect("direct gzip decode of fixture chunk 0.0 must succeed");
+    assert_eq!(
+        bytes_to_f64_vec(&direct_chunk_00_decoded),
+        vec![-7.0, -6.5, -5.0, -4.5]
+    );
+    assert_eq!(direct_chunk_00_decoded.len(), 32);
+
+    let read_chunk_00 = consus_zarr::read_chunk(&store, ".", &[0, 0], &meta)
+        .expect("read_chunk for fixture chunk 0.0 must succeed");
+    assert_eq!(
+        bytes_to_f64_vec(&read_chunk_00),
+        vec![-7.0, -6.5, -5.0, -4.5]
+    );
+    assert_eq!(read_chunk_00.len(), 32);
+
+    let direct_chunk_01 = store.get("0.1").expect("fixture chunk 0.1 must exist");
+    let direct_chunk_01_decoded = CodecPipeline::single(Codec {
+        name: String::from("gzip"),
+        configuration: vec![(String::from("level"), String::from("1"))],
+    })
+    .decompress(&direct_chunk_01, default_registry())
+    .expect("direct gzip decode of fixture chunk 0.1 must succeed");
+    assert_eq!(
+        bytes_to_f64_vec(&direct_chunk_01_decoded),
+        vec![-6.0, -5.5, -4.0, -3.5]
+    );
+    assert_eq!(direct_chunk_01_decoded.len(), 32);
+
+    let read_chunk_01 = consus_zarr::read_chunk(&store, ".", &[0, 1], &meta)
+        .expect("read_chunk for fixture chunk 0.1 must succeed");
+    assert_eq!(
+        bytes_to_f64_vec(&read_chunk_01),
+        vec![-6.0, -5.5, -4.0, -3.5]
+    );
+    assert_eq!(read_chunk_01.len(), 32);
+
+    let direct_chunk_10 = store.get("1.0").expect("fixture chunk 1.0 must exist");
+    let direct_chunk_10_decoded = CodecPipeline::single(Codec {
+        name: String::from("gzip"),
+        configuration: vec![(String::from("level"), String::from("1"))],
+    })
+    .decompress(&direct_chunk_10, default_registry())
+    .expect("direct gzip decode of fixture chunk 1.0 must succeed");
+    assert_eq!(
+        bytes_to_f64_vec(&direct_chunk_10_decoded),
+        vec![-3.0, -2.5, -1.0, -0.5]
+    );
+    assert_eq!(direct_chunk_10_decoded.len(), 32);
+
+    let read_chunk_10 = consus_zarr::read_chunk(&store, ".", &[1, 0], &meta)
+        .expect("read_chunk for fixture chunk 1.0 must succeed");
+    assert_eq!(
+        bytes_to_f64_vec(&read_chunk_10),
+        vec![-3.0, -2.5, -1.0, -0.5]
+    );
+    assert_eq!(read_chunk_10.len(), 32);
+
+    let direct_chunk_11 = store.get("1.1").expect("fixture chunk 1.1 must exist");
+    let direct_chunk_11_decoded = CodecPipeline::single(Codec {
+        name: String::from("gzip"),
+        configuration: vec![(String::from("level"), String::from("1"))],
+    })
+    .decompress(&direct_chunk_11, default_registry())
+    .expect("direct gzip decode of fixture chunk 1.1 must succeed");
+    assert_eq!(
+        bytes_to_f64_vec(&direct_chunk_11_decoded),
+        vec![-2.0, -1.5, 0.0, 0.5]
+    );
+    assert_eq!(direct_chunk_11_decoded.len(), 32);
+
+    let read_chunk_11 = consus_zarr::read_chunk(&store, ".", &[1, 1], &meta)
+        .expect("read_chunk for fixture chunk 1.1 must succeed");
+    assert_eq!(bytes_to_f64_vec(&read_chunk_11), vec![-2.0, -1.5, 0.0, 0.5]);
+    assert_eq!(read_chunk_11.len(), 32);
+
+    let direct_chunk_20 = store.get("2.0").expect("fixture chunk 2.0 must exist");
+    let direct_chunk_20_decoded = CodecPipeline::single(Codec {
+        name: String::from("gzip"),
+        configuration: vec![(String::from("level"), String::from("1"))],
+    })
+    .decompress(&direct_chunk_20, default_registry())
+    .expect("direct gzip decode of fixture chunk 2.0 must succeed");
+    assert_eq!(
+        bytes_to_f64_vec(&direct_chunk_20_decoded),
+        vec![1.0, 1.5, 0.0, 0.0]
+    );
+    assert_eq!(direct_chunk_20_decoded.len(), 32);
+
+    let read_chunk_20 = consus_zarr::read_chunk(&store, ".", &[2, 0], &meta)
+        .expect("read_chunk for fixture chunk 2.0 must succeed");
+    assert_eq!(bytes_to_f64_vec(&read_chunk_20), vec![1.0, 1.5, 0.0, 0.0]);
+    assert_eq!(read_chunk_20.len(), 32);
+
+    let direct_chunk_21 = store.get("2.1").expect("fixture chunk 2.1 must exist");
+    let direct_chunk_21_decoded = CodecPipeline::single(Codec {
+        name: String::from("gzip"),
+        configuration: vec![(String::from("level"), String::from("1"))],
+    })
+    .decompress(&direct_chunk_21, default_registry())
+    .expect("direct gzip decode of fixture chunk 2.1 must succeed");
+    assert_eq!(
+        bytes_to_f64_vec(&direct_chunk_21_decoded),
+        vec![2.0, 2.5, 0.0, 0.0]
+    );
+    assert_eq!(direct_chunk_21_decoded.len(), 32);
+
+    let read_chunk_21 = consus_zarr::read_chunk(&store, ".", &[2, 1], &meta)
+        .expect("read_chunk for fixture chunk 2.1 must succeed");
+    assert_eq!(bytes_to_f64_vec(&read_chunk_21), vec![2.0, 2.5, 0.0, 0.0]);
+    assert_eq!(read_chunk_21.len(), 32);
+
+    let full = read_array(&store, ".", &Selection::full(2), &meta).expect("full read must succeed");
+    assert_eq!(
+        bytes_to_f64_vec(&full),
+        vec![
+            -7.0, -6.5, -6.0, -5.5, -5.0, -4.5, -4.0, -3.5, -3.0, -2.5, -2.0, -1.5, -1.0, -0.5,
+            0.0, 0.5, 1.0, 1.5, 2.0, 2.5,
+        ]
+    );
+
+    let strided = read_array(
+        &store,
+        ".",
+        &Selection::from_steps(vec![
+            SelectionStep {
+                start: 1,
+                count: 2,
+                stride: 2,
+            },
+            SelectionStep {
+                start: 0,
+                count: 2,
+                stride: 2,
+            },
+        ]),
+        &meta,
+    )
+    .expect("strided selection read must succeed");
+    assert_eq!(bytes_to_f64_vec(&strided), vec![-5.0, -4.0, -1.0, 0.0]);
+}
+
+#[test]
+fn python_fixture_v3_uncompressed_i4_exposes_remaining_codec_chain_mismatch() {
+    let store =
+        FsStore::open(fixture_root().join("v3_uncompressed_i4")).expect("open must succeed");
+    let meta = load_v3_fixture_metadata(&store);
+
+    let full = read_array(&store, ".", &Selection::full(2), &meta).expect("full read must succeed");
+    assert_eq!(
+        bytes_to_i32_vec(&full),
+        vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 10, 11, 12, 13, 14]
+    );
+}
+
+#[test]
+fn python_fixture_v3_gzip_f8_full_and_partial_reads() {
+    let store = FsStore::open(fixture_root().join("v3_gzip_f8")).expect("open must succeed");
+    let meta = load_v3_fixture_metadata(&store);
+
+    let full = read_array(&store, ".", &Selection::full(2), &meta).expect("full read must succeed");
+    assert_eq!(
+        bytes_to_f64_vec(&full),
+        vec![
+            -7.0, -6.5, -6.0, -5.5, -5.0, -4.5, -4.0, -3.5, -3.0, -2.5, -2.0, -1.5, -1.0, -0.5,
+            0.0, 0.5,
+        ]
+    );
+
+    let contiguous = read_array(
+        &store,
+        ".",
+        &Selection::from_steps(vec![
+            SelectionStep {
+                start: 1,
+                count: 3,
+                stride: 1,
+            },
+            SelectionStep {
+                start: 1,
+                count: 3,
+                stride: 1,
+            },
+        ]),
+        &meta,
+    )
+    .expect("contiguous selection read must succeed");
+    assert_eq!(
+        bytes_to_f64_vec(&contiguous),
+        vec![-4.5, -4.0, -3.5, -2.5, -2.0, -1.5, -0.5, 0.0, 0.5]
+    );
+
+    let strided = read_array(
+        &store,
+        ".",
+        &Selection::from_steps(vec![
+            SelectionStep {
+                start: 0,
+                count: 2,
+                stride: 2,
+            },
+            SelectionStep {
+                start: 0,
+                count: 2,
+                stride: 2,
+            },
+        ]),
+        &meta,
+    )
+    .expect("strided selection read must succeed");
+    assert_eq!(bytes_to_f64_vec(&strided), vec![-7.0, -6.0, -3.0, -2.0]);
+}
+
+#[test]
+fn python_fixture_v2_selection_write_preserves_unselected_values() {
+    let tmp = TempDir::new().expect("tempdir must succeed");
+    let source_root = fixture_root().join("v2_uncompressed_i4");
+    std::fs::copy(source_root.join(".zarray"), tmp.path().join(".zarray")).expect("copy .zarray");
+    std::fs::copy(source_root.join(".zattrs"), tmp.path().join(".zattrs")).expect("copy .zattrs");
+    std::fs::copy(source_root.join("0.0"), tmp.path().join("0.0")).expect("copy 0.0");
+    std::fs::copy(source_root.join("0.1"), tmp.path().join("0.1")).expect("copy 0.1");
+    std::fs::copy(source_root.join("1.0"), tmp.path().join("1.0")).expect("copy 1.0");
+    std::fs::copy(source_root.join("1.1"), tmp.path().join("1.1")).expect("copy 1.1");
+
+    let mut store = FsStore::open(tmp.path()).expect("open must succeed");
+    let meta = load_v2_fixture_metadata(&store);
+
+    let patch_values = vec![100i32, 101, 102, 103];
+    let patch_bytes: Vec<u8> = patch_values
+        .iter()
+        .flat_map(|value| value.to_le_bytes())
+        .collect();
+
+    write_array_selection(
+        &mut store,
+        ".",
+        &Selection::from_steps(vec![
+            SelectionStep {
+                start: 1,
+                count: 2,
+                stride: 1,
+            },
+            SelectionStep {
+                start: 2,
+                count: 2,
+                stride: 1,
+            },
+        ]),
+        &meta,
+        &patch_bytes,
+    )
+    .expect("selection write must succeed");
+
+    let full = read_array(&store, ".", &Selection::full(2), &meta).expect("full read must succeed");
+    assert_eq!(
+        bytes_to_i32_vec(&full),
+        vec![
+            0, 1, 2, 3, 4, 5, 6, 7, 100, 101, 10, 11, 12, 13, 102, 103, 16, 17, 18, 19, 20, 21, 22,
+            23,
+        ]
+    );
 }
 
 // ---------------------------------------------------------------------------

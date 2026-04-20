@@ -24,6 +24,7 @@ use consus_core::{Error, Result};
 /// |-----------|----------|----------------|----------|
 /// | deflate   | Deflate  | 1              | deflate  |
 /// | gzip      | Gzip     | —              | gzip     |
+/// | zlib      | Gzip     | —              | zlib     |
 /// | zstd      | Zstd     | 32015          | zstd     |
 /// | lz4       | LZ4      | 32004          | lz4      |
 /// | szip      | Szip     | 4              | szip     |
@@ -65,6 +66,7 @@ impl DefaultCodecRegistry {
             use crate::codec::gzip::GzipCodec;
             static GZIP: GzipCodec = GzipCodec;
             codecs.push((CodecId::Name(String::from("gzip")), &GZIP));
+            codecs.push((CodecId::Name(String::from("zlib")), &GZIP));
         }
 
         #[cfg(feature = "zstd")]

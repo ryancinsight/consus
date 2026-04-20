@@ -371,16 +371,26 @@ mod custom_registration {
 
         let mut registry = DefaultCodecRegistry::new();
 
-        // Register codec A first
+        // Capture baseline before any custom registrations so the assertion
+        // is invariant to feature-gated built-in codecs.
+        let baseline = registry.codec_ids().len();
+
+        // Register codec A first.
         registry.register(CodecId::Name(String::from("test")), &CODEC_A);
 
-        // Attempt to register codec B under same ID.
+        // Attempt to register codec B under the same ID (must not overwrite).
         registry.register(CodecId::Name(String::from("test")), &CODEC_B);
 
-        // First registration wins.
-        let codec = registry.get_by_name("identity").unwrap();
+        // Both calls push an entry; the duplicate ID does not prevent insertion.
+        // First-registration-wins applies only on lookup, not on storage.
+        assert_eq!(registry.codec_ids().len(), baseline + 2);
+
+        // First-registration-wins invariant: "test" must resolve to CODEC_A (IdentityCodec),
+        // not replaced by CODEC_B.
+        let codec = registry
+            .get(&CodecId::Name(String::from("test")))
+            .expect("registered name must be found");
         assert_eq!(codec.name(), "identity");
-        assert_eq!(registry.codec_ids().len(), 4);
     }
 
     /// Custom codec with FilterId works.

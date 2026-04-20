@@ -12,5 +12,6 @@ pub mod v2;
 pub use v1::{BTREE_V1_SIGNATURE, BTreeV1Header, BTreeV1Type};
 pub use v2::{
     BTREE_V2_SIGNATURE, BTreeV2Header, BTreeV2InternalNode, BTreeV2LeafNode,
+    collect_all_records as collect_all_btree_v2_records,
     record_type as btree_v2_record_type,
 };

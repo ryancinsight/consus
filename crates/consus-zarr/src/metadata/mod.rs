@@ -330,6 +330,23 @@ impl Codec {
         }
     }
 
+    /// Returns a boolean configuration flag for this codec.
+    pub fn bool_flag(&self, key: &str) -> Option<bool> {
+        self.configuration
+            .iter()
+            .find(|(k, _)| k == key)
+            .and_then(|(_, v)| v.parse().ok())
+    }
+
+    /// Returns the zstd checksum flag if this is a zstd codec.
+    pub fn zstd_checksum(&self) -> Option<bool> {
+        if self.name == "zstd" {
+            self.bool_flag("checksum")
+        } else {
+            None
+        }
+    }
+
     /// Returns the lz4 compression level if this is an lz4 codec.
     pub fn lz4_level(&self) -> Option<i32> {
         if self.name == "lz4" {
@@ -621,6 +638,58 @@ mod tests {
             )],
         };
         assert_eq!(gzip.gzip_level(), Some(6));
+    }
+
+    #[test]
+    fn test_codec_bool_flag_parses_true() {
+        let codec = Codec {
+            name: alloc::string::String::from("zstd"),
+            configuration: alloc::vec![(
+                alloc::string::String::from("checksum"),
+                alloc::string::String::from("true")
+            )],
+        };
+
+        assert_eq!(codec.bool_flag("checksum"), Some(true));
+    }
+
+    #[test]
+    fn test_codec_bool_flag_parses_false() {
+        let codec = Codec {
+            name: alloc::string::String::from("zstd"),
+            configuration: alloc::vec![(
+                alloc::string::String::from("checksum"),
+                alloc::string::String::from("false")
+            )],
+        };
+
+        assert_eq!(codec.bool_flag("checksum"), Some(false));
+    }
+
+    #[test]
+    fn test_zstd_checksum_extraction() {
+        let codec = Codec {
+            name: alloc::string::String::from("zstd"),
+            configuration: alloc::vec![(
+                alloc::string::String::from("checksum"),
+                alloc::string::String::from("false")
+            )],
+        };
+
+        assert_eq!(codec.zstd_checksum(), Some(false));
+    }
+
+    #[test]
+    fn test_zstd_checksum_non_zstd_codec_returns_none() {
+        let codec = Codec {
+            name: alloc::string::String::from("gzip"),
+            configuration: alloc::vec![(
+                alloc::string::String::from("checksum"),
+                alloc::string::String::from("true")
+            )],
+        };
+
+        assert_eq!(codec.zstd_checksum(), None);
     }
 
     #[test]

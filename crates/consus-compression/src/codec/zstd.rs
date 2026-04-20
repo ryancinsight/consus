@@ -25,7 +25,8 @@ impl Codec for ZstdCodec {
 
     #[cfg(feature = "alloc")]
     fn compress(&self, input: &[u8], level: CompressionLevel) -> Result<Vec<u8>> {
-        let clamped = level.0.clamp(1, 22);
+        let effective_level = if level.0 == 0 { 1 } else { level.0 };
+        let clamped = effective_level.clamp(1, 22);
         zstd::bulk::compress(input, clamped).map_err(|e| Error::CompressionError {
             message: alloc::format!("zstd compress failed: {e}"),
         })
@@ -52,6 +53,19 @@ mod tests {
             .compress(&input, CompressionLevel(3))
             .expect("compress must succeed");
         assert!(compressed.len() < input.len());
+        let decompressed = codec
+            .decompress(&compressed, input.len())
+            .expect("decompress must succeed");
+        assert_eq!(decompressed, input);
+    }
+
+    #[test]
+    fn round_trip_zstd_level_zero_maps_to_supported_encoder_level() {
+        let codec = ZstdCodec;
+        let input: Vec<u8> = (0u8..=127).cycle().take(2048).collect();
+        let compressed = codec
+            .compress(&input, CompressionLevel(0))
+            .expect("compress at level 0 must succeed");
         let decompressed = codec
             .decompress(&compressed, input.len())
             .expect("decompress must succeed");

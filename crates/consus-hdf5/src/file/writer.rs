@@ -641,6 +641,15 @@ pub fn encode_layout_with_chunk_index(
                         "chunked layout requires chunk_dims in DatasetCreationProps",
                     ),
                 })?;
+            // V4 layout with B-tree v2 index
+            if props.layout_version == Some(4) {
+                let btree_address = chunk_index_address.ok_or_else(|| Error::InvalidFormat {
+                    message: String::from(
+                        "v4 chunked layout requires a materialized chunk index address",
+                    ),
+                })?;
+                return encode_layout_v4_chunked(chunk_dims, btree_address, ctx);
+            }
             let element_size = chunk_element_size.ok_or_else(|| Error::InvalidFormat {
                 message: String::from(
                     "chunked layout requires a resolved element size in the terminal dimension",
@@ -666,6 +675,54 @@ pub fn encode_layout_with_chunk_index(
             Ok(buf)
         }
     }
+}
+
+/// Encode a v4 chunked layout message with B-tree v2 index reference.
+///
+/// ## V4 Layout Message Format (HDF5 spec IV.A.2.l)
+///
+/// | Field | Size | Value |
+/// |-------|------|-------|
+/// | Version | 1 | 4 |
+/// | Layout class | 1 | 2 (chunked) |
+/// | Flags | 1 | 0 (B-tree v2 indexed) |
+/// | Dimensionality | 1 | rank |
+/// | Encoded size width | 1 | length_size |
+/// | Chunk dimensions | rank x 4 | u32 LE each |
+/// | Chunk index type | 1 | 5 (B-tree v2) |
+/// | Index address | offset_size | B-tree v2 header address |
+///
+/// Total size = 6 + rank * 4 + offset_size
+#[cfg(feature = "alloc")]
+fn encode_layout_v4_chunked(
+    chunk_dims: &[usize],
+    btree_address: u64,
+    ctx: &ParseContext,
+) -> Result<Vec<u8>> {
+    let s = ctx.offset_bytes();
+    let l = ctx.length_bytes();
+    let rank = chunk_dims.len();
+    let total = 6 + rank * 4 + s;
+    let mut buf = vec![0u8; total];
+
+    buf[0] = 4; // version 4
+    buf[1] = 2; // layout class = chunked
+    buf[2] = 0; // flags = 0 (no special single-chunk encoding)
+    buf[3] = rank as u8; // dimensionality
+    buf[4] = l as u8; // encoded size width = length_size
+
+    let mut pos = 5;
+    for &d in chunk_dims {
+        LittleEndian::write_u32(&mut buf[pos..], d as u32);
+        pos += 4;
+    }
+
+    buf[pos] = 5; // chunk index type = B-tree v2
+    pos += 1;
+
+    write_offset(&mut buf[pos..], s, btree_address);
+
+    Ok(buf)
 }
 
 // ---------------------------------------------------------------------------
@@ -698,20 +755,37 @@ struct ChunkIndexEntry {
 
 #[cfg(feature = "alloc")]
 fn dataset_filter_ids(props: &DatasetCreationProps) -> Vec<u16> {
-    let mut filter_ids = Vec::with_capacity(props.filters.len() + 1);
+    let mut integrity_filters = Vec::new();
+    let mut transform_filters = Vec::new();
+    let mut compression_filters = Vec::new();
+
     match props.compression {
         Compression::None => {}
-        Compression::Deflate { .. } => filter_ids.push(1),
-        Compression::Zstd { .. } => filter_ids.push(32015),
-        Compression::Lz4 => filter_ids.push(32004),
-        Compression::Gzip { .. } => filter_ids.push(1),
+        Compression::Deflate { .. } => compression_filters.push(1),
+        Compression::Zstd { .. } => compression_filters.push(32015),
+        Compression::Lz4 => compression_filters.push(32004),
+        Compression::Gzip { .. } => compression_filters.push(1),
     }
+
     for &filter_id in &props.filters {
-        if !filter_ids.contains(&filter_id) {
-            filter_ids.push(filter_id);
+        if filter_id == 3 {
+            if !integrity_filters.contains(&filter_id) {
+                integrity_filters.push(filter_id);
+            }
+        } else if filter_id == 1 || filter_id == 32015 || filter_id == 32004 {
+            if !compression_filters.contains(&filter_id) {
+                compression_filters.push(filter_id);
+            }
+        } else if !transform_filters.contains(&filter_id) {
+            transform_filters.push(filter_id);
         }
     }
-    filter_ids
+
+    integrity_filters
+        .into_iter()
+        .chain(transform_filters)
+        .chain(compression_filters)
+        .collect()
 }
 
 #[cfg(feature = "alloc")]
@@ -900,6 +974,134 @@ fn write_chunk_btree_v1<W: WriteAt>(
     Ok(addr)
 }
 
+/// Write a B-tree v2 chunk index (BTHD header + BTLF leaf node).
+///
+/// ## B-tree v2 Structure (HDF5 spec III.A.2)
+///
+/// The B-tree v2 consists of a header (signature `BTHD`) and one or more
+/// nodes. This writer emits a single leaf node (depth 0) containing all
+/// chunk index records, which is sufficient for datasets where the total
+/// number of chunks fits within a single leaf.
+///
+/// ### Record Types
+///
+/// | Type | Description | Record Layout |
+/// |------|------------|---------------|
+/// | 10 | Non-filtered chunks | address + scaled_offsets |
+/// | 11 | Filtered chunks | address + chunk_size + filter_mask + scaled_offsets |
+///
+/// ### Scaled Offsets
+///
+/// V4 records store chunk grid coordinates (chunk index per dimension),
+/// not raw byte offsets. Each scaled offset = `chunk_offset[i] / chunk_dim[i]`.
+///
+/// ## Returns
+///
+/// The file address of the BTHD header. This address is stored in the
+/// v4 layout message's index address field.
+#[cfg(feature = "alloc")]
+fn write_chunk_btree_v2<W: WriteAt>(
+    sink: &mut W,
+    state: &mut WriteState,
+    chunk_dims: &[usize],
+    entries: &[ChunkIndexEntry],
+    has_filters: bool,
+) -> Result<u64> {
+    let s = state.ctx.offset_bytes();
+    let l = state.ctx.length_bytes();
+    let rank = chunk_dims.len();
+    let record_type: u8 = if has_filters { 11 } else { 10 };
+    let num_records = entries.len();
+
+    // Record size per HDF5 spec:
+    //   type 10: offset_size + rank * 8
+    //   type 11: offset_size + length_size + 4 + rank * 8
+    let record_size: usize = if has_filters {
+        s + l + 4 + rank * 8
+    } else {
+        s + rank * 8
+    };
+
+    // -- Leaf node (BTLF) --
+    // Layout: signature(4) + version(1) + type(1) + records(N * rec_size) + checksum(4)
+    let leaf_size = 10 + num_records * record_size;
+    let leaf_addr = state.allocate_aligned(leaf_size as u64);
+    let mut leaf_buf = vec![0u8; leaf_size];
+
+    leaf_buf[0..4].copy_from_slice(b"BTLF");
+    leaf_buf[4] = 0; // version
+    leaf_buf[5] = record_type;
+
+    let mut pos = 6;
+    for entry in entries {
+        // Address of chunk data
+        write_offset(&mut leaf_buf[pos..], s, entry.chunk_address);
+        pos += s;
+
+        if has_filters {
+            // On-disk chunk size (length_size bytes)
+            write_offset(&mut leaf_buf[pos..], l, u64::from(entry.chunk_size));
+            pos += l;
+            // Filter mask
+            LittleEndian::write_u32(&mut leaf_buf[pos..], entry.filter_mask);
+            pos += 4;
+        }
+
+        // Scaled offsets: chunk_offset[i] / chunk_dim[i] per dimension
+        for (i, &offset) in entry.chunk_offsets.iter().enumerate() {
+            let dim = if i < chunk_dims.len() {
+                chunk_dims[i]
+            } else {
+                1
+            };
+            let scaled = if dim > 0 { offset / (dim as u64) } else { 0 };
+            LittleEndian::write_u64(&mut leaf_buf[pos..], scaled);
+            pos += 8;
+        }
+    }
+
+    // CRC-32 checksum over all bytes preceding the checksum field
+    let leaf_cksum = consus_compression::Crc32::compute_slice(&leaf_buf[..pos]);
+    leaf_buf[pos..pos + 4].copy_from_slice(&leaf_cksum.to_le_bytes());
+
+    sink.write_at(leaf_addr, &leaf_buf)?;
+
+    // -- Header (BTHD) --
+    // Layout: signature(4) + version(1) + type(1) + node_size(4) + record_size(2)
+    //       + depth(2) + split%(1) + merge%(1) + root_addr(s) + root_nrec(2)
+    //       + total_records(l) + checksum(4)
+    let header_size = 22 + s + l;
+    let header_addr = state.allocate_aligned(header_size as u64);
+    let mut hdr_buf = vec![0u8; header_size];
+
+    hdr_buf[0..4].copy_from_slice(b"BTHD");
+    hdr_buf[4] = 0; // version
+    hdr_buf[5] = record_type;
+    LittleEndian::write_u32(&mut hdr_buf[6..10], leaf_size as u32); // node size
+    LittleEndian::write_u16(&mut hdr_buf[10..12], record_size as u16); // record size
+    LittleEndian::write_u16(&mut hdr_buf[12..14], 0); // depth = 0 (single leaf)
+    hdr_buf[14] = 75; // split percent
+    hdr_buf[15] = 25; // merge percent
+
+    let mut hpos = 16;
+    // Root node address = leaf node address
+    write_offset(&mut hdr_buf[hpos..], s, leaf_addr);
+    hpos += s;
+    // Number of records in root node
+    LittleEndian::write_u16(&mut hdr_buf[hpos..], num_records as u16);
+    hpos += 2;
+    // Total records in entire B-tree (length_size bytes)
+    write_offset(&mut hdr_buf[hpos..], l, num_records as u64);
+    hpos += l;
+
+    // CRC-32 checksum
+    let hdr_cksum = consus_compression::Crc32::compute_slice(&hdr_buf[..hpos]);
+    hdr_buf[hpos..hpos + 4].copy_from_slice(&hdr_cksum.to_le_bytes());
+
+    sink.write_at(header_addr, &hdr_buf)?;
+    Ok(header_addr)
+}
+
 #[cfg(feature = "alloc")]
 fn write_chunked_data<W: WriteAt>(
     sink: &mut W,
@@ -960,15 +1162,15 @@ fn write_chunked_data<W: WriteAt>(
     let mut entries = Vec::new();
 
     if dataset_dims.is_empty() {
-        let chunk_addr = state.allocate_aligned(raw_data.len() as u64);
         let location = write_chunk_raw(
             sink,
-            chunk_addr,
+            state.eof,
             raw_data,
             &filter_ids,
             element_size,
             &registry,
         )?;
+        state.allocate_aligned(location.size);
         entries.push(ChunkIndexEntry {
             chunk_offsets: Vec::new(),
             filter_mask: location.filter_mask,
@@ -985,15 +1187,15 @@ fn write_chunked_data<W: WriteAt>(
                 chunk_dims,
                 element_size,
             )?;
-            let chunk_addr = state.allocate_aligned(chunk_bytes.len() as u64);
             let location: ChunkLocation = write_chunk_raw(
                 sink,
-                chunk_addr,
+                state.eof,
                 &chunk_bytes,
                 &filter_ids,
                 element_size,
                 &registry,
             )?;
+            state.allocate_aligned(location.size);
 
             let chunk_offsets: Vec<u64> = chunk_coord
                 .iter()
@@ -1017,7 +1219,12 @@ fn write_chunked_data<W: WriteAt>(
         }
     }
 
-    write_chunk_btree_v1(sink, state, chunk_dims, &entries)
+    let has_filters = !filter_ids.is_empty();
+    if props.layout_version == Some(4) {
+        write_chunk_btree_v2(sink, state, chunk_dims, &entries, has_filters)
+    } else {
+        write_chunk_btree_v1(sink, state, chunk_dims, &entries)
+    }
 }
 
 // ---------------------------------------------------------------------------

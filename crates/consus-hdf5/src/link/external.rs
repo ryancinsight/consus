@@ -159,6 +159,56 @@ pub fn parse_external_link_value(data: &[u8]) -> Result<ExternalTarget> {
     ))
 }
 
+#[cfg(all(test, feature = "alloc"))]
+mod traversal_tests {
+    use super::*;
+
+    #[test]
+    fn target_validation_rejects_relative_object_paths() {
+        let target = ExternalTarget::new(String::from("other.h5"), String::from("group/dataset"));
+        let err = target.validate().unwrap_err();
+        let msg = alloc::format!("{err}");
+        assert!(
+            msg.contains("absolute"),
+            "expected absolute-path validation failure, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn parser_rejects_non_utf8_filename() {
+        let data = [0x00, 0xFF, 0x00, b'/', 0x00];
+        let err = parse_external_link_value(&data).unwrap_err();
+        let msg = alloc::format!("{err}");
+        assert!(
+            msg.contains("filename is not valid UTF-8"),
+            "expected filename UTF-8 failure, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn parser_rejects_non_utf8_object_path() {
+        let data = [0x00, b'f', 0x00, 0xFF, 0x00];
+        let err = parse_external_link_value(&data).unwrap_err();
+        let msg = alloc::format!("{err}");
+        assert!(
+            msg.contains("object path is not valid UTF-8"),
+            "expected object-path UTF-8 failure, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn parser_preserves_filename_and_object_path_bytes() {
+        let mut data: alloc::vec::Vec<u8> = alloc::vec::Vec::new();
+        data.push(0x7F);
+        data.extend_from_slice(b"archive.h5\0");
+        data.extend_from_slice(b"/experiment/run_01\0");
+
+        let target = parse_external_link_value(&data).expect("parse must succeed");
+        assert_eq!(target.file_path, "archive.h5");
+        assert_eq!(target.object_path, "/experiment/run_01");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

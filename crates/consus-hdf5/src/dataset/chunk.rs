@@ -194,11 +194,16 @@ pub fn write_chunk_raw<W: consus_io::WriteAt>(
     let mut filter_mask = 0u32;
 
     // Apply filters in forward order.
+    //
+    // Filter failures are recorded in the mask and the chunk is encoded
+    // with the remaining filters only. This preserves chunk integrity and
+    // keeps the on-disk size equal to the final encoded payload size.
     for (i, &filter_id) in filter_ids.iter().enumerate() {
         match apply_forward_filter(filter_id, &processed, element_size, registry) {
-            Ok(output) => processed = output,
+            Ok(output) => {
+                processed = output;
+            }
             Err(_) => {
-                // Mark this filter as not applied.
                 filter_mask |= 1 << i;
             }
         }
@@ -589,5 +594,4 @@ mod tests {
             "none fill value must yield zero buffer"
         );
     }
-
 }

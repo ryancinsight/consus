@@ -647,3 +647,155 @@ fn open_path_resolves_soft_link() {
         ),
     }
 }
+
+
+#[test]
+fn v4_btree_v2_non_filtered_roundtrip() {
+    use core::num::NonZeroUsize;
+
+    let dt = Datatype::Integer {
+        bits: NonZeroUsize::new(32).unwrap(),
+        byte_order: CoreByteOrder::LittleEndian,
+        signed: true,
+    };
+    let shape = Shape::fixed(&[6, 8]);
+    let values: Vec<i32> = (0..48).collect();
+    let raw: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+    let dcpl = DatasetCreationProps {
+        layout: DatasetLayout::Chunked,
+        chunk_dims: Some(vec![3, 4]),
+        layout_version: Some(4),
+        ..DatasetCreationProps::default()
+    };
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset("v4_btree_v2", &dt, &shape, &raw, &dcpl)
+        .expect("write v4 chunked dataset");
+
+    let bytes = builder.finish().expect("finish file");
+    let file = Hdf5File::open(MemCursor::from_bytes(bytes)).expect("open file");
+
+    let datasets = file.list_root_group().expect("list root");
+    let addr = datasets
+        .iter()
+        .find(|(name, _, _)| name == "v4_btree_v2")
+        .map(|(_, addr, _)| *addr)
+        .expect("dataset link");
+
+    let dataset = file.dataset_at(addr).expect("dataset metadata");
+    assert_eq!(dataset.layout, StorageLayout::Chunked);
+    assert_eq!(dataset.shape.current_dims().as_slice(), &[6, 8]);
+    assert_eq!(
+        dataset.chunk_shape.as_ref().expect("chunk shape").dims(),
+        &[3, 4]
+    );
+
+    let read_buf = file
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read v4 B-tree v2 chunked dataset");
+    let read_values: Vec<i32> = read_buf
+        .chunks_exact(4)
+        .map(|c| i32::from_le_bytes(c.try_into().unwrap()))
+        .collect();
+
+    assert_eq!(read_values, values);
+}
+
+#[test]
+fn v4_btree_v2_3d_non_filtered_roundtrip() {
+    use core::num::NonZeroUsize;
+
+    let dt = Datatype::Integer {
+        bits: NonZeroUsize::new(16).unwrap(),
+        byte_order: CoreByteOrder::LittleEndian,
+        signed: false,
+    };
+    let shape = Shape::fixed(&[4, 6, 8]);
+    let num_elements = 4 * 6 * 8;
+    let values: Vec<u16> = (0..num_elements as u16).collect();
+    let raw: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+    let dcpl = DatasetCreationProps {
+        layout: DatasetLayout::Chunked,
+        chunk_dims: Some(vec![2, 3, 4]),
+        layout_version: Some(4),
+        ..DatasetCreationProps::default()
+    };
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset("v4_3d", &dt, &shape, &raw, &dcpl)
+        .expect("write v4 3d chunked dataset");
+
+    let bytes = builder.finish().expect("finish file");
+    let file = Hdf5File::open(MemCursor::from_bytes(bytes)).expect("open file");
+
+    let datasets = file.list_root_group().expect("list root");
+    let addr = datasets
+        .iter()
+        .find(|(name, _, _)| name == "v4_3d")
+        .map(|(_, addr, _)| *addr)
+        .expect("dataset link");
+
+    let dataset = file.dataset_at(addr).expect("dataset metadata");
+    assert_eq!(dataset.layout, StorageLayout::Chunked);
+    assert_eq!(dataset.shape.current_dims().as_slice(), &[4, 6, 8]);
+
+    let read_buf = file
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read v4 B-tree v2 3d chunked dataset");
+    let read_values: Vec<u16> = read_buf
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes(c.try_into().unwrap()))
+        .collect();
+
+    assert_eq!(read_values, values);
+}
+
+#[test]
+fn v4_btree_v2_single_chunk_roundtrip() {
+    use core::num::NonZeroUsize;
+
+    let dt = Datatype::Integer {
+        bits: NonZeroUsize::new(64).unwrap(),
+        byte_order: CoreByteOrder::LittleEndian,
+        signed: true,
+    };
+    let shape = Shape::fixed(&[3, 3]);
+    let values: Vec<i64> = (100..109).collect();
+    let raw: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+    let dcpl = DatasetCreationProps {
+        layout: DatasetLayout::Chunked,
+        chunk_dims: Some(vec![3, 3]),
+        layout_version: Some(4),
+        ..DatasetCreationProps::default()
+    };
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset("v4_single_chunk", &dt, &shape, &raw, &dcpl)
+        .expect("write v4 single chunk dataset");
+
+    let bytes = builder.finish().expect("finish file");
+    let file = Hdf5File::open(MemCursor::from_bytes(bytes)).expect("open file");
+
+    let datasets = file.list_root_group().expect("list root");
+    let addr = datasets
+        .iter()
+        .find(|(name, _, _)| name == "v4_single_chunk")
+        .map(|(_, addr, _)| *addr)
+        .expect("dataset link");
+
+    let read_buf = file
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read v4 single-chunk dataset");
+    let read_values: Vec<i64> = read_buf
+        .chunks_exact(8)
+        .map(|c| i64::from_le_bytes(c.try_into().unwrap()))
+        .collect();
+
+    assert_eq!(read_values, values);
+}

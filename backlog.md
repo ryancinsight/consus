@@ -95,7 +95,12 @@
 - [x] Partial selection write semantics across chunk boundaries
 - [x] Zarr v2 write path
 - [x] Chunk-grid bounds validation for `read_chunk` and `write_chunk`
-- [ ] Round-trip tests against Python zarr library output
+- [x] Repository fixtures generated from Python zarr for v2 and v3 arrays
+- [x] Integration tests against Python zarr-produced fixtures
+- [x] Python v2 chunk-key interoperability against Python-generated filesystem stores
+- [x] Python v2 gzip full-array interoperability against Python-generated filesystem stores
+- [ ] Python v3 default codec-chain interoperability against Python-generated filesystem stores
+- [ ] Full read/write interoperability against Python zarr library output
 
 ### P2.2 — Zarr v3
 - [ ] `zarr.json` metadata parser

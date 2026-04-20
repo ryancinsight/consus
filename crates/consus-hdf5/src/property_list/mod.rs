@@ -155,6 +155,14 @@ pub struct DatasetCreationProps {
     /// When `true`, attributes are indexed by creation order in
     /// addition to name order.
     pub track_attribute_order: bool,
+    /// Layout message version to emit (3 or 4).
+    ///
+    /// Version 3 uses a v1 B-tree chunk index.
+    /// Version 4 uses a v2 B-tree chunk index with record type 10 (non-filtered)
+    /// or 11 (filtered).
+    ///
+    /// Defaults to `None`, which selects version 3 for compatibility.
+    pub layout_version: Option<u8>,
 }
 
 #[cfg(feature = "alloc")]
@@ -169,6 +177,7 @@ impl Default for DatasetCreationProps {
             alloc_time: AllocationTime::default(),
             filters: Vec::new(),
             track_attribute_order: false,
+            layout_version: None,
         }
     }
 }

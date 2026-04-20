@@ -89,10 +89,21 @@ pub struct ArrayMetadataV2 {
     /// Deprecated filter list. `null` or empty in modern files.
     #[serde(default)]
     pub filters: Option<Vec<FilterConfig>>,
+
+    /// Chunk dimension separator used by filesystem-backed stores.
+    ///
+    /// Zarr v2 commonly uses `"."` for keys like `"0.1"`, while some stores
+    /// may use `"/"` for nested chunk paths.
+    #[serde(default = "default_dimension_separator")]
+    pub dimension_separator: String,
 }
 
 fn default_order() -> char {
     'C'
+}
+
+fn default_dimension_separator() -> String {
+    ".".to_string()
 }
 
 /// JSON representation of a fill value in `.zarray`.
@@ -178,12 +189,16 @@ pub enum CompressorConfig {
 #[cfg(feature = "alloc")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompressorNamed {
-    /// Codec identifier (e.g., `"zlib"`, `"gzip"`, `"zstd"`, `"blosc"`, `"lz4"`).
+    /// Codec identifier (e.g., `"zlib"`, `"gzip"`, `"blosc"`, `"lz4"`, `"zstd"`).
     pub id: String,
 
     /// Optional codec configuration (level, blocksize, etc.).
     #[serde(default)]
     pub configuration: Option<CodecConfiguration>,
+
+    /// Inline gzip/zlib level used by zarr-python v2 metadata.
+    #[serde(default)]
+    pub level: Option<i32>,
 }
 
 /// An HDF5 filter referenced by its numeric filter ID.
@@ -283,11 +298,13 @@ impl ArrayMetadataV2 {
             fill_value: self.fill_value.to_fill_value(),
             order: self.order,
             codecs,
-            // Zarr v2 uses dot-separated keys by default; separator is '/'
-            // but zarr-python uses '.' for v2 compat.
             chunk_key_encoding: ChunkKeyEncoding {
-                name: String::from("default"),
-                separator: '/',
+                name: if self.dimension_separator == "." {
+                    String::from("v2")
+                } else {
+                    String::from("default")
+                },
+                separator: self.dimension_separator.chars().next().unwrap_or('.'),
             },
         }
     }
@@ -314,6 +331,9 @@ impl CompressorNamed {
                     configuration.push(pair);
                 }
             }
+        }
+        if let Some(level) = self.level {
+            configuration.push((String::from("level"), level.to_string()));
         }
         Codec {
             name: self.id.clone(),
@@ -723,23 +743,90 @@ mod tests {
     #[test]
     fn test_array_metadata_v2_to_canonical() {
         let json = r#"{
-            "zarr_format": 2,
-            "shape": [10, 20],
-            "chunks": [5, 10],
-            "dtype": "<f4",
-            "fill_value": 0.0,
-            "order": "C",
-            "compressor": {"id": "zlib", "configuration": {"level": 6}},
-            "filters": null
-        }"#;
-        let v2 = ArrayMetadataV2::parse(json).expect("must parse");
+  "zarr_format": 2,
+  "shape": [100, 100],
+  "chunks": [10, 10],
+  "dtype": "<f8",
+  "fill_value": 0.0,
+  "order": "C",
+  "compressor": {"id": "gzip", "configuration": {"level": 1}},
+  "filters": null
+}"#;
+        let v2 = ArrayMetadataV2::parse(json).unwrap();
         let canon = v2.to_canonical();
         assert_eq!(canon.version, ZarrVersion::V2);
-        assert_eq!(canon.shape, &[10, 20]);
-        assert_eq!(canon.chunks, &[5, 10]);
-        assert_eq!(canon.dtype, "<f4");
+        assert_eq!(canon.shape, vec![100, 100]);
+        assert_eq!(canon.chunks, vec![10, 10]);
+        assert_eq!(canon.dtype, "<f8");
+        assert_eq!(canon.order, 'C');
         assert_eq!(canon.codecs.len(), 1);
-        assert_eq!(canon.codecs[0].name, "zlib");
+        assert_eq!(canon.codecs[0].name, "gzip");
+        assert_eq!(canon.chunk_key_encoding.name, "v2");
+        assert_eq!(canon.chunk_key_encoding.separator, '.');
+    }
+
+    #[test]
+    fn test_array_metadata_v2_to_canonical_preserves_inline_gzip_level() {
+        let json = r#"{
+  "zarr_format": 2,
+  "shape": [5, 4],
+  "chunks": [2, 2],
+  "dtype": "<f8",
+  "fill_value": 0.0,
+  "order": "C",
+  "filters": null,
+  "dimension_separator": ".",
+  "compressor": {
+    "id": "gzip",
+    "level": 1
+  }
+}"#;
+        let v2 = ArrayMetadataV2::parse(json).unwrap();
+        let canon = v2.to_canonical();
+        assert_eq!(canon.codecs.len(), 1);
+        assert_eq!(canon.codecs[0].name, "gzip");
+        assert_eq!(
+            canon.codecs[0].configuration,
+            vec![(String::from("level"), String::from("1"))]
+        );
+        assert_eq!(canon.chunk_key_encoding.name, "v2");
+        assert_eq!(canon.chunk_key_encoding.separator, '.');
+    }
+
+    #[test]
+    fn test_array_metadata_v2_to_canonical_preserves_dot_dimension_separator() {
+        let json = r#"{
+  "zarr_format": 2,
+  "shape": [4, 6],
+  "chunks": [2, 3],
+  "dtype": "<i4",
+  "fill_value": -1,
+  "order": "C",
+  "filters": null,
+  "dimension_separator": "."
+}"#;
+        let v2 = ArrayMetadataV2::parse(json).unwrap();
+        let canon = v2.to_canonical();
+        assert_eq!(canon.chunk_key_encoding.name, "v2");
+        assert_eq!(canon.chunk_key_encoding.separator, '.');
+    }
+
+    #[test]
+    fn test_array_metadata_v2_to_canonical_preserves_slash_dimension_separator() {
+        let json = r#"{
+  "zarr_format": 2,
+  "shape": [4, 6],
+  "chunks": [2, 3],
+  "dtype": "<i4",
+  "fill_value": -1,
+  "order": "C",
+  "filters": null,
+  "dimension_separator": "/"
+}"#;
+        let v2 = ArrayMetadataV2::parse(json).unwrap();
+        let canon = v2.to_canonical();
+        assert_eq!(canon.chunk_key_encoding.name, "default");
+        assert_eq!(canon.chunk_key_encoding.separator, '/');
     }
 
     #[test]
