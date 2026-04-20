@@ -1,90 +1,45 @@
 # Consus — Implementation Checklist
 
-## Current Sprint: Phase 1 — HDF5 MVP Closure
+## Current Sprint: Phase 2 — Zarr Chunk I/O Verification
 
-### Milestone 1: Object Header Parsing
-- [x] Implement v1 object header parser
-  - Parse version, message count, reference count, header size
-  - Iterate header messages with type, size, flags, data
-  - Handle continuation messages (type 0x0010)
-- [x] Implement v2 object header parser
-  - Parse OHDR signature, version, flags
-  - Handle optional timestamp fields
-  - Parse chunk-based message layout
-  - Handle OCHK continuation chunks
-  - Validate checksums
-- [x] Unit tests with hand-crafted binary headers
-- [x] Integration test: parse root group object header from minimal file
+### Milestone 1: Metadata and Store Foundation
+- [x] `.zarray` JSON metadata parser
+- [x] `.zattrs` JSON metadata parser
+- [x] `.zgroup` JSON metadata parser
+- [x] Canonical `ArrayMetadata` / `GroupMetadata` conversion
+- [x] In-memory store implementation
+- [x] Filesystem store implementation
+- [x] Prefixed and split store wrappers
 
-### Milestone 2: Group Navigation
-- [x] Symbol table message parser (type 0x0011) → B-tree + local heap addresses
-- [x] B-tree v1 traversal for group nodes
-  - Parse TREE signature, type, level, entries
-  - Leaf node: extract symbol table entries
-  - Internal node: recursively follow child pointers
-- [x] Local heap reader
-  - Parse HEAP signature, data segment size, free list, data address
-  - Resolve member names by offset into heap data segment
-- [x] Link info message parser (type 0x0002) → B-tree v2 address
-- [x] Link message parser (type 0x0006) → direct links in v2 groups
-- [x] B-tree v2 traversal for dense link and attribute indices
-- [x] Group member listing
-- [x] Recursive hierarchy walk
-- [x] Soft link resolution in `open_path`
-- [ ] External link traversal beyond typed unsupported-feature reporting
+### Milestone 2: Codec and Chunk Addressing
+- [x] Chunk key encoding for v2 dot and v3 slash forms
+- [x] Codec pipeline execution for gzip, zstd, lz4, and bytes identity
+- [x] Single-chunk read path with codec decompression
+- [x] Single-chunk write path with codec compression
+- [x] Public chunk API re-exports from crate root
 
-### Milestone 3: Dataset Read
-- [x] Data layout message parser (type 0x0008)
-  - Compact layout: extract inline data
-  - Contiguous layout: extract data address + size
-  - Chunked layout: extract chunk dimensions + B-tree address
-  - Version 4 chunk index metadata: parse single chunk, implicit, fixed array, extensible array, and B-tree v2 descriptors
-- [x] Datatype message parser (type 0x0003)
-  - Class extraction from 4-byte header
-  - Fixed-point (class 0) → canonical Integer
-  - Floating-point (class 1) → canonical Float
-  - String (class 3) → canonical FixedString/VariableString
-  - Opaque (class 5) → canonical Opaque
-  - Compound (class 6) → canonical Compound
-  - Reference (class 7) → canonical Reference
-  - Enum (class 8) → canonical Enum
-  - Variable-length (class 9) → canonical VarLen
-  - Array (class 10) → canonical Array
-  - Bitfield and time classes
-- [x] Filter pipeline message parser (type 0x000B)
-  - Number of filters, per-filter: ID, name, flags, parameters
-  - Map filter IDs to codec registry
-- [x] Contiguous read: seek to data address, read element_size × num_elements
-- [x] Chunked read primitives
-  - Read chunk bytes by location
-  - Apply reverse filter pipeline
-  - Support undefined chunk address with fill-value tiling
-- [x] Hyperslab selection decomposition
-- [x] Point selection decomposition
-- [x] Fill value message parsing
-- [x] End-to-end chunk index lookup for chunked dataset reads written with real v3 chunk index structures
-- [ ] B-tree v2 chunk index record resolution for v4 chunked layouts
+### Milestone 3: Array-Level Chunk I/O
+- [x] Fill-value expansion for typed element widths
+- [x] Full-array write path over chunk grid
+- [x] Full-array read path over chunk grid
+- [x] Multi-chunk assembly for full-array reads
+- [x] Uninitialized chunk handling via fill-value materialization
+- [x] Partial selection read semantics across chunk boundaries
+- [ ] Partial selection write semantics beyond current full-array coverage
 
-### Milestone 4: Write Path
-- [x] Superblock v2 writer (48 bytes + checksum)
-- [x] Object header v2 writer
-- [x] Datatype/dataspace/layout message serialization
-- [x] Contiguous dataset writer
-- [x] Chunked dataset writer with materialized chunk index (v3 layout, v1 raw-data chunk B-tree leaf path)
-- [x] Group writer (link messages)
-- [x] Attribute writer
-- [x] File-level create → write → close cycle
-- [x] Round-trip tests for contiguous datasets and attributes
-- [x] Round-trip test for chunked dataset values, not metadata only
+### Milestone 4: Verification
+- [x] Library unit tests for chunk key generation
+- [x] Library unit tests for chunk compression/decompression roundtrip
+- [x] Library unit tests for full-array write/read roundtrip
+- [x] Library unit tests for chunk-grid bounds rejection in `read_chunk` and `write_chunk`
+- [x] Library unit tests for contiguous partial selection reads across chunk boundaries
+- [x] Library unit tests for strided partial selection reads across chunk boundaries
+- [x] Library unit tests for fill-value materialization in partial selection reads over uninitialized chunks
+- [x] Verified `cargo test -p consus-zarr --lib`
+- [ ] Integration tests against Python zarr-produced fixtures
+- [ ] Zarr v3 sharding interop coverage through high-level array API
 
-### Milestone 5: Validation, Performance, and Documentation
-- [x] Property tests present in workspace test strategy
-- [x] Workspace property integration tests restored to current stable APIs (`consus-core`, `consus-io`, `consus-compression`, Arrow, Parquet)
-- [ ] HDF5-specific property tests covering round-trip invariants for all supported datatype classes
-- [ ] Reference file compatibility tests against broader canonical HDF5 fixture set
-- [ ] Criterion benchmarks: contiguous read throughput
-- [ ] Criterion benchmarks: chunked read throughput
-- [ ] Criterion benchmarks: compressed read throughput
-- [ ] Memory profile: peak allocation during chunked reads
-- [x] Performance optimization pass for multi-chunk read parallelism and allocation reduction
-- [ ] Artifact synchronization: `README.md`, `backlog.md`, and `gap_audit.md` aligned to verified implementation state
+### Milestone 5: Artifact Synchronization
+- [x] `backlog.md` updated to reflect verified P2.1 chunk I/O status
+- [ ] `gap_audit.md` updated for Phase 2 Zarr scope
+- [ ] `README.md` phase wording synchronized to verified Zarr implementation state

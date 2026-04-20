@@ -1,71 +1,5 @@
 # Consus — Backlog
 
-## Phase 1: HDF5 MVP
-
-## Phase 1: HDF5 MVP
-
-### P1.1 — HDF5 Read Path
-- [x] Object header v1 parser
-- [x] Object header v2 parser
-- [x] Datatype message parser (all 11 classes)
-- [x] Dataspace message parser
-- [x] Data layout message parser (v3 and v4 variants currently implemented)
-- [x] Filter pipeline message parser
-- [x] Symbol table message parser (v1 groups)
-- [x] Link message parser (v2 groups)
-- [x] B-tree v1 traversal (group navigation)
-- [x] B-tree v2 traversal (fractal heap integration)
-- [x] Local heap reader
-- [x] Global heap reader
-- [x] Contiguous dataset read
-- [x] Chunked dataset read (single chunk)
-- [x] Chunked dataset read (multi-chunk with filter pipeline)
-- [x] Hyperslab selection read
-- [x] Point selection read
-- [x] Compound datatype read
-- [x] Variable-length datatype read
-- [x] Attribute read
-- [x] Dense group link enumeration
-- [x] Dense attribute enumeration
-- [x] Soft link resolution
-- [x] Superblock v0/v1/v2/v3 parsing
-- [x] File open with validation
-- [x] Chunk index v4 B-tree v2 lookup
-- [x] External link traversal beyond typed error reporting
-- [x] Reference-file coverage against canonical HDF Group fixtures
-
-## Phase 1: HDF5 MVP
-
-### P1.1 — HDF5 Read Path
-- [x] Object header v1 parser
-- [x] Object header v2 parser
-- [x] Datatype message parser (all 11 classes)
-- [x] Dataspace message parser
-- [x] Data layout message parser (v3 and v4 variants currently implemented)
-- [x] Filter pipeline message parser
-- [x] Symbol table message parser (v1 groups)
-- [x] Link message parser (v2 groups)
-- [x] B-tree v1 traversal (group navigation)
-- [x] B-tree v2 traversal (fractal heap integration)
-- [x] Local heap reader
-- [x] Global heap reader
-- [x] Contiguous dataset read
-- [x] Chunked dataset read (single chunk)
-- [x] Chunked dataset read (multi-chunk with filter pipeline)
-- [x] Hyperslab selection read
-- [x] Point selection read
-- [x] Compound datatype read
-- [x] Variable-length datatype read
-- [x] Attribute read
-- [x] Dense group link enumeration
-- [x] Dense attribute enumeration
-- [x] Soft link resolution
-- [x] Superblock v0/v1/v2/v3 parsing
-- [x] File open with validation
-- [x] Chunk index v4 B-tree v2 lookup
-- [x] External link traversal beyond typed error reporting
-- [x] Reference-file coverage against canonical HDF Group fixtures
-
 ## Phase 1: HDF5 MVP (Read + Write)
 
 ### P1.1 — HDF5 Read Path
@@ -94,8 +28,8 @@
 - [x] Soft link resolution
 - [x] Superblock v0/v1/v2/v3 parsing
 - [x] File open with validation
-- [ ] Chunk index v4 B-tree v2 lookup
-- [ ] External link traversal beyond typed error reporting
+- [x] Chunk index v4 B-tree v2 lookup
+- [x] External link traversal beyond typed error reporting
 - [ ] Reference-file coverage against canonical HDF Group fixtures
 
 ### P1.2 — HDF5 Write Path
@@ -113,7 +47,8 @@
 - [x] Filter pipeline message writer
 - [x] Chunk index writer for chunked datasets (v1 raw-data chunk B-tree leaf in current scope)
 - [x] Chunked dataset write with persisted chunk index and end-to-end value roundtrip in current scope
-- [ ] Chunked dataset compression roundtrip coverage
+- [x] V4 layout message emission with B-tree v2 chunk index (layout_version=4)
+- [x] Chunked dataset compression roundtrip coverage (deflate, fletcher32)
 - [ ] Local heap writer for v1 group emission
 
 ### P1.3 — HDF5 Verification
@@ -130,14 +65,17 @@
 - [ ] Read tests against `t_group.h5`
 - [x] Read tests against `t_chunk.h5`
 - [x] Read tests against `t_filter.h5`
+- [x] V4 B-tree v2 chunk index roundtrip tests (2D, 3D, single-chunk)
+- [x] Compressed chunked dataset roundtrip tests (deflate, fletcher32, deflate+v4)
 - [ ] Comparison with `h5dump` output for verified fixtures
 
 ### P1.4 — Performance & Memory
 - [x] Fill-value-aware undefined chunk reads
-- [x] Parallel chunk I/O via Rayon
-- [ ] Criterion benchmarks: contiguous read throughput
-- [ ] Criterion benchmarks: chunked read throughput
-- [ ] Criterion benchmarks: compressed read (deflate, zstd, lz4)
+- [x] Parallel chunk I/O via Rayon (serial + parallel paths both verified)
+- [x] Criterion benchmarks: contiguous read throughput (1 MB dataset)
+- [x] Criterion benchmarks: chunked read throughput (v3 + v4 B-tree v2)
+- [x] Criterion benchmarks: compressed read (deflate); zstd/lz4 deferred to codec feature expansion
+- [ ] Criterion benchmarks: zstd and lz4 compressed read (blocked on HDF5 test-time feature enablement)
 - [x] Allocation reduction in object-header and writer message assembly
 - [ ] Comparison with HDF5 C library via `hdf5-rs`
 - [ ] Comparison with Python `h5py`
@@ -145,15 +83,17 @@
 ## Phase 2: Zarr + netCDF-4
 
 ### P2.1 — Zarr v2
-- [ ] `.zarray` JSON metadata parser
-- [ ] `.zattrs` JSON metadata parser
-- [ ] `.zgroup` JSON metadata parser
-- [ ] Directory store implementation
-- [ ] Chunk read (single chunk)
-- [ ] Chunk read (multi-chunk)
-- [ ] Compression pipeline (Zarr codec chain)
-- [ ] Full array read with selection
-- [ ] Zarr v2 write path
+- [x] `.zarray` JSON metadata parser
+- [x] `.zattrs` JSON metadata parser
+- [x] `.zgroup` JSON metadata parser
+- [x] Directory store implementation
+- [x] Chunk read (single chunk)
+- [x] Chunk read (multi-chunk)
+- [x] Compression pipeline (Zarr codec chain)
+- [x] Full array read with selection
+- [x] Partial selection read semantics across chunk boundaries
+- [x] Zarr v2 write path
+- [x] Chunk-grid bounds validation for `read_chunk` and `write_chunk`
 - [ ] Round-trip tests against Python zarr library output
 
 ### P2.2 — Zarr v3

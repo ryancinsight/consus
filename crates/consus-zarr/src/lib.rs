@@ -143,6 +143,11 @@ pub use metadata::ZarrJson;
 /// Chunk indexing, decomposition, and key encoding.
 pub mod chunk;
 
+pub use chunk::{
+    ChunkError, ChunkKeySeparator, Selection, SelectionStep, chunk_key, expand_fill_value,
+    read_array, read_chunk, write_array, write_chunk,
+};
+
 /// Compression codec pipeline execution.
 #[cfg(feature = "alloc")]
 pub mod codec;

@@ -20,9 +20,9 @@ Consus replaces C-dependent bindings (hdf5-rs, netCDF-sys, etc.) with a native R
 
 | Format | Status | Spec Compliance |
 |--------|--------|-----------------|
-| HDF5 | Phase 1 (in progress) | Read path substantially implemented; contiguous write path implemented; chunked write path not yet complete |
+| HDF5 | Phase 1 (in progress) | Read path implemented (v1/v2 groups, all datatype classes, multi-chunk with filter pipeline); Write path implemented (contiguous + chunked with v3 layout); async I/O path implemented |
 | FITS | Phase 2 – Complete | Full read/write for primary images, IMAGE extensions, ASCII tables, and binary tables |
-| Zarr v2/v3 | Phase 2 (planned) | Full read/write |
+| Zarr v2/v3 | Phase 2 (in progress) | Metadata parsing, codec pipeline, chunk read/write, full-array read/write, and verified partial read support |
 | netCDF-4 | Phase 2 (planned) | Classic + Enhanced |
 | Apache Parquet | Phase 3 (planned) | Columnar interop |
 
@@ -64,12 +64,9 @@ Current repository verification indicates:
 
 - HDF5 read support covers superblocks, object headers, datatype parsing, dataspace parsing, link traversal, attribute parsing, contiguous dataset reads, chunk metadata parsing, dense link and dense attribute enumeration, and soft-link path resolution.
 - HDF5 write support currently covers superblock v2 writing, object header v2 writing, datatype/dataspace/layout encoding, contiguous dataset data blocks, hard-link encoding, soft-link encoding, and attribute encoding.
-- Chunked dataset metadata can be emitted in object headers, but the HDF5 chunked write path is not complete because the chunk index address is still a placeholder and the high-level builder writes dataset payloads through the contiguous data path.
-- Compression and chunk declarations in examples should therefore not be interpreted as verified end-to-end HDF5 chunked-write capability yet.
+- Chunked dataset write is implemented: the v3 data layout message, v1 raw-data chunk B-tree leaf index, resolved chunk index address, and filter pipeline metadata are all serialized correctly. End-to-end value roundtrip is verified by `chunked_dataset_value_roundtrip`.
+- Compressed chunked writes are tracked under the filter pipeline; full compression roundtrip coverage is in progress.
 
-## HDF5 Write-Path Limitation
-
-At present, the verified HDF5 builder path is the contiguous dataset path. If you need chunked or compressed HDF5 dataset creation, treat that capability as in progress until chunk index serialization and end-to-end chunked round-trip validation are completed.
 
 ## Target Users
 
