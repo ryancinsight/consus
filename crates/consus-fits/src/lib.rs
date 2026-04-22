@@ -87,4 +87,4 @@ pub use header::{
 };
 pub use image::FitsImageDescriptor;
 pub use table::{FitsAsciiTableDescriptor, FitsBinaryTableDescriptor, FitsTableColumn};
-pub use types::{Bitpix, HduType};
+pub use types::{BinaryFormatCode, Bitpix, HduType, tform_to_datatype};

@@ -22,8 +22,8 @@ Consus replaces C-dependent bindings (hdf5-rs, netCDF-sys, etc.) with a native R
 |--------|--------|-----------------|
 | HDF5 | Phase 1 (in progress) | Read path implemented (v1/v2 groups, all datatype classes, multi-chunk with filter pipeline); Write path implemented (contiguous + chunked with v3 layout); async I/O path implemented |
 | FITS | Phase 2 – Complete | Full read/write for primary images, IMAGE extensions, ASCII tables, and binary tables |
-| Zarr v2/v3 | Phase 2 (in progress) | Metadata parsing, codec pipeline, chunk read/write, full-array read/write, verified partial read/write selection support, and Python fixture-backed interoperability coverage for generated v2/v3 stores; resolved Python v2 chunk-key compatibility, Python v2 partial-write preservation, and Python v2 gzip full-array interoperability are now verified, while the remaining gap is one Python-generated v3 default codec-chain variant that still decodes one value incorrectly in the uncompressed v3 fixture path |
-| netCDF-4 | Phase 2 (planned) | Classic + Enhanced |
+| Zarr v2/v3 | Phase 2 (in progress) | Metadata parsing, codec pipeline, chunk read/write, full-array read/write, partial selection read/write, Python fixture-backed interoperability for v2 and v3 stores; boundary-chunk stride correction and sharding codec verified; v3 metadata write path preserves dimension names and group attributes |
+| netCDF-4 | Phase 2 (in progress) | HDF5-backed semantic extraction implemented for dimension scales, variables, groups, decoded attributes, unlimited-dimension propagation, ancestor-scope dimension resolution for nested groups, DIMENSION_LIST-based variable-to-dimension binding, and full variable byte extraction for contiguous and chunked datasets; classic/enhanced read and write paths remain in progress |
 | Apache Parquet | Phase 3 (planned) | Columnar interop |
 
 ## Architecture
@@ -35,7 +35,9 @@ consus (facade)
 ├── consus-compression # Codec registry (zlib, zstd, lz4, etc.)
 ├── consus-hdf5        # HDF5 format implementation
 ├── consus-zarr        # Zarr v2/v3 implementation
-├── consus-netcdf      # netCDF-4 implementation
+├── consus-netcdf      # netCDF-4 semantic model + HDF5 mapping layer
+├── consus-arrow       # Arrow semantic model and bridge planning layer
+├── consus-fits        # FITS format implementation
 └── consus-parquet     # Parquet interop layer
 ```
 

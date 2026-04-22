@@ -630,3 +630,120 @@ fn model_variable_fill_value() {
     let restored = f64::from_le_bytes(stored[..8].try_into().unwrap());
     assert_eq!(restored, -9999.0f64);
 }
+
+/// Child groups inherit dimensions declared in ancestor scopes.
+///
+/// ## Invariant
+///
+/// A variable declared in a nested group may reference a dimension declared
+/// in any ancestor group and still validate successfully.
+#[test]
+fn inherited_dimension_scope_validation() {
+    let mut root = NetcdfGroup::new(String::from("/"));
+    root.dimensions
+        .push(NetcdfDimension::new(String::from("time"), 24));
+
+    let mut observations = NetcdfGroup::new(String::from("observations"));
+    observations.variables.push(
+        NetcdfVariable::new(
+            String::from("temperature"),
+            Datatype::Float {
+                bits: core::num::NonZeroUsize::new(32).unwrap(),
+                byte_order: consus_core::ByteOrder::LittleEndian,
+            },
+            vec![String::from("time")],
+        )
+        .with_shape(Shape::fixed(&[24])),
+    );
+
+    root.groups.push(observations);
+
+    let model = NetcdfModel { root };
+    model.validate().unwrap();
+
+    let child = model
+        .root
+        .group("observations")
+        .expect("child group must exist");
+    let inherited = child
+        .resolve_dimension("time", &[&model.root])
+        .expect("child must resolve inherited dimension");
+    assert_eq!(inherited.name, "time");
+    assert_eq!(inherited.size, 24);
+}
+
+/// Child groups may shadow ancestor dimensions with a local declaration.
+///
+/// ## Invariant
+///
+/// Nearest-scope lookup wins: a child-local dimension with the same name as an
+/// ancestor dimension must be resolved in preference to the ancestor.
+#[test]
+fn shadowed_dimension_scope_resolution() {
+    let mut root = NetcdfGroup::new(String::from("/"));
+    root.dimensions
+        .push(NetcdfDimension::new(String::from("time"), 24));
+
+    let mut observations = NetcdfGroup::new(String::from("observations"));
+    observations
+        .dimensions
+        .push(NetcdfDimension::new(String::from("time"), 12));
+    observations.variables.push(
+        NetcdfVariable::new(
+            String::from("temperature"),
+            Datatype::Float {
+                bits: core::num::NonZeroUsize::new(32).unwrap(),
+                byte_order: consus_core::ByteOrder::LittleEndian,
+            },
+            vec![String::from("time")],
+        )
+        .with_shape(Shape::fixed(&[12])),
+    );
+
+    root.groups.push(observations);
+
+    let model = NetcdfModel { root };
+    model.validate().unwrap();
+
+    let child = model
+        .root
+        .group("observations")
+        .expect("child group must exist");
+    let resolved = child
+        .resolve_dimension("time", &[&model.root])
+        .expect("child must resolve nearest-scope dimension");
+    assert_eq!(resolved.name, "time");
+    assert_eq!(resolved.size, 12);
+}
+
+/// Validation rejects variables whose dimensions are absent from the full scope chain.
+///
+/// ## Invariant
+///
+/// A nested variable referencing a dimension that is declared in neither its
+/// own group nor any ancestor group must fail validation.
+#[test]
+fn missing_inherited_dimension_is_rejected() {
+    let mut root = NetcdfGroup::new(String::from("/"));
+    let mut observations = NetcdfGroup::new(String::from("observations"));
+
+    observations.variables.push(
+        NetcdfVariable::new(
+            String::from("temperature"),
+            Datatype::Float {
+                bits: core::num::NonZeroUsize::new(32).unwrap(),
+                byte_order: consus_core::ByteOrder::LittleEndian,
+            },
+            vec![String::from("time")],
+        )
+        .with_shape(Shape::fixed(&[24])),
+    );
+
+    root.groups.push(observations);
+
+    let model = NetcdfModel { root };
+    assert!(
+        model.validate().is_err(),
+        "validation must reject variables whose dimensions are absent from ancestor and local scopes"
+    );
+}

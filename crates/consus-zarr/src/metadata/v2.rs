@@ -306,6 +306,7 @@ impl ArrayMetadataV2 {
                 },
                 separator: self.dimension_separator.chars().next().unwrap_or('.'),
             },
+            dimension_names: None,
         }
     }
 }

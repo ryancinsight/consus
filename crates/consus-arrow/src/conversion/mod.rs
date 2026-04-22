@@ -182,26 +182,66 @@ pub fn arrow_datatype_to_core(datatype: &ArrowDataType) -> Datatype {
 
         #[cfg(feature = "alloc")]
         ArrowDataType::Map(map_type) => {
-            let value_size = arrow_datatype_to_core(&map_type.value_type)
-                .element_size()
-                .unwrap_or(0);
+            let key_dt = arrow_datatype_to_core(&map_type.key_type);
+            let val_dt = arrow_datatype_to_core(&map_type.value_type);
+            let key_size = key_dt.element_size().unwrap_or(0);
+            let val_size = val_dt.element_size().unwrap_or(0);
             Datatype::Compound {
-                fields: Vec::new(),
-                size: value_size,
+                fields: vec![
+                    consus_core::CompoundField {
+                        name: String::from("key"),
+                        datatype: key_dt,
+                        offset: 0,
+                    },
+                    consus_core::CompoundField {
+                        name: String::from("value"),
+                        datatype: val_dt,
+                        offset: key_size,
+                    },
+                ],
+                size: key_size + val_size,
             }
         }
 
         #[cfg(feature = "alloc")]
-        ArrowDataType::Struct(_) => Datatype::Compound {
-            fields: Vec::new(),
-            size: 0,
-        },
+        ArrowDataType::Struct(struct_type) => {
+            let mut offset = 0usize;
+            let fields: Vec<consus_core::CompoundField> = struct_type
+                .fields
+                .iter()
+                .map(|f| {
+                    let dt = arrow_datatype_to_core(&core_datatype_to_arrow_hint(&f.datatype));
+                    let field_size = dt.element_size().unwrap_or(0);
+                    let field_offset = offset;
+                    offset += field_size;
+                    consus_core::CompoundField {
+                        name: f.name.clone(),
+                        datatype: dt,
+                        offset: field_offset,
+                    }
+                })
+                .collect();
+            let size = offset;
+            Datatype::Compound { fields, size }
+        }
 
         #[cfg(feature = "alloc")]
-        ArrowDataType::Union(_) => Datatype::Compound {
-            fields: Vec::new(),
-            size: 0,
-        },
+        ArrowDataType::Union(union_type) => {
+            let fields: Vec<consus_core::CompoundField> = union_type
+                .fields
+                .iter()
+                .enumerate()
+                .map(|(i, f)| {
+                    let dt = arrow_datatype_to_core(&core_datatype_to_arrow_hint(&f.datatype));
+                    consus_core::CompoundField {
+                        name: f.name.clone(),
+                        datatype: dt,
+                        offset: i,
+                    }
+                })
+                .collect();
+            Datatype::Compound { fields, size: 0 }
+        }
 
         #[cfg(feature = "alloc")]
         ArrowDataType::Dictionary(dict_type) => arrow_datatype_to_core(&dict_type.value_type),
@@ -265,13 +305,40 @@ pub fn core_datatype_to_arrow_hint(datatype: &Datatype) -> ArrowDataType {
         Datatype::Reference(_) => ArrowDataType::Binary,
 
         #[cfg(feature = "alloc")]
-        Datatype::Compound { .. } => {
-            ArrowDataType::Struct(crate::datatype::StructType { fields: Vec::new() })
+        Datatype::Compound { fields, .. } => {
+            use consus_core::CompoundField;
+            let arrow_fields: Vec<ArrowField> = fields
+                .iter()
+                .enumerate()
+                .map(
+                    |(
+                        i,
+                        CompoundField {
+                            name,
+                            datatype,
+                            offset,
+                        },
+                    )| {
+                        let kind = crate::field::kind_from_datatype(datatype);
+                        ArrowField {
+                            id: ArrowFieldId::new(*offset as u32),
+                            name: name.clone(),
+                            kind,
+                            semantics: ArrowFieldSemantics::required_scalar(),
+                            datatype: datatype.clone(),
+                            children: Vec::new(),
+                        }
+                    },
+                )
+                .collect();
+            ArrowDataType::Struct(crate::datatype::StructType {
+                fields: arrow_fields,
+            })
         }
 
         #[cfg(feature = "alloc")]
-        Datatype::Array { .. } => ArrowDataType::List(crate::datatype::ListType {
-            element_type: Box::new(ArrowDataType::Boolean),
+        Datatype::Array { base, .. } => ArrowDataType::List(crate::datatype::ListType {
+            element_type: Box::new(core_datatype_to_arrow_hint(base)),
             nullable: true,
         }),
 
@@ -291,10 +358,34 @@ pub fn core_datatype_to_arrow_hint(datatype: &Datatype) -> ArrowDataType {
             nullable: true,
         }),
 
-        Datatype::Complex { .. } => ArrowDataType::Struct(crate::datatype::StructType {
-            #[cfg(feature = "alloc")]
-            fields: Vec::new(),
-        }),
+        Datatype::Complex { component_bits, .. } => {
+            let bit_width = component_bits.get() as u8;
+            let real_field = ArrowField {
+                id: ArrowFieldId::new(0),
+                name: String::from("real"),
+                kind: ArrowFieldKind::Float,
+                semantics: ArrowFieldSemantics::required_scalar(),
+                datatype: Datatype::Float {
+                    bits: *component_bits,
+                    byte_order: ByteOrder::LittleEndian,
+                },
+                children: Vec::new(),
+            };
+            let imag_field = ArrowField {
+                id: ArrowFieldId::new(1),
+                name: String::from("imaginary"),
+                kind: ArrowFieldKind::Float,
+                semantics: ArrowFieldSemantics::required_scalar(),
+                datatype: Datatype::Float {
+                    bits: *component_bits,
+                    byte_order: ByteOrder::LittleEndian,
+                },
+                children: Vec::new(),
+            };
+            ArrowDataType::Struct(crate::datatype::StructType {
+                fields: vec![real_field, imag_field],
+            })
+        }
 
         #[cfg(not(feature = "alloc"))]
         _ => ArrowDataType::Binary,
@@ -558,9 +649,205 @@ mod tests {
         .nullable(true)
         .id(ArrowFieldId::new(1))
         .build();
-
         assert_eq!(field.name, "temperature");
         assert!(field.is_nullable());
         assert_eq!(field.id.get(), 1);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn compound_to_struct_preserves_fields() {
+        use consus_core::CompoundField;
+        let fields = vec![
+            CompoundField {
+                name: String::from("x"),
+                datatype: Datatype::Integer {
+                    bits: core::num::NonZeroUsize::new(32).unwrap(),
+                    byte_order: ByteOrder::LittleEndian,
+                    signed: true,
+                },
+                offset: 0,
+            },
+            CompoundField {
+                name: String::from("y"),
+                datatype: Datatype::Float {
+                    bits: core::num::NonZeroUsize::new(64).unwrap(),
+                    byte_order: ByteOrder::LittleEndian,
+                },
+                offset: 4,
+            },
+            CompoundField {
+                name: String::from("label"),
+                datatype: Datatype::VariableString {
+                    encoding: consus_core::StringEncoding::Utf8,
+                },
+                offset: 12,
+            },
+        ];
+        let core_type = Datatype::Compound { fields, size: 24 };
+        let arrow_type = core_datatype_to_arrow_hint(&core_type);
+        match arrow_type {
+            ArrowDataType::Struct(struct_type) => {
+                assert_eq!(struct_type.fields.len(), 3);
+                assert_eq!(struct_type.fields[0].name, "x");
+                assert_eq!(struct_type.fields[1].name, "y");
+                assert_eq!(struct_type.fields[2].name, "label");
+            }
+            other => panic!("expected Struct, got {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn array_to_list_preserves_element_type() {
+        let core_type = Datatype::Array {
+            base: Box::new(Datatype::Float {
+                bits: core::num::NonZeroUsize::new(64).unwrap(),
+                byte_order: ByteOrder::LittleEndian,
+            }),
+            dims: vec![3],
+        };
+        let arrow_type = core_datatype_to_arrow_hint(&core_type);
+        match arrow_type {
+            ArrowDataType::List(list_type) => {
+                assert_eq!(
+                    *list_type.element_type,
+                    ArrowDataType::Float { bit_width: 64 }
+                );
+            }
+            other => panic!("expected List, got {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn complex_to_struct_has_real_and_imaginary() {
+        let core_type = Datatype::Complex {
+            component_bits: core::num::NonZeroUsize::new(64).unwrap(),
+            byte_order: ByteOrder::LittleEndian,
+        };
+        let arrow_type = core_datatype_to_arrow_hint(&core_type);
+        match arrow_type {
+            ArrowDataType::Struct(struct_type) => {
+                assert_eq!(struct_type.fields.len(), 2);
+                assert_eq!(struct_type.fields[0].name, "real");
+                assert_eq!(struct_type.fields[1].name, "imaginary");
+                assert_eq!(
+                    struct_type.fields[0].datatype,
+                    Datatype::Float {
+                        bits: core::num::NonZeroUsize::new(64).unwrap(),
+                        byte_order: ByteOrder::LittleEndian,
+                    }
+                );
+                assert_eq!(
+                    struct_type.fields[1].datatype,
+                    Datatype::Float {
+                        bits: core::num::NonZeroUsize::new(64).unwrap(),
+                        byte_order: ByteOrder::LittleEndian,
+                    }
+                );
+            }
+            other => panic!("expected Struct, got {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn struct_to_compound_preserves_fields() {
+        let struct_type = crate::datatype::StructType {
+            fields: vec![
+                ArrowField::new(
+                    "id",
+                    Datatype::Integer {
+                        bits: core::num::NonZeroUsize::new(32).unwrap(),
+                        byte_order: ByteOrder::LittleEndian,
+                        signed: true,
+                    },
+                    false,
+                ),
+                ArrowField::new(
+                    "value",
+                    Datatype::Float {
+                        bits: core::num::NonZeroUsize::new(64).unwrap(),
+                        byte_order: ByteOrder::LittleEndian,
+                    },
+                    false,
+                ),
+            ],
+        };
+        let core_type = arrow_datatype_to_core(&ArrowDataType::Struct(struct_type));
+        match core_type {
+            Datatype::Compound { fields, size } => {
+                assert_eq!(fields.len(), 2);
+                assert_eq!(fields[0].name, "id");
+                assert_eq!(fields[1].name, "value");
+                assert!(size > 0);
+            }
+            other => panic!("expected Compound, got {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn map_to_compound_preserves_key_value() {
+        let map_type = crate::datatype::MapType::new(
+            ArrowDataType::Utf8,
+            ArrowDataType::Float { bit_width: 64 },
+            true,
+        );
+        let core_type = arrow_datatype_to_core(&ArrowDataType::Map(map_type));
+        match core_type {
+            Datatype::Compound { fields, .. } => {
+                assert_eq!(fields.len(), 2);
+                assert_eq!(fields[0].name, "key");
+                assert_eq!(fields[1].name, "value");
+                match &fields[1].datatype {
+                    Datatype::Float { bits, .. } => {
+                        assert_eq!(bits.get(), 64);
+                    }
+                    other => panic!("expected Float for value, got {other:?}"),
+                }
+            }
+            other => panic!("expected Compound, got {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn roundtrip_compound_struct() {
+        use consus_core::CompoundField;
+        let original = Datatype::Compound {
+            fields: vec![
+                CompoundField {
+                    name: String::from("a"),
+                    datatype: Datatype::Integer {
+                        bits: core::num::NonZeroUsize::new(32).unwrap(),
+                        byte_order: ByteOrder::LittleEndian,
+                        signed: true,
+                    },
+                    offset: 0,
+                },
+                CompoundField {
+                    name: String::from("b"),
+                    datatype: Datatype::Float {
+                        bits: core::num::NonZeroUsize::new(64).unwrap(),
+                        byte_order: ByteOrder::LittleEndian,
+                    },
+                    offset: 4,
+                },
+            ],
+            size: 12,
+        };
+        let arrow_type = core_datatype_to_arrow_hint(&original);
+        let roundtripped = arrow_datatype_to_core(&arrow_type);
+        match roundtripped {
+            Datatype::Compound { fields, size } => {
+                assert_eq!(fields.len(), 2);
+                assert_eq!(fields[0].name, "a");
+                assert_eq!(fields[1].name, "b");
+                assert!(size > 0);
+            }
+            other => panic!("expected Compound, got {other:?}"),
+        }
     }
 }

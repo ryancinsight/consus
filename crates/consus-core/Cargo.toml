@@ -20,3 +20,4 @@ zerocopy = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 proptest = { workspace = true }
+smallvec = { workspace = true }

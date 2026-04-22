@@ -139,6 +139,8 @@ pub use metadata::{ArrayMetadataV2, GroupMetadataV2};
 
 #[cfg(feature = "alloc")]
 pub use metadata::ZarrJson;
+#[cfg(feature = "std")]
+pub use metadata::{WriteZarrJsonError, write_group_json, write_zarr_json};
 
 /// Chunk indexing, decomposition, and key encoding.
 pub mod chunk;

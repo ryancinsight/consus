@@ -34,10 +34,17 @@
 //! `consus-core`. Header parsing and keyword interpretation must depend on this
 //! module rather than duplicating `BITPIX` or HDU classification logic.
 
+pub mod format;
+
 use core::fmt;
 use core::num::NonZeroUsize;
 
 use consus_core::{ByteOrder, Datatype, Error, Result};
+
+pub use format::{
+    BinaryFormatCode, binary_format_element_size, binary_format_to_datatype, parse_binary_format,
+    tform_to_datatype,
+};
 
 /// FITS image storage encoding derived from the `BITPIX` header keyword.
 ///

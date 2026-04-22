@@ -111,6 +111,7 @@ impl ConsolidatedMetadataV2 {
                                 order: 'C',
                                 codecs: vec![],
                                 chunk_key_encoding: super::ChunkKeyEncoding::default(),
+                                dimension_names: None,
                             });
 
                     NodeMetadata::Array(canonical)

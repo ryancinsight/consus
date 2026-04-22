@@ -66,6 +66,8 @@ pub use v2::{
 };
 #[cfg(feature = "alloc")]
 pub use v3::ZarrJson;
+#[cfg(feature = "std")]
+pub use v3::{WriteZarrJsonError, write_group_json, write_zarr_json};
 
 // ---------------------------------------------------------------------------
 // Zarr format version
@@ -145,6 +147,8 @@ pub struct ArrayMetadata {
     pub codecs: alloc::vec::Vec<Codec>,
     /// For v3 arrays: chunk key encoding configuration.
     pub chunk_key_encoding: ChunkKeyEncoding,
+    /// Optional dimension names for Zarr v3 arrays.
+    pub dimension_names: Option<alloc::vec::Vec<alloc::string::String>>,
 }
 
 #[cfg(feature = "alloc")]
@@ -703,6 +707,7 @@ mod tests {
             order: 'C',
             codecs: alloc::vec![],
             chunk_key_encoding: ChunkKeyEncoding::default(),
+            dimension_names: None,
         };
         assert_eq!(meta.chunk_grid(), alloc::vec![10, 10, 10]);
         assert_eq!(meta.total_chunks(), 1000);

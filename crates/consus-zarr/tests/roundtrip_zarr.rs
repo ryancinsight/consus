@@ -11,7 +11,8 @@
 
 use consus_zarr::Codec;
 use consus_zarr::chunk::{
-    ChunkKeySeparator, Selection, SelectionStep, chunk_key, read_array, write_array_selection,
+    ChunkKeySeparator, Selection, SelectionStep, chunk_key, read_array, write_array,
+    write_array_selection,
 };
 use consus_zarr::codec::{CodecPipeline, default_registry};
 use consus_zarr::metadata::{ArrayMetadataV2, GroupMetadataV2, ZarrJson};
@@ -948,16 +949,63 @@ fn python_fixture_v2_gzip_f8_full_and_partial_reads() {
 }
 
 #[test]
-fn python_fixture_v3_uncompressed_i4_exposes_remaining_codec_chain_mismatch() {
+fn python_fixture_v3_uncompressed_i4_full_and_partial_reads() {
     let store =
         FsStore::open(fixture_root().join("v3_uncompressed_i4")).expect("open must succeed");
     let meta = load_v3_fixture_metadata(&store);
 
+    assert_eq!(meta.shape, vec![3, 5]);
+    assert_eq!(meta.chunks, vec![2, 2]);
+    assert_eq!(meta.dtype, "int32");
+
     let full = read_array(&store, ".", &Selection::full(2), &meta).expect("full read must succeed");
     assert_eq!(
         bytes_to_i32_vec(&full),
-        vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 10, 11, 12, 13, 14]
+        vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
     );
+
+    let contiguous = read_array(
+        &store,
+        ".",
+        &Selection::from_steps(vec![
+            SelectionStep {
+                start: 0,
+                count: 3,
+                stride: 1,
+            },
+            SelectionStep {
+                start: 1,
+                count: 4,
+                stride: 1,
+            },
+        ]),
+        &meta,
+    )
+    .expect("contiguous must succeed");
+    assert_eq!(
+        bytes_to_i32_vec(&contiguous),
+        vec![1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14]
+    );
+
+    let strided = read_array(
+        &store,
+        ".",
+        &Selection::from_steps(vec![
+            SelectionStep {
+                start: 0,
+                count: 2,
+                stride: 2,
+            },
+            SelectionStep {
+                start: 0,
+                count: 3,
+                stride: 2,
+            },
+        ]),
+        &meta,
+    )
+    .expect("strided must succeed");
+    assert_eq!(bytes_to_i32_vec(&strided), vec![0, 2, 4, 10, 12, 14]);
 }
 
 #[test]
@@ -1229,4 +1277,149 @@ fn metadata_exact_preservation() {
     );
     assert_eq!(canon1.codecs.len(), canon2.codecs.len());
     assert_eq!(canon1.codecs[0].name, canon2.codecs[0].name);
+}
+
+#[test]
+fn sharded_array_single_shard_roundtrip() {
+    use consus_zarr::metadata::{ArrayMetadata, ChunkKeyEncoding, FillValue, ZarrVersion};
+    let sharding_codec = consus_zarr::Codec {
+        name: String::from("sharding_indexed"),
+        configuration: vec![
+            (String::from("chunk_shape"), String::from("[2,2]")),
+            (
+                String::from("codecs"),
+                String::from(r#"[{"name":"bytes","configuration":{"endian":"little"}}]"#),
+            ),
+            (String::from("index_codecs"), String::from("[]")),
+        ],
+    };
+    let meta = ArrayMetadata {
+        version: ZarrVersion::V3,
+        shape: vec![4, 4],
+        chunks: vec![4, 4],
+        dtype: String::from("int32"),
+        fill_value: FillValue::Int(0),
+        order: 'C',
+        codecs: vec![sharding_codec],
+        chunk_key_encoding: ChunkKeyEncoding {
+            name: String::from("default"),
+            separator: '/',
+        },
+        dimension_names: None,
+    };
+    let data: Vec<u8> = (0i32..16).flat_map(|v| v.to_le_bytes()).collect();
+    let mut store = InMemoryStore::new();
+    write_array(&mut store, ".", &meta, &data).expect("sharded write must succeed");
+    let result =
+        read_array(&store, ".", &Selection::full(2), &meta).expect("sharded read must succeed");
+    assert_eq!(
+        bytes_to_i32_vec(&result),
+        vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    );
+}
+
+#[test]
+fn sharded_array_multi_shard_roundtrip() {
+    use consus_zarr::metadata::{ArrayMetadata, ChunkKeyEncoding, FillValue, ZarrVersion};
+    let sharding_codec = consus_zarr::Codec {
+        name: String::from("sharding_indexed"),
+        configuration: vec![
+            (String::from("chunk_shape"), String::from("[1,1]")),
+            (
+                String::from("codecs"),
+                String::from(r#"[{"name":"bytes","configuration":{"endian":"little"}}]"#),
+            ),
+            (String::from("index_codecs"), String::from("[]")),
+        ],
+    };
+    let meta = ArrayMetadata {
+        version: ZarrVersion::V3,
+        shape: vec![4, 4],
+        chunks: vec![2, 2],
+        dtype: String::from("int32"),
+        fill_value: FillValue::Int(-1),
+        order: 'C',
+        codecs: vec![sharding_codec],
+        chunk_key_encoding: ChunkKeyEncoding {
+            name: String::from("default"),
+            separator: '/',
+        },
+        dimension_names: None,
+    };
+    let data: Vec<u8> = (0i32..16).flat_map(|v| v.to_le_bytes()).collect();
+    let mut store = InMemoryStore::new();
+    write_array(&mut store, ".", &meta, &data).expect("multi-shard write must succeed");
+    let result =
+        read_array(&store, ".", &Selection::full(2), &meta).expect("multi-shard read must succeed");
+    assert_eq!(
+        bytes_to_i32_vec(&result),
+        vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    );
+}
+
+/// Test: ZarrJson::from_array_metadata + write_array + re-read metadata and data end-to-end.
+///
+/// ## Invariant
+///
+/// After constructing zarr.json via ZarrJson::from_array_metadata and calling write_array,
+/// read_array must return the original data and the persisted zarr.json must parse to the
+/// original canonical metadata.
+#[test]
+fn v3_write_metadata_and_data_roundtrip() {
+    use consus_zarr::Codec;
+    use consus_zarr::metadata::{
+        ArrayMetadata, ChunkKeyEncoding, FillValue, ZarrJson, ZarrVersion,
+    };
+
+    let mut store = InMemoryStore::new();
+
+    let meta = ArrayMetadata {
+        version: ZarrVersion::V3,
+        shape: vec![4, 4],
+        chunks: vec![2, 2],
+        dtype: String::from("int32"),
+        fill_value: FillValue::Int(0),
+        order: 'C',
+        codecs: vec![Codec {
+            name: String::from("bytes"),
+            configuration: vec![(String::from("endian"), String::from("little"))],
+        }],
+        chunk_key_encoding: ChunkKeyEncoding {
+            name: String::from("default"),
+            separator: '/',
+        },
+        dimension_names: None,
+    };
+
+    // Write metadata via the public ZarrJson write-direction API
+    let zarr_doc = ZarrJson::from_array_metadata(&meta);
+    let zarr_json_str = zarr_doc.to_json().expect("serialize must succeed");
+    store
+        .set("test_v3/zarr.json", zarr_json_str.as_bytes())
+        .expect("store write must succeed");
+
+    // Write data: 4x4 array of i32 [0..16] in LE bytes
+    let data: Vec<u8> = (0i32..16).flat_map(|v| v.to_le_bytes()).collect();
+    write_array(&mut store, "test_v3", &meta, &data).expect("write_array must succeed");
+
+    // Read back zarr.json and verify canonical metadata
+    let json_bytes = store
+        .get("test_v3/zarr.json")
+        .expect("zarr.json must exist");
+    let json_text = std::str::from_utf8(&json_bytes).expect("utf8");
+    let parsed = ZarrJson::parse(json_text).expect("parse must succeed");
+    let canonical = parsed.to_array_canonical().expect("must be array metadata");
+    assert_eq!(canonical.shape, vec![4, 4]);
+    assert_eq!(canonical.chunks, vec![2, 2]);
+    assert_eq!(canonical.dtype, "int32");
+
+    // Read back data and verify exact values
+    let read =
+        read_array(&store, "test_v3", &Selection::full(2), &meta).expect("read_array must succeed");
+    assert_eq!(read.len(), data.len(), "byte count must match");
+    for i in 0usize..16 {
+        let expected = (i as i32).to_le_bytes();
+        let actual = &read[i * 4..(i + 1) * 4];
+        assert_eq!(actual, expected.as_slice(), "element {i} must match");
+    }
 }

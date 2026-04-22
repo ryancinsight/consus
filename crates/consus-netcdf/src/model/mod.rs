@@ -7,7 +7,7 @@
 //!
 //! - Group names are unique within a scope.
 //! - Dimension names are unique within a scope.
-//! - Variables reference declared dimensions only.
+//! - Variables reference dimensions declared in their own scope or any ancestor scope.
 //! - Coordinate variables are rank-1 variables whose name matches their single dimension.
 //! - The file model is rooted at `/`.
 //!
@@ -43,6 +43,8 @@ pub struct NetcdfGroup {
     pub dimensions: Vec<NetcdfDimension>,
     /// Variables declared in this scope.
     pub variables: Vec<NetcdfVariable>,
+    /// Group-level attributes (e.g. Conventions, title, history).
+    pub attributes: Vec<(String, consus_core::AttributeValue)>,
 }
 
 #[cfg(feature = "alloc")]
@@ -55,11 +57,16 @@ impl NetcdfGroup {
             groups: Vec::new(),
             dimensions: Vec::new(),
             variables: Vec::new(),
+            attributes: Vec::new(),
         }
     }
 
     /// Validate the group and its children.
     pub fn validate(&self) -> Result<()> {
+        self.validate_with_ancestors(&[])
+    }
+
+    fn validate_with_ancestors(&self, ancestor_dimensions: &[&NetcdfDimension]) -> Result<()> {
         let mut i = 0;
         while i < self.dimensions.len() {
             self.dimensions[i].validate()?;
@@ -76,22 +83,104 @@ impl NetcdfGroup {
             i += 1;
         }
 
+        let mut visible_dimensions: Vec<&NetcdfDimension> =
+            Vec::with_capacity(ancestor_dimensions.len() + self.dimensions.len());
+        let mut ancestor_index = 0;
+        while ancestor_index < ancestor_dimensions.len() {
+            visible_dimensions.push(ancestor_dimensions[ancestor_index]);
+            ancestor_index += 1;
+        }
+
+        let mut local_index = 0;
+        while local_index < self.dimensions.len() {
+            visible_dimensions.push(&self.dimensions[local_index]);
+            local_index += 1;
+        }
+
         let mut v = 0;
         while v < self.variables.len() {
             self.variables[v].validate()?;
+
+            let mut d = 0;
+            while d < self.variables[v].dimensions.len() {
+                if self
+                    .resolve_dimension_in_scope(
+                        self.variables[v].dimensions[d].as_str(),
+                        &visible_dimensions,
+                    )
+                    .is_none()
+                {
+                    return Err(Error::InvalidFormat {
+                        #[cfg(feature = "alloc")]
+                        message: String::from(
+                            "variable references a dimension that is not visible in the current scope chain",
+                        ),
+                    });
+                }
+                d += 1;
+            }
+
             v += 1;
         }
 
         let mut g = 0;
         while g < self.groups.len() {
-            self.groups[g].validate()?;
+            self.groups[g].validate_with_ancestors(&visible_dimensions)?;
             g += 1;
         }
 
         Ok(())
     }
 
-    /// Find a dimension by name.
+    fn resolve_dimension_in_scope<'a>(
+        &self,
+        name: &str,
+        visible_dimensions: &'a [&'a NetcdfDimension],
+    ) -> Option<&'a NetcdfDimension> {
+        let mut i = visible_dimensions.len();
+        while i > 0 {
+            i -= 1;
+            if visible_dimensions[i].name == name {
+                return Some(visible_dimensions[i]);
+            }
+        }
+        None
+    }
+
+    /// Find a dimension by name in the current scope chain.
+    ///
+    /// Local dimensions shadow dimensions declared in ancestor groups.
+    #[must_use]
+    pub fn resolve_dimension<'a>(
+        &'a self,
+        name: &str,
+        ancestors: &[&'a NetcdfGroup],
+    ) -> Option<&'a NetcdfDimension> {
+        let mut local_index = 0;
+        while local_index < self.dimensions.len() {
+            if self.dimensions[local_index].name == name {
+                return Some(&self.dimensions[local_index]);
+            }
+            local_index += 1;
+        }
+
+        let mut ancestor_index = ancestors.len();
+        while ancestor_index > 0 {
+            ancestor_index -= 1;
+            let ancestor = ancestors[ancestor_index];
+            let mut dimension_index = 0;
+            while dimension_index < ancestor.dimensions.len() {
+                if ancestor.dimensions[dimension_index].name == name {
+                    return Some(&ancestor.dimensions[dimension_index]);
+                }
+                dimension_index += 1;
+            }
+        }
+
+        None
+    }
+
+    /// Find a dimension by name in the local scope.
     #[must_use]
     pub fn dimension(&self, name: &str) -> Option<&NetcdfDimension> {
         let mut i = 0;
@@ -101,6 +190,32 @@ impl NetcdfGroup {
             }
             i += 1;
         }
+        None
+    }
+
+    /// Find a dimension by name in the current scope chain.
+    #[must_use]
+    pub fn dimension_in_scope<'a>(
+        &'a self,
+        name: &str,
+        ancestor_dimensions: &[&'a NetcdfDimension],
+    ) -> Option<&'a NetcdfDimension> {
+        let mut i = 0;
+        while i < self.dimensions.len() {
+            if self.dimensions[i].name == name {
+                return Some(&self.dimensions[i]);
+            }
+            i += 1;
+        }
+
+        let mut j = ancestor_dimensions.len();
+        while j > 0 {
+            j -= 1;
+            if ancestor_dimensions[j].name == name {
+                return Some(ancestor_dimensions[j]);
+            }
+        }
+
         None
     }
 
@@ -117,10 +232,26 @@ impl NetcdfGroup {
         None
     }
 
-    /// Returns `true` if the group contains no declarations and no children.
+    /// Find a child group by name.
+    #[must_use]
+    pub fn group(&self, name: &str) -> Option<&NetcdfGroup> {
+        let mut i = 0;
+        while i < self.groups.len() {
+            if self.groups[i].name == name {
+                return Some(&self.groups[i]);
+            }
+            i += 1;
+        }
+        None
+    }
+
+    /// Returns `true` if the group contains no declarations, no attributes, and no children.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.groups.is_empty() && self.dimensions.is_empty() && self.variables.is_empty()
+        self.groups.is_empty()
+            && self.dimensions.is_empty()
+            && self.variables.is_empty()
+            && self.attributes.is_empty()
     }
 }
 
@@ -312,5 +443,66 @@ mod tests {
             Error::InvalidFormat { .. } => {}
             other => panic!("expected InvalidFormat, got {other}"),
         }
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn group_validation_accepts_ancestor_scoped_dimension_reference() {
+        let mut root = NetcdfGroup::new(String::from("/"));
+        root.dimensions
+            .push(NetcdfDimension::new(String::from("time"), 4));
+
+        let mut child = NetcdfGroup::new(String::from("observations"));
+        child.variables.push(NetcdfVariable::new(
+            String::from("temperature"),
+            consus_core::Datatype::Boolean,
+            vec![String::from("time")],
+        ));
+
+        root.groups.push(child);
+
+        root.validate().unwrap();
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn group_validation_rejects_missing_ancestor_scoped_dimension_reference() {
+        let mut root = NetcdfGroup::new(String::from("/"));
+
+        let mut child = NetcdfGroup::new(String::from("observations"));
+        child.variables.push(NetcdfVariable::new(
+            String::from("temperature"),
+            consus_core::Datatype::Boolean,
+            vec![String::from("time")],
+        ));
+
+        root.groups.push(child);
+
+        let err = root.validate().unwrap_err();
+        match err {
+            Error::InvalidFormat { .. } => {}
+            other => panic!("expected InvalidFormat, got {other}"),
+        }
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn dimension_in_scope_prefers_local_shadowing_dimension() {
+        let mut root = NetcdfGroup::new(String::from("/"));
+        root.dimensions
+            .push(NetcdfDimension::new(String::from("time"), 4));
+
+        let mut child = NetcdfGroup::new(String::from("observations"));
+        child
+            .dimensions
+            .push(NetcdfDimension::new(String::from("time"), 8));
+
+        let ancestor_dimensions = vec![&root.dimensions[0]];
+        let resolved = child
+            .dimension_in_scope("time", &ancestor_dimensions)
+            .expect("dimension must resolve");
+
+        assert_eq!(resolved.size, 8);
+        assert!(!resolved.unlimited);
     }
 }

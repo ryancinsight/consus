@@ -6,6 +6,7 @@
 //! - Dimension definitions and lookup
 //! - Variable descriptors with shape consistency
 //! - Group hierarchy with nested scopes
+//! - Nested-group dimension inheritance and shadowing
 //! - HDF5 bridge mapping derivation
 //! - Unlimited dimension semantics
 //! - Compression policy attachment
@@ -192,6 +193,116 @@ fn group_hierarchy_roundtrip() {
         model.root.groups[0].groups[0]
             .variable("pressure")
             .is_some()
+    );
+}
+
+/// Test: Nested groups inherit dimensions declared in ancestor scopes.
+///
+/// ## Invariant
+///
+/// A variable declared in a child group may reference dimensions declared
+/// in any ancestor group. Validation must succeed when the referenced
+/// dimensions are available through lexical scope inheritance.
+#[test]
+fn nested_group_dimension_inheritance_roundtrip() {
+    let mut root = NetcdfGroup::new(String::from("/"));
+    root.dimensions
+        .push(NetcdfDimension::new(String::from("time"), 4));
+
+    let mut observations = NetcdfGroup::new(String::from("observations"));
+    observations.variables.push(
+        NetcdfVariable::new(
+            String::from("temperature"),
+            Datatype::Float {
+                bits: core::num::NonZeroUsize::new(32).unwrap(),
+                byte_order: consus_core::ByteOrder::LittleEndian,
+            },
+            vec![String::from("time")],
+        )
+        .with_shape(Shape::fixed(&[4])),
+    );
+
+    root.groups.push(observations);
+
+    let model = NetcdfModel { root };
+    model.validate().unwrap();
+
+    let child = model
+        .root
+        .group("observations")
+        .expect("child group must exist");
+    let variable = child
+        .variable("temperature")
+        .expect("variable must exist in child group");
+
+    assert_eq!(variable.dimensions, vec!["time"]);
+    assert_eq!(variable.rank(), 1);
+    assert_eq!(
+        model
+            .root
+            .dimension("time")
+            .expect("root dimension must exist")
+            .size,
+        4
+    );
+}
+
+/// Test: Nested groups prefer locally declared dimensions over inherited ones.
+///
+/// ## Invariant
+///
+/// If a child group declares a dimension with the same name as an ancestor
+/// dimension, variables in the child scope resolve that name to the nearest
+/// declaration. Validation must still succeed because shadowing is legal
+/// across scopes.
+#[test]
+fn nested_group_dimension_shadowing_roundtrip() {
+    let mut root = NetcdfGroup::new(String::from("/"));
+    root.dimensions
+        .push(NetcdfDimension::new(String::from("time"), 4));
+
+    let mut observations = NetcdfGroup::new(String::from("observations"));
+    observations
+        .dimensions
+        .push(NetcdfDimension::new(String::from("time"), 2));
+    observations.variables.push(
+        NetcdfVariable::new(
+            String::from("temperature"),
+            Datatype::Float {
+                bits: core::num::NonZeroUsize::new(32).unwrap(),
+                byte_order: consus_core::ByteOrder::LittleEndian,
+            },
+            vec![String::from("time")],
+        )
+        .with_shape(Shape::fixed(&[2])),
+    );
+
+    root.groups.push(observations);
+
+    let model = NetcdfModel { root };
+    model.validate().unwrap();
+
+    let child = model
+        .root
+        .group("observations")
+        .expect("child group must exist");
+    let local_dim = child.dimension("time").expect("child dimension must exist");
+    let variable = child
+        .variable("temperature")
+        .expect("variable must exist in child group");
+
+    assert_eq!(
+        local_dim.size, 2,
+        "child scope must retain its local dimension"
+    );
+    assert_eq!(variable.dimensions, vec!["time"]);
+    assert_eq!(
+        variable
+            .shape
+            .as_ref()
+            .expect("shape must be present")
+            .num_elements(),
+        2
     );
 }
 

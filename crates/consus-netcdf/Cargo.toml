@@ -10,12 +10,13 @@ description = "Pure-Rust netCDF-4 format implementation for the Consus scientifi
 
 [features]
 default = ["std"]
-std = ["alloc", "consus-core/std", "consus-hdf5/std"]
-alloc = ["consus-core/alloc", "consus-hdf5/alloc"]
+std = ["alloc", "consus-core/std", "consus-hdf5/std", "consus-io/std"]
+alloc = ["consus-core/alloc", "consus-hdf5/alloc", "consus-io/alloc"]
 
 [dependencies]
 consus-core = { workspace = true }
 consus-hdf5 = { workspace = true }
+consus-io = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

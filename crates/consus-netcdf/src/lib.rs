@@ -43,13 +43,25 @@ extern crate alloc;
 
 pub mod conventions;
 pub mod dimension;
+#[cfg(feature = "std")]
+pub mod hdf5;
 pub mod model;
 pub mod variable;
 
+#[cfg(feature = "std")]
+pub use hdf5::extract_group;
+#[cfg(feature = "alloc")]
+pub use hdf5::is_dimension_scale;
+#[cfg(feature = "std")]
+pub use hdf5::variable::read_variable_bytes;
+
 pub use conventions::{
-    AXIS_ATTR, BOUNDS_ATTR, CELL_METHODS_ATTR, CONVENTIONS_ATTR, COORDINATES_ATTR,
-    DIMENSION_SCALE_CLASS, DIMENSION_SCALE_VALUE, FILL_VALUE_ATTR, GRID_MAPPING_ATTR,
-    LONG_NAME_ATTR, NETCDF_CONVENTIONS_VALUE, ROOT_GROUP_NAME, STANDARD_NAME_ATTR, UNITS_ATTR,
+    ADD_OFFSET_ATTR, ANCILLARY_VARIABLES_ATTR, AXIS_ATTR, BOUNDS_ATTR, CALENDAR_ATTR,
+    CELL_METHODS_ATTR, COMPRESS_ATTR, CONVENTIONS_ATTR, COORDINATES_ATTR, DIMENSION_SCALE_CLASS,
+    DIMENSION_SCALE_VALUE, FILL_VALUE_ATTR, FLAG_MASKS_ATTR, FLAG_MEANINGS_ATTR, FLAG_VALUES_ATTR,
+    FORMULA_TERMS_ATTR, GRID_MAPPING_ATTR, LONG_NAME_ATTR, MISSING_VALUE_ATTR,
+    NETCDF_CONVENTIONS_VALUE, POSITIVE_ATTR, ROOT_GROUP_NAME, SCALE_FACTOR_ATTR,
+    STANDARD_NAME_ATTR, UNITS_ATTR, VALID_MAX_ATTR, VALID_MIN_ATTR, VALID_RANGE_ATTR,
     is_cf_attribute_name, is_dimension_scale_marker, is_recognized_convention, is_valid_name,
     root_group_name,
 };

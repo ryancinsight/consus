@@ -99,22 +99,25 @@
 - [x] Integration tests against Python zarr-produced fixtures
 - [x] Python v2 chunk-key interoperability against Python-generated filesystem stores
 - [x] Python v2 gzip full-array interoperability against Python-generated filesystem stores
-- [ ] Python v3 default codec-chain interoperability against Python-generated filesystem stores
-- [ ] Full read/write interoperability against Python zarr library output
+- [x] Python v3 default codec-chain interoperability against Python-generated filesystem stores
+- [x] Full read/write interoperability against Python zarr library output
 
 ### P2.2 — Zarr v3
-- [ ] `zarr.json` metadata parser
-- [ ] Sharding codec
-- [ ] v3 chunk key encoding
-- [ ] v3 codec pipeline
-- [ ] v3 write path
-- [ ] Interop tests with zarr-python v3
+- [x] `zarr.json` metadata parser
+- [x] Sharding codec
+- [x] v3 chunk key encoding
+- [x] v3 codec pipeline
+- [x] v3 write path
+- [x] Interop tests with zarr-python v3
 
 ### P2.3 — netCDF-4
-- [ ] Dimension scale detection via HDF5 attributes
-- [ ] Variable → HDF5 dataset mapping
-- [ ] CF conventions attribute parsing
-- [ ] Unlimited dimension handling
+- [x] Dimension scale detection via HDF5 attributes
+- [x] Variable → HDF5 dataset mapping
+- [x] CF conventions attribute parsing
+- [x] Unlimited dimension handling
+- [x] Full variable byte extraction for contiguous and chunked HDF5-backed netCDF variables
+- [x] DIMENSION_LIST-based variable-to-dimension binding for HDF5-backed netCDF extraction
+- [x] Nested-group dimension inheritance and nearest-scope shadowing validation
 - [ ] netCDF-4 classic model read
 - [ ] netCDF-4 enhanced model read (groups, user-defined types)
 - [ ] netCDF-4 write path
@@ -129,16 +132,66 @@
 - [x] Verified `cargo nextest run -p consus-hdf5 --test roundtrip_hdf5 --no-fail-fast`
 - [x] Verified `cargo test -p consus-hdf5 --test reference_hdf_group`
 
+## Phase 2.5: Datatype Mapping Completion
+
+### P2.5a — Arrow ↔ Core Nested-Type Conversion
+- [x] `core_datatype_to_arrow_hint`: Compound → Struct with recursive fields
+- [x] `core_datatype_to_arrow_hint`: Array → List with correct element type
+- [x] `core_datatype_to_arrow_hint`: Complex → Struct with real/imaginary children
+- [x] `arrow_datatype_to_core`: Struct → Compound with recursive field conversion
+- [x] `arrow_datatype_to_core`: Map → Compound with key/value fields
+- [x] `arrow_datatype_to_core`: Union → Compound with variant fields
+- [x] Roundtrip tests: Compound → Struct → Compound preserves field names
+
+### P2.5b — FITS Binary Table TFORM → Core Datatype
+- [x] `BinaryFormatCode` enum for all 13 FITS Standard 4.0 format codes
+- [x] `parse_binary_format` TFORM string parser (repeat + code)
+- [x] `binary_format_to_datatype` per-code canonical mapping
+- [x] `tform_to_datatype` high-level TFORM → Datatype conversion
+- [x] `binary_format_element_size` byte-width lookup
+- [x] Array wrapping for repeat > 1 scalar types
+- [x] Crate-root re-exports for `BinaryFormatCode` and `tform_to_datatype`
+- [x] Comprehensive value-semantic tests for all 13 format codes
+
+### P2.5c — HDF5 Datatype Class Mapping
+- [x] `map_string` (fixed/variable, ASCII/UTF-8)
+- [x] `map_bitfield` (→ Opaque with HDF5_bitfield tag)
+- [x] `map_opaque` (with optional tag)
+- [x] `map_compound` (ordered fields + size)
+- [x] `map_reference` (Object/Region, size-based default)
+- [x] `map_enum` (structural envelope with empty members)
+- [x] `map_variable_length` (→ VarLen with base type)
+- [x] `map_array` (→ Array with base + dims)
+- [x] `charset_from_flags` helper (ASCII/UTF-8/unknown→ASCII)
+- [x] Coverage table in module documentation
+- [x] Value-semantic tests for all mapping functions
+
+### P2.5d — FITS Column Descriptor Datatype Integration
+- [x] `FitsTableColumn` extended with `datatype: Datatype` and `byte_width: usize` fields
+- [x] `FitsTableColumn::new()` updated to accept `datatype` and `byte_width` parameters
+- [x] `FitsTableColumn::from_binary_tform()` constructor derives `datatype` and `byte_width` from TFORM
+- [x] `datatype()` and `byte_width()` accessors on `FitsTableColumn`
+- [x] `parse_column` dispatches binary→`from_binary_tform`, ASCII→`FixedString` with `parse_ascii_column_width`
+- [x] `FitsBinaryTableDescriptor::from_header()` validates column byte widths sum to `NAXIS1`
+- [x] 5 new value-semantic tests (Boolean/Int32/Float64, Array, NAXIS1 mismatch, ASCII FixedString, Complex/Compound)
+- [x] Verified `cargo test -p consus-fits --lib` (128/128)
+
 ## Phase 3: Parquet + Polish
 
 ### P3.1 — Parquet Interop
-- [ ] Consus ↔ Parquet schema mapping
+- [x] Consus ↔ Parquet schema mapping
 - [ ] Read Parquet files as Consus datasets
 - [ ] Write Consus datasets to Parquet
 - [ ] Hybrid mode: Parquet tables inside Consus containers
 - [ ] Arrow array bridge (zero-copy)
 
-### P3.2 — Production Readiness
+### P3.2 — FITS Table Wiring
+- [x] Wire `tform_to_datatype` into `FitsTableColumn` so parsed TFORMn produces canonical `Datatype`
+- [x] Per-column byte-width computation and NAXIS1 validation for binary tables
+- [ ] ASCII table column value decoding (numeric/string field extraction from raw row bytes)
+- [ ] Binary table column value decoding (typed element extraction per Datatype)
+
+### P3.3 — Production Readiness
 - [x] CI/CD pipeline (GitHub Actions)
 - [x] Async I/O path via Tokio
 - [ ] Memory-mapped I/O backend

@@ -8,7 +8,9 @@
 //! - optional resolved shape
 //! - optional fill value
 //! - optional compression policy
+//! - variable attributes
 //! - coordinate-variable and unlimited-dimension flags
+//! - optional backend object-header address for data retrieval
 //!
 //! netCDF-4 variables map to HDF5 datasets with domain conventions.
 //! This module provides the canonical variable descriptor used by the
@@ -27,7 +29,7 @@
 #[cfg(feature = "alloc")]
 use alloc::{string::String, vec::Vec};
 
-use consus_core::{Compression, Datatype, Error, Result, Shape};
+use consus_core::{AttributeValue, Compression, Datatype, Error, Result, Shape};
 
 /// A netCDF-4 variable descriptor.
 ///
@@ -52,10 +54,14 @@ pub struct NetcdfVariable {
     pub fill_value: Option<Vec<u8>>,
     /// Optional compression policy.
     pub compression: Option<Compression>,
+    /// CF and user-defined attributes attached to this variable.
+    pub attributes: Vec<(String, AttributeValue)>,
     /// Whether the variable is a coordinate variable.
     pub coordinate_variable: bool,
     /// Whether the variable may grow along one or more unlimited dimensions.
     pub unlimited: bool,
+    /// HDF5 object header address for backend data retrieval.
+    pub object_header_address: Option<u64>,
 }
 
 #[cfg(feature = "alloc")]
@@ -70,8 +76,10 @@ impl NetcdfVariable {
             shape: None,
             fill_value: None,
             compression: None,
+            attributes: Vec::new(),
             coordinate_variable: false,
             unlimited: false,
+            object_header_address: None,
         }
     }
 
@@ -96,6 +104,13 @@ impl NetcdfVariable {
         self
     }
 
+    /// Attach attributes.
+    #[must_use]
+    pub fn with_attributes(mut self, attrs: Vec<(String, AttributeValue)>) -> Self {
+        self.attributes = attrs;
+        self
+    }
+
     /// Mark the variable as a coordinate variable.
     #[must_use]
     pub fn coordinate_variable(mut self, value: bool) -> Self {
@@ -107,6 +122,13 @@ impl NetcdfVariable {
     #[must_use]
     pub fn unlimited(mut self, value: bool) -> Self {
         self.unlimited = value;
+        self
+    }
+
+    /// Attach the backend object header address.
+    #[must_use]
+    pub fn with_object_header_address(mut self, addr: u64) -> Self {
+        self.object_header_address = Some(addr);
         self
     }
 
@@ -180,6 +202,8 @@ mod tests {
         assert_eq!(variable.name, "temperature");
         assert_eq!(variable.rank(), 2);
         assert!(variable.unlimited);
+        assert!(variable.attributes.is_empty());
+        assert!(variable.object_header_address.is_none());
         assert!(!variable.is_scalar());
     }
 
@@ -241,6 +265,31 @@ mod tests {
             Error::ShapeError { .. } => {}
             other => panic!("expected ShapeError, got {other}"),
         }
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn variable_attributes_and_object_header_address_attach() {
+        let variable = NetcdfVariable::new(
+            String::from("temperature"),
+            Datatype::Boolean,
+            vec![String::from("time")],
+        )
+        .with_attributes(vec![(
+            String::from("units"),
+            AttributeValue::String(String::from("kelvin")),
+        )])
+        .with_object_header_address(42);
+
+        assert_eq!(variable.attributes.len(), 1);
+        assert_eq!(
+            variable.attributes[0],
+            (
+                String::from("units"),
+                AttributeValue::String(String::from("kelvin"))
+            )
+        );
+        assert_eq!(variable.object_header_address, Some(42));
     }
 
     #[cfg(feature = "alloc")]

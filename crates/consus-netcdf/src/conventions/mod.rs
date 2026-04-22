@@ -52,6 +52,48 @@ pub const AXIS_ATTR: &str = "axis";
 /// Grid mapping attribute (CF conventions).
 pub const GRID_MAPPING_ATTR: &str = "grid_mapping";
 
+/// Add-offset attribute (CF conventions).
+pub const ADD_OFFSET_ATTR: &str = "add_offset";
+
+/// Scale-factor attribute (CF conventions).
+pub const SCALE_FACTOR_ATTR: &str = "scale_factor";
+
+/// Missing-value attribute (CF conventions).
+pub const MISSING_VALUE_ATTR: &str = "missing_value";
+
+/// Valid-range attribute (CF conventions).
+pub const VALID_RANGE_ATTR: &str = "valid_range";
+
+/// Valid-min attribute (CF conventions).
+pub const VALID_MIN_ATTR: &str = "valid_min";
+
+/// Valid-max attribute (CF conventions).
+pub const VALID_MAX_ATTR: &str = "valid_max";
+
+/// Calendar attribute (CF conventions).
+pub const CALENDAR_ATTR: &str = "calendar";
+
+/// Positive attribute (CF conventions).
+pub const POSITIVE_ATTR: &str = "positive";
+
+/// Formula-terms attribute (CF conventions).
+pub const FORMULA_TERMS_ATTR: &str = "formula_terms";
+
+/// Ancillary-variables attribute (CF conventions).
+pub const ANCILLARY_VARIABLES_ATTR: &str = "ancillary_variables";
+
+/// Flag-values attribute (CF conventions).
+pub const FLAG_VALUES_ATTR: &str = "flag_values";
+
+/// Flag-meanings attribute (CF conventions).
+pub const FLAG_MEANINGS_ATTR: &str = "flag_meanings";
+
+/// Flag-masks attribute (CF conventions).
+pub const FLAG_MASKS_ATTR: &str = "flag_masks";
+
+/// Compress attribute (CF conventions).
+pub const COMPRESS_ATTR: &str = "compress";
+
 /// Canonical netCDF version tag for this implementation.
 pub const NETCDF_CONVENTIONS_VALUE: &str = "CF-1.8";
 
@@ -104,6 +146,20 @@ pub fn is_cf_attribute_name(name: &str) -> bool {
             | BOUNDS_ATTR
             | AXIS_ATTR
             | GRID_MAPPING_ATTR
+            | ADD_OFFSET_ATTR
+            | SCALE_FACTOR_ATTR
+            | MISSING_VALUE_ATTR
+            | VALID_RANGE_ATTR
+            | VALID_MIN_ATTR
+            | VALID_MAX_ATTR
+            | CALENDAR_ATTR
+            | POSITIVE_ATTR
+            | FORMULA_TERMS_ATTR
+            | ANCILLARY_VARIABLES_ATTR
+            | FLAG_VALUES_ATTR
+            | FLAG_MEANINGS_ATTR
+            | FLAG_MASKS_ATTR
+            | COMPRESS_ATTR
     )
 }
 
@@ -157,6 +213,20 @@ mod tests {
         assert!(is_cf_attribute_name(BOUNDS_ATTR));
         assert!(is_cf_attribute_name(AXIS_ATTR));
         assert!(is_cf_attribute_name(GRID_MAPPING_ATTR));
+        assert!(is_cf_attribute_name(ADD_OFFSET_ATTR));
+        assert!(is_cf_attribute_name(SCALE_FACTOR_ATTR));
+        assert!(is_cf_attribute_name(MISSING_VALUE_ATTR));
+        assert!(is_cf_attribute_name(VALID_RANGE_ATTR));
+        assert!(is_cf_attribute_name(VALID_MIN_ATTR));
+        assert!(is_cf_attribute_name(VALID_MAX_ATTR));
+        assert!(is_cf_attribute_name(CALENDAR_ATTR));
+        assert!(is_cf_attribute_name(POSITIVE_ATTR));
+        assert!(is_cf_attribute_name(FORMULA_TERMS_ATTR));
+        assert!(is_cf_attribute_name(ANCILLARY_VARIABLES_ATTR));
+        assert!(is_cf_attribute_name(FLAG_VALUES_ATTR));
+        assert!(is_cf_attribute_name(FLAG_MEANINGS_ATTR));
+        assert!(is_cf_attribute_name(FLAG_MASKS_ATTR));
+        assert!(is_cf_attribute_name(COMPRESS_ATTR));
         assert!(!is_cf_attribute_name("Conventions"));
     }
 
