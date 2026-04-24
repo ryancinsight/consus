@@ -12,6 +12,7 @@ members = [
     "crates/consus-compression",
     "crates/consus-io",
     "tests",
+    "crates/consus-mat",
 ]
 
 [workspace.package]
@@ -28,6 +29,7 @@ description = "Pure-Rust, no_std-compatible, memory-safe hierarchical and array-
 
 [workspace.dependencies]
 # Internal crates
+consus-mat = { path = "crates/consus-mat", version = "0.1.0", default-features = false }
 consus-core = { path = "crates/consus-core", version = "0.1.0", default-features = false }
 consus-hdf5 = { path = "crates/consus-hdf5", version = "0.1.0", default-features = false }
 consus-fits = { path = "crates/consus-fits", version = "0.1.0", default-features = false }

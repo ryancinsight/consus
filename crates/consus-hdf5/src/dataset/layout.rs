@@ -187,9 +187,20 @@ impl DataLayout {
             1 => Self::parse_v3_contiguous(data, ctx),
             // Chunked
             2 => Self::parse_v3_chunked(data, ctx),
-            // Virtual
-            3 => Err(Error::UnsupportedFeature {
-                feature: String::from("virtual dataset layout"),
+            // Virtual - return typed marker; consumers decide whether to reject.
+            3 => Ok(Self {
+                version: 3,
+                layout: StorageLayout::Virtual,
+                data_address: None,
+                data_size: None,
+                compact_data: None,
+                chunk_btree_address: None,
+                chunk_dims: None,
+                chunk_index_type: None,
+                chunk_element_size: None,
+                single_chunk_filtered_size: None,
+                single_chunk_filter_mask: None,
+                chunk_index_address: None,
             }),
             _ => Err(Error::InvalidFormat {
                 message: format!("unknown layout class: {layout_class}"),
@@ -341,8 +352,19 @@ impl DataLayout {
             0 => Self::parse_v3_compact(data),
             1 => Self::parse_v3_contiguous(data, ctx),
             2 => Self::parse_v4_chunked(data, ctx),
-            3 => Err(Error::UnsupportedFeature {
-                feature: String::from("virtual dataset layout"),
+            3 => Ok(Self {
+                version: 4,
+                layout: StorageLayout::Virtual,
+                data_address: None,
+                data_size: None,
+                compact_data: None,
+                chunk_btree_address: None,
+                chunk_dims: None,
+                chunk_index_type: None,
+                chunk_element_size: None,
+                single_chunk_filtered_size: None,
+                single_chunk_filter_mask: None,
+                chunk_index_address: None,
             }),
             _ => Err(Error::InvalidFormat {
                 message: format!("unknown layout class: {layout_class}"),
@@ -599,13 +621,14 @@ mod tests {
         }
 
         #[test]
-        fn reject_virtual_layout() {
+        /// Virtual layout (class 3) must parse to StorageLayout::Virtual without error.
+        /// Consumers are responsible for rejecting virtual layouts when unsupported.
+        fn parse_virtual_layout_returns_virtual_storage() {
             let data = [3u8, 3]; // version=3, class=3 (virtual)
-            let err = DataLayout::parse(&data, &ctx8()).unwrap_err();
-            match err {
-                Error::UnsupportedFeature { .. } => {}
-                other => panic!("expected UnsupportedFeature, got: {other:?}"),
-            }
+            let layout = DataLayout::parse(&data, &ctx8())
+                .expect("virtual layout must parse without error");
+            assert_eq!(layout.layout, StorageLayout::Virtual, "layout class must be Virtual");
+            assert_eq!(layout.version, 3, "layout version must be 3");
         }
 
         #[test]

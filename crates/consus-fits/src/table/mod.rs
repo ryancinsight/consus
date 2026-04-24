@@ -43,6 +43,11 @@ use crate::datastructure::FitsDataSpan;
 use crate::header::{FitsHeader, HeaderValue};
 use crate::types::{binary_format_element_size, parse_binary_format, tform_to_datatype};
 
+pub(crate) mod decode;
+
+#[cfg(feature = "alloc")]
+pub use decode::FitsColumnValue;
+
 /// FITS table column descriptor.
 ///
 /// This type is the single source of truth for per-column metadata extracted
@@ -55,6 +60,7 @@ pub struct FitsTableColumn {
     format: String,
     datatype: Datatype,
     byte_width: usize,
+    col_offset: usize,
     unit: Option<String>,
     display: Option<String>,
     null: Option<String>,
@@ -77,6 +83,7 @@ impl FitsTableColumn {
         format: String,
         datatype: Datatype,
         byte_width: usize,
+        col_offset: usize,
         unit: Option<String>,
         display: Option<String>,
         null: Option<String>,
@@ -89,6 +96,7 @@ impl FitsTableColumn {
             format,
             datatype,
             byte_width,
+            col_offset,
             unit,
             display,
             null,
@@ -125,6 +133,7 @@ impl FitsTableColumn {
             format: tform,
             datatype,
             byte_width,
+            col_offset: 0,
             unit,
             display,
             null,
@@ -156,6 +165,16 @@ impl FitsTableColumn {
     /// Return the per-column byte width derived from `TFORMn`.
     pub const fn byte_width(&self) -> usize {
         self.byte_width
+    }
+
+    /// Return the per-column byte offset from the start of the row.
+    pub const fn col_offset(&self) -> usize {
+        self.col_offset
+    }
+
+    /// Set the per-column byte offset. Used during descriptor construction.
+    pub(crate) fn set_col_offset(&mut self, offset: usize) {
+        self.col_offset = offset;
     }
 
     /// Return the optional unit string from `TUNITn`.
@@ -556,6 +575,57 @@ impl FitsTableData {
             }
         }
     }
+
+    /// Decode all column cells in one row.
+    ///
+    /// Returns a `Vec<FitsColumnValue>` with one entry per column, in column order.
+    /// Dispatches to the binary or ASCII decoder based on the table kind.
+    #[cfg(feature = "alloc")]
+    pub fn decode_row<R: ReadAt>(&self, reader: &R, row_index: usize) -> Result<alloc::vec::Vec<decode::FitsColumnValue>> {
+        let row_len = self.descriptor.row_len();
+        let mut row_buf = alloc::vec![0u8; row_len];
+        self.read_row(reader, row_index, &mut row_buf)?;
+        let is_binary = self.descriptor.is_binary();
+        self.descriptor
+            .columns()
+            .iter()
+            .map(|col| {
+                if is_binary {
+                    decode::decode_binary_column(&row_buf, col)
+                } else {
+                    decode::decode_ascii_column(&row_buf, col)
+                }
+            })
+            .collect()
+    }
+
+    /// Decode one column across all rows.
+    ///
+    /// Returns a `Vec<FitsColumnValue>` with one entry per row.
+    /// `col_index` is 0-based.
+    #[cfg(feature = "alloc")]
+    pub fn decode_column<R: ReadAt>(&self, reader: &R, col_index: usize) -> Result<alloc::vec::Vec<decode::FitsColumnValue>> {
+        let columns = self.descriptor.columns();
+        if col_index >= columns.len() {
+            return Err(Error::SelectionOutOfBounds);
+        }
+        let col = columns[col_index].clone();
+        let is_binary = self.descriptor.is_binary();
+        let rows = self.descriptor.rows();
+        let row_len = self.descriptor.row_len();
+        let mut row_buf = alloc::vec![0u8; row_len];
+        let mut result = alloc::vec::Vec::with_capacity(rows);
+        for row_idx in 0..rows {
+            self.read_row(reader, row_idx, &mut row_buf)?;
+            let value = if is_binary {
+                decode::decode_binary_column(&row_buf, &col)?
+            } else {
+                decode::decode_ascii_column(&row_buf, &col)?
+            };
+            result.push(value);
+        }
+        Ok(result)
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -571,6 +641,28 @@ fn parse_table_core(header: &FitsHeader, binary: bool) -> Result<FitsTableDescri
     let mut columns = Vec::with_capacity(fields);
     for index in 1..=fields {
         columns.push(parse_column(header, index, binary)?);
+    }
+    // Assign col_offset for each column.
+    if binary {
+        // Binary tables: column offsets are prefix sums (FITS section 7.3, no gaps).
+        let mut offset = 0usize;
+        for col in &mut columns {
+            col.set_col_offset(offset);
+            offset = offset.checked_add(col.byte_width()).ok_or(Error::Overflow)?;
+        }
+    } else {
+        // ASCII tables: use TBCOLn (1-based) if present, fall back to prefix sums.
+        let mut prefix_offset = 0usize;
+        for (i, col) in columns.iter_mut().enumerate() {
+            let keyword = indexed_keyword("TBCOL", i + 1)?;
+            let tbcol_opt = parse_optional_non_negative_integer(header, &keyword)?;
+            let col_offset = match tbcol_opt {
+                Some(tbcol) if tbcol > 0 => tbcol - 1,
+                _ => prefix_offset,
+            };
+            col.set_col_offset(col_offset);
+            prefix_offset = prefix_offset.checked_add(col.byte_width()).ok_or(Error::Overflow)?;
+        }
     }
     Ok(FitsTableDescriptorCore::new(
         row_len, rows, columns, heap_size,
@@ -634,6 +726,7 @@ fn parse_column(header: &FitsHeader, index: usize, binary: bool) -> Result<FitsT
                 encoding: consus_core::StringEncoding::Ascii,
             },
             width,
+            0,
             unit,
             display,
             null,
@@ -875,6 +968,7 @@ mod tests {
                         encoding: consus_core::StringEncoding::Ascii,
                     },
                     4,
+                    0,
                     None,
                     None,
                     None,
@@ -908,6 +1002,7 @@ mod tests {
                         signed: true,
                     },
                     2,
+                    0,
                     None,
                     None,
                     None,
@@ -1135,4 +1230,129 @@ mod tests {
         }
         assert_eq!(cols[1].byte_width(), 8);
     }
+    #[test]
+    fn decode_row_binary_table_two_columns() {
+        // Binary table: 2 columns -- 1J (i32) and 1E (f32), 3 rows.
+        // Row layout: [i32 be][f32 be] = 8 bytes per row.
+        // Row 0: i32=10, f32=1.5
+        // Row 1: i32=20, f32=2.5
+        // Row 2: i32=30, f32=3.5
+        let bytes = header_bytes(&[
+            "XTENSION= 'BINTABLE'",
+            "BITPIX  = 8",
+            "NAXIS   = 2",
+            "NAXIS1  = 8",
+            "NAXIS2  = 3",
+            "PCOUNT  = 0",
+            "GCOUNT  = 1",
+            "TFIELDS = 2",
+            "TTYPE1  = 'IDX     '",
+            "TFORM1  = '1J      '",
+            "TTYPE2  = 'VAL     '",
+            "TFORM2  = '1E      '",
+            "END",
+        ]);
+        let header = parse_extension_header_bytes(&bytes).unwrap();
+        let descriptor = FitsTableDescriptor::from_header(&header).unwrap();
+
+        let mut data: Vec<u8> = Vec::new();
+        for (idx, val) in [(10_i32, 1.5_f32), (20_i32, 2.5_f32), (30_i32, 3.5_f32)] {
+            data.extend_from_slice(&idx.to_be_bytes());
+            data.extend_from_slice(&val.to_be_bytes());
+        }
+
+        let span = FitsDataSpan::new(0, 24).unwrap();
+        let table = FitsTableData::new(descriptor, span);
+        let reader = MemCursor::from_bytes(data);
+
+        // Decode row 1: i32=20, f32=2.5
+        let row_vals = table.decode_row(&reader, 1).unwrap();
+        assert_eq!(row_vals.len(), 2);
+        assert_eq!(row_vals[0], FitsColumnValue::Int32(20));
+        assert_eq!(row_vals[1], FitsColumnValue::Float32(2.5));
+
+        // Decode column 0 (i32) across all 3 rows: 10, 20, 30
+        let col0_vals = table.decode_column(&reader, 0).unwrap();
+        assert_eq!(col0_vals.len(), 3);
+        assert_eq!(col0_vals[0], FitsColumnValue::Int32(10));
+        assert_eq!(col0_vals[1], FitsColumnValue::Int32(20));
+        assert_eq!(col0_vals[2], FitsColumnValue::Int32(30));
+
+        // Decode column 1 (f32) across all 3 rows: 1.5, 2.5, 3.5
+        let col1_vals = table.decode_column(&reader, 1).unwrap();
+        assert_eq!(col1_vals.len(), 3);
+        assert_eq!(col1_vals[0], FitsColumnValue::Float32(1.5));
+        assert_eq!(col1_vals[1], FitsColumnValue::Float32(2.5));
+        assert_eq!(col1_vals[2], FitsColumnValue::Float32(3.5));
+    }
+
+    #[test]
+    fn decode_row_ascii_table_two_columns() {
+        // ASCII table: 2 columns -- A6 (name) and I8 (integer value), 2 rows.
+        // Row width = 6 + 8 = 14. No TBCOLn -- prefix sum used.
+        // Row 0: "Alpha " + "     100"
+        // Row 1: "Beta  " + "     200"
+        let bytes = header_bytes(&[
+            "XTENSION= 'TABLE   '",
+            "BITPIX  = 8",
+            "NAXIS   = 2",
+            "NAXIS1  = 14",
+            "NAXIS2  = 2",
+            "PCOUNT  = 0",
+            "GCOUNT  = 1",
+            "TFIELDS = 2",
+            "TTYPE1  = 'NAME    '",
+            "TFORM1  = 'A6      '",
+            "TTYPE2  = 'VALUE   '",
+            "TFORM2  = 'I8      '",
+            "END",
+        ]);
+        let header = parse_extension_header_bytes(&bytes).unwrap();
+        let descriptor = FitsTableDescriptor::from_header(&header).unwrap();
+
+        let mut data: Vec<u8> = Vec::new();
+        data.extend_from_slice(b"Alpha      100");
+        data.extend_from_slice(b"Beta       200");
+
+        let span = FitsDataSpan::new(0, 28).unwrap();
+        let table = FitsTableData::new(descriptor, span);
+        let reader = MemCursor::from_bytes(data);
+
+        // Decode row 0
+        let row_vals = table.decode_row(&reader, 0).unwrap();
+        assert_eq!(row_vals.len(), 2);
+        assert_eq!(row_vals[0], FitsColumnValue::Chars("Alpha".to_owned()));
+        assert_eq!(row_vals[1], FitsColumnValue::Int64(100));
+
+        // Decode column 1 (I8) across rows: 100, 200
+        let col1_vals = table.decode_column(&reader, 1).unwrap();
+        assert_eq!(col1_vals.len(), 2);
+        assert_eq!(col1_vals[0], FitsColumnValue::Int64(100));
+        assert_eq!(col1_vals[1], FitsColumnValue::Int64(200));
+    }
+
+    #[test]
+    fn decode_column_out_of_bounds() {
+        let bytes = header_bytes(&[
+            "XTENSION= 'BINTABLE'",
+            "BITPIX  = 8",
+            "NAXIS   = 2",
+            "NAXIS1  = 4",
+            "NAXIS2  = 1",
+            "PCOUNT  = 0",
+            "GCOUNT  = 1",
+            "TFIELDS = 1",
+            "TTYPE1  = 'X       '",
+            "TFORM1  = '1J      '",
+            "END",
+        ]);
+        let header = parse_extension_header_bytes(&bytes).unwrap();
+        let descriptor = FitsTableDescriptor::from_header(&header).unwrap();
+        let span = FitsDataSpan::new(0, 4).unwrap();
+        let table = FitsTableData::new(descriptor, span);
+        let reader = MemCursor::from_bytes(vec![0u8; 4]);
+        let err = table.decode_column(&reader, 99).unwrap_err();
+        assert!(matches!(err, Error::SelectionOutOfBounds));
+    }
+
 }

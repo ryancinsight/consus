@@ -29,8 +29,6 @@
 use alloc::{string::String, vec::Vec};
 
 use consus_core::{ByteOrder, Datatype};
-#[cfg(feature = "alloc")]
-use consus_core::{CompoundField, EnumMember};
 
 use crate::schema::{
     FieldDescriptor, LogicalType, ParquetPhysicalType, Repetition, SchemaDescriptor,
@@ -495,6 +493,8 @@ pub fn arrow_nullability_to_parquet_repetition(nullable: bool) -> Repetition {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "alloc")]
+    use consus_core::{CompoundField, EnumMember};
 
     #[test]
     fn physical_type_mapping_is_correct() {

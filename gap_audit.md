@@ -39,13 +39,25 @@
 | N-006 | DIMENSION_LIST parsing and variable-to-dimension binding | `consus-netcdf::hdf5` now parses `DIMENSION_LIST` object-reference payloads and resolves variable axis names against discovered dimension-scale dataset addresses during group extraction. When resolution succeeds, variable dimensions preserve referenced scale order; when absent or invalid, extraction falls back to conservative synthetic names. Verification: `cargo test -p consus-netcdf` passes with `hdf5::dimension_scale::tests::dimension_list_addresses_decode_object_references_in_axis_order`, `hdf5::dimension_scale::tests::resolve_dimension_names_from_list_uses_dimension_scale_mapping`, `hdf5::group::tests::dimension_names_from_dimension_list_resolves_axis_order`, and `integration_netcdf_hdf5::missing_dimension_list_falls_back_to_synthetic_dimension_names` succeeding. |
 | N-007 | Nested-group dimension inheritance and scoped resolution | `consus-netcdf::model::NetcdfGroup` now validates variables against dimensions visible through the full ancestor scope chain instead of only the local group. Child groups may inherit ancestor dimensions and legally shadow them with local declarations, with nearest-scope resolution winning deterministically. Verification: `cargo test -p consus-netcdf` passes with `model::tests::group_validation_accepts_ancestor_scoped_dimension_reference`, `model::tests::group_validation_rejects_missing_ancestor_scoped_dimension_reference`, `model::tests::dimension_in_scope_prefers_local_shadowing_dimension`, `reference_netcdf::inherited_dimension_scope_validation`, `reference_netcdf::shadowed_dimension_scope_resolution`, `reference_netcdf::missing_inherited_dimension_is_rejected`, `roundtrip_netcdf::nested_group_dimension_inheritance_roundtrip`, and `roundtrip_netcdf::nested_group_dimension_shadowing_roundtrip` succeeding. |
 | Z-104 | Artifact synchronization | README.md Zarr row updated to reflect verified state: boundary-chunk stride fix and sharding verified; v3 metadata write path complete. Old Z-102 "remaining gap" sentence removed. |
-| P-001 | Parquet schema mapping verification | `consus-parquet` now covers canonical Parquet physical, logical, field, hybrid, Arrow bridge, and conversion models with deterministic mappings for `Boolean`, integer, float, complex, fixed string, variable string, opaque, compound, array, enum, varlen, and reference Core datatypes. `cargo test -p consus-parquet --lib` passes with 31/31 tests, including exhaustive datatype coverage for compound, array, enum, and varlen mappings. |
+| P-001 | Parquet schema mapping verification | `consus-parquet` now covers canonical Parquet physical, logical, field, hybrid, Arrow bridge, conversion, dataset-descriptor, and wire-trailer validation models with deterministic mappings for `Boolean`, integer, float, complex, fixed string, variable string, opaque, compound, array, enum, varlen, and reference Core datatypes. Dataset canonicalization preserves nested group fields as canonical `Compound` datatypes with ordered child offsets when fixed-size children permit exact sizing, and preserves repeated fields as canonical `VarLen` datatypes instead of collapsing them to scalar physical mappings. Wire validation now covers trailer magic validation, footer-length decoding, footer-offset derivation, non-overlapping row-group/column-chunk byte-range descriptors, and footer-boundary rejection. `cargo test -p consus-parquet --lib` passes with 47/47 tests, including exhaustive datatype coverage for compound, array, enum, and varlen mappings plus validated dataset descriptor, projection, nested-group, repeated-field, and footer-validation coverage. |
+
+| M-001 | consus-mat MATLAB .mat reader | v4 binary, v5 structured binary (all mxClass except explicit `mxOBJECT_CLASS` rejection, complex, logical, miCOMPRESSED), v7.3 HDF5-backed via consus-hdf5. Public model invariants are now enforced through constructors for cell, char, logical, sparse, and struct arrays. Crate-level documentation now specifies feature gates, canonical model mapping, parsing contracts, and unsupported cases. Follow-on closure adds tolerant skipping of unknown top-level v5 elements with structural validation, deterministic unsupported-feature rejection for MAT v5 `mxOBJECT_CLASS`, datatype-aware v7.3 char decoding for little-endian and big-endian uint16 datasets, explicit unsupported-feature rejection for v7.3 sparse datasets, explicit compact-layout rejection coverage, and `miCOMPRESSED` feature-matrix verification across enabled and disabled `compress` configurations. Integration coverage now includes v7.3 numeric, logical, char, cell ordering, scalar struct decoding, big-endian char decoding, sparse rejection, compact-layout rejection, and MAT v5 compressed-payload success/failure behavior under the corresponding feature set. |
+
+---
+
+### P-003: Compression Pipeline Gap (resolved this sprint)
+
+**Finding:** Column value decoding expected pre-decompressed bytes; no decompression dispatch existed for Parquet compression codecs (SNAPPY, GZIP, LZ4, ZSTD).
+
+**Fix:** Added `encoding/compression.rs` with `CompressionCodec` enum (discriminants 0-7), `decompress_page_values` dispatch (feature-gated per codec), and `decode_compressed_column_values` integrated entry point in `encoding/column.rs`.
+
+**Verification:** 12 unit tests for compression module + 7 integration tests for combined decompress+decode. 155 tests pass with all features.
 
 ---
 
 ## Open Gaps
 
-_None within the current Phase 2 Zarr/netCDF audit scope after Z-105, Z-106, Z-107, N-001, N-002, N-003, and N-004 closure._
+_No open gaps in the current audit scope. Parquet Phase 3 now covers: Thrift compact binary decoder, canonical wire metadata types, footer payload extraction, page header decoding, schema reconstruction bridge, dataset materialization bridge, physical page payload decoding (RLE/bit-packing hybrid levels + PLAIN decoders + RLE_DICTIONARY index decoder + DataPage v1/v2 payload splitter). Remaining Parquet roadmap items (typed column value extraction and file-backed read API) are planned next increments under P3.1._
 
 ---
 
@@ -91,6 +103,43 @@ _None within the current Phase 2 Zarr/netCDF audit scope after Z-105, Z-106, Z-1
 - **Verification**: `cargo test -p consus-fits --lib` passes with 128/128 tests.
 
 ---
+
+## M-001: consus-mat correctness and coverage gaps (resolved this sprint)
+
+| ID | File | Gap | Resolution |
+|----|------|-----|------------|
+| M-001a | Cargo.toml | Dead byteorder + consus-compression deps | Removed both from [dependencies] and feature lists |
+| M-001b | src/lib.rs | Blank feature gate column + empty Entry Points links | Filled with correct feature name and doc links |
+| M-001c | src/error.rs | UnsupportedVersion variant never constructed | Removed dead variant |
+| M-001d | src/v5/matrix.rs | nzmax (flags1) captured and discarded in sparse parsing | Added ir.len()==nzmax and jc.len()==ncols+1 validation |
+| M-001d2 | src/v5/mod.rs | Unknown top-level v5 elements hard-failed parsing | Reader now skips unknown top-level elements while still validating and consuming their declared payload bytes |
+| M-001e | src/v73/reader.rs | Cell group children iterated in arbitrary order | Sort children by numeric name (parse::<usize>) before building cells vec |
+| M-001f | tests/v5_read.rs | Vacuous truncated test (no assertion) | Replaced with v5_truncated_element_returns_error using a proper is_err() assertion |
+| M-001g | tests/v5_read.rs | No coverage for char, logical, complex, sparse, cell, struct | Added 7 value-semantic synthetic-byte-stream tests |
+| M-001h | tests/v73_read.rs | No coverage for logical and char beyond fixture | Closed with value-semantic synthetic HDF5-backed tests for logical, little-endian char, and big-endian char decoding |
+| M-001i | src/v5/matrix.rs | `mxOBJECT_CLASS` had no explicit policy | Closed with deterministic `UnsupportedFeature` rejection for MAT v5 `mxOBJECT_CLASS`, plus integration coverage |
+| M-001j | tests/v73_read.rs | No explicit compact-layout rejection coverage | Closed with synthetic HDF5-backed compact-dataset fixture coverage asserting `UnsupportedFeature("v7.3 compact layout")` |
+| M-001k | tests/v5_compressed_read.rs | No `miCOMPRESSED` feature-matrix verification | Closed with dedicated integration coverage asserting successful compressed MAT v5 decode when `compress` is enabled and deterministic `UnsupportedFeature("miCOMPRESSED requires the 'compress' feature")` when `compress` is disabled |
+| M-001s4a | src/model/structure.rs | MatStructArray.fields Vec<String> redundant with data keys | Removed fields field; new() changed to (shape, data); field_names() returns impl Iterator<Item = &str>; all construction sites updated |
+| M-001s4b | tests/v4_read.rs | v4 sparse rejection path had no integration test | v4_sparse_matrix_returns_unsupported_feature_error: synthetic type_code=2 record, exact UnsupportedFeature message asserted |
+| M-001s4c | crates/consus-mat/ | No crate-level README | README.md created: format coverage, feature flags, quick start, canonical model, rejection policies, v4/v5/v7.3 notes |
+| M-001s4d | .github/workflows/ci.yml | consus-mat absent from CI matrix | Added to check/test/msrv matrix; test-mat-features job added for default + no-compress configurations |
+| M-001s5a | crates/consus-hdf5/src/file/writer.rs | HDF5 builder lacked nested group authoring surface | ChildDatasetSpec + add_group_with_attributes added; enables MATLAB_class group + child dataset creation |
+| M-001s5b | src/model/numeric.rs, sparse.rs, cell.rs, character.rs, logical.rs, structure.rs | No model-level unit tests for constructors, invariants, or accessors | 42 value-semantic unit tests added across all model modules |
+| M-001s5c | src/error.rs | No Display implementation tests | 5 unit tests covering all Display impl variants |
+| M-001s5d | tests/v5_read.rs | No multi-variable file test | v5_multiple_variables_roundtrip added (2 scalar doubles, value-semantic) |
+| M-001s5e | tests/v5_read.rs | loadmat R+Seek path untested | loadmat_from_reader_parses_test_fixture added (std::fs::File + test_v5.mat) |
+| M-001s5f | src/lib.rs | Doc tests: 0 | Doc test for loadmat_bytes added (MAT v4 scalar double) |
+| M-001s5g | tests/v73_read.rs | v73 cell array group roundtrip absent | v73_cell_array_roundtrip added using add_group_with_attributes |
+| M-001s5h | tests/v73_read.rs | v73 struct array group roundtrip absent | v73_struct_array_roundtrip added using add_group_with_attributes |
+
+### Verification
+- cargo check -p consus-mat: 0 errors
+- cargo test -p consus-mat: 71/71 tests pass (42 lib unit + 4 v4 + 1 v5-compressed + 14 v5 + 9 v73 + 1 doc)
+- cargo test -p consus-mat --no-default-features --features std,alloc: 62/62 tests pass
+- cargo test -p consus-hdf5: 321/321 tests pass
+- cargo check --workspace: 0 errors
+
 ## Risk Assessment
 
 | Risk | Probability | Impact | Status |
@@ -102,7 +151,8 @@ _None within the current Phase 2 Zarr/netCDF audit scope after Z-105, Z-106, Z-1
 | Fill-value width mismatch for non-8-byte numeric types | Low | Medium | Closed by Z-107: float32 and float64 fill-value byte expansion now matches the target element width and is covered by dedicated tests plus array roundtrips |
 | Store/backend divergence | Low | Medium | Reduced by in-memory, filesystem, and Python-generated fixture coverage; S3 interop remains indirect |
 | netCDF HDF5 read coverage (dimension coordinate values and compact/virtual variable payloads not yet read) | Low | Medium | Reduced by N-001, N-002, N-005, N-006, and N-007: attributes, unlimited extents, contiguous/chunked variable payload reads, DIMENSION_LIST-based semantic dimension binding, and ancestor-scope dimension inheritance are now preserved; coordinate-value extraction plus compact/virtual payload extraction remain roadmap work under P2.3 |
-| Parquet datatype coverage | Low | Medium | Reduced by P-001: canonical Parquet mappings now cover all core datatype variants present in the crate, including compound, array, enum, varlen, and reference cases |
+| MATLAB .mat v7.3 completeness (non-scalar struct arrays, virtual-layout coverage) | Low | Low | Reduced further by M-001 Sprint 5: cell and struct group roundtrip tests added via extended HDF5 builder; model unit test coverage complete; virtual-layout fixture coverage remains blocked on virtual dataset HDF5 authoring surface; non-scalar struct shape preservation requires MATLAB_dims attribute authoring (roadmap) |
+| Parquet datatype, dataset-model, and trailer-validation coverage | Low | Medium | Reduced by P-001: canonical Parquet mappings now cover all core datatype variants present in the crate, including compound, array, enum, varlen, and reference cases; validated dataset descriptor and ordered projection coverage enforce row-group chunk cardinality, schema-order field identity, total-row aggregation, nested-column classification, nested group → canonical `Compound` preservation, and repeated field → canonical `VarLen` preservation; trailer validation now enforces `PAR1` magic, little-endian footer-length decoding, footer-offset bounds, non-overlapping row-group/column-chunk byte ranges, and rejection of row groups extending into the footer payload |
 | Arrow nested-type field loss on conversion | Low | Medium | Closed by A-001: Compound/Array/Complex → Arrow Struct/List now preserves recursive field structure; Struct/Map/Union → Compound now preserves child fields |
 | FITS binary table column type mapping | Medium | Medium | Closed by F-001: TFORM format codes now map to canonical Datatype for all 13 FITS Standard 4.0 binary table column types |
 | FITS column descriptor datatype integration | Medium | Medium | Closed by F-002: FitsTableColumn now carries canonical Datatype and byte_width derived from TFORM; binary table NAXIS1 validation enforced |
@@ -120,9 +170,9 @@ _None within the current Phase 2 Zarr/netCDF audit scope after Z-105, Z-106, Z-1
 | netCDF tests | 113 |
 | netCDF passing | 113 |
 | netCDF failing | 0 |
-| Verified commands | `cargo test -p consus-zarr` (301/301); `cargo test -p consus-netcdf` (113/113); `cargo test --workspace` (864/864); `cargo test -p consus-parquet --lib` (31/31); `cargo test -p consus-arrow --lib` (41/41); `cargo test -p consus-fits --lib` (128/128); `cargo test -p consus-hdf5 --lib` (263/263) |
+| Verified commands | `cargo test -p consus-zarr` (301/301); `cargo test -p consus-netcdf` (113/113); `cargo test --workspace` (all pass); `cargo test -p consus-parquet --lib` (136/136); `cargo test -p consus-arrow --lib` (41/41); `cargo test -p consus-fits --lib` (128/128); `cargo test -p consus-hdf5 --lib` (263/263); `cargo test -p consus-hdf5` (321/321); `cargo test -p consus-mat` (74/74); `cargo test -p consus-mat --no-default-features --features std,alloc` (62/62) |
 | Open gaps | 0 |
 | High-severity open gaps | 0 |
-| Closed this sprint | 15 (Z-105, Z-106, Z-107, N-001, N-002, N-003, N-004, N-005, N-006, N-007, P-001, A-001, F-001, F-002, H-001) |
+| Closed this sprint | 1 (P-002: Parquet Thrift compact decoder + wire metadata types + page header decoder + schema reconstruction bridge + dataset materialization bridge) |
 | Medium-severity open gaps | 0 |
 | Low-severity open gaps | 0 |

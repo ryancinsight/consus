@@ -69,6 +69,57 @@ impl ParquetPhysicalType {
     pub const fn is_float(self) -> bool {
         matches!(self, Self::Float | Self::Double)
     }
+
+    /// Map a `parquet.thrift` Type enum i32 discriminant to the physical type.
+    ///
+    /// Discriminant mapping (parquet.thrift Type enum):
+    ///
+    /// | Value | Parquet type            |
+    /// |-------|-------------------------|
+    /// |     0 | BOOLEAN                 |
+    /// |     1 | INT32                   |
+    /// |     2 | INT64                   |
+    /// |     3 | INT96                   |
+    /// |     4 | FLOAT                   |
+    /// |     5 | DOUBLE                  |
+    /// |     6 | BYTE_ARRAY              |
+    /// |     7 | FIXED_LEN_BYTE_ARRAY(0) |
+    ///
+    /// Returns `None` for unknown discriminants.
+    /// For `FIXED_LEN_BYTE_ARRAY` (discriminant 7) the fixed length is set to 0;
+    /// use [`Self::from_parquet_type_with_length`] when `type_length` is available.
+    #[must_use]
+    pub const fn from_parquet_type_i32(v: i32) -> Option<Self> {
+        match v {
+            0 => Some(Self::Boolean),
+            1 => Some(Self::Int32),
+            2 => Some(Self::Int64),
+            3 => Some(Self::Int96),
+            4 => Some(Self::Float),
+            5 => Some(Self::Double),
+            6 => Some(Self::ByteArray),
+            7 => Some(Self::FixedLenByteArray(0)),
+            _ => None,
+        }
+    }
+
+    /// Map a `parquet.thrift` Type enum i32 discriminant to the physical type,
+    /// using `type_length` to supply the fixed byte length for
+    /// `FIXED_LEN_BYTE_ARRAY` (discriminant 7).
+    ///
+    /// When `v == 7` and `type_length` is `Some(n)` with `n >= 0`, returns
+    /// `FixedLenByteArray(n as usize)`. When `type_length` is `None` or
+    /// negative, falls back to `FixedLenByteArray(0)`.
+    /// For all other discriminants delegates to [`Self::from_parquet_type_i32`].
+    #[must_use]
+    pub fn from_parquet_type_with_length(v: i32, type_length: Option<i32>) -> Option<Self> {
+        if v == 7 {
+            let len = type_length.unwrap_or(0).max(0) as usize;
+            Some(Self::FixedLenByteArray(len))
+        } else {
+            Self::from_parquet_type_i32(v)
+        }
+    }
 }
 
 /// Alias describing the width of a physical Parquet type in bytes.
@@ -105,5 +156,34 @@ mod tests {
 
         assert!(ParquetPhysicalType::ByteArray.is_variable_width());
         assert!(!ParquetPhysicalType::FixedLenByteArray(8).is_variable_width());
+    }
+
+    #[test]
+    fn from_parquet_type_i32_all_known_discriminants() {
+        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(0), Some(ParquetPhysicalType::Boolean));
+        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(1), Some(ParquetPhysicalType::Int32));
+        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(2), Some(ParquetPhysicalType::Int64));
+        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(3), Some(ParquetPhysicalType::Int96));
+        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(4), Some(ParquetPhysicalType::Float));
+        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(5), Some(ParquetPhysicalType::Double));
+        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(6), Some(ParquetPhysicalType::ByteArray));
+        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(7), Some(ParquetPhysicalType::FixedLenByteArray(0)));
+        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(99), None);
+    }
+
+    #[test]
+    fn from_parquet_type_with_length_fixed_len_byte_array() {
+        assert_eq!(
+            ParquetPhysicalType::from_parquet_type_with_length(7, Some(16)),
+            Some(ParquetPhysicalType::FixedLenByteArray(16))
+        );
+        assert_eq!(
+            ParquetPhysicalType::from_parquet_type_with_length(7, None),
+            Some(ParquetPhysicalType::FixedLenByteArray(0))
+        );
+        assert_eq!(
+            ParquetPhysicalType::from_parquet_type_with_length(1, Some(4)),
+            Some(ParquetPhysicalType::Int32)
+        );
     }
 }

@@ -28,6 +28,7 @@ jobs:
           - consus-arrow
           - consus-compression
           - consus-io
+          - consus-mat
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -64,6 +65,7 @@ jobs:
           - consus-arrow
           - consus-compression
           - consus-io
+          - consus-mat
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -88,9 +90,22 @@ jobs:
           - consus-arrow
           - consus-compression
           - consus-io
+          - consus-mat
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.85.0
       - uses: Swatinem/rust-cache@v2
       - name: cargo check (${{ matrix.package }})
         run: cargo check -p ${{ matrix.package }}
+
+  test-mat-features:
+    name: Test consus-mat feature matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo test (consus-mat, default features)
+        run: cargo test -p consus-mat
+      - name: cargo test (consus-mat, no compress / no v73)
+        run: cargo test -p consus-mat --no-default-features --features std,alloc

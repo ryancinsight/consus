@@ -181,6 +181,37 @@
 ### P3.1 — Parquet Interop
 - [x] Consus ↔ Parquet schema mapping
 - [ ] Read Parquet files as Consus datasets
+  - [x] Canonical in-memory Parquet dataset descriptor model
+  - [x] Top-level column descriptors with canonical `Datatype`, storage classification, and `[total_rows]` shape
+  - [x] Row-group and column-chunk descriptor validation (`row_count > 0`, schema-order chunk alignment, exact chunk cardinality)
+  - [x] Ordered projection API preserving source schema order for selected top-level columns
+  - [x] Value-semantic tests for fixed-width, variable-width, nested-group, projection, and invalid row-group layouts
+  - [x] Nested group canonicalization to `Datatype::Compound` with ordered child fields and analytically derived fixed-size offsets
+  - [x] Repeated field canonicalization to `Datatype::VarLen` for scalar and group columns
+  - [x] Value-semantic tests for repeated scalar columns and repeated group columns
+  - [x] Byte-level footer trailer validation (`PAR1` magic, little-endian footer length, footer offset bounds)
+  - [x] Canonical footer prelude and byte-range metadata descriptors (`FooterPrelude`, `RowGroupLocation`, `ColumnChunkLocation`, `ParquetFooterDescriptor`)
+  - [x] Value-semantic tests for valid trailer parsing, short input rejection, invalid magic rejection, footer-length overflow rejection, overlapping chunk rejection, and footer-bound row-group rejection
+  - [x] Minimal Thrift compact binary protocol decoder (`wire::thrift::ThriftReader`): zigzag varint, i16/i32/i64, string/binary, field header, list/set/map header, recursive skip
+  - [x] Canonical Parquet wire metadata types: `FileMetadata`, `SchemaElement`, `RowGroupMetadata`, `ColumnChunkMetadata`, `ColumnMetadata`, `KeyValue`
+  - [x] Footer payload extraction and Thrift decoding: `decode_file_metadata(bytes, prelude)` -> `FileMetadata`
+  - [x] Value-semantic tests for FileMetadata decoding from hand-computed Thrift compact byte vectors (valid decode, missing-required-field rejection)
+  - [x] Canonical Parquet page header types: `PageHeader`, `DataPageHeader`, `DictionaryPageHeader`, `DataPageHeaderV2`, `PageType`
+  - [x] Page header Thrift decoder: `decode_page_header(bytes)` -> `(PageHeader, consumed)`
+  - [x] Value-semantic tests for page header decoding (DATA_PAGE, DICTIONARY_PAGE with is_sorted bool, DataPageHeaderV2, empty-input rejection)
+  - [x] Schema reconstruction bridge: `schema_elements_to_schema` rebuilds `SchemaDescriptor` from flat pre-order DFS `SchemaElement` list (recursive group support)
+  - [x] Dataset materialization bridge: `dataset_from_file_metadata(meta)` -> `ParquetDatasetDescriptor`
+  - [x] Value-semantic tests for schema reconstruction and dataset bridge
+  - [x] Module decomposition: `wire/thrift.rs`, `wire/metadata.rs`, `wire/page.rs`, `dataset/mod.rs` (all files under 400-line constraint)
+  - [x] Physical page payload decoding and level decoding (RLE/bit-packing hybrid, deprecated BIT_PACKED, definition/repetition levels)
+  - [x] `encoding/levels.rs`: `decode_levels` (RLE/bit-packing hybrid), `decode_bit_packed_raw` (deprecated BIT_PACKED), `level_bit_width` — 14 value-semantic tests
+  - [x] `encoding/plain.rs`: PLAIN encoding decoders for all Parquet physical types (BOOLEAN, INT32, INT64, INT96, FLOAT, DOUBLE, BYTE_ARRAY, FIXED_LEN_BYTE_ARRAY) — 14 value-semantic tests
+  - [x] `encoding/rle_dict.rs`: `decode_rle_dict_indices` (RLE_DICTIONARY, encoding ID 8) — 5 value-semantic tests
+  - [x] `wire/payload.rs`: `split_data_page_v1` and `split_data_page_v2` payload splitters with `PagePayload` struct — 6 value-semantic tests
+  - [x] :  enum (8 variants covering all Parquet physical types), , ,  (PLAIN/PLAIN_DICTIONARY/RLE_DICTIONARY dispatch), ,  — 16 value-semantic tests
+  - [x] :  and  mapping parquet.thrift Type enum discriminants 0–7 — 2 tests
+  - [x] Typed column value extraction: compression pipeline (decompress values_bytes before decoding)
+  - [ ] Real file-backed dataset read API (open file -> validate -> decode footer -> materialize dataset)
 - [ ] Write Consus datasets to Parquet
 - [ ] Hybrid mode: Parquet tables inside Consus containers
 - [ ] Arrow array bridge (zero-copy)
@@ -201,3 +232,88 @@
 - [ ] `no_std` smoke tests (`thumbv7em-none-eabihf`)
 - [ ] Documentation site
 - [ ] crates.io publication
+
+## Phase 2.6: MATLAB .mat Format Reader (consus-mat)
+
+### P2.6a - MAT v4 (Binary)
+- [x] V4Header::parse: type field decoding (M*1000+P*10+T), LE/BE byte-order, name extraction
+- [x] read_v4_variable: numeric matrix (all 6 precisions), text matrix (f64->char), complex, LE/BE normalization
+- [x] read_mat_v4: sequential record parsing until EOF
+- [x] Positive: v4_double_array_shape_and_values (f64, shape [2,3], 6 exact column-major values)
+- [x] Negative: v4_truncated_header_returns_error
+- [x] Negative: v4_empty_slice_returns_error
+- [x] v4 sparse matrix explicit permanent rejection policy with fixture coverage (v4_sparse_matrix_returns_unsupported_feature_error)
+
+### P2.6b - MAT v5 (Structured Binary)
+- [x] V5FileHeader::parse: LE/BE detection via endian indicator
+- [x] read_tag: standard vs small element detection, all 15 miXXXX type codes
+- [x] parse_matrix: mxDOUBLE..mxUINT64 numeric, mxCHAR, mxSPARSE, mxCELL, mxSTRUCT
+- [x] Complex flag detection and imaginary sub-element extraction
+- [x] Logical flag detection producing MatLogicalArray
+- [x] Sparse invariants enforced: `ir.len() == nzmax`, `jc.len() == ncols + 1`
+- [x] Expanded synthetic coverage for char, logical, complex, sparse, and cell decoding
+- [x] Unknown top-level v5 element skipping with structural validation
+- [x] `mxOBJECT_CLASS` explicit permanent rejection policy with integration coverage
+- [x] Compressed `miCOMPRESSED` fixture coverage across enabled/disabled feature configurations
+
+### P2.6c - MAT v7.3 (HDF5-backed)
+- [x] Root-group traversal with MATLAB_class dispatch through `consus-hdf5`
+- [x] Numeric, logical, char, cell, and scalar struct decoding
+- [x] Deterministic numeric ordering for cell-group children named `"0"`, `"1"`, ...
+- [x] Expanded synthetic HDF5-backed coverage for logical, char, cell, and struct decoding
+- [x] Non-scalar struct array decoding with authoritative shape preservation
+- [x] Character decoding from dataset datatype byte order instead of hardcoded LE
+- [x] Sparse v7.3 decoding or explicit permanent rejection policy
+- [x] Compact-layout rejection coverage
+- [x] Virtual-layout rejection coverage (DatasetLayout::Virtual in HDF5 builder; rejection test passing)
+- [x] Chunked-dataset fixture coverage: v73_chunked_double_array_roundtrip passing
+- [x] v7.3 cell array group roundtrip: MATLAB_class="cell" group with decimal-named child datasets; value-semantic integration coverage
+- [x] v7.3 struct array group roundtrip: MATLAB_class="struct" group with field-named child datasets; value-semantic integration coverage
+
+### P2.6d - Model, Documentation, and Release Readiness
+- [x] Canonical public model types for numeric, char, logical, sparse, cell, and struct arrays
+- [x] Invariant-enforcing constructors added for cell, char, logical, sparse, and struct models
+- [x] Crate-level documentation updated for feature flags, entry points, contracts, and unsupported cases
+- [x] Remove redundant struct field-name storage: MatStructArray.fields removed; data keys are sole SSOT; new() signature changed to (shape, data); field_names() returns impl Iterator
+- [x] Add crate README with usage examples, feature matrix, and version-specific behavior notes
+- [x] Add CI coverage for `cargo test -p consus-mat` and feature-matrix verification, including `miCOMPRESSED` enabled/disabled configurations
+- [x] miCOMPRESSED zlib decompression (compress feature)
+- [x] read_mat_v5: sequential element parsing with miMATRIX and miCOMPRESSED dispatch
+- [x] Positive: v5_double_array_roundtrip (f64, shape [1,3], 3 exact values)
+- [x] Negative: v5_invalid_endian_indicator_returns_error, v5_truncated_header_returns_error
+- [x] consus-hdf5 Hdf5FileBuilder extended: ChildDatasetSpec + add_group_with_attributes enables nested group authoring with attached attributes for v73 fixture coverage
+- [x] Model unit tests added: 42 tests across all 6 model modules covering constructors, invariant enforcement, and accessor methods
+- [x] MatError Display unit tests: 5 tests covering all Display impl variants
+- [x] Multi-variable v5 integration test: v5_multiple_variables_roundtrip (2 named scalar doubles, value-semantic)
+- [x] loadmat file I/O test: loadmat_from_reader_parses_test_fixture (std::fs::File + test_v5.mat roundtrip)
+- [x] Doc test for loadmat_bytes: MAT v4 scalar double byte sequence, verifies variable count and name
+- [x] Verified cargo test -p consus-mat: 71/71 pass (42 lib + 4 v4 + 1 v5-compressed + 14 v5 + 9 v73 + 1 doc)
+- [x] Verified cargo test -p consus-mat --no-default-features --features std,alloc: 62/62 pass
+- [x] Verified cargo test -p consus-hdf5: 321/321 pass
+- [x] Verified cargo check --workspace: zero errors
+
+### P2.6c - MAT v7.3 (HDF5-backed)
+- [x] Version detection via HDF5 file signature at byte offset 0
+- [x] read_mat_v73: root group traversal, MATLAB_class attribute dispatch via consus-hdf5
+- [x] Numeric arrays: contiguous+chunked payload, shape reversal (C-order to Fortran-order)
+- [x] Complex arrays: compound {real, imag} field deinterleaving
+- [x] Logical arrays: uint8 payload decoded to Vec<bool>
+- [x] Char arrays: uint16 payload decoded to UTF-8 String
+- [x] Struct arrays: group children mapped to MatStructArray
+- [x] Cell arrays: group children mapped to MatCellArray
+- [x] Positive: v73_double_array_roundtrip (HDF5 + MATLAB_class attr, 3 exact f64 values)
+
+### P2.6d - Version Detection and Entry Points
+- [x] detect_version: HDF5 magic -> V73, MAT v5 endian indicator -> V5, fallback -> V4
+- [x] loadmat_bytes: auto-detect and dispatch to version-specific parser
+- [x] loadmat<R: Read + Seek>: std-feature convenience wrapper
+- [x] 5 unit tests in detect::tests module
+
+### P2.6e - Correctness Hardening and Coverage Expansion (this sprint)
+- [x] Removed dead byteorder + consus-compression deps from Cargo.toml
+- [x] Removed dead UnsupportedVersion variant; fixed lib.rs doc strings
+- [x] v5 sparse: ir.len()==nzmax + jc.len()==ncols+1 invariants enforced
+- [x] v73 cell group: children sorted by numeric name for deterministic element order
+- [x] v5 vacuous truncated test replaced with value-asserting negative test
+- [x] v5 synthetic test suite: char, logical, complex, sparse, cell, struct (7 new tests)
+- [x] Verified cargo test -p consus-mat: 17/17 pass (3 v4, 10 v5, 4 v73)

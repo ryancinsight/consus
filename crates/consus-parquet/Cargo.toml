@@ -12,9 +12,17 @@ description = "Apache Parquet interoperability layer for the Consus scientific s
 default = ["std"]
 std = ["alloc", "consus-core/std"]
 alloc = ["consus-core/alloc"]
+snappy = ["dep:snap"]
+zstd = ["dep:zstd"]
+lz4 = ["dep:lz4_flex"]
+gzip = ["dep:flate2", "std"]
 
 [dependencies]
 consus-core = { workspace = true }
+snap = { version = "1", default-features = false, optional = true }
+zstd = { workspace = true, optional = true }
+lz4_flex = { workspace = true, optional = true }
+flate2 = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

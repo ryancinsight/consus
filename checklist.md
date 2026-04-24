@@ -128,6 +128,177 @@
 
 ### Milestone 14: Parquet Interop Expansion
 - [ ] Read Parquet files as Consus datasets
+- [x] Canonical `ParquetDatasetDescriptor` added for validated schema + row-group metadata
+- [x] Canonical `ParquetColumnDescriptor` added with derived `Datatype`, `ColumnStorage`, and 1D row shape
+- [x] Canonical `ColumnChunkDescriptor` and `RowGroupDescriptor` added with exact row-count and byte-length invariants
+- [x] Ordered `ParquetProjection` / `ColumnProjection` API added for schema-subset views preserving source field order
+- [x] Value-semantic tests added for total-row computation, fixed/variable/nested storage classification, projection ordering, and invalid row-group metadata rejection
+- [x] Nested group columns now canonicalize to ordered `Datatype::Compound` descriptors with computed child offsets and fixed-size aggregation when derivable
+- [x] Repeated scalar columns now canonicalize to `Datatype::VarLen` with variable-width storage classification
+- [x] Repeated group columns now canonicalize to `Datatype::VarLen<Compound>` while preserving nested child ordering and offsets
+- [x] Canonical `wire` module added for Parquet trailer validation and footer metadata envelopes
+- [x] `FooterPrelude` validates trailer length, little-endian footer length, and `PAR1` magic invariants
+- [x] `ColumnChunkLocation`, `RowGroupLocation`, and `ParquetFooterDescriptor` added with non-overlap and footer-boundary validation
+- [x] Value-semantic tests added for valid trailer parsing, short input rejection, invalid magic rejection, footer-length overflow rejection, overlapping chunk rejection, and footer-boundary rejection
+- [x] Verified `cargo test -p consus-parquet --lib` (116/116 after encoding + payload modules)
+- [x] Verified `cargo check --workspace` (0 errors, workspace-wide)
+- [x] `encoding/levels.rs`: `decode_levels` (RLE/bit-packing hybrid encoding ID 3), `decode_bit_packed_raw` (deprecated BIT_PACKED ID 4), `level_bit_width` -- 14 value-semantic tests
+- [x] `encoding/plain.rs`: PLAIN decoders for BOOLEAN, INT32, INT64, INT96, FLOAT, DOUBLE, BYTE_ARRAY, FIXED_LEN_BYTE_ARRAY -- 14 value-semantic tests
+- [x] `encoding/rle_dict.rs`: `decode_rle_dict_indices` for RLE_DICTIONARY (encoding ID 8) -- 5 value-semantic tests
+- [x] `wire/payload.rs`: `PagePayload`, `split_data_page_v1`, `split_data_page_v2` -- 6 value-semantic tests
+- [x] Minimal Thrift compact binary decoder (`wire/thrift.rs`): zigzag varint, i16/i32/i64, string/binary, field header, list/set/map header, recursive skip — 17 value-semantic tests
+- [x] Parquet wire metadata types (`wire/metadata.rs`): `FileMetadata`, `SchemaElement`, `RowGroupMetadata`, `ColumnChunkMetadata`, `ColumnMetadata`, `KeyValue` with `decode_file_metadata`
+- [x] Page header types (`wire/page.rs`): `PageHeader`, `DataPageHeader`, `DictionaryPageHeader`, `DataPageHeaderV2`, `PageType` with `decode_page_header`
+- [x] Schema reconstruction bridge: `schema_elements_to_schema` (DFS traversal of flat schema list)
+- [x] Dataset materialization bridge: `dataset_from_file_metadata` → `ParquetDatasetDescriptor`
+- [x] Module decomposition: `wire` and `dataset` extracted from inline lib.rs blocks to external files
+- [x] :  enum, ,  (PLAIN / PLAIN_DICTIONARY / RLE_DICTIONARY) -- 16 value-semantic tests
+- [x] :  and  -- 2 value-semantic tests
+- [x] Verified 
+running 136 tests
+test arrow_bridge::tests::arrow_hint_mapping_is_stable ... ok
+test conversion::tests::core_to_parquet_roundtrip ... ok
+test conversion::tests::field_to_core_conversion ... ok
+test arrow_bridge::tests::bridge_counts_zero_copy_fields ... ok
+test arrow_bridge::tests::integration_plan_reports_mode ... ok
+test conversion::tests::schema_to_core_pairs ... ok
+test conversion::tests::physical_type_mapping_is_correct ... ok
+test dataset::tests::dataset_descriptor_rejects_chunk_field_order_mismatch ... ok
+test dataset::tests::dataset_descriptor_computes_total_rows_and_columns ... ok
+test conversion::tests::repetition_conversion ... ok
+test dataset::tests::dataset_from_file_metadata_roundtrip ... ok
+test conversion::tests::logical_type_refines_mapping ... ok
+test dataset::tests::repeated_group_column_maps_to_varlen_compound_datatype ... ok
+test dataset::tests::nested_group_column_maps_to_nested_storage ... ok
+test conversion::tests::full_datatype_coverage_is_deterministic ... ok
+test dataset::tests::projection_preserves_source_schema_order ... ok
+test dataset::tests::dataset_descriptor_rejects_chunk_count_mismatch ... ok
+test dataset::tests::repeated_scalar_column_maps_to_varlen_datatype_and_variable_storage ... ok
+test dataset::tests::schema_elements_to_schema_flat ... ok
+test encoding::column::tests::decode_column_plain_boolean_eight_values ... ok
+test encoding::column::tests::decode_column_plain_byte_array_two_strings ... ok
+test encoding::column::tests::column_values_len_is_empty_consistent ... ok
+test encoding::column::tests::column_values_physical_type_all_variants ... ok
+test encoding::column::tests::decode_column_plain_dict_i32_same_as_rle ... ok
+test encoding::column::tests::decode_column_plain_f64_two_values ... ok
+test encoding::column::tests::decode_column_plain_fixed_len_byte_array ... ok
+test encoding::column::tests::decode_column_plain_i32_three_values ... ok
+test encoding::column::tests::decode_column_plain_i64_two_values ... ok
+test encoding::column::tests::decode_column_rle_dict_byte_array_three_values ... ok
+test encoding::column::tests::decode_column_rle_dict_i32_bit_packed ... ok
+test encoding::column::tests::decode_column_rle_dict_index_out_of_bounds_returns_error ... ok
+test encoding::column::tests::decode_column_rle_dict_missing_dictionary_returns_error ... ok
+test encoding::column::tests::decode_column_rle_dict_rle_run_five_copies ... ok
+test encoding::column::tests::decode_column_rle_dict_type_mismatch_returns_error ... ok
+test encoding::column::tests::decode_column_unsupported_encoding_returns_error ... ok
+test encoding::column::tests::decode_dictionary_page_byte_array_two_strings ... ok
+test encoding::column::tests::decode_dictionary_page_i32_three_values ... ok
+test encoding::levels::tests::decode_bit_packed_raw_bit_width_1_ten_values ... ok
+test encoding::levels::tests::decode_bit_packed_raw_bit_width_2_four_values ... ok
+test encoding::levels::tests::decode_bit_packed_raw_truncated_errors ... ok
+test encoding::levels::tests::decode_levels_bit_packed_bit_width_1_eight_values ... ok
+test encoding::levels::tests::decode_levels_bit_packed_bit_width_2_eight_values ... ok
+test encoding::levels::tests::decode_levels_bit_packed_partial_count ... ok
+test encoding::levels::tests::decode_levels_empty_input_errors ... ok
+test encoding::levels::tests::decode_levels_rle_bit_width_1_five_ones ... ok
+test encoding::levels::tests::decode_levels_rle_bit_width_2_four_threes ... ok
+test encoding::levels::tests::decode_levels_rle_run_truncated_to_count ... ok
+test encoding::levels::tests::decode_levels_two_sequential_rle_runs ... ok
+test encoding::levels::tests::decode_levels_zero_bit_width_returns_zeros ... ok
+test encoding::levels::tests::decode_levels_zero_count_returns_empty ... ok
+test encoding::levels::tests::level_bit_width_matches_spec ... ok
+test encoding::plain::tests::decode_plain_boolean_ten_values ... ok
+test encoding::plain::tests::decode_plain_boolean_zero_count ... ok
+test encoding::plain::tests::decode_plain_byte_array_truncated_length_errors ... ok
+test encoding::plain::tests::decode_plain_byte_array_two_values ... ok
+test encoding::plain::tests::decode_plain_f32_two_values ... ok
+test encoding::plain::tests::decode_plain_f64_two_values ... ok
+test encoding::plain::tests::decode_plain_fixed_byte_array_two_values ... ok
+test encoding::plain::tests::decode_plain_fixed_byte_array_zero_len ... ok
+test encoding::plain::tests::decode_plain_i32_three_values ... ok
+test encoding::plain::tests::decode_plain_i32_truncated_errors ... ok
+test encoding::plain::tests::decode_plain_i32_zero_count ... ok
+test encoding::plain::tests::decode_plain_i64_empty_errors ... ok
+test encoding::plain::tests::decode_plain_i64_two_values ... ok
+test encoding::plain::tests::decode_plain_i96_one_value ... ok
+test encoding::rle_dict::tests::decode_rle_dict_indices_bit_packed_four_values ... ok
+test encoding::rle_dict::tests::decode_rle_dict_indices_empty_input_errors ... ok
+test encoding::rle_dict::tests::decode_rle_dict_indices_rle_run ... ok
+test encoding::rle_dict::tests::decode_rle_dict_indices_two_rle_runs ... ok
+test encoding::rle_dict::tests::decode_rle_dict_indices_zero_count_returns_empty ... ok
+test hybrid::tests::default_descriptor_is_disabled ... ok
+test hybrid::tests::embedded_descriptor_tracks_layout ... ok
+test schema::arrow::tests::arrow_hint_mapping_is_stable ... ok
+test schema::arrow::tests::bridge_counts_zero_copy_fields ... ok
+test schema::arrow::tests::integration_plan_reports_mode ... ok
+test schema::field::tests::field_id_roundtrip ... ok
+test schema::field::tests::group_descriptor_validates ... ok
+test schema::field::tests::scalar_descriptor_validates ... ok
+test schema::field::tests::schema_find_field_works ... ok
+test schema::field::tests::schema_rejects_duplicates ... ok
+test schema::logical::tests::annotation_flags_are_consistent ... ok
+test schema::logical::tests::compatibility_rules_match_expected_widths ... ok
+test schema::logical::tests::numeric_types_are_detected ... ok
+test schema::logical::tests::temporal_types_are_detected ... ok
+test schema::physical::tests::classification_predicates_are_correct ... ok
+test schema::physical::tests::from_parquet_type_i32_all_known_discriminants ... ok
+test schema::physical::tests::from_parquet_type_with_length_fixed_len_byte_array ... ok
+test schema::physical::tests::width_mapping_is_correct ... ok
+test schema::tests::schema_descriptor_construction_works ... ok
+test schema::tests::schema_module_exports_are_available ... ok
+test tests::conversion_exports_are_available ... ok
+test tests::dataset_exports_are_available ... ok
+test tests::exports_hybrid_types ... ok
+test tests::exports_schema_types ... ok
+test tests::page_type_exports_are_available ... ok
+test tests::wire_exports_are_available ... ok
+test tests::wire_metadata_exports_are_available ... ok
+test wire::metadata::tests::decode_file_metadata_minimal ... ok
+test wire::metadata::tests::decode_file_metadata_rejects_missing_required_field ... ok
+test wire::metadata::tests::decode_schema_element_group ... ok
+test wire::metadata::tests::decode_schema_element_leaf ... ok
+test wire::page::tests::decode_data_page_header_v2_minimal ... ok
+test wire::page::tests::decode_dictionary_page_header_with_sorted ... ok
+test wire::page::tests::decode_full_page_header_data_page ... ok
+test wire::page::tests::decode_page_header_rejects_empty ... ok
+test wire::page::tests::page_type_from_i32_covers_all_variants ... ok
+test wire::payload::tests::split_v1_optional_column_rle_def_levels ... ok
+test wire::payload::tests::split_v1_required_column_no_levels ... ok
+test wire::payload::tests::split_v1_unsupported_level_encoding_errors ... ok
+test wire::payload::tests::split_v2_optional_column_def_levels ... ok
+test wire::payload::tests::split_v2_required_column_zero_level_lengths ... ok
+test wire::payload::tests::split_v2_truncated_rep_level_section_errors ... ok
+test wire::tests::footer_descriptor_computes_total_rows ... ok
+test wire::tests::footer_descriptor_rejects_row_group_past_footer ... ok
+test wire::tests::row_group_location_rejects_overlapping_columns ... ok
+test wire::tests::validate_footer_prelude_accepts_valid_trailer ... ok
+test wire::tests::validate_footer_prelude_rejects_footer_length_overflow ... ok
+test wire::tests::validate_footer_prelude_rejects_invalid_magic ... ok
+test wire::tests::validate_footer_prelude_rejects_short_input ... ok
+test wire::thrift::tests::field_header_absolute ... ok
+test wire::thrift::tests::field_header_stop_returns_none ... ok
+test wire::thrift::tests::field_header_with_delta ... ok
+test wire::thrift::tests::list_header_long_form ... ok
+test wire::thrift::tests::list_header_short_form ... ok
+test wire::thrift::tests::read_binary_works ... ok
+test wire::thrift::tests::read_byte_exhausted_returns_error ... ok
+test wire::thrift::tests::read_byte_works ... ok
+test wire::thrift::tests::read_string_works ... ok
+test wire::thrift::tests::skip_binary ... ok
+test wire::thrift::tests::skip_i32 ... ok
+test wire::thrift::tests::skip_struct ... ok
+test wire::thrift::tests::varint_multi_byte ... ok
+test wire::thrift::tests::varint_single_byte ... ok
+test wire::thrift::tests::zigzag_i32_negative ... ok
+test wire::thrift::tests::zigzag_i32_positive ... ok
+test wire::thrift::tests::zigzag_i64_positive ... ok
+
+test result: ok. 136 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s (136/136)
+- [x] Verified 143 tests (default features), 155 tests (all compression features: snappy,zstd,lz4,gzip) — 0 failures
+- [x] : integrated decompression + column decode, 7 integration tests (gzip/zstd/snappy/lz4 round-trips, brotli unsupported, malformed input error, uncompressed passthrough)
+- [x] Verified  (0 errors)
+- [x] Typed column value extraction: compression pipeline (decompress before PLAIN/dict decode)
+- [x] : , , (UNCOMPRESSED/SNAPPY/GZIP/LZ4_RAW/ZSTD/LZ4/BROTLI/ZLIB), feature-gated codec dispatch, 12 value-semantic tests
 - [ ] Write Consus datasets to Parquet
 - [ ] Hybrid mode: Parquet tables inside Consus containers
 - [ ] Arrow array bridge (zero-copy)
@@ -195,3 +366,61 @@
 - [x] New test: `ascii_column_datatype_is_fixed_string` (A8→FixedString{8,Ascii}, E16.7→FixedString{16,Ascii})
 - [x] New test: `binary_column_complex_and_descriptor_types` (1C→Complex32, 1M→Complex64, 1P→Compound)
 - [x] Verified `cargo test -p consus-fits --lib` (128/128)
+
+### Milestone 20: MATLAB .mat Reader (consus-mat)
+- [x] consus-mat crate created with features: std, alloc, v73 (HDF5), compress (zlib)
+- [x] detect::detect_version: HDF5/v5/v4 auto-detection (5 unit tests)
+- [x] v4 reader: V4Header::parse + read_v4_variable + read_mat_v4 (3 integration tests)
+- [x] v5 reader: V5FileHeader + DataTag + parse_matrix (mxDOUBLE..mxUINT64, mxCHAR, mxSPARSE, mxCELL, mxSTRUCT, complex, logical, miCOMPRESSED) + read_mat_v5 (expanded value-semantic integration coverage)
+- [x] v73 reader: Hdf5File-backed root group traversal, MATLAB_class dispatch, numeric/logical/char/struct/cell (expanded synthetic HDF5 integration coverage, datatype-aware char endianness, explicit sparse rejection, compact-layout rejection coverage)
+- [x] loadmat_bytes + loadmat public API
+- [x] Workspace Cargo.toml updated: consus-mat added to members and workspace.dependencies
+- [x] Model invariants strengthened with constructors/validation helpers for cell, char, logical, sparse, and struct arrays
+- [x] v7.3 cell ordering verified for numeric child names ("0", "1", ...)
+- [x] v7.3 logical, char, cell, and struct decoding covered by value-semantic integration tests
+- [x] v5 unknown top-level elements are skipped with structural validation instead of hard erroring
+- [x] v7.3 char decoding honors dataset datatype byte order
+- [x] v7.3 sparse datasets return explicit UnsupportedFeature errors
+- [x] v5 `mxOBJECT_CLASS` returns explicit UnsupportedFeature errors
+- [x] v7.3 compact-layout datasets return explicit UnsupportedFeature errors
+- [x] v5 `miCOMPRESSED` roundtrip is covered when the `compress` feature is enabled
+- [x] v5 `miCOMPRESSED` returns explicit UnsupportedFeature without the `compress` feature
+- [x] Removed dead byteorder and consus-compression dependencies from Cargo.toml
+- [x] Fixed lib.rs crate documentation (feature gate column + Entry Points links)
+- [x] Removed dead UnsupportedVersion error variant from MatError
+- [x] v5 sparse: nzmax invariant enforced (ir.len() == nzmax, jc.len() == ncols+1)
+- [x] v73 cell group: child ordering fixed (sort by numeric name before building cells vec)
+- [x] v5 synthetic test suite: char, logical, complex, sparse roundtrip, sparse nzmax mismatch, cell, struct (7 new value-semantic tests)
+- [x] v5 vacuous truncated test replaced with v5_truncated_element_returns_error (proper Err assertion)
+- [x] v5 compressed feature-matrix suite added as dedicated integration coverage
+- [x] Verified cargo test -p consus-mat: 22/22 tests pass (3 v4 + 12 v5 + 7 v73)
+- [x] Verified cargo check --workspace: zero errors
+- [x] MatStructArray SSOT cleanup: removed fields: Vec<String>; data keys are sole SSOT; new(shape, data) signature; field_names() returns impl Iterator<Item = &str>
+- [x] v4 sparse matrix explicit rejection covered: v4_sparse_matrix_returns_unsupported_feature_error (type_code=2 synthetic fixture, exact UnsupportedFeature message assertion)
+- [x] crates/consus-mat/README.md created: format coverage table, feature flags, quick start, canonical model, rejection policies, version-specific notes
+- [x] consus-mat added to CI check/test/msrv matrix jobs; test-mat-features job added for default + no-compress feature-matrix verification
+- [x] Verified cargo test -p consus-mat: 29/29 pass (5 unit + 4 v4 + 1 v5-compressed + 12 v5 + 7 v73)
+- [x] Verified cargo test -p consus-mat --no-default-features --features std,alloc: 22/22 pass
+- [x] Verified cargo check --workspace: zero errors
+- [x] consus-hdf5 Hdf5FileBuilder: ChildDatasetSpec struct + add_group_with_attributes method added (enables nested group authoring with MATLAB_class and child datasets)
+- [x] Model unit tests (42): MatNumericClass element_size + as_str; MatNumericArray numel + is_complex; MatSparseArray nnz + is_complex + 6 invariant-enforcing rejection tests; MatCellArray new + numel + into_parts; MatCharArray new + row_vector + numel; MatLogicalArray new + numel; MatStructArray field_names + field + field_data + numel + duplicate rejection + element count mismatch rejection
+- [x] MatError Display unit tests (5): InvalidFormat, UnsupportedFeature, InvalidClass, ShapeError, CompressionError
+- [x] v5_multiple_variables_roundtrip: 2 named scalar doubles in one v5 file, value-semantic
+- [x] loadmat_from_reader_parses_test_fixture: std::fs::File + test_v5.mat roundtrip via loadmat
+- [x] Doc test for loadmat_bytes: inline MAT v4 scalar double, verifies variable count and name
+- [x] v73_cell_array_roundtrip: MATLAB_class="cell" group, 2-element decimal-named children, value-semantic
+- [x] v73_struct_array_roundtrip: MATLAB_class="struct" group, fields x=42.0 y=99.0, value-semantic field lookup
+- [x] Verified cargo test -p consus-mat: 71/71 pass (42 lib + 4 v4 + 1 v5-compressed + 14 v5 + 9 v73 + 1 doc)
+- [x] Verified cargo test -p consus-mat --no-default-features --features std,alloc: 62/62 pass
+- [x] Verified cargo test -p consus-hdf5: 321/321 pass
+- [x] Verified cargo check --workspace: zero errors
+- [x] v73 MATLAB_dims attribute parsing: matlab_dims_attr() helper; struct group shape preserved from attribute
+- [x] v73 split_field_elements: non-scalar numeric field datasets split into per-element scalars
+- [x] v73 non-scalar struct roundtrip: v73_struct_array_non_scalar_roundtrip ([1,2] struct, 2 fields x 2 elements each)
+- [x] HDF5 DatasetLayout::Virtual variant added to property_list enum; encode_layout_with_chunk_index emits [3,3]
+- [x] HDF5 layout parser: virtual class 3 now returns StorageLayout::Virtual (typed Ok) instead of Err
+- [x] v73 virtual-layout rejection test: v73_virtual_layout_returns_unsupported_feature_error
+- [x] v73 chunked dataset fixture: v73_chunked_double_array_roundtrip (6-element, chunk_size=3)
+- [x] Verified cargo test -p consus-mat: 74/74 pass (42 lib + 4 v4 + 1 v5-compressed + 14 v5 + 12 v73 + 1 doc)
+- [x] Verified cargo test -p consus-hdf5: 321/321 pass
+- [x] Verified cargo check --workspace: zero errors (Sprint 6)

@@ -86,5 +86,5 @@ pub use header::{
     value::{ComplexValue, HeaderValue, IntegerValue, RealValue},
 };
 pub use image::FitsImageDescriptor;
-pub use table::{FitsAsciiTableDescriptor, FitsBinaryTableDescriptor, FitsTableColumn};
+pub use table::{FitsAsciiTableDescriptor, FitsBinaryTableDescriptor, FitsColumnValue, FitsTableColumn};
 pub use types::{BinaryFormatCode, Bitpix, HduType, tform_to_datatype};

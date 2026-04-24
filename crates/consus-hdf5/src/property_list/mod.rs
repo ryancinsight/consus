@@ -47,6 +47,11 @@ pub enum DatasetLayout {
     /// Requires [`DatasetCreationProps::chunk_dims`] to be set.
     /// Supports compression, extensible dimensions, and partial I/O.
     Chunked,
+    /// Virtual dataset (regions sourced from other datasets).
+    ///
+    /// Emits a version 3 class 3 layout message for fixture authoring.
+    /// The HDF5 read path surfaces this as StorageLayout::Virtual.
+    Virtual,
 }
 
 /// Fill value write policy.

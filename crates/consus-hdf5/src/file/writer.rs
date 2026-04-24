@@ -674,6 +674,11 @@ pub fn encode_layout_with_chunk_index(
             LittleEndian::write_u32(&mut buf[pos..], element_size);
             Ok(buf)
         }
+        DatasetLayout::Virtual => {
+            // Emit a minimal version 3 class 3 (virtual) layout message.
+            // The HDF5 read path surfaces this as StorageLayout::Virtual.
+            Ok(vec![3u8, 3u8])
+        }
     }
 }
 
@@ -1657,6 +1662,119 @@ impl Hdf5FileBuilder {
 
         Ok(self.sink.into_bytes())
     }
+
+    /// Add a named group to the root group with attached attributes and child datasets.
+    ///
+    /// ## Write model
+    ///
+    /// For each child in `children`:
+    /// 1. Data bytes are written as a contiguous block.
+    /// 2. A dataset object header is written with Datatype + Dataspace + Layout
+    ///    messages and optional attribute messages.
+    ///
+    /// Then the group object header is written with:
+    /// - One LINK message per child mapping the child name to its header address.
+    /// - One ATTRIBUTE message per entry in `group_attributes`.
+    ///
+    /// The group is linked from the root group.
+    ///
+    /// ## Errors
+    ///
+    /// Returns an error if any datatype or layout cannot be encoded.
+    /// `ChildDatasetSpec::dcpl` must specify `DatasetLayout::Contiguous`.
+    pub fn add_group_with_attributes(
+        &mut self,
+        group_name: &str,
+        group_attributes: &[(&str, &Datatype, &Shape, &[u8])],
+        children: &[ChildDatasetSpec<'_>],
+    ) -> Result<u64> {
+        let ctx = self.state.ctx;
+
+        // Step 1: write each child dataset (data + object header).
+        let mut child_links: Vec<(String, u64)> = Vec::with_capacity(children.len());
+        for child in children {
+            let data_addr =
+                write_contiguous_data(&mut self.sink, &mut self.state, child.raw_data)?;
+
+            let dt_bytes = encode_datatype(child.datatype)?;
+            let ds_bytes = encode_dataspace(child.shape)?;
+            let layout_bytes = encode_layout(data_addr, &child.dcpl, &ctx)?;
+
+            let mut child_msgs: Vec<(u16, Vec<u8>)> = vec![
+                (message_types::DATATYPE, dt_bytes),
+                (message_types::DATASPACE, ds_bytes),
+                (message_types::DATA_LAYOUT, layout_bytes),
+            ];
+
+            for (attr_name, attr_dt, attr_shape, attr_data) in child.attributes {
+                child_msgs.push((
+                    message_types::ATTRIBUTE,
+                    encode_attribute(attr_name, attr_dt, attr_shape, attr_data)?,
+                ));
+            }
+
+            let msg_refs: Vec<(u16, &[u8])> =
+                child_msgs.iter().map(|(t, d)| (*t, d.as_slice())).collect();
+            let child_addr =
+                write_object_header_v2(&mut self.sink, &mut self.state, &msg_refs)?;
+            child_links.push((String::from(child.name), child_addr));
+        }
+
+        // Step 2: build group object header messages (links + group attributes).
+        let mut group_msgs: Vec<(u16, Vec<u8>)> = Vec::new();
+
+        for (child_name, child_addr) in &child_links {
+            group_msgs.push((
+                message_types::LINK,
+                encode_hard_link(child_name, *child_addr, &ctx)?,
+            ));
+        }
+
+        for (attr_name, attr_dt, attr_shape, attr_data) in group_attributes {
+            group_msgs.push((
+                message_types::ATTRIBUTE,
+                encode_attribute(attr_name, attr_dt, attr_shape, attr_data)?,
+            ));
+        }
+
+        // Step 3: write the group object header.
+        let msg_refs: Vec<(u16, &[u8])> =
+            group_msgs.iter().map(|(t, d)| (*t, d.as_slice())).collect();
+        let group_addr =
+            write_object_header_v2(&mut self.sink, &mut self.state, &msg_refs)?;
+
+        // Step 4: link the group from the root group.
+        self.root_links.push((String::from(group_name), group_addr));
+
+        Ok(group_addr)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Nested group authoring
+// ---------------------------------------------------------------------------
+
+/// Specification for a child dataset to be authored inside a nested group.
+///
+/// Only [`DatasetLayout::Contiguous`] is supported for `dcpl`. Compact and
+/// Chunked layouts require additional writer parameters not available in this
+/// context.
+#[cfg(feature = "alloc")]
+pub struct ChildDatasetSpec<'a> {
+    /// Dataset name within the parent group.
+    pub name: &'a str,
+    /// Element datatype.
+    pub datatype: &'a Datatype,
+    /// Dataset shape.
+    pub shape: &'a Shape,
+    /// Raw data bytes in dataset storage order.
+    pub raw_data: &'a [u8],
+    /// Dataset creation properties. Only `DatasetLayout::Contiguous` is supported.
+    pub dcpl: DatasetCreationProps,
+    /// Attribute messages attached to this dataset.
+    ///
+    /// Each entry is `(attribute_name, datatype, shape, raw_data)`.
+    pub attributes: &'a [(&'a str, &'a Datatype, &'a Shape, &'a [u8])],
 }
 
 // ---------------------------------------------------------------------------
