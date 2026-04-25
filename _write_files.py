@@ -1,0 +1,2 @@
+# helper
+print(42)

@@ -46,6 +46,9 @@ mod dataset;
 #[cfg(feature = "alloc")]
 pub mod encoding;
 
+#[cfg(feature = "alloc")]
+mod reader;
+
 pub use arrow_bridge::{
     ArrowBridgeMode, ArrowDataTypeHint, ArrowFieldDescriptor, ArrowIntegrationPlan,
     ArrowSchemaMapping, ArrowZeroCopyConstraint,
@@ -67,6 +70,9 @@ pub use dataset::{
     ParquetDatasetDescriptor, ParquetProjection, RowGroupDescriptor, dataset_from_file_metadata,
     schema_elements_to_schema,
 };
+
+#[cfg(feature = "alloc")]
+pub use reader::{ColumnPageDecoder, ParquetReader};
 
 #[cfg(feature = "alloc")]
 pub use encoding::{
@@ -211,5 +217,21 @@ mod tests {
         let dataset = dataset_from_file_metadata(&meta).unwrap();
         assert_eq!(dataset.total_rows(), 5);
         assert_eq!(dataset.column_count(), 1);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn reader_exports_are_available() {
+        use crate::{ColumnPageDecoder, CompressionCodec, ParquetPhysicalType, ParquetReader};
+        // ColumnPageDecoder constructs without panicking.
+        let _dec = ColumnPageDecoder::new(
+            ParquetPhysicalType::Int32,
+            CompressionCodec::Uncompressed,
+            0,
+            0,
+        );
+        // ParquetReader rejects invalid input deterministically.
+        let err = ParquetReader::new(b"PAR1").unwrap_err();
+        assert!(matches!(err, consus_core::Error::BufferTooSmall { .. }));
     }
 }

@@ -1,0 +1,1 @@
+import base64, os\ndata = open("decode_b64.txt").read()\nopen("crates/consus-fits/src/table/decode.rs", "wb").write(base64.b64decode(data))\nprint("done")\n

@@ -1,0 +1,43 @@
+[package]
+name = "consus-mat"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "MATLAB .mat file reader (v4/v5/v7.3/HDF5) for the Consus scientific storage library"
+
+[features]
+default = ["std", "v73", "compress"]
+std = ["alloc", "consus-core/std", "consus-io/std"]
+alloc = ["consus-core/alloc", "consus-io/alloc"]
+v73 = ["std", "dep:consus-hdf5", "consus-hdf5/std"]
+compress = ["std", "dep:flate2"]
+
+[dependencies]
+consus-core = { workspace = true }
+consus-io = { workspace = true }
+consus-hdf5 = { workspace = true, optional = true }
+flate2 = { workspace = true, optional = true }
+
+[dev-dependencies]
+consus-hdf5 = { workspace = true, features = ["std"] }
+consus-io = { workspace = true, features = ["std"] }
+
+[[test]]
+name = "v4_read"
+path = "tests/v4_read.rs"
+
+[[test]]
+name = "v5_read"
+path = "tests/v5_read.rs"
+
+[[test]]
+name = "v5_compressed_read"
+path = "tests/v5_compressed_read.rs"
+
+[[test]]
+name = "v73_read"
+path = "tests/v73_read.rs"
+required-features = ["v73"]

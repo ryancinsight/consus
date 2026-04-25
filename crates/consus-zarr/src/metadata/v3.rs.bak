@@ -1,0 +1,895 @@
+//! Zarr v3 metadata parsing and serialization.
+//!
+//! ## Zarr v3 Specification
+//!
+//! Zarr v3 stores all node metadata in a single `zarr.json` file per
+//! directory. Unlike v2, there is no split between `.zarray`, `.zgroup`,
+//! and `.zattrs` — attributes live directly in the `zarr.json` object.
+//!
+//! ## File Structure (v3)
+//!
+//! ```text
+//! array.zarr/
+//! ├── zarr.json        # All metadata (this module)
+//! └── c/               # Chunk data directory
+//!     ├── 0/0/0/0      # Chunk at grid coordinate (0, 0, 0, 0)
+//!     └── ...
+//! ```
+//!
+//! ## Codec Names (v3)
+//!
+//! | Name | Description |
+//! |------|-------------|
+//! | `"bytes"` | Raw byte transport with endianness |
+//! | `"crc32"` | CRC-32 checksum filter |
+//! | `"gzip"` | Gzip compression |
+//! | `"zstd"` | Zstandard compression |
+//! | `"lz4"` | LZ4 compression |
+//! | `"blosc"` | Blosc meta-compressor |
+//! | `"sharding"` | Sharding codec (index + data in one chunk) |
+//! | `"vlen"` | Variable-length encoding |
+//!
+//! ## Sharding
+//!
+//! When the sharding codec is present, the array is stored as a single
+//! "shard" chunk per file. The shard contains an index chunk followed by
+//! all data chunks. This enables efficient access to sparse data in
+//! cloud object stores.
+
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
+#[cfg(feature = "alloc")]
+use alloc::{string::String, vec::Vec};
+
+#[cfg(feature = "alloc")]
+use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "alloc")]
+use super::{ArrayMetadata, ChunkKeyEncoding, Codec, FillValue, GroupMetadata, ZarrVersion};
+
+// ---------------------------------------------------------------------------
+// Top-level zarr.json — array or group node
+// ---------------------------------------------------------------------------
+
+/// Root metadata document for a Zarr v3 array or group.
+///
+/// Parsed from the `zarr.json` file in the array or group directory.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "node_type", rename_all = "snake_case")]
+pub enum ZarrJson {
+    /// An N-dimensional array node.
+    Array {
+        /// Must be 3 for Zarr v3.
+        zarr_format: u32,
+        /// Array shape as a list of dimension sizes.
+        shape: Vec<usize>,
+        /// Data type name (e.g., `"float64"`, `"Uint32"`, `"bool"`).
+        data_type: String,
+        /// Chunk grid configuration.
+        chunk_grid: ChunkGrid,
+        /// How chunk keys are encoded (separator, etc.).
+        chunk_key_encoding: ChunkKeyEncodingV3,
+        /// Codec chain applied to each chunk.
+        codecs: Vec<CodecSpec>,
+        /// Fill value when regions are uninitialized.
+        #[serde(default)]
+        fill_value: FillValueJsonV3,
+        /// Memory layout order: `"C"` (row-major) or `"F"` (column-major).
+        #[serde(default = "default_order")]
+        order: char,
+        /// Dimension names (optional, for CF conventions).
+        #[serde(default)]
+        dimension_names: Option<Vec<String>>,
+    },
+    /// A group node.
+    Group {
+        /// Must be 3 for Zarr v3.
+        zarr_format: u32,
+        /// Group codec chain (typically empty in current zarr-python).
+        #[serde(default)]
+        codecs: Vec<CodecSpec>,
+        /// Custom attributes.
+        #[serde(default)]
+        attributes: Option<serde_json::Map<String, serde_json::Value>>,
+    },
+}
+
+fn default_order() -> char {
+    'C'
+}
+
+// ---------------------------------------------------------------------------
+// Chunk grid
+// ---------------------------------------------------------------------------
+
+/// Chunk grid configuration for v3 arrays.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkGrid {
+    /// Grid type name. Currently only `"regular"` is defined.
+    pub name: String,
+    /// Grid configuration (e.g., `{"chunk_shape": [32, 32]}`).
+    #[serde(default)]
+    pub configuration: Option<ChunkGridConfiguration>,
+}
+
+/// Configuration for a regular chunk grid.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkGridConfiguration {
+    /// Chunk shape per dimension.
+    pub chunk_shape: Vec<usize>,
+}
+
+// ---------------------------------------------------------------------------
+// Chunk key encoding
+// ---------------------------------------------------------------------------
+
+/// Chunk key encoding configuration for v3.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkKeyEncodingV3 {
+    /// Encoding name: `"default"` (slash-separated) or `"v2"` (dot-separated).
+    pub name: String,
+    /// Separator and other configuration.
+    #[serde(default)]
+    pub configuration: Option<ChunkKeyEncodingConfiguration>,
+}
+
+/// Configuration for a chunk key encoding.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkKeyEncodingConfiguration {
+    /// Separator character: `"/"` for default, `"."` for v2-compat.
+    #[serde(default = "default_separator")]
+    pub separator: char,
+}
+
+fn default_separator() -> char {
+    '/'
+}
+
+// ---------------------------------------------------------------------------
+// Codec specification
+// ---------------------------------------------------------------------------
+
+/// A codec entry in the v3 codec chain.
+///
+/// Each entry has a `name` and an optional `configuration` object.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodecSpec {
+    /// Codec name (e.g., `"bytes"`, `"gzip"`, `"zstd"`).
+    pub name: String,
+    /// Optional codec configuration.
+    #[serde(default)]
+    pub configuration: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+// ---------------------------------------------------------------------------
+// Fill value (v3)
+// ---------------------------------------------------------------------------
+
+/// Fill value representation in Zarr v3.
+///
+/// V3 uses a richer representation than v2, including an explicit
+/// `NaN` member for floating-point types.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+#[derive(Default)]
+pub enum FillValueJsonV3 {
+    /// The default fill value (zero for numeric types).
+    #[default]
+    Default,
+    /// Null / no fill value specified.
+    Null,
+    /// Boolean fill value.
+    Bool(bool),
+    /// Integer fill value.
+    Int(i64),
+    /// Unsigned integer fill value.
+    Uint(u64),
+    /// Float fill value (may be a JSON number or a string like `"NaN"`).
+    Float(f64),
+    /// String fill value.
+    String(String),
+    /// Special floating-point values encoded as strings.
+    Special(V3SpecialFillValue),
+}
+
+/// Special floating-point fill values in Zarr v3.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum V3SpecialFillValue {
+    #[serde(rename = "Infinity")]
+    Infinity,
+    #[serde(rename = "-Infinity")]
+    NegInfinity,
+    #[serde(rename = "NaN")]
+    NaN,
+}
+
+impl FillValueJsonV3 {
+    /// Convert to the canonical `FillValue` type.
+    pub fn to_fill_value(&self) -> FillValue {
+        match self {
+            Self::Default => FillValue::Default,
+            Self::Null => FillValue::Null,
+            Self::Bool(b) => FillValue::Bool(*b),
+            Self::Int(i) => FillValue::Int(*i),
+            Self::Uint(u) => FillValue::Uint(*u),
+            Self::Float(f) => {
+                // Check if this is a special float value by examining the JSON
+                // representation. Since we already have f64, we check for NaN/Infinity.
+                if f.is_nan() {
+                    FillValue::Float("NaN".to_string())
+                } else if f.is_infinite() && f.is_sign_positive() {
+                    FillValue::Float("Infinity".to_string())
+                } else if f.is_infinite() && f.is_sign_negative() {
+                    FillValue::Float("-Infinity".to_string())
+                } else {
+                    FillValue::Float(
+                        serde_json::Number::from_f64(*f)
+                            .map(|n| n.to_string())
+                            .unwrap_or_else(|| "NaN".to_string()),
+                    )
+                }
+            }
+            Self::String(s) => FillValue::String(s.clone()),
+            Self::Special(s) => FillValue::Float(match s {
+                V3SpecialFillValue::Infinity => "Infinity".to_string(),
+                V3SpecialFillValue::NegInfinity => "-Infinity".to_string(),
+                V3SpecialFillValue::NaN => "NaN".to_string(),
+            }),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Shard metadata (v3 sharding codec)
+// ---------------------------------------------------------------------------
+
+/// Metadata for a sharded array.
+///
+/// When an array uses the sharding codec, all chunks are stored within
+/// a single "shard" file. The shard file contains an index chunk
+/// followed by the data chunks.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShardMetadata {
+    /// Shape of the index chunk (normally `[num_chunks]` for 1D, etc.).
+    pub index_shape: Vec<usize>,
+    /// Codec to apply to the index chunk itself.
+    pub index_codec: Option<CodecSpec>,
+    /// The codec chain applied to data chunks within the shard.
+    pub codecs: Vec<CodecSpec>,
+}
+
+// ---------------------------------------------------------------------------
+// ZarrJson conversions
+// ---------------------------------------------------------------------------
+
+impl ZarrJson {
+    /// Parse a `zarr.json` document.
+    #[cfg(feature = "std")]
+    pub fn parse(text: &str) -> Result<Self, ParseError> {
+        serde_json::from_str(text).map_err(ParseError::Json)
+    }
+
+    /// Serialize this metadata to a `zarr.json` document.
+    #[cfg(feature = "std")]
+    pub fn to_json(&self) -> Result<String, SerializeError> {
+        serde_json::to_string_pretty(self).map_err(SerializeError::Json)
+    }
+
+    /// Convert to the canonical `ArrayMetadata` if this is an array node.
+    pub fn to_array_canonical(&self) -> Option<ArrayMetadata> {
+        match self {
+            Self::Array {
+                zarr_format: _,
+                shape,
+                data_type,
+                chunk_grid,
+                chunk_key_encoding,
+                codecs,
+                fill_value,
+                order,
+                dimension_names: _,
+            } => {
+                let chunks = chunk_grid
+                    .configuration
+                    .as_ref()
+                    .map(|c| c.chunk_shape.clone())
+                    .unwrap_or_else(|| shape.clone());
+
+                let separator = chunk_key_encoding
+                    .configuration
+                    .as_ref()
+                    .map(|c| c.separator)
+                    .unwrap_or('/');
+
+                Some(ArrayMetadata {
+                    version: ZarrVersion::V3,
+                    shape: shape.clone(),
+                    chunks,
+                    dtype: data_type.clone(),
+                    fill_value: fill_value.to_fill_value(),
+                    order: *order,
+                    codecs: codecs.iter().map(CodecSpec::to_codec).collect(),
+                    chunk_key_encoding: ChunkKeyEncoding {
+                        name: chunk_key_encoding.name.clone(),
+                        separator,
+                    },
+                })
+            }
+            Self::Group { .. } => None,
+        }
+    }
+
+    /// Convert to the canonical `GroupMetadata` if this is a group node.
+    pub fn to_group_canonical(&self) -> Option<GroupMetadata> {
+        match self {
+            Self::Array { .. } => None,
+            Self::Group {
+                zarr_format: _,
+                codecs,
+                attributes,
+            } => {
+                let attrs = attributes
+                    .as_ref()
+                    .map(|m| {
+                        m.iter()
+                            .map(|(k, v)| {
+                                (
+                                    k.clone(),
+                                    super::super::metadata::v2::json_value_to_attribute(v.clone()),
+                                )
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                Some(GroupMetadata {
+                    version: ZarrVersion::V3,
+                    attributes: attrs,
+                    codecs: codecs.iter().map(CodecSpec::to_codec).collect(),
+                })
+            }
+        }
+    }
+    /// Convert ArrayMetadata to its Zarr v3 JSON representation.
+    ///
+    /// ## Contract
+    ///
+    /// Inverse of to_array_canonical: round-tripping through
+    /// from_array_metadata -> serialize -> parse -> to_array_canonical
+    /// preserves shape, chunks, dtype, order, codecs, and
+    /// chunk_key_encoding.
+    pub fn from_array_metadata(meta: &ArrayMetadata) -> Self {
+        ZarrJson::Array {
+            zarr_format: 3,
+            shape: meta.shape.clone(),
+            data_type: meta.dtype.clone(),
+            chunk_grid: ChunkGrid {
+                name: String::from("regular"),
+                configuration: Some(ChunkGridConfiguration {
+                    chunk_shape: meta.chunks.clone(),
+                }),
+            },
+            chunk_key_encoding: ChunkKeyEncodingV3 {
+                name: meta.chunk_key_encoding.name.clone(),
+                configuration: Some(ChunkKeyEncodingConfiguration {
+                    separator: meta.chunk_key_encoding.separator,
+                }),
+            },
+            codecs: meta.codecs.iter().map(codec_to_spec).collect(),
+            fill_value: fill_value_to_json_v3(&meta.fill_value),
+            order: meta.order,
+            dimension_names: None,
+        }
+    }
+
+    /// Convert GroupMetadata to its Zarr v3 JSON representation.
+    pub fn from_group_metadata(meta: &GroupMetadata) -> Self {
+        ZarrJson::Group {
+            zarr_format: 3,
+            codecs: meta.codecs.iter().map(codec_to_spec).collect(),
+            attributes: None,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CodecSpec conversion
+// ---------------------------------------------------------------------------
+
+impl CodecSpec {
+    /// Convert to a canonical `Codec`.
+    pub fn to_codec(&self) -> Codec {
+        let configuration: Vec<(String, String)> = self
+            .configuration
+            .as_ref()
+            .map(|cfg| {
+                cfg.iter()
+                    .filter_map(|(k, v)| {
+                        Some((
+                            k.clone(),
+                            match v {
+                                serde_json::Value::String(s) => s.clone(),
+                                serde_json::Value::Number(n) => n.to_string(),
+                                serde_json::Value::Bool(b) => b.to_string(),
+                                serde_json::Value::Null => String::new(),
+                                _ => v.to_string(),
+                            },
+                        ))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Codec {
+            name: self.name.clone(),
+            configuration,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Write-direction helpers
+// ---------------------------------------------------------------------------
+
+/// Map a canonical FillValue to its Zarr v3 JSON representation.
+#[cfg(feature = "alloc")]
+fn fill_value_to_json_v3(fv: &FillValue) -> FillValueJsonV3 {
+    match fv {
+        FillValue::Default => FillValueJsonV3::Default,
+        FillValue::Null => FillValueJsonV3::Null,
+        FillValue::Bool(b) => FillValueJsonV3::Bool(*b),
+        FillValue::Int(i) => FillValueJsonV3::Int(*i),
+        FillValue::Uint(u) => FillValueJsonV3::Uint(*u),
+        FillValue::Float(s) => match s.as_str() {
+            "NaN" => FillValueJsonV3::Special(V3SpecialFillValue::NaN),
+            "Infinity" => FillValueJsonV3::Special(V3SpecialFillValue::Infinity),
+            "-Infinity" => FillValueJsonV3::Special(V3SpecialFillValue::NegInfinity),
+            other => {
+                if let Ok(f) = other.parse::<f64>() {
+                    FillValueJsonV3::Float(f)
+                } else {
+                    FillValueJsonV3::Default
+                }
+            }
+        },
+        FillValue::String(s) => FillValueJsonV3::String(s.clone()),
+        FillValue::Bytes(_) => FillValueJsonV3::Default,
+    }
+}
+
+/// Map a canonical Codec to its Zarr v3 JSON CodecSpec.
+#[cfg(feature = "alloc")]
+fn codec_to_spec(codec: &Codec) -> CodecSpec {
+    let configuration = if codec.configuration.is_empty() {
+        None
+    } else {
+        let mut map = serde_json::Map::new();
+        for (k, v) in &codec.configuration {
+            let json_val = if let Ok(n) = v.parse::<i64>() {
+                serde_json::Value::Number(serde_json::Number::from(n))
+            } else if let Ok(f) = v.parse::<f64>() {
+                serde_json::Value::Number(
+                    serde_json::Number::from_f64(f)
+                        .unwrap_or_else(|| serde_json::Number::from(0)),
+                )
+            } else if v == "true" {
+                serde_json::Value::Bool(true)
+            } else if v == "false" {
+                serde_json::Value::Bool(false)
+            } else {
+                serde_json::Value::String(v.clone())
+            };
+            map.insert(k.clone(), json_val);
+        }
+        Some(map)
+    };
+    CodecSpec {
+        name: codec.name.clone(),
+        configuration,
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// zarr.json persistence
+// ---------------------------------------------------------------------------
+
+/// Persist ArrayMetadata as zarr.json at {array_key}/zarr.json in store.
+///
+/// ## Contract
+///
+/// - array_key is the store-relative prefix (no trailing slash).
+/// - The written JSON is spec-compliant Zarr v3 zarr.json for an array node.
+/// - Returns WriteZarrJsonError::Serialize if serialization fails or
+///   WriteZarrJsonError::Store if the store write fails.
+#[cfg(feature = "std")]
+pub fn write_zarr_json<S: crate::store::Store>(
+    store: &mut S,
+    array_key: &str,
+    meta: &ArrayMetadata,
+) -> Result<(), WriteZarrJsonError> {
+    let doc = ZarrJson::from_array_metadata(meta);
+    let json = doc.to_json().map_err(WriteZarrJsonError::Serialize)?;
+    let meta_key = alloc::format!("{array_key}/zarr.json");
+    store
+        .set(&meta_key, json.as_bytes())
+        .map_err(|e| WriteZarrJsonError::Store(e.to_string()))
+}
+
+/// Persist GroupMetadata as zarr.json at {group_key}/zarr.json in store.
+#[cfg(feature = "std")]
+pub fn write_group_json<S: crate::store::Store>(
+    store: &mut S,
+    group_key: &str,
+    meta: &GroupMetadata,
+) -> Result<(), WriteZarrJsonError> {
+    let doc = ZarrJson::from_group_metadata(meta);
+    let json = doc.to_json().map_err(WriteZarrJsonError::Serialize)?;
+    let meta_key = alloc::format!("{group_key}/zarr.json");
+    store
+        .set(&meta_key, json.as_bytes())
+        .map_err(|e| WriteZarrJsonError::Store(e.to_string()))
+}
+
+/// Error returned by write_zarr_json and write_group_json.
+#[cfg(feature = "std")]
+#[derive(Debug)]
+pub enum WriteZarrJsonError {
+    /// JSON serialization failed.
+    Serialize(SerializeError),
+    /// Store write failed.
+    Store(String),
+}
+
+#[cfg(feature = "std")]
+impl core::fmt::Display for WriteZarrJsonError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Serialize(e) => write!(f, "serialize: {e}"),
+            Self::Store(s) => write!(f, "store: {s}"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for WriteZarrJsonError {}
+
+
+// ---------------------------------------------------------------------------
+// Error types
+// ---------------------------------------------------------------------------
+
+/// Errors that can occur when parsing Zarr v3 metadata.
+#[cfg(feature = "alloc")]
+#[derive(Debug)]
+pub enum ParseError {
+    Json(serde_json::Error),
+}
+
+#[cfg(feature = "std")]
+impl core::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Json(e) => write!(f, "JSON parse error: {e}"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for ParseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Json(e) => Some(e),
+        }
+    }
+}
+
+/// Errors that can occur when serializing Zarr v3 metadata.
+#[cfg(feature = "alloc")]
+#[derive(Debug)]
+pub enum SerializeError {
+    Json(serde_json::Error),
+}
+
+#[cfg(feature = "std")]
+impl core::fmt::Display for SerializeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Json(e) => write!(f, "JSON serialize error: {e}"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for SerializeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Json(e) => Some(e),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "std")]
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_zarr_json_array() {
+        let json = r#"{
+  "zarr_format": 3,
+  "node_type": "array",
+  "shape": [100, 100],
+  "data_type": "float64",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {
+      "chunk_shape": [10, 10]
+    }
+  },
+  "chunk_key_encoding": {
+    "name": "default",
+    "configuration": {
+      "separator": "/"
+    }
+  },
+  "codecs": [
+    {"name": "bytes", "configuration": {"endian": "little"}},
+    {"name": "gzip", "configuration": {"level": 1}}
+  ],
+  "fill_value": 0.0,
+  "order": "C"
+}"#;
+        let meta = ZarrJson::parse(json).expect("must parse");
+        match &meta {
+            ZarrJson::Array {
+                shape, data_type, ..
+            } => {
+                assert_eq!(shape, &[100, 100]);
+                assert_eq!(data_type, "float64");
+            }
+            _ => panic!("expected Array node"),
+        }
+    }
+
+    #[test]
+    fn test_parse_zarr_json_group() {
+        let json = r#"{
+  "zarr_format": 3,
+  "node_type": "group"
+}"#;
+        let meta = ZarrJson::parse(json).expect("must parse");
+        assert!(matches!(meta, ZarrJson::Group { .. }));
+    }
+
+    #[test]
+    fn test_array_to_canonical() {
+        let json = r#"{
+  "zarr_format": 3,
+  "node_type": "array",
+  "shape": [50, 50],
+  "data_type": "int32",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {"chunk_shape": [10, 10]}
+  },
+  "chunk_key_encoding": {
+    "name": "default",
+    "configuration": {"separator": "/"}
+  },
+  "codecs": [{"name": "bytes", "configuration": {"endian": "native"}}],
+  "fill_value": -1,
+  "order": "C"
+}"#;
+        let v3 = ZarrJson::parse(json).expect("must parse");
+        let canon = v3.to_array_canonical().expect("must be array");
+        assert_eq!(canon.version, ZarrVersion::V3);
+        assert_eq!(canon.shape, &[50, 50]);
+        assert_eq!(canon.chunks, &[10, 10]);
+        assert_eq!(canon.dtype, "int32");
+        assert!(canon.codecs.len() >= 1);
+    }
+
+    #[test]
+    fn test_group_to_canonical() {
+        let json = r#"{
+  "zarr_format": 3,
+  "node_type": "group",
+  "codecs": []
+}"#;
+        let v3 = ZarrJson::parse(json).expect("must parse");
+        let canon = v3.to_group_canonical().expect("must be group");
+        assert_eq!(canon.version, ZarrVersion::V3);
+    }
+
+    #[test]
+    fn test_codec_spec_to_codec() {
+        let spec = CodecSpec {
+            name: "gzip".to_string(),
+            configuration: Some(serde_json::Map::from_iter([(
+                "level".to_string(),
+                serde_json::json!(3),
+            )])),
+        };
+        let codec = spec.to_codec();
+        assert_eq!(codec.name, "gzip");
+        assert_eq!(codec.gzip_level(), Some(3));
+    }
+
+    #[test]
+    fn test_fill_value_special_v3() {
+        let json = r#"{
+  "zarr_format": 3,
+  "node_type": "array",
+  "shape": [1],
+  "data_type": "float64",
+  "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [1]}},
+  "chunk_key_encoding": {"name": "default", "configuration": {"separator": "/"}},
+  "codecs": [],
+  "fill_value": "NaN",
+  "order": "C"
+}"#;
+        let v3 = ZarrJson::parse(json).expect("must parse");
+        let canon = v3.to_array_canonical().expect("must be array");
+        assert!(
+            matches!(canon.fill_value, FillValue::Float(ref s) if s == "NaN")
+                || matches!(canon.fill_value, FillValue::String(ref s) if s == "NaN"),
+            "fill value NaN must parse to a NaN-compatible canonical value"
+        );
+    }
+
+    #[test]
+    fn test_shard_metadata_shape() {
+        // A sharded array: 100x100 with 10x10 chunks -> 10x10 shards
+        // Each shard stores index + data
+        let json = r#"{
+  "zarr_format": 3,
+  "node_type": "array",
+  "shape": [100, 100],
+  "data_type": "float32",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {"chunk_shape": [10, 10]}
+  },
+  "chunk_key_encoding": {"name": "default", "configuration": {"separator": "/"}},
+  "codecs": [
+    {"name": "sharding", "configuration": {
+      "index_codec": {"name": "crc32"},
+      "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}, {"name": "gzip", "configuration": {"level": 1}}]
+    }},
+    {"name": "bytes", "configuration": {"endian": "little"}}
+  ],
+  "fill_value": 0.0,
+  "order": "C"
+}"#;
+        let v3 = ZarrJson::parse(json).expect("must parse");
+        let canon = v3.to_array_canonical().expect("must be array");
+        // Chunk grid: ceil(100/10) = 10 per dimension -> 100 total
+        assert_eq!(canon.total_chunks(), 100);
+    }
+
+    #[test]
+    fn test_dimension_names_roundtrip() {
+        let json = r#"{
+  "zarr_format": 3,
+  "node_type": "array",
+  "shape": [3, 512, 512],
+  "data_type": "float32",
+  "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [1, 128, 128]}},
+  "chunk_key_encoding": {"name": "default", "configuration": {"separator": "/"}},
+  "codecs": [],
+  "fill_value": 0.0,
+  "order": "C",
+  "dimension_names": ["time", "y", "x"]
+}"#;
+        let v3 = ZarrJson::parse(json).expect("must parse");
+        match &v3 {
+            ZarrJson::Array {
+                dimension_names, ..
+            } => {
+                assert_eq!(dimension_names.as_ref().unwrap(), &["time", "y", "x"]);
+            }
+            _ => panic!("expected Array"),
+        }
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn from_array_metadata_roundtrip() {
+        // ArrayMetadata -> ZarrJson -> serialize -> parse -> to_array_canonical
+        // Invariant: shape, chunks, dtype, order are preserved.
+        use crate::metadata::{ArrayMetadata, ChunkKeyEncoding, Codec, FillValue, ZarrVersion};
+        let meta = ArrayMetadata {
+            version: ZarrVersion::V3,
+            shape: vec![10, 20],
+            chunks: vec![5, 5],
+            dtype: String::from("float64"),
+            fill_value: FillValue::Float(String::from("0")),
+            order: 'C',
+            codecs: vec![
+                Codec {
+                    name: String::from("bytes"),
+                    configuration: vec![(String::from("endian"), String::from("little"))],
+                },
+                Codec {
+                    name: String::from("gzip"),
+                    configuration: vec![(String::from("level"), String::from("5"))],
+                },
+            ],
+            chunk_key_encoding: ChunkKeyEncoding {
+                name: String::from("default"),
+                separator: '/',
+            },
+        };
+        let doc = ZarrJson::from_array_metadata(&meta);
+        let json = doc.to_json().expect("must serialize");
+        let parsed = ZarrJson::parse(&json).expect("must parse");
+        let canonical = parsed.to_array_canonical().expect("must be array");
+        assert_eq!(canonical.shape, meta.shape);
+        assert_eq!(canonical.chunks, meta.chunks);
+        assert_eq!(canonical.dtype, meta.dtype);
+        assert_eq!(canonical.order, meta.order);
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn from_group_metadata_roundtrip() {
+        use crate::metadata::{GroupMetadata, ZarrVersion};
+        let meta = GroupMetadata {
+            version: ZarrVersion::V3,
+            attributes: Default::default(),
+            codecs: vec![],
+        };
+        let doc = ZarrJson::from_group_metadata(&meta);
+        let json = doc.to_json().expect("must serialize");
+        let parsed = ZarrJson::parse(&json).expect("must parse");
+        let canonical = parsed.to_group_canonical().expect("must be group");
+        assert_eq!(canonical.codecs.len(), meta.codecs.len());
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn write_zarr_json_persists_to_store() {
+        use crate::metadata::{ArrayMetadata, ChunkKeyEncoding, Codec, FillValue, ZarrVersion};
+        use crate::store::{InMemoryStore, Store};
+        let mut store = InMemoryStore::new();
+        let meta = ArrayMetadata {
+            version: ZarrVersion::V3,
+            shape: vec![4, 4],
+            chunks: vec![2, 2],
+            dtype: String::from("int32"),
+            fill_value: FillValue::Int(0),
+            order: 'C',
+            codecs: vec![Codec {
+                name: String::from("bytes"),
+                configuration: vec![(String::from("endian"), String::from("little"))],
+            }],
+            chunk_key_encoding: ChunkKeyEncoding {
+                name: String::from("default"),
+                separator: '/',
+            },
+        };
+        write_zarr_json(&mut store, "my_array", &meta).expect("write must succeed");
+        let data = store.get("my_array/zarr.json").expect("must exist");
+        let text = std::str::from_utf8(&data).expect("utf8");
+        let parsed = ZarrJson::parse(text).expect("must parse");
+        let canonical = parsed.to_array_canonical().expect("must be array");
+        assert_eq!(canonical.shape, vec![4, 4]);
+        assert_eq!(canonical.chunks, vec![2, 2]);
+        assert_eq!(canonical.dtype, "int32");
+    }
+}

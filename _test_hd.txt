@@ -1,0 +1,3 @@
+hello "world"
+let x: &[u8] = &[];
+fn foo<'a>(x: &'a str) -> Result<Option<i32>> {}
