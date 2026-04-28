@@ -389,6 +389,79 @@ impl<'a> NwbFile<'a> {
     pub fn list_processing(&self, module_name: &str) -> Result<Vec<String>> {
         self.list_time_series(&alloc::format!("processing/{}", module_name))
     }
+
+    // -----------------------------------------------------------------------
+    // Units table
+    // -----------------------------------------------------------------------
+
+    /// Read the `Units` DynamicTable from the HDMF VectorData + VectorIndex
+    /// representation.
+    ///
+    /// Reads:
+    /// - `Units/spike_times`       — flat f64 array (all spike times concatenated)
+    /// - `Units/spike_times_index` — u64 cumulative end-offset array (one per unit)
+    /// - `Units/id`                — optional u64 integer unit IDs
+    ///
+    /// ## VectorIndex invariant
+    ///
+    /// `spike_times_index[i]` is the exclusive end offset of unit `i` in the
+    /// flat `spike_times` array.
+    ///
+    /// ## Errors
+    ///
+    /// - [`consus_core::Error::NotFound`] when `Units/spike_times` or
+    ///   `Units/spike_times_index` does not exist.
+    /// - [`consus_core::Error::InvalidFormat`] when the VectorIndex invariant
+    ///   is violated (see [`crate::model::units::UnitsTable::from_vectordata`]).
+    /// - Propagates I/O errors from the underlying HDF5 reader.
+    pub fn units_table(&self) -> Result<crate::model::units::UnitsTable> {
+        let flat_addr = self.hdf5.open_path("Units/spike_times")?;
+        let flat_times = crate::storage::read_f64_dataset(&self.hdf5, flat_addr)?;
+
+        let idx_addr = self.hdf5.open_path("Units/spike_times_index")?;
+        let index = crate::storage::read_u64_dataset(&self.hdf5, idx_addr)?;
+
+        let ids = match self.hdf5.open_path("Units/id") {
+            Ok(id_addr) => Some(crate::storage::read_u64_dataset(&self.hdf5, id_addr)?),
+            Err(_) => None,
+        };
+
+        crate::model::units::UnitsTable::from_vectordata(flat_times, index, ids)
+    }
+
+    // -----------------------------------------------------------------------
+    // Electrode table
+    // -----------------------------------------------------------------------
+
+    /// Read the `electrodes` DynamicTable.
+    ///
+    /// Reads three parallel datasets from the `electrodes` group:
+    /// - `electrodes/id`         — u64 electrode integer IDs
+    /// - `electrodes/location`   — FixedString brain-region labels
+    /// - `electrodes/group_name` — FixedString electrode group names
+    ///
+    /// Returns an [`crate::model::electrode::ElectrodeTable`] with one row
+    /// per electrode.
+    ///
+    /// ## Errors
+    ///
+    /// - [`consus_core::Error::NotFound`] when the `electrodes` group or any
+    ///   required dataset is absent.
+    /// - [`consus_core::Error::InvalidFormat`] when column lengths differ or a
+    ///   string dataset contains invalid UTF-8.
+    /// - Propagates I/O errors from the underlying HDF5 reader.
+    pub fn electrode_table(&self) -> Result<crate::model::electrode::ElectrodeTable> {
+        let id_addr = self.hdf5.open_path("electrodes/id")?;
+        let ids = crate::storage::read_u64_dataset(&self.hdf5, id_addr)?;
+
+        let loc_addr = self.hdf5.open_path("electrodes/location")?;
+        let locations = crate::storage::read_string_dataset(&self.hdf5, loc_addr)?;
+
+        let grp_addr = self.hdf5.open_path("electrodes/group_name")?;
+        let group_names = crate::storage::read_string_dataset(&self.hdf5, grp_addr)?;
+
+        crate::model::electrode::ElectrodeTable::from_columns(ids, locations, group_names)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -722,6 +795,246 @@ impl NwbFileBuilder {
 
         self.hdf5
             .add_group_with_children("general", &[], &[], &[subject_spec])?;
+
+        Ok(())
+    }
+
+    /// Write a `Units` DynamicTable using the HDMF VectorData + VectorIndex
+    /// representation.
+    ///
+    /// Emits:
+    /// - `Units` group with `neurodata_type_def = "Units"` attribute.
+    /// - `Units/spike_times`       — f64 LE array (flat concatenated spike times)
+    ///   with `neurodata_type_def = "VectorData"` and `description = "spike times"`.
+    /// - `Units/spike_times_index` — u64 LE array (cumulative end offsets)
+    ///   with `neurodata_type_def = "VectorIndex"` and `description = "spike times index"`.
+    /// - `Units/id`                — u64 LE array (optional; emitted only when
+    ///   `units.ids()` is `Some`).
+    ///
+    /// ## Rate invariant
+    ///
+    /// `spike_times_index[i]` = cumulative count of spike times up to (and
+    /// including) unit `i`.  Computed by [`crate::model::units::UnitsTable::cumulative_index`].
+    ///
+    /// ## Errors
+    ///
+    /// Propagates HDF5 encoding errors.
+    pub fn write_units_table(&mut self, units: &crate::model::units::UnitsTable) -> Result<()> {
+        let scalar = Shape::scalar();
+        let f64_dt = f64_le_datatype();
+        let u64_dt = Datatype::Integer {
+            bits: NonZeroUsize::new(64).unwrap(),
+            signed: false,
+            byte_order: ByteOrder::LittleEndian,
+        };
+        let dcpl = DatasetCreationProps::default();
+
+        let (units_ndt_dt, units_ndt_raw) = fixed_string_bytes("Units");
+        let (vd_ndt_dt, vd_ndt_raw) = fixed_string_bytes("VectorData");
+        let (vi_ndt_dt, vi_ndt_raw) = fixed_string_bytes("VectorIndex");
+        let (st_desc_dt, st_desc_raw) = fixed_string_bytes("spike times");
+        let (si_desc_dt, si_desc_raw) = fixed_string_bytes("spike times index");
+
+        let flat_times = units.flat_spike_times();
+        let cumulative_index = units.cumulative_index();
+
+        let st_raw: alloc::vec::Vec<u8> = flat_times.iter().flat_map(|v| v.to_le_bytes()).collect();
+        let st_shape = Shape::fixed(&[flat_times.len()]);
+
+        let idx_raw: alloc::vec::Vec<u8> = cumulative_index
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect();
+        let idx_shape = Shape::fixed(&[cumulative_index.len()]);
+
+        // Pre-compute optional id bytes before building dataset specs.
+        let id_raw: alloc::vec::Vec<u8>;
+        let id_shape: Shape;
+        let has_ids = units.ids().is_some();
+        if let Some(ids) = units.ids() {
+            id_raw = ids.iter().flat_map(|v| v.to_le_bytes()).collect();
+            id_shape = Shape::fixed(&[ids.len()]);
+        } else {
+            id_raw = alloc::vec![];
+            id_shape = Shape::fixed(&[0]);
+        }
+
+        let st_attrs: &[(&str, &Datatype, &Shape, &[u8])] = &[
+            ("neurodata_type_def", &vd_ndt_dt, &scalar, &vd_ndt_raw),
+            ("description", &st_desc_dt, &scalar, &st_desc_raw),
+        ];
+        let idx_attrs: &[(&str, &Datatype, &Shape, &[u8])] = &[
+            ("neurodata_type_def", &vi_ndt_dt, &scalar, &vi_ndt_raw),
+            ("description", &si_desc_dt, &scalar, &si_desc_raw),
+        ];
+
+        if has_ids {
+            self.hdf5.add_group_with_attributes(
+                "Units",
+                &[("neurodata_type_def", &units_ndt_dt, &scalar, &units_ndt_raw)],
+                &[
+                    ChildDatasetSpec {
+                        name: "spike_times",
+                        datatype: &f64_dt,
+                        shape: &st_shape,
+                        raw_data: &st_raw,
+                        dcpl: dcpl.clone(),
+                        attributes: st_attrs,
+                    },
+                    ChildDatasetSpec {
+                        name: "spike_times_index",
+                        datatype: &u64_dt,
+                        shape: &idx_shape,
+                        raw_data: &idx_raw,
+                        dcpl: dcpl.clone(),
+                        attributes: idx_attrs,
+                    },
+                    ChildDatasetSpec {
+                        name: "id",
+                        datatype: &u64_dt,
+                        shape: &id_shape,
+                        raw_data: &id_raw,
+                        dcpl,
+                        attributes: &[],
+                    },
+                ],
+            )?;
+        } else {
+            self.hdf5.add_group_with_attributes(
+                "Units",
+                &[("neurodata_type_def", &units_ndt_dt, &scalar, &units_ndt_raw)],
+                &[
+                    ChildDatasetSpec {
+                        name: "spike_times",
+                        datatype: &f64_dt,
+                        shape: &st_shape,
+                        raw_data: &st_raw,
+                        dcpl: dcpl.clone(),
+                        attributes: st_attrs,
+                    },
+                    ChildDatasetSpec {
+                        name: "spike_times_index",
+                        datatype: &u64_dt,
+                        shape: &idx_shape,
+                        raw_data: &idx_raw,
+                        dcpl,
+                        attributes: idx_attrs,
+                    },
+                ],
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Write an `electrodes` DynamicTable.
+    ///
+    /// Emits:
+    /// - `electrodes` group with `neurodata_type_def = "DynamicTable"`,
+    ///   `description = "Electrode metadata"`, and
+    ///   `colnames = "location,group_name"` string attributes.
+    /// - `electrodes/id`         — u64 LE array of electrode integer IDs.
+    /// - `electrodes/location`   — FixedString ASCII array (max-padded to the
+    ///   longest location string).
+    /// - `electrodes/group_name` — FixedString ASCII array (max-padded to the
+    ///   longest group_name string).
+    ///
+    /// ## Empty table
+    ///
+    /// An empty `ElectrodeTable` produces datasets with shape `[0]`.
+    ///
+    /// ## Errors
+    ///
+    /// Propagates HDF5 encoding errors.
+    pub fn write_electrode_table(
+        &mut self,
+        table: &crate::model::electrode::ElectrodeTable,
+    ) -> Result<()> {
+        let scalar = Shape::scalar();
+        let u64_dt = Datatype::Integer {
+            bits: NonZeroUsize::new(64).unwrap(),
+            signed: false,
+            byte_order: ByteOrder::LittleEndian,
+        };
+        let dcpl = DatasetCreationProps::default();
+
+        let (dyn_ndt_dt, dyn_ndt_raw) = fixed_string_bytes("DynamicTable");
+        let (desc_dt, desc_raw) = fixed_string_bytes("Electrode metadata");
+        let (colnames_dt, colnames_raw) = fixed_string_bytes("location,group_name");
+
+        let n = table.len();
+
+        // id column
+        let id_raw: alloc::vec::Vec<u8> = table.id_column().flat_map(|v| v.to_le_bytes()).collect();
+        let id_shape = Shape::fixed(&[n]);
+
+        // location column — null-padded to max string length.
+        let locs: alloc::vec::Vec<String> = table.location_column().map(|s| s.to_owned()).collect();
+        let loc_max = locs.iter().map(|s| s.len()).max().unwrap_or(1).max(1);
+        let mut loc_raw: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(n * loc_max);
+        for s in &locs {
+            loc_raw.extend_from_slice(s.as_bytes());
+            for _ in s.len()..loc_max {
+                loc_raw.push(0u8);
+            }
+        }
+        let loc_dt = Datatype::FixedString {
+            length: loc_max,
+            encoding: StringEncoding::Ascii,
+        };
+        let loc_shape = Shape::fixed(&[n]);
+
+        // group_name column — null-padded to max string length.
+        let grps: alloc::vec::Vec<String> =
+            table.group_name_column().map(|s| s.to_owned()).collect();
+        let grp_max = grps.iter().map(|s| s.len()).max().unwrap_or(1).max(1);
+        let mut grp_raw: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(n * grp_max);
+        for s in &grps {
+            grp_raw.extend_from_slice(s.as_bytes());
+            for _ in s.len()..grp_max {
+                grp_raw.push(0u8);
+            }
+        }
+        let grp_dt = Datatype::FixedString {
+            length: grp_max,
+            encoding: StringEncoding::Ascii,
+        };
+        let grp_shape = Shape::fixed(&[n]);
+
+        self.hdf5.add_group_with_attributes(
+            "electrodes",
+            &[
+                ("neurodata_type_def", &dyn_ndt_dt, &scalar, &dyn_ndt_raw),
+                ("description", &desc_dt, &scalar, &desc_raw),
+                ("colnames", &colnames_dt, &scalar, &colnames_raw),
+            ],
+            &[
+                ChildDatasetSpec {
+                    name: "id",
+                    datatype: &u64_dt,
+                    shape: &id_shape,
+                    raw_data: &id_raw,
+                    dcpl: dcpl.clone(),
+                    attributes: &[],
+                },
+                ChildDatasetSpec {
+                    name: "location",
+                    datatype: &loc_dt,
+                    shape: &loc_shape,
+                    raw_data: &loc_raw,
+                    dcpl: dcpl.clone(),
+                    attributes: &[],
+                },
+                ChildDatasetSpec {
+                    name: "group_name",
+                    datatype: &grp_dt,
+                    shape: &grp_shape,
+                    raw_data: &grp_raw,
+                    dcpl,
+                    attributes: &[],
+                },
+            ],
+        )?;
 
         Ok(())
     }
@@ -1962,6 +2275,204 @@ mod tests {
 
                 prop_assert_eq!(out, spike_times);
             }
+        }
+    }
+
+    // ── units table roundtrip tests ───────────────────────────────────────
+
+    #[test]
+    fn write_units_table_with_ids_roundtrip() {
+        use crate::model::units::UnitsTable;
+
+        // 3 units: unit 0 has 2 spikes, unit 1 has 3 spikes, unit 2 has 1 spike.
+        let units = UnitsTable::from_parts(
+            vec![vec![0.1f64, 0.2], vec![0.5f64, 0.6, 0.7], vec![1.0f64]],
+            Some(vec![10u64, 11u64, 12u64]),
+        )
+        .unwrap();
+
+        let mut builder = NwbFileBuilder::new(
+            "2.7.0",
+            "ut-001",
+            "units table roundtrip",
+            "2024-01-01T00:00:00",
+        )
+        .unwrap();
+        builder.write_units_table(&units).unwrap();
+        let bytes = builder.finish().unwrap();
+
+        let nwb = NwbFile::open(&bytes).unwrap();
+        let restored = nwb.units_table().unwrap();
+
+        assert_eq!(restored.num_units(), 3, "num_units");
+        assert_eq!(
+            restored.spike_times_per_unit()[0],
+            &[0.1f64, 0.2],
+            "unit 0 spike times"
+        );
+        assert_eq!(
+            restored.spike_times_per_unit()[1],
+            &[0.5f64, 0.6, 0.7],
+            "unit 1 spike times"
+        );
+        assert_eq!(
+            restored.spike_times_per_unit()[2],
+            &[1.0f64],
+            "unit 2 spike times"
+        );
+        assert_eq!(
+            restored.ids(),
+            Some([10u64, 11u64, 12u64].as_slice()),
+            "unit ids"
+        );
+    }
+
+    #[test]
+    fn write_units_table_no_ids_roundtrip() {
+        use crate::model::units::UnitsTable;
+
+        let units = UnitsTable::new(vec![vec![0.01f64, 0.02, 0.03], vec![1.0f64]]);
+
+        let mut builder = NwbFileBuilder::new(
+            "2.7.0",
+            "ut-002",
+            "units table no ids",
+            "2024-01-01T00:00:00",
+        )
+        .unwrap();
+        builder.write_units_table(&units).unwrap();
+        let bytes = builder.finish().unwrap();
+
+        let nwb = NwbFile::open(&bytes).unwrap();
+        let restored = nwb.units_table().unwrap();
+
+        assert_eq!(restored.num_units(), 2);
+        assert_eq!(restored.spike_times_per_unit()[0], &[0.01f64, 0.02, 0.03]);
+        assert_eq!(restored.spike_times_per_unit()[1], &[1.0f64]);
+        assert!(restored.ids().is_none());
+    }
+
+    #[test]
+    fn write_units_table_empty_roundtrip() {
+        use crate::model::units::UnitsTable;
+
+        let units = UnitsTable::new(vec![]);
+
+        let mut builder = NwbFileBuilder::new(
+            "2.7.0",
+            "ut-003",
+            "empty units table",
+            "2024-01-01T00:00:00",
+        )
+        .unwrap();
+        builder.write_units_table(&units).unwrap();
+        let bytes = builder.finish().unwrap();
+
+        let nwb = NwbFile::open(&bytes).unwrap();
+        let restored = nwb.units_table().unwrap();
+
+        assert_eq!(restored.num_units(), 0);
+        assert!(restored.is_empty());
+        assert!(restored.ids().is_none());
+    }
+
+    // ── electrode table roundtrip tests ──────────────────────────────────
+
+    #[test]
+    fn write_electrode_table_roundtrip() {
+        use crate::model::electrode::ElectrodeTable;
+
+        let table = ElectrodeTable::from_columns(
+            vec![0u64, 1u64, 2u64],
+            vec!["CA1".to_owned(), "CA1".to_owned(), "DG".to_owned()],
+            vec![
+                "tetrode1".to_owned(),
+                "tetrode1".to_owned(),
+                "tetrode2".to_owned(),
+            ],
+        )
+        .unwrap();
+
+        let mut builder = NwbFileBuilder::new(
+            "2.7.0",
+            "et-001",
+            "electrode table roundtrip",
+            "2024-01-01T00:00:00",
+        )
+        .unwrap();
+        builder.write_electrode_table(&table).unwrap();
+        let bytes = builder.finish().unwrap();
+
+        let nwb = NwbFile::open(&bytes).unwrap();
+        let restored = nwb.electrode_table().unwrap();
+
+        assert_eq!(restored.len(), 3, "row count");
+        let rows = restored.rows();
+        assert_eq!(rows[0].id, 0);
+        assert_eq!(rows[0].location, "CA1");
+        assert_eq!(rows[0].group_name, "tetrode1");
+        assert_eq!(rows[1].id, 1);
+        assert_eq!(rows[1].location, "CA1");
+        assert_eq!(rows[1].group_name, "tetrode1");
+        assert_eq!(rows[2].id, 2);
+        assert_eq!(rows[2].location, "DG");
+        assert_eq!(rows[2].group_name, "tetrode2");
+    }
+
+    #[test]
+    fn write_electrode_table_empty_roundtrip() {
+        use crate::model::electrode::ElectrodeTable;
+
+        let table = ElectrodeTable::empty();
+
+        let mut builder = NwbFileBuilder::new(
+            "2.7.0",
+            "et-002",
+            "empty electrode table",
+            "2024-01-01T00:00:00",
+        )
+        .unwrap();
+        builder.write_electrode_table(&table).unwrap();
+        let bytes = builder.finish().unwrap();
+
+        let nwb = NwbFile::open(&bytes).unwrap();
+        let restored = nwb.electrode_table().unwrap();
+
+        assert!(restored.is_empty());
+        assert_eq!(restored.len(), 0);
+    }
+
+    // ── negative tests ───────────────────────────────────────────────────
+
+    #[test]
+    fn units_table_missing_returns_not_found() {
+        // A minimal NWB file with no Units group.
+        let bytes = {
+            let builder =
+                NwbFileBuilder::new("2.7.0", "ut-neg", "no units", "2024-01-01T00:00:00").unwrap();
+            builder.finish().unwrap()
+        };
+        let nwb = NwbFile::open(&bytes).unwrap();
+        let result = nwb.units_table();
+        match result {
+            Err(consus_core::Error::NotFound { .. }) => {}
+            other => panic!("expected NotFound, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn electrode_table_missing_returns_not_found() {
+        let bytes = {
+            let builder =
+                NwbFileBuilder::new("2.7.0", "et-neg", "no electrodes", "2024-01-01T00:00:00")
+                    .unwrap();
+            builder.finish().unwrap()
+        };
+        let nwb = NwbFile::open(&bytes).unwrap();
+        let result = nwb.electrode_table();
+        match result {
+            Err(consus_core::Error::NotFound { .. }) => {}
+            other => panic!("expected NotFound, got {:?}", other),
         }
     }
 }

@@ -414,9 +414,29 @@
 - [x] Proptest roundtrips: timestamps, rate (f32 precision invariant), units spike times
 - [x] `cargo test -p consus-nwb --lib` → 166/166; `cargo test --workspace` → 2239/2239
 
+### P3.9 — NWB ElectrodeTable + UnitsTable + Storage String/U64 + README (Milestone 40 — CLOSED)
+- [x] `read_string_dataset` in `consus-nwb::storage` — decode FixedString dataset → `Vec<String>` (null-stripped)
+- [x] `read_u64_dataset` in `consus-nwb::storage` — decode integer dataset → `Vec<u64>` (all 8/16/32/64-bit widths, signed+unsigned)
+- [x] `decode_raw_as_u64` private helper — matches `decode_raw_as_f64` pattern; rejects non-integer datatypes
+- [x] 8 new value-semantic storage tests (u32→u64 widening, u64 identity, i32 signed bit-pattern, float rejection, FixedString exact-fill, null-padded strip, all-null element, wrong-type rejection)
+- [x] `UnitsTable` model in `consus-nwb::model::units` — `spike_times_per_unit: Vec<Vec<f64>>`, `ids: Option<Vec<u64>>`
+- [x] `UnitsTable::new`, `from_parts`, `from_vectordata` (VectorIndex decode with monotone + length invariant checks)
+- [x] `UnitsTable::flat_spike_times()` + `cumulative_index()` — encode back to VectorData/VectorIndex wire format
+- [x] 18 value-semantic `UnitsTable` unit tests (construction, VectorIndex decode, error paths, roundtrip)
+- [x] `ElectrodeRow` + `ElectrodeTable` model in `consus-nwb::model::electrode`
+- [x] `ElectrodeTable::from_rows`, `from_columns`, `empty`; column iterators `id_column`, `location_column`, `group_name_column`
+- [x] 13 value-semantic `ElectrodeTable` unit tests (construction, column mismatch rejection, accessors, Clone/PartialEq)
+- [x] `NwbFile::units_table()` — reads `Units/spike_times` + `Units/spike_times_index` + optional `Units/id` via VectorIndex decode
+- [x] `NwbFile::electrode_table()` — reads `electrodes/id` + `electrodes/location` + `electrodes/group_name`
+- [x] `NwbFileBuilder::write_units_table(&UnitsTable)` — emits VectorData + VectorIndex datasets with `VectorData`/`VectorIndex` `neurodata_type_def` attributes; optional `id` dataset
+- [x] `NwbFileBuilder::write_electrode_table(&ElectrodeTable)` — emits `DynamicTable` group with `id`, `location`, `group_name` datasets (null-padded fixed-string columns)
+- [x] 7 new file integration tests: 3 UnitsTable roundtrips (with IDs, without IDs, empty), 2 ElectrodeTable roundtrips (3-row, empty), 2 NotFound negative tests
+- [x] `crates/consus-nwb/README.md` created — format overview, feature flags, quick-start read/write examples, module architecture, NWB compliance table, license
+- [x] `cargo test -p consus-nwb --lib` → 211/211; `cargo test --workspace` → 2285/2285; `cargo check --workspace` → 0 errors, 0 warnings
+
 ### P3.6 — NWB Verification
 - [ ] Read tests against Allen Brain Observatory NWB 2.x sample
 - [ ] Read tests against NWB tutorial files
 - [ ] Full conformance validation against NWB 2.x schema
-- [ ] ElectrodeTable read (electrode metadata) — requires `read_string_dataset` in `storage`
+- [x] ElectrodeTable read (electrode metadata) — `read_string_dataset` added; `NwbFile::electrode_table()` + `NwbFileBuilder::write_electrode_table()` implemented (Milestone 40)
 - [ ] Namespace version detection from `/specifications/` YAML specs

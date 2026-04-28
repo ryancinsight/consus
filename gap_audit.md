@@ -256,11 +256,35 @@
 
 ## Open Gaps
 
-_No open gaps in the current audit scope. Remaining open work: lifetime-parameterized zero-copy `ArrowArray` model, hybrid Parquet-inside-Consus containers, large-file (>4 GiB) regression tests, cargo-fuzz harness targets, WASM validation, no_std smoke tests, documentation site, crates.io publication, NWB verification against real Allen Brain Observatory NWB 2.x fixtures (Milestone 38), and NWB namespace spec YAML parsing from `/specifications/`._
+_No open gaps in the current audit scope. Remaining open work: lifetime-parameterized zero-copy `ArrowArray` model, hybrid Parquet-inside-Consus containers, large-file (>4 GiB) regression tests, cargo-fuzz harness targets, WASM validation, no_std smoke tests, documentation site, crates.io publication, NWB verification against real Allen Brain Observatory NWB 2.x fixtures (Milestone 38), NWB namespace spec YAML parsing from `/specifications/`, and NWB Units VectorIndex write with per-unit spike times (Milestone 40 delivers model and read; write verified by roundtrip tests)._
 
 ---
 
 ## Closed Since Previous Audit
+
+### M-040: NWB ElectrodeTable + UnitsTable + Storage String/U64 + README
+- **Crates affected**: `consus-nwb`
+- **Storage additions** (`consus-nwb/src/storage/mod.rs`):
+  - Added `decode_raw_as_u64` private helper — mirrors `decode_raw_as_f64`; dispatches on `Datatype::Integer` (8/16/32/64-bit, signed+unsigned, both byte orders); rejects non-integer types with `UnsupportedFeature`.
+  - Added `read_u64_dataset` — reads integer dataset as `Vec<u64>`; supports contiguous and chunked layouts.
+  - Added `read_string_dataset` — reads `FixedString` dataset as `Vec<String>`; strips trailing null bytes; validates UTF-8; supports contiguous and chunked layouts.
+  - Updated module doccomment scope table.
+  - 8 new value-semantic tests: u32→u64 widening, u64 identity, i32 signed bit-pattern cast, float→u64 rejection, FixedString exact-fill, null-padded strip, all-null element → empty string, wrong-type → `UnsupportedFeature`.
+- **Model additions** (`consus-nwb/src/model/units.rs`, `electrode.rs`, `mod.rs`):
+  - `UnitsTable` struct (`spike_times_per_unit: Vec<Vec<f64>>`, `ids: Option<Vec<u64>>`); `from_vectordata` decodes HDMF VectorIndex pattern with monotone + length invariant checks; `flat_spike_times()` + `cumulative_index()` encode back to wire format; `new`, `from_parts` constructors; full accessors.
+  - `ElectrodeRow` (`id: u64`, `location: String`, `group_name: String`) + `ElectrodeTable` with `from_rows`, `from_columns` (column-length validation), `empty`; column iterators `id_column`, `location_column`, `group_name_column`.
+  - `pub mod units; pub mod electrode;` added to `model/mod.rs`.
+  - 18 `UnitsTable` unit tests + 13 `ElectrodeTable` unit tests.
+- **File API additions** (`consus-nwb/src/file/mod.rs`):
+  - `NwbFile::units_table()` — reads `Units/spike_times` (f64) + `Units/spike_times_index` (u64) + optional `Units/id` (u64); decodes via `UnitsTable::from_vectordata`.
+  - `NwbFile::electrode_table()` — reads `electrodes/id` (u64) + `electrodes/location` (FixedString) + `electrodes/group_name` (FixedString); builds via `ElectrodeTable::from_columns`.
+  - `NwbFileBuilder::write_units_table(&UnitsTable)` — emits `Units` group; `spike_times` VectorData (f64 LE) with `neurodata_type_def = "VectorData"`; `spike_times_index` VectorIndex (u64 LE) with `neurodata_type_def = "VectorIndex"`; optional `id` dataset.
+  - `NwbFileBuilder::write_electrode_table(&ElectrodeTable)` — emits `electrodes` DynamicTable group; `id` (u64 LE), `location` (FixedString null-padded to max len), `group_name` (FixedString null-padded to max len); `neurodata_type_def = "DynamicTable"`, `description`, `colnames` attributes.
+  - 7 new integration tests: 3 UnitsTable roundtrips (with IDs, without IDs, empty), 2 ElectrodeTable roundtrips (3-row, empty), 2 NotFound negative tests.
+- **Documentation** (`crates/consus-nwb/README.md`):
+  - Created: format overview, feature flag table, quick-start read/write examples, module architecture tree, NWB compliance table, spec references, license.
+- **Tests added**: consus-nwb lib 166 → 211 (+45); workspace 2239 → 2285 (+46).
+- **Verification**: `cargo test -p consus-nwb --lib` → 211/211; `cargo test --workspace` → 2285/2285; `cargo check --workspace` → 0 errors, 0 warnings.
 
 ### M-039: NWB Extended Read Path + HDF5 Nested Group Write
 - **Crates affected**: `consus-hdf5`, `consus-nwb`
@@ -401,12 +425,12 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
 | consus-arrow E2E integration | 6/6 |
 | consus-io lib (default) | 20/20 |
 | consus-io lib+integration (mmap) | 31/31 |
-| consus-nwb lib | 166/166 |
+| consus-nwb lib | 211/211 |
 | consus-hdf5 lib | 266/266 |
-| workspace total tests (default) | 2239/2239 |
-| Verified commands | `cargo test -p consus-nwb --lib` (166/166); `cargo test -p consus-hdf5 --lib` (266/266); `cargo test --workspace` (2239/2239, default); `cargo check --workspace` (0 warnings, 0 errors) |
+| workspace total tests (default) | 2285/2285 |
+| Verified commands | `cargo test -p consus-nwb --lib` (211/211); `cargo test -p consus-hdf5 --lib` (266/266); `cargo test --workspace` (2285/2285, default); `cargo check --workspace` (0 warnings, 0 errors) |
 | Open gaps | 0 |
 | High-severity open gaps | 0 |
-| Closed this sprint | 2 (M-037: NWB Write Path; M-039: NWB Extended Read Path + HDF5 Nested Group Write — ChildGroupSpec, add_group_with_children, NwbSubjectMetadata, NwbFile::subject, write_subject, list_acquisition, list_processing, proptest roundtrips; +20 new value-semantic tests) |
+| Closed this sprint | 3 (M-037: NWB Write Path; M-039: NWB Extended Read Path + HDF5 Nested Group Write; M-040: NWB ElectrodeTable + UnitsTable + Storage String/U64 + README — read_string_dataset, read_u64_dataset, UnitsTable, ElectrodeTable, NwbFile::units_table/electrode_table, NwbFileBuilder::write_units_table/write_electrode_table, README; +46 new value-semantic tests) |
 | Medium-severity open gaps | 0 |
 | Low-severity open gaps | 0 |

@@ -705,6 +705,35 @@ test result: ok. 136 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fi
 - [ ] Test `session_metadata`, `list_time_series`, `time_series` against real file
 - [ ] Verify integer dataset promotion (i16 neural data) via real file
 
+### Milestone 40: NWB ElectrodeTable + UnitsTable + Storage String/U64 + README — CLOSED
+- [x] `read_string_dataset` in `consus-nwb::storage` — decode `FixedString` dataset → `Vec<String>`; trailing null bytes stripped; UTF-8 validated
+- [x] `read_u64_dataset` in `consus-nwb::storage` — decode integer dataset → `Vec<u64>`; all 8/16/32/64-bit signed and unsigned widths; both byte orders
+- [x] `decode_raw_as_u64` private helper — mirrors `decode_raw_as_f64`; rejects non-integer datatypes with `UnsupportedFeature`
+- [x] 8 new value-semantic storage tests: u32→u64 widening, u64 identity, i32 signed bit-pattern cast, float→u64 rejection, FixedString exact-fill, null-padded strip, all-null element → empty string, wrong-type → `UnsupportedFeature`
+- [x] `UnitsTable` model in `consus-nwb::model::units` — fields `spike_times_per_unit: Vec<Vec<f64>>`, `ids: Option<Vec<u64>>`; `#[derive(Debug, Clone, PartialEq)]`
+- [x] `UnitsTable::new` — no-IDs constructor
+- [x] `UnitsTable::from_parts` — constructor with optional IDs; validates `ids.len() == spike_times_per_unit.len()`
+- [x] `UnitsTable::from_vectordata` — HDMF VectorIndex decode; validates monotone index, last index == flat_times.len(), ids length
+- [x] `UnitsTable::flat_spike_times()` — flatten per-unit arrays into wire-format contiguous array
+- [x] `UnitsTable::cumulative_index()` — compute cumulative end-offset array for `spike_times_index` dataset
+- [x] `UnitsTable::num_units()`, `is_empty()`, `spike_times_per_unit()`, `ids()` accessors
+- [x] 18 value-semantic `UnitsTable` unit tests: construction, VectorIndex decode (2-unit, 3-unit-with-ids, empty, zero-spike unit), error paths (last-index mismatch, non-monotone, ids-length mismatch), flat+index roundtrip, Clone/PartialEq
+- [x] `ElectrodeRow` in `consus-nwb::model::electrode` — fields `id: u64`, `location: String`, `group_name: String`; `#[derive(Debug, Clone, PartialEq, Eq)]`
+- [x] `ElectrodeTable` in `consus-nwb::model::electrode` — `rows: Vec<ElectrodeRow>`; `#[derive(Debug, Clone, PartialEq, Eq)]`
+- [x] `ElectrodeTable::from_rows`, `from_columns` (validates equal column lengths), `empty`
+- [x] `ElectrodeTable::len()`, `is_empty()`, `rows()`, `get(i)` accessors
+- [x] `ElectrodeTable::id_column()`, `location_column()`, `group_name_column()` iterators
+- [x] 13 value-semantic `ElectrodeTable` unit tests: from_rows, empty, from_columns, length-mismatch rejection, get bounds, column iterators, Clone/PartialEq, Debug
+- [x] `pub mod units; pub mod electrode;` added to `consus-nwb::model::mod`
+- [x] `NwbFile::units_table()` — reads `Units/spike_times` (f64) + `Units/spike_times_index` (u64) + optional `Units/id` (u64); decodes via `UnitsTable::from_vectordata`
+- [x] `NwbFile::electrode_table()` — reads `electrodes/id` (u64) + `electrodes/location` (FixedString) + `electrodes/group_name` (FixedString); builds via `ElectrodeTable::from_columns`
+- [x] `NwbFileBuilder::write_units_table(&UnitsTable)` — emits `Units` group; `spike_times` VectorData (f64 LE) + `spike_times_index` VectorIndex (u64 LE); optional `id` dataset; correct `neurodata_type_def` + `description` attributes per HDMF spec
+- [x] `NwbFileBuilder::write_electrode_table(&ElectrodeTable)` — emits `electrodes` DynamicTable group; `id` (u64 LE), `location` (FixedString, null-padded to max len), `group_name` (FixedString, null-padded to max len); `neurodata_type_def = "DynamicTable"`, `description`, `colnames` attributes
+- [x] 7 new file integration tests: `write_units_table_with_ids_roundtrip`, `write_units_table_no_ids_roundtrip`, `write_units_table_empty_roundtrip`, `write_electrode_table_roundtrip` (3 rows), `write_electrode_table_empty_roundtrip`, `units_table_missing_returns_not_found`, `electrode_table_missing_returns_not_found`
+- [x] `crates/consus-nwb/README.md` created — format overview, feature flag table, quick-start read/write examples, module architecture tree, NWB compliance table (implemented / not-yet-implemented), spec references, license
+- [x] Verified `cargo test -p consus-nwb --lib` → 211/211
+- [x] Verified `cargo test --workspace` → 2285/2285; `cargo check --workspace` → 0 errors, 0 warnings
+
 ### Milestone 39: NWB Extended Read Path + HDF5 Nested Group Write — CLOSED
 - [x] `ChildGroupSpec<'a>` — new public struct in `consus-hdf5::file::writer` for specifying sub-group children
 - [x] `write_group_node` — private recursive helper in `consus-hdf5::file::writer`; extracts and generalises the dataset-write + object-header-write logic from `add_group_with_attributes`
