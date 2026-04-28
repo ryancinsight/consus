@@ -19,7 +19,7 @@
 //! ├── hybrid/ # Hybrid Parquet-in-Consus storage metadata
 //! ├── wire/ # Trailer validation, Thrift decoder, FileMetaData, PageHeader
 //! ├── encoding/ # Page value decoders: PLAIN, RLE/dict, levels, compression
-//! └── dataset/ # In-memory dataset descriptor and projection model
+//! └── writer/ # Canonical writer-side planning and file emission
 //! ```
 //!
 //! ## Design Constraints
@@ -49,6 +49,9 @@ pub mod encoding;
 #[cfg(feature = "alloc")]
 mod reader;
 
+#[cfg(feature = "alloc")]
+mod writer;
+
 pub use arrow_bridge::{
     ArrowBridgeMode, ArrowDataTypeHint, ArrowFieldDescriptor, ArrowIntegrationPlan,
     ArrowSchemaMapping, ArrowZeroCopyConstraint,
@@ -73,6 +76,11 @@ pub use dataset::{
 
 #[cfg(feature = "alloc")]
 pub use reader::{ColumnPageDecoder, ParquetReader};
+
+#[cfg(feature = "alloc")]
+pub use writer::{
+    ByteSink, CellValue, LeafColumnPlan, ParquetWriter, RowSource, RowValue, WritePlan,
+};
 
 #[cfg(feature = "alloc")]
 pub use encoding::{
@@ -233,5 +241,15 @@ mod tests {
         // ParquetReader rejects invalid input deterministically.
         let err = ParquetReader::new(b"PAR1").unwrap_err();
         assert!(matches!(err, consus_core::Error::BufferTooSmall { .. }));
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn writer_exports_are_available() {
+        use crate::{CellValue, ParquetWriter, RowValue, WritePlan};
+        let _writer = ParquetWriter::new();
+        let row = RowValue::new(vec![CellValue::Null]);
+        assert_eq!(row.len(), 1);
+        let _plan: Option<WritePlan> = None;
     }
 }

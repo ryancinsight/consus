@@ -29,12 +29,8 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 
 use consus_core::{ByteOrder, Datatype};
 
-use crate::datatype::{
-    ArrowDataType, DecimalType, FixedSizeBinaryType, IntSign, TimeUnit, TimestampType,
-};
-use crate::field::{
-    ArrowField, ArrowFieldId, ArrowFieldKind, ArrowFieldSemantics, ArrowNullability,
-};
+use crate::datatype::{ArrowDataType, DecimalType, FixedSizeBinaryType, IntSign, TimestampType};
+use crate::field::{ArrowField, ArrowFieldId, ArrowFieldKind, ArrowFieldSemantics};
 use crate::schema::ArrowSchema;
 
 /// Conversion mode controlling how strictly types must match.
@@ -312,7 +308,7 @@ pub fn core_datatype_to_arrow_hint(datatype: &Datatype) -> ArrowDataType {
                 .enumerate()
                 .map(
                     |(
-                        i,
+                        _i,
                         CompoundField {
                             name,
                             datatype,
@@ -359,7 +355,7 @@ pub fn core_datatype_to_arrow_hint(datatype: &Datatype) -> ArrowDataType {
         }),
 
         Datatype::Complex { component_bits, .. } => {
-            let bit_width = component_bits.get() as u8;
+            let _bit_width = component_bits.get() as u8;
             let real_field = ArrowField {
                 id: ArrowFieldId::new(0),
                 name: String::from("real"),
@@ -511,7 +507,6 @@ impl ArrowFieldFromCoreBuilder {
     /// Build the Arrow field.
     #[must_use]
     pub fn build(self) -> ArrowField {
-        let arrow_type = core_datatype_to_arrow_hint(&self.datatype);
         let kind = crate::field::kind_from_datatype(&self.datatype);
 
         ArrowField {

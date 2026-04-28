@@ -1,0 +1,21 @@
+[package]
+name = "consus-nwb"
+version = "0.1.0"
+edition = "2021"
+description = "Neurodata Without Borders (NWB) read/write support for Consus"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ryancinsight/consus"
+
+[features]
+default = ["std"]
+std    = ["alloc", "consus-core/std", "consus-hdf5/std", "consus-io/std"]
+alloc  = ["consus-core/alloc", "consus-io/alloc"]
+
+[dependencies]
+consus-core = { workspace = true }
+consus-hdf5 = { workspace = true }
+consus-io   = { workspace = true }
+
+[dev-dependencies]
+consus-hdf5 = { workspace = true, features = ["std"] }
+consus-io   = { workspace = true, features = ["std"] }

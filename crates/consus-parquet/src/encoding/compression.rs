@@ -53,6 +53,133 @@ impl CompressionCodec {
     }
 }
 
+/// Compress page value bytes using the given Parquet compression codec.
+///
+/// UNCOMPRESSED: returns `data.to_vec()` (pass-through, no error).
+/// GZIP / ZLIB: raw deflate via `flate2::read::DeflateEncoder`.
+///              Level: `flate2::Compression::default()`.
+/// SNAPPY: `snap::raw::Encoder::new().compress_vec(data)`.
+/// ZSTD: `zstd::bulk::compress(data, 3)`.
+/// LZ4_RAW: `lz4_flex::compress(data)`.
+/// LZ4: `lz4_flex::compress_prepend_size(data)`.
+/// BROTLI: always returns `Error::UnsupportedFeature { feature: "parquet compression codec BROTLI (6)" }`.
+///
+/// Feature gating matches `decompress_page_values`: same `#[cfg(feature = "gzip")]` etc.
+/// If the feature is not enabled, returns `Error::UnsupportedFeature` with an actionable message.
+pub(crate) fn compress_page_values(data: &[u8], codec: CompressionCodec) -> Result<Vec<u8>> {
+    match codec {
+        CompressionCodec::Uncompressed => Ok(data.to_vec()),
+
+        CompressionCodec::Gzip | CompressionCodec::Zlib => {
+            #[cfg(feature = "gzip")]
+            {
+                use flate2::read::DeflateEncoder;
+                use std::io::Read;
+                let mut encoder = DeflateEncoder::new(data, flate2::Compression::default());
+                let mut output = Vec::with_capacity(data.len());
+                encoder
+                    .read_to_end(&mut output)
+                    .map_err(|e| Error::CompressionError {
+                        message: format!("deflate compress failed: {e}"),
+                    })?;
+                Ok(output)
+            }
+            #[cfg(not(feature = "gzip"))]
+            {
+                let _ = data;
+                Err(Error::UnsupportedFeature {
+                    feature: format!(
+                        "parquet compression codec {} ({}) — enable feature 'gzip'",
+                        codec as i32,
+                        match codec {
+                            CompressionCodec::Gzip => "GZIP",
+                            CompressionCodec::Zlib => "ZLIB",
+                            _ => unreachable!(),
+                        }
+                    ),
+                })
+            }
+        }
+
+        CompressionCodec::Snappy => {
+            #[cfg(feature = "snappy")]
+            {
+                snap::raw::Encoder::new()
+                    .compress_vec(data)
+                    .map_err(|e| Error::CompressionError {
+                        message: format!("snappy compress failed: {e}"),
+                    })
+            }
+            #[cfg(not(feature = "snappy"))]
+            {
+                let _ = data;
+                Err(Error::UnsupportedFeature {
+                    feature: String::from(
+                        "parquet compression codec 1 (SNAPPY) — enable feature 'snappy'",
+                    ),
+                })
+            }
+        }
+
+        CompressionCodec::Zstd => {
+            #[cfg(feature = "zstd")]
+            {
+                zstd::bulk::compress(data, 3).map_err(|e| Error::CompressionError {
+                    message: format!("zstd compress failed: {e}"),
+                })
+            }
+            #[cfg(not(feature = "zstd"))]
+            {
+                let _ = data;
+                Err(Error::UnsupportedFeature {
+                    feature: String::from(
+                        "parquet compression codec 4 (ZSTD) — enable feature 'zstd'",
+                    ),
+                })
+            }
+        }
+
+        CompressionCodec::Lz4Raw => {
+            #[cfg(feature = "lz4")]
+            {
+                Ok(lz4_flex::compress(data))
+            }
+            #[cfg(not(feature = "lz4"))]
+            {
+                let _ = data;
+                Err(Error::UnsupportedFeature {
+                    feature: String::from(
+                        "parquet compression codec 3 (LZ4_RAW) — enable feature 'lz4'",
+                    ),
+                })
+            }
+        }
+
+        CompressionCodec::Lz4 => {
+            #[cfg(feature = "lz4")]
+            {
+                Ok(lz4_flex::compress_prepend_size(data))
+            }
+            #[cfg(not(feature = "lz4"))]
+            {
+                let _ = data;
+                Err(Error::UnsupportedFeature {
+                    feature: String::from(
+                        "parquet compression codec 5 (LZ4) — enable feature 'lz4'",
+                    ),
+                })
+            }
+        }
+
+        CompressionCodec::Brotli => {
+            let _ = data;
+            Err(Error::UnsupportedFeature {
+                feature: String::from("parquet compression codec BROTLI (6)"),
+            })
+        }
+    }
+}
+
 /// Decompress page value bytes according to the Parquet compression codec.
 ///
 /// `uncompressed_size` is the expected decompressed size, used as a capacity
@@ -97,11 +224,11 @@ pub fn decompress_page_values(
         CompressionCodec::Snappy => {
             #[cfg(feature = "snappy")]
             {
-                snap::raw::Decoder::new()
-                    .decompress_vec(data)
-                    .map_err(|e| Error::CompressionError {
+                snap::raw::Decoder::new().decompress_vec(data).map_err(|e| {
+                    Error::CompressionError {
                         message: format!("snappy decompress failed: {e}"),
-                    })
+                    }
+                })
             }
             #[cfg(not(feature = "snappy"))]
             {
@@ -257,8 +384,8 @@ mod tests {
     #[cfg(feature = "gzip")]
     #[test]
     fn decompress_gzip_round_trip() {
-        use std::io::Read;
         use flate2::read::DeflateEncoder;
+        use std::io::Read;
 
         let input: Vec<u8> = (0u8..=255).cycle().take(1024).collect();
         let mut encoder = DeflateEncoder::new(&input[..], flate2::Compression::new(6));
@@ -275,8 +402,8 @@ mod tests {
     #[cfg(feature = "gzip")]
     #[test]
     fn decompress_zlib_round_trip() {
-        use std::io::Read;
         use flate2::read::DeflateEncoder;
+        use std::io::Read;
 
         let input: Vec<u8> = (0u8..=255).cycle().take(1024).collect();
         let mut encoder = DeflateEncoder::new(&input[..], flate2::Compression::new(6));

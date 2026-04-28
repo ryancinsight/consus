@@ -43,9 +43,9 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 use consus_core::{CompoundField, Datatype, Error, Result, Shape};
 
 use crate::conversion::parquet_field_to_core;
-use crate::schema::{FieldDescriptor, FieldId, SchemaDescriptor};
 use crate::schema::logical::Repetition;
 use crate::schema::physical::ParquetPhysicalType;
+use crate::schema::{FieldDescriptor, FieldId, SchemaDescriptor};
 
 /// Canonical storage classification for a Parquet column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -284,8 +284,7 @@ impl ParquetDatasetDescriptor {
 
             let mut chunk_index = 0;
             while chunk_index < group.column_chunks.len() {
-                if group.column_chunks[chunk_index].field_id()
-                    != schema.fields()[chunk_index].id()
+                if group.column_chunks[chunk_index].field_id() != schema.fields()[chunk_index].id()
                 {
                     return Err(Error::InvalidFormat {
                         message: String::from(
@@ -573,8 +572,7 @@ fn parse_fields(
 
         let child_count = elem.num_children.unwrap_or(0) as usize;
         if child_count > 0 {
-            let (children, children_consumed) =
-                parse_fields(elements, pos, child_count, id_seq)?;
+            let (children, children_consumed) = parse_fields(elements, pos, child_count, id_seq)?;
             pos += children_consumed;
             total_consumed += children_consumed;
             fields.push(FieldDescriptor::group(field_id, name, repetition, children));
@@ -587,21 +585,17 @@ fn parse_fields(
                 Some(4) => ParquetPhysicalType::Float,
                 Some(5) => ParquetPhysicalType::Double,
                 Some(6) => ParquetPhysicalType::ByteArray,
-                Some(7) => ParquetPhysicalType::FixedLenByteArray(
-                    elem.type_length.unwrap_or(0) as usize,
-                ),
+                Some(7) => {
+                    ParquetPhysicalType::FixedLenByteArray(elem.type_length.unwrap_or(0) as usize)
+                }
                 _ => ParquetPhysicalType::ByteArray,
             };
             let field = match repetition {
-                Repetition::Required => {
-                    FieldDescriptor::required(field_id, name, physical_type)
-                }
+                Repetition::Required => FieldDescriptor::required(field_id, name, physical_type),
                 Repetition::Optional => {
                     FieldDescriptor::optional(field_id, name, physical_type, None)
                 }
-                Repetition::Repeated => {
-                    FieldDescriptor::repeated(field_id, name, physical_type)
-                }
+                Repetition::Repeated => FieldDescriptor::repeated(field_id, name, physical_type),
             };
             fields.push(field);
         }
@@ -650,9 +644,7 @@ pub fn dataset_from_file_metadata(
         let rg = &meta.row_groups[rg_idx];
         if rg.columns.len() != schema.field_count() {
             return Err(Error::InvalidFormat {
-                message: String::from(
-                    "row group column count does not match schema field count",
-                ),
+                message: String::from("row group column count does not match schema field count"),
             });
         }
         let mut column_chunks = Vec::with_capacity(rg.columns.len());
@@ -663,13 +655,20 @@ pub fn dataset_from_file_metadata(
             let meta_data = col.meta_data.as_ref().ok_or_else(|| Error::InvalidFormat {
                 message: String::from("column chunk meta_data is absent"),
             })?;
-            let row_count = meta_data.num_values as usize;
+            // Use the row group's logical row count, not num_values.
+            // For repeated columns, num_values counts Dremel entries (which
+            // may exceed num_rows), so RowGroupDescriptor validation would
+            // fail if we used num_values here.
+            let row_count = rg.num_rows as usize;
             let raw_byte_len = meta_data.total_compressed_size as usize;
             let byte_len = if raw_byte_len == 0 { 1 } else { raw_byte_len };
             column_chunks.push(ColumnChunkDescriptor::new(field_id, row_count, byte_len)?);
             col_idx += 1;
         }
-        row_groups.push(RowGroupDescriptor::new(rg.num_rows as usize, column_chunks)?);
+        row_groups.push(RowGroupDescriptor::new(
+            rg.num_rows as usize,
+            column_chunks,
+        )?);
         rg_idx += 1;
     }
 

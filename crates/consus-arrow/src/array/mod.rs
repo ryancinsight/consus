@@ -1,3 +1,7 @@
+pub mod materialize;
+#[cfg(feature = "alloc")]
+pub use materialize::column_values_to_arrow;
+
 /// Arrow array model.
 ///
 /// This module defines a Rust-native columnar array representation for the

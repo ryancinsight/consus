@@ -13,6 +13,7 @@ members = [
     "crates/consus-io",
     "tests",
     "crates/consus-mat",
+    "crates/consus-nwb",
 ]
 
 [workspace.package]
@@ -30,6 +31,7 @@ description = "Pure-Rust, no_std-compatible, memory-safe hierarchical and array-
 [workspace.dependencies]
 # Internal crates
 consus-mat = { path = "crates/consus-mat", version = "0.1.0", default-features = false }
+consus-nwb = { path = "crates/consus-nwb", version = "0.1.0", default-features = false }
 consus-core = { path = "crates/consus-core", version = "0.1.0", default-features = false }
 consus-hdf5 = { path = "crates/consus-hdf5", version = "0.1.0", default-features = false }
 consus-fits = { path = "crates/consus-fits", version = "0.1.0", default-features = false }
@@ -46,6 +48,7 @@ bytes = { version = "1", default-features = false }
 smallvec = { version = "1", default-features = false }
 zerocopy = { version = "0.8", default-features = false }
 byteorder = { version = "1", default-features = false }
+memmap2      = { version = "0.9" }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 serde_json = { version = "1", default-features = false, features = ["alloc"] }
 rusoto_core = { version = "0.48", default-features = false, features = ["native-tls"] }

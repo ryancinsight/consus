@@ -20,3 +20,6 @@ pub mod stream;
 
 #[cfg(feature = "std")]
 pub mod file;
+
+#[cfg(feature = "mmap")]
+pub mod mmap;

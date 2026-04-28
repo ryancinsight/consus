@@ -289,8 +289,6 @@ mod tests {
 
     #[cfg(feature = "alloc")]
     #[test]
-    #[cfg(feature = "alloc")]
-    #[test]
     fn array_memory_classifies_variable_width() {
         let offsets = ArrowOffsets::new(ArrowBuffer::Owned(vec![0; 12]), 2);
         let memory = ArrowArrayMemory::variable_width(ArrowBuffer::Owned(vec![1, 2, 3]), offsets);

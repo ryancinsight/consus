@@ -27,3 +27,7 @@ flate2 = { workspace = true, optional = true }
 [dev-dependencies]
 proptest = { workspace = true }
 criterion = { workspace = true }
+
+[[bench]]
+name = "parquet_rw"
+harness = false

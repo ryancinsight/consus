@@ -443,7 +443,11 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
     /// List children of a group at the given object header address.
     ///
     /// Returns `(name, object_header_address, link_type)` triples.
-    /// Tries v2 links first; falls back to v1 symbol table.
+    ///
+    /// Tries v2 compact/dense link messages first.  Falls back to the v1
+    /// symbol-table path only when a `SYMBOL_TABLE` message is present in
+    /// the object header; v2 groups with no children have no such message
+    /// and correctly return an empty list rather than an error.
     #[cfg(feature = "alloc")]
     pub fn list_group_at(&self, address: u64) -> Result<Vec<(String, u64, consus_core::LinkType)>> {
         let header = reader::read_object_header(&self.source, address, &self.ctx)?;
@@ -451,6 +455,15 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
         let v2 = reader::list_group_v2(&self.source, &header, &self.ctx)?;
         if !v2.is_empty() {
             return Ok(v2.into_iter().map(|(n, a, lt, _)| (n, a, lt)).collect());
+        }
+
+        // Only attempt the v1 symbol-table path when the object header
+        // contains a SYMBOL_TABLE message.  v2 groups with zero children
+        // produce an empty v2 list and carry no SYMBOL_TABLE message; for
+        // them an empty result is correct and the v1 path must not be tried.
+        use crate::object_header::message_types;
+        if reader::find_message(&header, message_types::SYMBOL_TABLE).is_none() {
+            return Ok(Vec::new());
         }
 
         let v1 = reader::list_group_v1(&self.source, &header, &self.ctx)?;

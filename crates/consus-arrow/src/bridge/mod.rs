@@ -342,7 +342,7 @@ mod tests {
     use super::*;
 
     #[cfg(feature = "alloc")]
-    use crate::field::{ArrowField, ArrowFieldBuilder, ArrowFieldId, ArrowFieldKind};
+    use crate::field::{ArrowFieldBuilder, ArrowFieldId, ArrowFieldKind};
     #[cfg(feature = "alloc")]
     use crate::schema::ArrowSchema;
 

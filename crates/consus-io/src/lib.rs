@@ -23,7 +23,8 @@
 //! │   │   ├── cursor   # In-memory I/O source (MemCursor)
 //! │   │   ├── slice    # Read-only &[u8] adapter (SliceReader)
 //! │   │   ├── stream   # Cursor-based sequential reader (StreamReader)
-//! │   │   └── file     # std::fs::File positioned I/O implementation
+//! │   │   ├── file     # std::fs::File positioned I/O implementation
+//! │   │   └── mmap     # Read-only memory-mapped file reader (MmapReader)
 //! │   └── async_io/    # Asynchronous positioned I/O (feature-gated)
 //! ```
 //!
@@ -50,6 +51,8 @@ pub use io::traits::{Length, RandomAccess, ReadAt, SeekFrom, Seekable, Truncate,
 // Sync implementations
 #[cfg(feature = "alloc")]
 pub use io::sync::cursor::MemCursor;
+#[cfg(feature = "mmap")]
+pub use io::sync::mmap::MmapReader;
 pub use io::sync::slice::SliceReader;
 #[cfg(feature = "alloc")]
 pub use io::sync::stream::StreamReader;

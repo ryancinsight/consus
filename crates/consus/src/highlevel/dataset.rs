@@ -299,6 +299,7 @@ impl Dataset {
     }
 
     /// Returns the erased backend handle.
+    #[allow(dead_code)]
     pub(crate) fn backend(&self) -> &Arc<dyn UnifiedBackend> {
         &self.backend
     }

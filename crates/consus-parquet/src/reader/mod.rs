@@ -33,6 +33,7 @@ use crate::wire::validate_footer_prelude;
 
 mod page;
 
+pub use crate::encoding::column::ColumnValuesWithLevels;
 pub use page::ColumnPageDecoder;
 
 /// Derive Dremel definition and repetition max levels for a flat top-level field.
@@ -191,7 +192,99 @@ impl<'a> ParquetReader<'a> {
         let mut decoder = ColumnPageDecoder::new(physical_type, codec, max_rep, max_def);
         decoder.decode_pages_from_chunk_bytes(chunk_bytes)
     }
+
+    /// Read and decode all values for one column chunk, returning values and
+    /// Dremel levels.
+    ///
+    /// Identical to [`Self::read_column_chunk`] except it returns
+    /// [`ColumnValuesWithLevels`] which carries the repetition and definition
+    /// levels alongside the non-null values.
+    ///
+    /// # Errors
+    ///
+    /// Same conditions as [`Self::read_column_chunk`].
+    pub fn read_column_chunk_with_levels(
+        &self,
+        row_group_idx: usize,
+        column_ordinal: usize,
+    ) -> Result<ColumnValuesWithLevels> {
+        let rg =
+            self.metadata
+                .row_groups
+                .get(row_group_idx)
+                .ok_or_else(|| Error::InvalidFormat {
+                    message: format!(
+                        "parquet: row group index {row_group_idx} out of bounds ({})",
+                        self.metadata.row_groups.len()
+                    ),
+                })?;
+
+        let chunk_col = rg
+            .columns
+            .get(column_ordinal)
+            .ok_or_else(|| Error::InvalidFormat {
+                message: format!(
+                    "parquet: column ordinal {column_ordinal} out of bounds ({} columns)",
+                    rg.columns.len()
+                ),
+            })?;
+
+        let chunk_meta = chunk_col
+            .meta_data
+            .as_ref()
+            .ok_or_else(|| Error::InvalidFormat {
+                message: String::from("parquet: column chunk missing inline ColumnMetadata"),
+            })?;
+
+        let col_desc =
+            self.dataset
+                .columns()
+                .get(column_ordinal)
+                .ok_or_else(|| Error::InvalidFormat {
+                    message: format!(
+                        "parquet: column ordinal {column_ordinal} not found in dataset descriptor"
+                    ),
+                })?;
+
+        if col_desc.is_nested() {
+            return Err(Error::UnsupportedFeature {
+                feature: String::from(
+                    "parquet: nested (group) column chunk decoding is not yet supported",
+                ),
+            });
+        }
+
+        let physical_type = col_desc.field().physical_type();
+        let codec =
+            CompressionCodec::from_i32(chunk_meta.codec).ok_or_else(|| Error::InvalidFormat {
+                message: format!("parquet: unknown codec discriminant {}", chunk_meta.codec),
+            })?;
+
+        let (max_rep, max_def) = max_levels_for_field(col_desc.field());
+
+        let start_offset = chunk_meta
+            .dictionary_page_offset
+            .unwrap_or(chunk_meta.data_page_offset) as usize;
+
+        let end_offset = start_offset
+            .checked_add(chunk_meta.total_compressed_size as usize)
+            .ok_or(Error::Overflow)?;
+
+        if end_offset > self.bytes.len() {
+            return Err(Error::BufferTooSmall {
+                required: end_offset,
+                provided: self.bytes.len(),
+            });
+        }
+
+        let chunk_bytes = &self.bytes[start_offset..end_offset];
+        let mut decoder = ColumnPageDecoder::new(physical_type, codec, max_rep, max_def);
+        decoder.decode_pages_with_levels(chunk_bytes)
+    }
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod reader_proptest;

@@ -211,23 +211,58 @@
   - [x] :  enum (8 variants covering all Parquet physical types), , ,  (PLAIN/PLAIN_DICTIONARY/RLE_DICTIONARY dispatch), ,  — 16 value-semantic tests
   - [x] :  and  mapping parquet.thrift Type enum discriminants 0–7 — 2 tests
   - [x] Typed column value extraction: compression pipeline (decompress values_bytes before decoding)
-  - [ ] Real file-backed dataset read API (open file -> validate -> decode footer -> materialize dataset)
-- [ ] Write Consus datasets to Parquet
+  - [x] Real file-backed dataset read API (open file -> validate -> decode footer -> materialize dataset)
+- [x] Write Consus datasets to Parquet
+  - [x] Canonical writer-side planning over `SchemaDescriptor` trees with nested/group lowering to leaf paths
+  - [x] Thrift compact footer encoder for `FileMetadata`, `SchemaElement`, `RowGroupMetadata`, `ColumnChunkMetadata`, and `ColumnMetadata`
+  - [x] Page header encoder for `PageHeader`, `DataPageHeader`, `DataPageHeaderV2`, and `DictionaryPageHeader`
+  - [x] Row-source to leaf-column value lowering for flat and nested/group schemas
+  - [x] Complete file emission with trailer validation and `PAR1` footer assembly
+  - [x] Footer metadata and trailer roundtrip verification against the existing reader
+  - [x] PLAIN value encoder (`encode_cell_plain`) for all non-Boolean physical types (INT32, INT64, INT96, FLOAT, DOUBLE, BYTE_ARRAY, FIXED_LEN_BYTE_ARRAY)
+  - [x] Boolean column PLAIN bit-packing encoder (`encode_bool_column_plain`): LSB-first, ⌈count/8⌉ bytes
+  - [x] `physical_type_discriminant`: maps `ParquetPhysicalType` to parquet.thrift Type enum discriminant
+  - [x] `build_file_bytes` emits real DataPage v1 pages with correct byte offsets recorded in `ColumnMetadata`
+  - [x] End-to-end writer→reader roundtrip tests: INT32 (3 values), DOUBLE (2 values), BYTE_ARRAY (2 strings), BOOLEAN (4 values), two-column INT32+DOUBLE (2 rows)
+  - [x] Negative test: Null in required column returns `InvalidFormat`
+  - [x] Verified `cargo test -p consus-parquet --lib` 175/175 pass (default features)
+  - [x] Verified `cargo check --workspace`: zero warnings, zero errors
 - [ ] Hybrid mode: Parquet tables inside Consus containers
-- [ ] Arrow array bridge (zero-copy)
+- [x] Arrow array bridge (zero-copy) — Milestone 25: `zerocopy` optional feature added to `consus-arrow`; `fixed_to_le_bytes_fast<T: IntoBytes + Immutable>` helper reinterprets native-LE slice as `&[u8]` via `IntoBytes::as_bytes` (one allocation + one bulk memcpy); Int32/Int64/Float/Double arms cfg-selected between fast path (`#[cfg(all(feature = "zerocopy", target_endian = "little"))]`) and element-by-element fallback; Boolean/Int96/ByteArray/FixedLenByteArray unchanged; 2 value-semantic agreement tests verify fast path == `to_le_bytes()` reference for i32 boundary values and f64 non-finite values; 50/50 pass without feature, 52/52 pass with `--features zerocopy`
 
 ### P3.2 — FITS Table Wiring
 - [x] Wire `tform_to_datatype` into `FitsTableColumn` so parsed TFORMn produces canonical `Datatype`
 - [x] Per-column byte-width computation and NAXIS1 validation for binary tables
-- [ ] ASCII table column value decoding (numeric/string field extraction from raw row bytes)
-- [ ] Binary table column value decoding (typed element extraction per Datatype)
+- [x] ASCII table column value decoding: `decode_ascii_column` extracts A/I/F/E/D fields from raw row bytes; trailing-space stripping; Fortran D-notation normalization; 11 value-semantic unit tests
+- [x] Binary table column value decoding: `decode_binary_column` + `decode_scalar_binary` cover all 13 FITS Standard 4.0 TFORM codes (L/X/B/I/J/K/A/E/D/C/M/P/Q); big-endian byte extraction; array repeat handling; 24 value-semantic unit tests
+- [x] `FitsTableData::decode_row` and `FitsTableData::decode_column` dispatch to binary/ASCII decoders per table kind
+
+### P3.1 — Parquet Interop (continued)
+- [x] Arrow array bridge — `column_values_to_arrow` in `consus-arrow/src/array/materialize.rs`: materializes `ColumnValues` (Boolean/Int32/Int64/Int96/Float/Double/ByteArray/FixedLenByteArray) into canonical `ArrowArray`; fixed-width numerics stored little-endian; variable-width ByteArray produces monotone offsets; 10 value-semantic tests covering all 8 variants plus empty-array boundary cases
+- [x] `column_values_to_arrow` exported from `consus-arrow` crate root under `#[cfg(feature = "alloc")]`
+- [x] E2E integration test pipeline — `consus-arrow/tests/parquet_arrow_e2e.rs`: 6 integration tests exercising full ParquetWriter → ParquetReader → `column_values_to_arrow` pipeline for INT32, INT64, DOUBLE, BYTE_ARRAY, BOOLEAN, and two-column (INT32+DOUBLE) schemas; byte-level assertions on all output `ArrowArray` buffers
+- [x] Compressed page emission — `compress_page_values(data, codec) -> Result<Vec<u8>>` added to `consus-parquet/src/encoding/compression.rs`; `build_file_bytes` now honors codec parameter: compresses each page's PLAIN bytes, records correct `ColumnMetadata.codec` discriminant, and sets correct `uncompressed_page_size` / `compressed_page_size` in each page header; 4 new tests (uncompressed passthrough, brotli unsupported, gzip INT32 writer→reader roundtrip, gzip BYTE_ARRAY writer→reader roundtrip)
+- [x] Zero-copy materialization fast path — `zerocopy` optional feature added to `consus-arrow`; `fixed_to_le_bytes_fast<T: IntoBytes + Immutable>` helper uses `zerocopy::IntoBytes::as_bytes().to_vec()` (one allocation + one bulk memcpy) instead of element-by-element `to_le_bytes()` loop; active for Int32/Int64/Float/Double on `#[cfg(all(feature = "zerocopy", target_endian = "little"))]`; 2 agreement tests verify fast path bytes == element-loop reference for i32 and f64 boundary values
+- [x] Arrow array bridge (zero-copy) — completed via zerocopy optional feature (see above)
+- [x] Multi-row-group writer splitting — `ParquetWriter::with_row_group_size(n: usize) -> Self` builder method; `row_group_size: Option<usize>` field; `encode_leaf_columns(plan, rows, row_start, row_end) -> Result<Vec<Vec<u8>>>` private helper; `build_file_bytes` partitions rows into ⌈N/n⌉ groups (last group ≤ n rows); ≥1 row group invariant preserved for N=0; `FileMetadata.num_rows` = N; each `RowGroupMetadata.num_rows` = group size; each `ColumnMetadata.data_page_offset` = absolute offset; 6 value-semantic tests (even split, uneven split [3,3,1], size>count, exact multiple, default single group, zero size) and 1 proptest (∀ values ∈ Vec<i32>, m ≥ 1: roundtrip identity) in `writer/tests_extra.rs`
+- [x] Compressed writer roundtrip tests — SNAPPY, ZSTD, LZ4_RAW, LZ4: 4 feature-gated writer→reader roundtrip tests (`writer_snappy_roundtrip_i32_three_values`, `writer_zstd_roundtrip_i32_three_values`, `writer_lz4_raw_roundtrip_i32_three_values`, `writer_lz4_roundtrip_i32_three_values`) in `writer/tests_extra.rs`; each writes INT32 values under the respective codec and reads back via `ParquetReader`, asserting exact value equality
+- [x] proptest roundtrip suite — `encoding/compression_proptest.rs`: 5 compression roundtrip properties (gzip+zlib under `#[cfg(feature="gzip")]`, snappy, zstd, lz4_raw+lz4) asserting `decompress(compress(data, c), c, |data|) == data` for arbitrary byte vectors up to 1 KiB; `encoding/plain_proptest.rs`: 6 PLAIN decode properties (i32, i64, f32-bits, f64-bits, i96-12-bytes, byte_array, fixed_len_byte_array) asserting `decode(encode(v), 1) == [v]`; `writer/tests_extra.rs`: boolean bit-packing property `∀ bools: decode(encode_bool_column_plain(bools), |bools|) == bools` and multi-row-group roundtrip property
+- [x] Optional flat column write (def_level encoding, CellValue::Null)
+- [x] Repeated flat column write (rep/def level encoding, CellValue::Repeated)
+- [x] `ColumnValuesWithLevels` type with Dremel level accessors
+- [x] `read_column_chunk_with_levels` reader API
+- [x] `dataset_from_file_metadata` row_count correctness fix (use rg.num_rows)
+- [ ] Nested group column write/read support (Milestone 34 — Dremel full traversal)
+- [ ] Multi-page splitting within a column chunk
 
 ### P3.3 — Production Readiness
 - [x] CI/CD pipeline (GitHub Actions)
 - [x] Async I/O path via Tokio
-- [ ] Memory-mapped I/O backend
+- [x] Memory-mapped I/O backend — `MmapReader` in `consus-io/src/io/sync/mmap.rs`; feature-gated under `mmap` feature; implements `ReadAt + Length` over `memmap2::Mmap`; `open(path)` and `from_file(&File)` constructors; `as_slice() -> &[u8]` accessor; `Send + Sync`; 8 unit tests + 3 integration tests in `tests/unit_mmap.rs`; `memmap2 = { version = "0.9" }` added to workspace deps; verified `cargo test -p consus-io --features mmap` 28+3=31 pass
+- [x] Parquet reader proptest suite — `consus-parquet/src/reader/reader_proptest.rs`: 5 proptest roundtrip properties (`prop_reader_i32_roundtrip`, `prop_reader_f64_roundtrip`, `prop_reader_bool_roundtrip`, `prop_reader_byte_array_roundtrip`, `prop_reader_two_column_i32_f64_roundtrip`); all assert computed column values with `prop_assert_eq!`; verified `cargo test -p consus-parquet --lib` 197/197 pass
+- [x] Criterion benchmark harness — `consus-parquet/benches/parquet_rw.rs`: `bench_write_i32` + `bench_read_i32` at 1K/10K/100K rows; `consus-arrow/benches/arrow_bridge.rs`: `bench_bridge_i32`, `bench_bridge_double`, `bench_bridge_byte_array`; `[[bench]]` targets added to both Cargo.toml files; verified `cargo check --bench parquet_rw` and `cargo check --bench arrow_bridge` clean
 - [ ] Large file (>4 GiB) regression tests
-- [ ] Fuzz testing (`cargo-fuzz` / `proptest`)
+- [ ] Fuzz testing (`cargo-fuzz` harness targets)
 - [ ] WASM target validation
 - [ ] `no_std` smoke tests (`thumbv7em-none-eabihf`)
 - [ ] Documentation site
@@ -317,3 +352,56 @@
 - [x] v5 vacuous truncated test replaced with value-asserting negative test
 - [x] v5 synthetic test suite: char, logical, complex, sparse, cell, struct (7 new tests)
 - [x] Verified cargo test -p consus-mat: 17/17 pass (3 v4, 10 v5, 4 v73)
+
+## Phase 3: Parquet Nested Column Write + NWB Support
+
+### P3.3b — Parquet Nested Column Write (this sprint — CLOSED)
+- [x] `top_field_idx` in `LeafColumnPlan` — correct row value indexing for group schemas
+- [x] `traverse_dremel_into` — recursive Dremel encoding for Required/Optional/Repeated at any depth
+- [x] `encode_leaf_columns` unified to single Dremel path (replaces 3 flat branches)
+- [x] Four value-semantic nested-column roundtrip tests (required group, optional group, repeated group, deeply-nested optional)
+- [x] `cargo test -p consus-parquet --lib` → 209/209
+
+### P3.4 — NWB Read Path
+- [x] NWBFile open and HDF5 validation (`NwbFile::open`, `validate_root_attributes`)
+- [x] Session metadata extraction (`NwbSessionMetadata`, `session_metadata()`)
+- [x] TimeSeries read — data array + timestamps (`time_series(path)`)
+- [x] Namespace version detection (`NwbVersion::parse`, `detect_version`)
+- [x] Conformance validation skeleton (`validate_root_attributes` — neurodata_type_def + nwb_version)
+- [x] Integer dataset promotion to f64 in `read_f64_dataset` — all signed/unsigned 8/16/32/64-bit widths, both byte orders
+- [x] `starting_time` + `rate` read from `{path}/starting_time` scalar dataset and its `rate` float32 attribute
+- [x] `NwbFile::list_time_series(group_path)` — enumerate TimeSeries children at any group path (`""` = root)
+- [x] `group/mod.rs` — `NwbGroupChild` + `list_typed_group_children` (NodeType::Group filter, neurodata_type_def/inc extraction)
+- [x] `conventions/mod.rs` — `NeuroDataType` enum, `classify_neurodata_type`, `is_timeseries_type` (def + inc + known subtypes)
+- [x] `namespace/mod.rs` — `NwbNamespace` with `core()`, `hdmf_common()`, `CORE_NAME` constant
+- [x] `consus-hdf5 list_group_at` fix: SYMBOL_TABLE guard prevents v1 fallback error on v2 empty groups
+- [ ] Nested container traversal via multi-level `open_path` (`/acquisition/{name}/`, `/processing/{name}/`)
+- [ ] Units table read (spike times)
+- [ ] ElectrodeTable read (electrode metadata)
+- [ ] Subject metadata extraction
+- [ ] Namespace version detection from `/specifications/` YAML specs
+
+### P3.5 — NWB Write Path (Milestone 37 — this sprint — CLOSED)
+- [x] `NwbFileBuilder` — construct root HDF5 group with required NWB metadata attributes
+- [x] Required root attributes: `neurodata_type_def = "NWBFile"`, `nwb_version`, `identifier`, `session_description`, `session_start_time`
+- [x] `write_time_series(ts: &TimeSeries)` — emit group with `data` + `timestamps` or `starting_time` + `rate` datasets
+- [x] `neurodata_type_def = "TimeSeries"` attribute on each written TimeSeries group
+- [x] Units table write: `Units` group with `spike_times` VectorData dataset
+- [x] Roundtrip tests: write then re-open with `NwbFile::open` and verify all fields
+- [x] Namespace conformance validation before write (`validate_time_series_for_write`)
+- [x] `NwbFile::units_spike_times()` — read path for Units roundtrip verification
+- [x] `cargo test -p consus-nwb --lib` → 149/149
+
+### P3.7 — Parquet Multi-Page Column Chunk Splitting (this sprint — CLOSED)
+- [x] `ParquetWriter::with_page_row_limit(limit)` builder method
+- [x] `build_file_bytes` page range computation: `ceil(group_rows / limit)` pages per column chunk
+- [x] Transpose-then-emit pattern: `pages_by_column[leaf_idx][page_idx]` guarantees contiguous column chunk emission
+- [x] `data_page_offset` = first page byte offset; `total_uncompressed/compressed_size` and `num_values` summed over all pages
+- [x] Six deterministic tests + one proptest (`prop_multi_page_i32_roundtrip`)
+- [x] `cargo test -p consus-parquet --lib` → 215/215
+
+### P3.6 — NWB Verification
+- [ ] Read tests against Allen Brain Observatory NWB 2.x sample
+- [ ] Read tests against NWB tutorial files
+- [ ] Full conformance validation against NWB 2.x schema
+- [ ] Property-based tests for NwbFile roundtrips

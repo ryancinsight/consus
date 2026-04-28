@@ -136,6 +136,11 @@ pub use metadata::{
 
 #[cfg(feature = "alloc")]
 pub use metadata::{ArrayMetadataV2, GroupMetadataV2};
+#[cfg(feature = "alloc")]
+pub use metadata::{
+    ConsolidatedMetadataV2, ConsolidatedMetadataV3, ConsolidatedParseError,
+    ConsolidatedSerializeError, MetadataEntryV2, MetadataEntryV3,
+};
 
 #[cfg(feature = "alloc")]
 pub use metadata::ZarrJson;

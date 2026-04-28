@@ -69,6 +69,52 @@ impl ColumnValues {
     }
 }
 
+/// Column values with associated Dremel repetition and definition levels.
+///
+/// `values` contains only the non-null (defined) leaf values.
+/// `rep_levels` and `def_levels` each have one entry per logical value position
+/// (including null / empty-list positions), matching the Dremel paper's column
+/// representation.
+///
+/// For required flat columns (`max_rep=0`, `max_def=0`), both level vectors are
+/// empty and `values.len() == total_value_count`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColumnValuesWithLevels {
+    /// Non-null leaf values (one entry per position where `def_level == max_def_level`).
+    pub values: ColumnValues,
+    /// Repetition levels (empty when `max_rep_level == 0`).
+    pub rep_levels: Vec<i32>,
+    /// Definition levels (empty when `max_def_level == 0`).
+    pub def_levels: Vec<i32>,
+    /// Maximum repetition level for the column.
+    pub max_rep_level: i32,
+    /// Maximum definition level for the column.
+    pub max_def_level: i32,
+}
+
+impl ColumnValuesWithLevels {
+    /// Total logical value count, including null / empty-list positions.
+    ///
+    /// Equal to `def_levels.len()` when `max_def_level > 0`, or `values.len()`
+    /// for required columns.
+    #[must_use]
+    pub fn total_count(&self) -> usize {
+        if self.max_def_level > 0 {
+            self.def_levels.len()
+        } else {
+            self.values.len()
+        }
+    }
+
+    /// Count of non-null (defined) values.
+    ///
+    /// Equal to `values.len()` by construction.
+    #[must_use]
+    pub fn non_null_count(&self) -> usize {
+        self.values.len()
+    }
+}
+
 fn decode_plain_column(bytes: &[u8], n: usize, pt: ParquetPhysicalType) -> Result<ColumnValues> {
     match pt {
         ParquetPhysicalType::Boolean => Ok(ColumnValues::Boolean(decode_plain_boolean(bytes, n)?)),
@@ -351,21 +397,42 @@ mod tests {
 
     #[test]
     fn decode_column_rle_dict_missing_dictionary_returns_error() {
-        let e = decode_column_values(&[0x01u8, 0x02, 0x00], 1, 8, ParquetPhysicalType::Int32, None).unwrap_err();
+        let e = decode_column_values(
+            &[0x01u8, 0x02, 0x00],
+            1,
+            8,
+            ParquetPhysicalType::Int32,
+            None,
+        )
+        .unwrap_err();
         assert!(matches!(e, consus_core::Error::InvalidFormat { .. }));
     }
 
     #[test]
     fn decode_column_rle_dict_index_out_of_bounds_returns_error() {
         let dict = ColumnValues::Int32(alloc::vec![10, 20]);
-        let e = decode_column_values(&[0x03u8, 0x02, 0x05], 1, 8, ParquetPhysicalType::Int32, Some(&dict)).unwrap_err();
+        let e = decode_column_values(
+            &[0x03u8, 0x02, 0x05],
+            1,
+            8,
+            ParquetPhysicalType::Int32,
+            Some(&dict),
+        )
+        .unwrap_err();
         assert!(matches!(e, consus_core::Error::InvalidFormat { .. }));
     }
 
     #[test]
     fn decode_column_rle_dict_type_mismatch_returns_error() {
         let dict = ColumnValues::Int64(alloc::vec![10i64, 20i64]);
-        let e = decode_column_values(&[0x01u8, 0x02, 0x00], 1, 8, ParquetPhysicalType::Int32, Some(&dict)).unwrap_err();
+        let e = decode_column_values(
+            &[0x01u8, 0x02, 0x00],
+            1,
+            8,
+            ParquetPhysicalType::Int32,
+            Some(&dict),
+        )
+        .unwrap_err();
         assert!(matches!(e, consus_core::Error::DatatypeMismatch { .. }));
     }
 
@@ -381,16 +448,43 @@ mod tests {
 
     #[test]
     fn column_values_physical_type_all_variants() {
-        assert_eq!(ColumnValues::Boolean(alloc::vec![]).physical_type(), ParquetPhysicalType::Boolean);
-        assert_eq!(ColumnValues::Int32(alloc::vec![]).physical_type(), ParquetPhysicalType::Int32);
-        assert_eq!(ColumnValues::Int64(alloc::vec![]).physical_type(), ParquetPhysicalType::Int64);
-        assert_eq!(ColumnValues::Int96(alloc::vec![]).physical_type(), ParquetPhysicalType::Int96);
-        assert_eq!(ColumnValues::Float(alloc::vec![]).physical_type(), ParquetPhysicalType::Float);
-        assert_eq!(ColumnValues::Double(alloc::vec![]).physical_type(), ParquetPhysicalType::Double);
-        assert_eq!(ColumnValues::ByteArray(alloc::vec![]).physical_type(), ParquetPhysicalType::ByteArray);
-        assert_eq!(ColumnValues::FixedLenByteArray{fixed_len:16,values:alloc::vec![]}.physical_type(), ParquetPhysicalType::FixedLenByteArray(16));
-}
-
+        assert_eq!(
+            ColumnValues::Boolean(alloc::vec![]).physical_type(),
+            ParquetPhysicalType::Boolean
+        );
+        assert_eq!(
+            ColumnValues::Int32(alloc::vec![]).physical_type(),
+            ParquetPhysicalType::Int32
+        );
+        assert_eq!(
+            ColumnValues::Int64(alloc::vec![]).physical_type(),
+            ParquetPhysicalType::Int64
+        );
+        assert_eq!(
+            ColumnValues::Int96(alloc::vec![]).physical_type(),
+            ParquetPhysicalType::Int96
+        );
+        assert_eq!(
+            ColumnValues::Float(alloc::vec![]).physical_type(),
+            ParquetPhysicalType::Float
+        );
+        assert_eq!(
+            ColumnValues::Double(alloc::vec![]).physical_type(),
+            ParquetPhysicalType::Double
+        );
+        assert_eq!(
+            ColumnValues::ByteArray(alloc::vec![]).physical_type(),
+            ParquetPhysicalType::ByteArray
+        );
+        assert_eq!(
+            ColumnValues::FixedLenByteArray {
+                fixed_len: 16,
+                values: alloc::vec![]
+            }
+            .physical_type(),
+            ParquetPhysicalType::FixedLenByteArray(16)
+        );
+    }
 }
 
 #[cfg(test)]

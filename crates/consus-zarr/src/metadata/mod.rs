@@ -61,6 +61,11 @@ mod v3;
 #[cfg(feature = "alloc")]
 pub use consolidated::ConsolidatedMetadata;
 #[cfg(feature = "alloc")]
+pub use consolidated::{
+    ConsolidatedMetadataV2, ConsolidatedMetadataV3, MetadataEntryV2, MetadataEntryV3,
+    ParseError as ConsolidatedParseError, SerializeError as ConsolidatedSerializeError,
+};
+#[cfg(feature = "alloc")]
 pub use v2::{
     ArrayMetadataV2, CompressorConfig, FilterId, GroupMetadataV2, parse_zattrs, serialize_zattrs,
 };

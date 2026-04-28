@@ -12,7 +12,8 @@ use alloc::{format, string::String, vec::Vec};
 use consus_core::{Error, Result};
 
 use crate::encoding::column::{
-    ColumnValues, decode_column_values, decode_compressed_column_values, decode_dictionary_page,
+    ColumnValues, ColumnValuesWithLevels, decode_column_values, decode_compressed_column_values,
+    decode_dictionary_page,
 };
 use crate::encoding::compression::{CompressionCodec, decompress_page_values};
 use crate::schema::physical::ParquetPhysicalType;
@@ -219,9 +220,20 @@ impl ColumnPageDecoder {
                     let plain = decompress_page_values(page_bytes, self.codec, uncompressed_sz)?;
                     let payload =
                         split_data_page_v1(&plain, &dph, self.max_rep_level, self.max_def_level)?;
+                    // For optional/repeated columns, values section contains only non-null values.
+                    // Count defined positions from def_levels when max_def_level > 0.
+                    let non_null = if self.max_def_level > 0 && !payload.def_levels.is_empty() {
+                        payload
+                            .def_levels
+                            .iter()
+                            .filter(|&&d| d == self.max_def_level)
+                            .count()
+                    } else {
+                        payload.num_values as usize
+                    };
                     parts.push(decode_column_values(
                         payload.values_bytes,
-                        payload.num_values as usize,
+                        non_null,
                         dph.encoding,
                         self.physical_type,
                         self.dictionary.as_ref(),
@@ -245,6 +257,15 @@ impl ColumnPageDecoder {
                     )?;
                     // is_compressed defaults true per spec when absent; UNCOMPRESSED codec
                     // short-circuits to a copy so the compressed path is always safe.
+                    let non_null_v2 = if self.max_def_level > 0 && !payload.def_levels.is_empty() {
+                        payload
+                            .def_levels
+                            .iter()
+                            .filter(|&&d| d == self.max_def_level)
+                            .count()
+                    } else {
+                        payload.num_values as usize
+                    };
                     let is_compressed = v2.is_compressed.unwrap_or(true)
                         && self.codec != CompressionCodec::Uncompressed;
                     let values = if is_compressed {
@@ -254,7 +275,7 @@ impl ColumnPageDecoder {
                         let values_uncomp = uncompressed_sz.saturating_sub(levels_len);
                         decode_compressed_column_values(
                             payload.values_bytes,
-                            payload.num_values as usize,
+                            non_null_v2,
                             v2.encoding,
                             self.physical_type,
                             self.dictionary.as_ref(),
@@ -264,7 +285,7 @@ impl ColumnPageDecoder {
                     } else {
                         decode_column_values(
                             payload.values_bytes,
-                            payload.num_values as usize,
+                            non_null_v2,
                             v2.encoding,
                             self.physical_type,
                             self.dictionary.as_ref(),
@@ -280,5 +301,148 @@ impl ColumnPageDecoder {
         }
 
         merge_column_values(parts)
+    }
+
+    /// Decode all pages and return values with Dremel levels.
+    ///
+    /// Like [`Self::decode_pages_from_chunk_bytes`] but also returns the
+    /// accumulated repetition and definition levels from all data pages.
+    ///
+    /// `bytes` must span from the first page through the last data page.
+    pub fn decode_pages_with_levels(&mut self, bytes: &[u8]) -> Result<ColumnValuesWithLevels> {
+        let mut pos = 0usize;
+        let mut parts: Vec<ColumnValues> = Vec::new();
+        let mut all_rep: Vec<i32> = Vec::new();
+        let mut all_def: Vec<i32> = Vec::new();
+
+        while pos < bytes.len() {
+            let (header, consumed) = decode_page_header(&bytes[pos..])?;
+            pos += consumed;
+
+            let compressed_sz = header.compressed_page_size as usize;
+            let uncompressed_sz = header.uncompressed_page_size as usize;
+
+            if pos + compressed_sz > bytes.len() {
+                return Err(Error::BufferTooSmall {
+                    required: pos + compressed_sz,
+                    provided: bytes.len(),
+                });
+            }
+
+            let page_bytes = &bytes[pos..pos + compressed_sz];
+            pos += compressed_sz;
+
+            match header.type_ {
+                PageType::DictionaryPage => {
+                    let dict_hdr =
+                        header
+                            .dictionary_page_header
+                            .ok_or_else(|| Error::InvalidFormat {
+                                message: String::from(
+                                    "parquet: DictionaryPage missing dictionary_page_header",
+                                ),
+                            })?;
+                    let plain = decompress_page_values(page_bytes, self.codec, uncompressed_sz)?;
+                    self.dictionary = Some(decode_dictionary_page(
+                        &plain,
+                        &dict_hdr,
+                        self.physical_type,
+                    )?);
+                }
+
+                PageType::DataPage => {
+                    let dph = header
+                        .data_page_header
+                        .ok_or_else(|| Error::InvalidFormat {
+                            message: String::from("parquet: DataPage missing data_page_header"),
+                        })?;
+                    let plain = decompress_page_values(page_bytes, self.codec, uncompressed_sz)?;
+                    let payload =
+                        split_data_page_v1(&plain, &dph, self.max_rep_level, self.max_def_level)?;
+                    all_rep.extend_from_slice(&payload.rep_levels);
+                    all_def.extend_from_slice(&payload.def_levels);
+                    let non_null = if self.max_def_level > 0 && !payload.def_levels.is_empty() {
+                        payload
+                            .def_levels
+                            .iter()
+                            .filter(|&&d| d == self.max_def_level)
+                            .count()
+                    } else {
+                        payload.num_values as usize
+                    };
+                    parts.push(decode_column_values(
+                        payload.values_bytes,
+                        non_null,
+                        dph.encoding,
+                        self.physical_type,
+                        self.dictionary.as_ref(),
+                    )?);
+                }
+
+                PageType::DataPageV2 => {
+                    let v2 = header
+                        .data_page_header_v2
+                        .ok_or_else(|| Error::InvalidFormat {
+                            message: String::from(
+                                "parquet: DataPageV2 missing data_page_header_v2",
+                            ),
+                        })?;
+                    let payload = split_data_page_v2(
+                        page_bytes,
+                        &v2,
+                        self.max_rep_level,
+                        self.max_def_level,
+                    )?;
+                    all_rep.extend_from_slice(&payload.rep_levels);
+                    all_def.extend_from_slice(&payload.def_levels);
+                    let non_null_v2 = if self.max_def_level > 0 && !payload.def_levels.is_empty() {
+                        payload
+                            .def_levels
+                            .iter()
+                            .filter(|&&d| d == self.max_def_level)
+                            .count()
+                    } else {
+                        payload.num_values as usize
+                    };
+                    let is_compressed = v2.is_compressed.unwrap_or(true)
+                        && self.codec != CompressionCodec::Uncompressed;
+                    let values = if is_compressed {
+                        let levels_len = (v2.repetition_levels_byte_length
+                            + v2.definition_levels_byte_length)
+                            as usize;
+                        let values_uncomp = uncompressed_sz.saturating_sub(levels_len);
+                        decode_compressed_column_values(
+                            payload.values_bytes,
+                            non_null_v2,
+                            v2.encoding,
+                            self.physical_type,
+                            self.dictionary.as_ref(),
+                            self.codec,
+                            values_uncomp,
+                        )?
+                    } else {
+                        decode_column_values(
+                            payload.values_bytes,
+                            non_null_v2,
+                            v2.encoding,
+                            self.physical_type,
+                            self.dictionary.as_ref(),
+                        )?
+                    };
+                    parts.push(values);
+                }
+
+                PageType::IndexPage => {}
+            }
+        }
+
+        let values = merge_column_values(parts)?;
+        Ok(ColumnValuesWithLevels {
+            values,
+            rep_levels: all_rep,
+            def_levels: all_def,
+            max_rep_level: self.max_rep_level,
+            max_def_level: self.max_def_level,
+        })
     }
 }

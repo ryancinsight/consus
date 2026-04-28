@@ -12,11 +12,18 @@ description = "Arrow interoperability layer for the Consus scientific storage li
 default = ["std"]
 std = ["alloc", "consus-core/std", "consus-parquet/std"]
 alloc = ["consus-core/alloc", "consus-parquet/alloc"]
+zerocopy = ["dep:zerocopy"]
 
 [dependencies]
 consus-core = { workspace = true }
 consus-parquet = { workspace = true }
+zerocopy = { workspace = true, optional = true, features = ["derive"] }
 
 [dev-dependencies]
 proptest = { workspace = true }
 criterion = { workspace = true }
+consus-parquet = { workspace = true }
+
+[[bench]]
+name = "arrow_bridge"
+harness = false

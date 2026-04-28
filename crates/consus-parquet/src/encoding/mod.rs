@@ -15,7 +15,8 @@ pub mod plain;
 pub mod rle_dict;
 
 pub use column::{
-    ColumnValues, decode_column_values, decode_compressed_column_values, decode_dictionary_page,
+    ColumnValues, ColumnValuesWithLevels, decode_column_values, decode_compressed_column_values,
+    decode_dictionary_page,
 };
 pub use compression::{CompressionCodec, decompress_page_values};
 pub use levels::{decode_bit_packed_raw, decode_levels, level_bit_width};
@@ -24,3 +25,8 @@ pub use plain::{
     decode_plain_fixed_byte_array, decode_plain_i32, decode_plain_i64, decode_plain_i96,
 };
 pub use rle_dict::decode_rle_dict_indices;
+
+#[cfg(test)]
+mod compression_proptest;
+#[cfg(test)]
+mod plain_proptest;
