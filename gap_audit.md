@@ -1,7 +1,7 @@
 # Consus - Gap Audit
 
-## Audit Date: 2026-05-07 (updated this sprint)
-## Scope: Phase 3 — NWB Write Path (Milestone 37)
+## Audit Date: 2026-05-08 (updated this sprint)
+## Scope: Phase 3 — NWB Extended Read Path + HDF5 Nested Group Write (Milestone 39)
 
 ---
 
@@ -262,6 +262,30 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
 
 ## Closed Since Previous Audit
 
+### M-039: NWB Extended Read Path + HDF5 Nested Group Write
+- **Crates affected**: `consus-hdf5`, `consus-nwb`
+- **HDF5 writer changes** (`consus-hdf5/src/file/writer.rs`):
+  - Added `ChildGroupSpec<'a>` public struct (mirrors `ChildDatasetSpec`; supports arbitrary-depth `sub_groups: &'a [ChildGroupSpec<'a>]`).
+  - Added `write_group_node` private recursive free function; eliminates the duplicated dataset-write + object-header-write logic that was previously inlined in `add_group_with_attributes`.
+  - Refactored `add_group_with_attributes` to delegate to `write_group_node(&[])` — zero behavior change, backward compatible.
+  - Added `Hdf5FileBuilder::add_group_with_children` public method accepting both `ChildDatasetSpec` and `ChildGroupSpec` slices for arbitrary-depth nested group authoring.
+  - 3 new value-semantic tests: `add_group_with_children_creates_navigable_nested_group`, `add_group_with_children_nested_group_datasets_are_readable`, `add_group_with_attributes_still_works_after_refactor`.
+- **NWB metadata** (`consus-nwb/src/metadata/mod.rs`):
+  - Added `NwbSubjectMetadata` struct with 5 optional fields (`subject_id`, `species`, `sex`, `age`, `description`) per NWB 2.x `Subject` type spec.
+  - `from_parts(Option<String> × 5)` constructor + typed accessors returning `Option<&str>`.
+  - 7 new unit tests covering all-Some, all-None, partial, equality, clone, Debug, and Unicode fields.
+- **NWB file** (`consus-nwb/src/file/mod.rs`):
+  - `NwbFile::subject()` — navigates `general/subject` via `open_path`, reads optional string attributes, returns `NwbSubjectMetadata`.
+  - `NwbFile::list_acquisition()` — delegates to `list_time_series("acquisition")`.
+  - `NwbFile::list_processing(module_name)` — delegates to `list_time_series("processing/{module}")`.
+  - `NwbFileBuilder::write_subject(&NwbSubjectMetadata)` — builds owned attribute data, borrows for `ChildGroupSpec`, calls `add_group_with_children("general", &[], &[], &[subject_spec])` to emit `general/subject`.
+  - 3 proptest roundtrip tests: `roundtrip_timestamps_timeseries`, `roundtrip_rate_timeseries` (rate precision invariant: `read == (written as f32) as f64`, exact), `roundtrip_units_spike_times`.
+  - 7 deterministic tests: 3 NotFound negative tests + 4 positive roundtrip tests.
+  - `proptest = "1"` added to `consus-nwb` dev-dependencies.
+- **Tests added**: consus-hdf5 lib 263 → 266 (+3); consus-nwb lib 149 → 166 (+17); workspace 2219 → 2239 (+20).
+- **Verification**: `cargo test -p consus-nwb --lib` → 166/166; `cargo test -p consus-hdf5 --lib` → 266/266; `cargo test --workspace` → 2239/2239; `cargo check --workspace` → 0 errors, 0 warnings.
+
+
 ### Z-090: Chunk API Export Gap
 - **Status**: Closed.
 - **Evidence**: Chunk I/O functions and types are re-exported from the crate root, establishing one public access path for `read_chunk`, `write_chunk`, `read_array`, `write_array`, `Selection`, `SelectionStep`, `ChunkError`, and fill-value expansion.
@@ -377,12 +401,12 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
 | consus-arrow E2E integration | 6/6 |
 | consus-io lib (default) | 20/20 |
 | consus-io lib+integration (mmap) | 31/31 |
-| consus-nwb lib | 149/149 |
-| consus-hdf5 lib | 263/263 |
-| workspace total tests (default) | 2219/2219 |
-| Verified commands | `cargo test -p consus-nwb --lib` (149/149); `cargo test --workspace` (2219/2219, default); `cargo check --workspace` (0 warnings, 0 errors) |
+| consus-nwb lib | 166/166 |
+| consus-hdf5 lib | 266/266 |
+| workspace total tests (default) | 2239/2239 |
+| Verified commands | `cargo test -p consus-nwb --lib` (166/166); `cargo test -p consus-hdf5 --lib` (266/266); `cargo test --workspace` (2239/2239, default); `cargo check --workspace` (0 warnings, 0 errors) |
 | Open gaps | 0 |
 | High-severity open gaps | 0 |
-| Closed this sprint | 1 (M-037: NWB Write Path — NwbFileBuilder, write_time_series, write_units, validate_time_series_for_write, NwbFile::units_spike_times; 19 new value-semantic tests) |
+| Closed this sprint | 2 (M-037: NWB Write Path; M-039: NWB Extended Read Path + HDF5 Nested Group Write — ChildGroupSpec, add_group_with_children, NwbSubjectMetadata, NwbFile::subject, write_subject, list_acquisition, list_processing, proptest roundtrips; +20 new value-semantic tests) |
 | Medium-severity open gaps | 0 |
 | Low-severity open gaps | 0 |

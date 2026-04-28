@@ -35,7 +35,7 @@ use alloc::string::String;
 use consus_core::{ByteOrder, Datatype, Shape, StringEncoding};
 #[cfg(feature = "alloc")]
 use consus_hdf5::file::writer::{
-    ChildDatasetSpec, DatasetCreationProps, FileCreationProps, Hdf5FileBuilder,
+    ChildDatasetSpec, ChildGroupSpec, DatasetCreationProps, FileCreationProps, Hdf5FileBuilder,
 };
 #[cfg(feature = "alloc")]
 use core::num::NonZeroUsize;
@@ -333,6 +333,62 @@ impl<'a> NwbFile<'a> {
             .collect();
         Ok(paths)
     }
+
+    // -----------------------------------------------------------------------
+    // Subject metadata
+    // -----------------------------------------------------------------------
+
+    /// Read subject metadata from the `general/subject` group.
+    ///
+    /// Reads the optional string attributes `subject_id`, `species`, `sex`,
+    /// `age`, and `description` from the `general/subject` HDF5 group.
+    /// Returns a populated [`crate::metadata::NwbSubjectMetadata`] with
+    /// `None` for absent fields.
+    ///
+    /// ## Errors
+    ///
+    /// - [`consus_core::Error::NotFound`] when the `general/subject` group is absent.
+    /// - Propagates any I/O or format errors from the HDF5 reader.
+    pub fn subject(&self) -> Result<crate::metadata::NwbSubjectMetadata> {
+        use crate::metadata::NwbSubjectMetadata;
+        let addr = self.hdf5.open_path("general/subject")?;
+        let attrs = self.hdf5.attributes_at(addr)?;
+        let read_opt = |name: &str| crate::storage::read_string_attr(&attrs, name).ok();
+        Ok(NwbSubjectMetadata::from_parts(
+            read_opt("subject_id"),
+            read_opt("species"),
+            read_opt("sex"),
+            read_opt("age"),
+            read_opt("description"),
+        ))
+    }
+
+    // -----------------------------------------------------------------------
+    // Convenience container accessors
+    // -----------------------------------------------------------------------
+
+    /// List HDF5 paths of all TimeSeries groups inside `acquisition/`.
+    ///
+    /// Equivalent to `self.list_time_series("acquisition")`.
+    ///
+    /// ## Errors
+    ///
+    /// - [`consus_core::Error::NotFound`] when the `acquisition` group is absent.
+    pub fn list_acquisition(&self) -> Result<Vec<String>> {
+        self.list_time_series("acquisition")
+    }
+
+    /// List HDF5 paths of all TimeSeries groups inside a processing module.
+    ///
+    /// `module_name` is the name of the processing module (e.g. `"behavior"`).
+    /// Equivalent to `self.list_time_series("processing/{module_name}")`.
+    ///
+    /// ## Errors
+    ///
+    /// - [`consus_core::Error::NotFound`] when the processing module group is absent.
+    pub fn list_processing(&self, module_name: &str) -> Result<Vec<String>> {
+        self.list_time_series(&alloc::format!("processing/{}", module_name))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -600,6 +656,72 @@ impl NwbFileBuilder {
                 attributes: spike_attrs,
             }],
         )?;
+
+        Ok(())
+    }
+
+    /// Write subject metadata to the `general/subject` group.
+    ///
+    /// Creates a `general` group (with no attributes) containing a `subject`
+    /// sub-group annotated with `neurodata_type_def = "Subject"` and the
+    /// provided metadata fields as FixedString ASCII attributes.
+    ///
+    /// Only `Some` fields are written; `None` fields are omitted.
+    ///
+    /// ## NWB Specification
+    ///
+    /// Per NWB 2.x, the `Subject` neurodata type lives at `general/subject`.
+    /// All attributes are optional scalar strings.
+    ///
+    /// ## Errors
+    ///
+    /// Propagates HDF5 encoding errors.
+    pub fn write_subject(&mut self, subject: &crate::metadata::NwbSubjectMetadata) -> Result<()> {
+        let scalar = Shape::scalar();
+
+        // Build owned attribute data for the subject group.
+        // neurodata_type_def is always written; optional fields only when Some.
+        let mut attrs_owned: alloc::vec::Vec<(
+            alloc::string::String,
+            Datatype,
+            alloc::vec::Vec<u8>,
+        )> = alloc::vec::Vec::new();
+
+        let (ndt_dt, ndt_raw) = fixed_string_bytes("Subject");
+        attrs_owned.push((
+            alloc::string::String::from("neurodata_type_def"),
+            ndt_dt,
+            ndt_raw,
+        ));
+
+        for (name, val_opt) in &[
+            ("subject_id", subject.subject_id()),
+            ("species", subject.species()),
+            ("sex", subject.sex()),
+            ("age", subject.age()),
+            ("description", subject.description()),
+        ] {
+            if let Some(val) = val_opt {
+                let (dt, raw) = fixed_string_bytes(val);
+                attrs_owned.push((alloc::string::String::from(*name), dt, raw));
+            }
+        }
+
+        // Build borrowed references valid for the duration of this call.
+        let attr_refs: alloc::vec::Vec<(&str, &Datatype, &Shape, &[u8])> = attrs_owned
+            .iter()
+            .map(|(name, dt, raw)| (name.as_str(), dt, &scalar, raw.as_slice()))
+            .collect();
+
+        let subject_spec = ChildGroupSpec {
+            name: "subject",
+            attributes: &attr_refs,
+            datasets: &[],
+            sub_groups: &[],
+        };
+
+        self.hdf5
+            .add_group_with_children("general", &[], &[], &[subject_spec])?;
 
         Ok(())
     }
@@ -1456,5 +1578,390 @@ mod tests {
         let nwb = NwbFile::open(&bytes).unwrap();
         let read_st = nwb.units_spike_times().unwrap();
         assert!(read_st.is_empty());
+    }
+
+    // ── NwbFile::subject ──────────────────────────────────────────────────
+
+    #[test]
+    fn subject_returns_not_found_when_general_subject_absent() {
+        // Theorem: subject() on a file without general/subject returns NotFound.
+        let bytes = make_minimal_nwb("id", "desc", "2023-01-01T00:00:00+00:00");
+        let nwb = NwbFile::open(&bytes).unwrap();
+        let err = nwb.subject().unwrap_err();
+        assert!(
+            matches!(err, consus_core::Error::NotFound { .. }),
+            "expected NotFound, got {:?}",
+            err
+        );
+    }
+
+    // ── NwbFile::list_acquisition ─────────────────────────────────────────
+
+    #[test]
+    fn list_acquisition_returns_not_found_when_acquisition_absent() {
+        // Theorem: list_acquisition() on a file without an acquisition group
+        // returns NotFound.
+        let bytes = make_minimal_nwb("id", "desc", "2023-01-01T00:00:00+00:00");
+        let nwb = NwbFile::open(&bytes).unwrap();
+        let err = nwb.list_acquisition().unwrap_err();
+        assert!(
+            matches!(err, consus_core::Error::NotFound { .. }),
+            "expected NotFound, got {:?}",
+            err
+        );
+    }
+
+    // ── NwbFile::list_processing ──────────────────────────────────────────
+
+    #[test]
+    fn list_processing_returns_not_found_when_module_absent() {
+        // Theorem: list_processing("behavior") on a file without that module
+        // returns NotFound.
+        let bytes = make_minimal_nwb("id", "desc", "2023-01-01T00:00:00+00:00");
+        let nwb = NwbFile::open(&bytes).unwrap();
+        let err = nwb.list_processing("behavior").unwrap_err();
+        assert!(
+            matches!(err, consus_core::Error::NotFound { .. }),
+            "expected NotFound, got {:?}",
+            err
+        );
+    }
+
+    // ── NwbFileBuilder::write_subject roundtrip ───────────────────────────
+
+    #[test]
+    fn write_subject_all_fields_roundtrip() {
+        // Theorem: write_subject writes all Some fields as string attributes
+        // at general/subject; subject() reads them back correctly.
+        use crate::metadata::NwbSubjectMetadata;
+
+        let subject_in = NwbSubjectMetadata::from_parts(
+            Some(alloc::string::String::from("sub-001")),
+            Some(alloc::string::String::from("Mus musculus")),
+            Some(alloc::string::String::from("M")),
+            Some(alloc::string::String::from("P90D")),
+            Some(alloc::string::String::from(
+                "C57BL/6J mouse used in fear conditioning",
+            )),
+        );
+
+        let mut builder = NwbFileBuilder::new(
+            "2.7.0",
+            "sub-001_ses-001",
+            "Fear conditioning session",
+            "2023-06-15T09:00:00+00:00",
+        )
+        .unwrap();
+        builder.write_subject(&subject_in).unwrap();
+        let bytes = builder.finish().unwrap();
+
+        let nwb = NwbFile::open(&bytes).unwrap();
+        let subject_out = nwb.subject().unwrap();
+
+        assert_eq!(subject_out.subject_id(), Some("sub-001"));
+        assert_eq!(subject_out.species(), Some("Mus musculus"));
+        assert_eq!(subject_out.sex(), Some("M"));
+        assert_eq!(subject_out.age(), Some("P90D"));
+        assert_eq!(
+            subject_out.description(),
+            Some("C57BL/6J mouse used in fear conditioning")
+        );
+    }
+
+    #[test]
+    fn write_subject_partial_fields_roundtrip() {
+        // Theorem: None fields are absent in the written file;
+        // subject() returns None for absent attributes.
+        use crate::metadata::NwbSubjectMetadata;
+
+        let subject_in = NwbSubjectMetadata::from_parts(
+            Some(alloc::string::String::from("sub-002")),
+            Some(alloc::string::String::from("Rattus norvegicus")),
+            None,
+            None,
+            None,
+        );
+
+        let mut builder = NwbFileBuilder::new(
+            "2.7.0",
+            "rat-session-002",
+            "Rat navigation experiment",
+            "2023-07-01T10:00:00+00:00",
+        )
+        .unwrap();
+        builder.write_subject(&subject_in).unwrap();
+        let bytes = builder.finish().unwrap();
+
+        let nwb = NwbFile::open(&bytes).unwrap();
+        let subject_out = nwb.subject().unwrap();
+
+        assert_eq!(subject_out.subject_id(), Some("sub-002"));
+        assert_eq!(subject_out.species(), Some("Rattus norvegicus"));
+        assert_eq!(subject_out.sex(), None);
+        assert_eq!(subject_out.age(), None);
+        assert_eq!(subject_out.description(), None);
+    }
+
+    // ── NwbFile::list_acquisition positive test ───────────────────────────
+
+    #[test]
+    fn list_acquisition_returns_timeseries_paths() {
+        // Theorem: a file with an acquisition group containing a TimeSeries child
+        // returns the correct path from list_acquisition().
+        //
+        // Use add_group_with_children to create:
+        //   acquisition/  (neurodata_type_def absent — just a container)
+        //     └── lick_times  (neurodata_type_def = "TimeSeries")
+        //           ├── data       (f64 array)
+        //           └── timestamps (f64 array)
+        use consus_hdf5::file::writer::ChildGroupSpec;
+
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+        let f64_dt = Datatype::Float {
+            bits: NonZeroUsize::new(64).unwrap(),
+            byte_order: ByteOrder::LittleEndian,
+        };
+        let dcpl = DatasetCreationProps::default();
+
+        for (name, value) in &[
+            ("neurodata_type_def", "NWBFile"),
+            ("nwb_version", "2.7.0"),
+            ("identifier", "acq-test-001"),
+            ("session_description", "list_acquisition test"),
+            ("session_start_time", "2023-01-01T00:00:00+00:00"),
+        ] {
+            let (dt, raw) = fixed_string_dt(value);
+            builder
+                .add_root_attribute(name, &dt, &scalar, &raw)
+                .unwrap();
+        }
+
+        let data_raw: alloc::vec::Vec<u8> = [0.1f64, 0.2, 0.3]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect();
+        let data_shape = Shape::fixed(&[3]);
+        let ts_raw: alloc::vec::Vec<u8> = [0.0f64, 0.1, 0.2]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect();
+        let ts_shape = Shape::fixed(&[3]);
+
+        let (ts_ndt_dt, ts_ndt_raw) = fixed_string_dt("TimeSeries");
+
+        let lick_times_spec = ChildGroupSpec {
+            name: "lick_times",
+            attributes: &[("neurodata_type_def", &ts_ndt_dt, &scalar, &ts_ndt_raw)],
+            datasets: &[
+                ChildDatasetSpec {
+                    name: "data",
+                    datatype: &f64_dt,
+                    shape: &data_shape,
+                    raw_data: &data_raw,
+                    dcpl: dcpl.clone(),
+                    attributes: &[],
+                },
+                ChildDatasetSpec {
+                    name: "timestamps",
+                    datatype: &f64_dt,
+                    shape: &ts_shape,
+                    raw_data: &ts_raw,
+                    dcpl: dcpl.clone(),
+                    attributes: &[],
+                },
+            ],
+            sub_groups: &[],
+        };
+
+        builder
+            .add_group_with_children("acquisition", &[], &[], &[lick_times_spec])
+            .unwrap();
+
+        let bytes = builder.finish().unwrap();
+        let nwb = NwbFile::open(&bytes).unwrap();
+        let paths = nwb.list_acquisition().unwrap();
+
+        assert_eq!(
+            paths.len(),
+            1,
+            "expected 1 TimeSeries in acquisition: {paths:?}"
+        );
+        assert!(
+            paths[0].ends_with("lick_times"),
+            "path should end with lick_times, got: {}",
+            paths[0]
+        );
+    }
+
+    // ── NwbFile::list_processing positive test ────────────────────────────
+
+    #[test]
+    fn list_processing_returns_timeseries_in_module() {
+        // Theorem: a file with a processing/behavior module containing
+        // a TimeSeries returns the correct path from list_processing("behavior").
+        use consus_hdf5::file::writer::ChildGroupSpec;
+
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+        let f64_dt = Datatype::Float {
+            bits: NonZeroUsize::new(64).unwrap(),
+            byte_order: ByteOrder::LittleEndian,
+        };
+        let dcpl = DatasetCreationProps::default();
+
+        for (name, value) in &[
+            ("neurodata_type_def", "NWBFile"),
+            ("nwb_version", "2.7.0"),
+            ("identifier", "proc-test-001"),
+            ("session_description", "list_processing test"),
+            ("session_start_time", "2023-01-01T00:00:00+00:00"),
+        ] {
+            let (dt, raw) = fixed_string_dt(value);
+            builder
+                .add_root_attribute(name, &dt, &scalar, &raw)
+                .unwrap();
+        }
+
+        let data_raw: alloc::vec::Vec<u8> =
+            [1.5f64, 2.5].iter().flat_map(|v| v.to_le_bytes()).collect();
+        let data_shape = Shape::fixed(&[2]);
+
+        let (ts_ndt_dt, ts_ndt_raw) = fixed_string_dt("TimeSeries");
+
+        let velocity_spec = ChildGroupSpec {
+            name: "velocity",
+            attributes: &[("neurodata_type_def", &ts_ndt_dt, &scalar, &ts_ndt_raw)],
+            datasets: &[ChildDatasetSpec {
+                name: "data",
+                datatype: &f64_dt,
+                shape: &data_shape,
+                raw_data: &data_raw,
+                dcpl: dcpl.clone(),
+                attributes: &[],
+            }],
+            sub_groups: &[],
+        };
+
+        let behavior_spec = ChildGroupSpec {
+            name: "behavior",
+            attributes: &[],
+            datasets: &[],
+            sub_groups: &[velocity_spec],
+        };
+
+        builder
+            .add_group_with_children("processing", &[], &[], &[behavior_spec])
+            .unwrap();
+
+        let bytes = builder.finish().unwrap();
+        let nwb = NwbFile::open(&bytes).unwrap();
+        let paths = nwb.list_processing("behavior").unwrap();
+
+        assert_eq!(
+            paths.len(),
+            1,
+            "expected 1 TimeSeries in processing/behavior: {paths:?}"
+        );
+        assert!(
+            paths[0].ends_with("velocity"),
+            "path should end with velocity, got: {}",
+            paths[0]
+        );
+    }
+
+    // ── proptest roundtrip tests ──────────────────────────────────────────
+
+    mod proptest_tests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            /// Theorem: TimeSeries with explicit timestamps roundtrips through
+            /// NwbFileBuilder → NwbFile with exact value preservation.
+            #[test]
+            fn roundtrip_timestamps_timeseries(
+                data in prop::collection::vec(-1e6_f64..1e6_f64, 0_usize..100_usize),
+            ) {
+                let n = data.len();
+                let timestamps: alloc::vec::Vec<f64> =
+                    (0..n).map(|i| i as f64 * 0.001).collect();
+                let ts_in =
+                    TimeSeries::with_timestamps("ts", data.clone(), timestamps.clone());
+
+                let mut builder = NwbFileBuilder::new(
+                    "2.7.0",
+                    "prop-id",
+                    "prop-desc",
+                    "2023-01-01T00:00:00+00:00",
+                )
+                .unwrap();
+                builder.write_time_series(&ts_in).unwrap();
+                let bytes = builder.finish().unwrap();
+
+                let nwb = NwbFile::open(&bytes).unwrap();
+                let ts_out = nwb.time_series("ts").unwrap();
+
+                prop_assert_eq!(ts_out.data(), data.as_slice());
+                prop_assert_eq!(ts_out.timestamps(), Some(timestamps.as_slice()));
+                prop_assert!(ts_out.starting_time().is_none());
+                prop_assert!(ts_out.rate().is_none());
+            }
+
+            /// Theorem: TimeSeries with rate roundtrips; rate precision degrades
+            /// to f32 because NWB stores the rate attribute as float32.
+            /// Invariant: read_rate == (written_rate as f32) as f64 (exact).
+            #[test]
+            fn roundtrip_rate_timeseries(
+                data in prop::collection::vec(-1e6_f64..1e6_f64, 0_usize..100_usize),
+                rate in 1.0_f64..100_000.0_f64,
+                starting_time in -1_000.0_f64..1_000.0_f64,
+            ) {
+                let ts_in =
+                    TimeSeries::with_rate("ts", data.clone(), starting_time, rate);
+
+                let mut builder = NwbFileBuilder::new(
+                    "2.7.0",
+                    "prop-id",
+                    "prop-desc",
+                    "2023-01-01T00:00:00+00:00",
+                )
+                .unwrap();
+                builder.write_time_series(&ts_in).unwrap();
+                let bytes = builder.finish().unwrap();
+
+                let nwb = NwbFile::open(&bytes).unwrap();
+                let ts_out = nwb.time_series("ts").unwrap();
+
+                prop_assert_eq!(ts_out.data(), data.as_slice());
+                prop_assert_eq!(ts_out.starting_time(), Some(starting_time));
+
+                // Rate is stored as f32; exact invariant: read == (written as f32) as f64.
+                let expected_rate = rate as f32 as f64;
+                prop_assert_eq!(ts_out.rate(), Some(expected_rate));
+            }
+
+            /// Theorem: Units spike times roundtrip through NwbFileBuilder → NwbFile
+            /// with exact value preservation.
+            #[test]
+            fn roundtrip_units_spike_times(
+                spike_times in prop::collection::vec(0.0_f64..1_000.0_f64, 0_usize..500_usize),
+            ) {
+                let mut builder = NwbFileBuilder::new(
+                    "2.7.0",
+                    "prop-id",
+                    "prop-desc",
+                    "2023-01-01T00:00:00+00:00",
+                )
+                .unwrap();
+                builder.write_units(&spike_times).unwrap();
+                let bytes = builder.finish().unwrap();
+
+                let nwb = NwbFile::open(&bytes).unwrap();
+                let out = nwb.units_spike_times().unwrap();
+
+                prop_assert_eq!(out, spike_times);
+            }
+        }
     }
 }

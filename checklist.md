@@ -700,8 +700,26 @@ test result: ok. 136 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fi
 - [x] Verified `cargo test -p consus-nwb --lib` → 149/149
 - [x] Verified `cargo test --workspace` → 2219/2219; `cargo check --workspace` → 0 errors, 0 warnings
 
-### Milestone 38: NWB Verification Against Real Files (next sprint)
+### Milestone 38: NWB Verification Against Real Files (deferred — requires external fixtures)
 - [ ] Download and test against Allen Brain Observatory NWB 2.x sample file
 - [ ] Test `session_metadata`, `list_time_series`, `time_series` against real file
 - [ ] Verify integer dataset promotion (i16 neural data) via real file
-- [ ] Property-based tests for NwbFile roundtrips using HDF5 builder fixtures
+
+### Milestone 39: NWB Extended Read Path + HDF5 Nested Group Write — CLOSED
+- [x] `ChildGroupSpec<'a>` — new public struct in `consus-hdf5::file::writer` for specifying sub-group children
+- [x] `write_group_node` — private recursive helper in `consus-hdf5::file::writer`; extracts and generalises the dataset-write + object-header-write logic from `add_group_with_attributes`
+- [x] `add_group_with_attributes` refactored to delegate to `write_group_node` (zero behavior change, backward compatible)
+- [x] `Hdf5FileBuilder::add_group_with_children` — new public method accepting both `ChildDatasetSpec` and `ChildGroupSpec` for arbitrary-depth nested group authoring
+- [x] 3 new value-semantic HDF5 writer tests: navigability, dataset integrity, backward compat
+- [x] `NwbSubjectMetadata` — new struct in `consus-nwb::metadata` with 5 optional fields (`subject_id`, `species`, `sex`, `age`, `description`); `from_parts` constructor and accessors
+- [x] 7 new `NwbSubjectMetadata` unit tests (all-Some, all-None, partial, equality, clone, debug, Unicode)
+- [x] `NwbFile::subject()` — reads `general/subject` group attributes as `NwbSubjectMetadata`
+- [x] `NwbFile::list_acquisition()` — thin delegation over `list_time_series("acquisition")`
+- [x] `NwbFile::list_processing(module_name)` — thin delegation over `list_time_series("processing/{module}")`
+- [x] `NwbFileBuilder::write_subject(&NwbSubjectMetadata)` — writes `general/subject` nested group using `add_group_with_children`
+- [x] Negative tests: `subject()` NotFound, `list_acquisition()` NotFound, `list_processing()` NotFound
+- [x] Positive roundtrip tests: `write_subject` all-fields, `write_subject` partial-fields, `list_acquisition`, `list_processing`
+- [x] Proptest roundtrips: `roundtrip_timestamps_timeseries`, `roundtrip_rate_timeseries`, `roundtrip_units_spike_times`
+- [x] `proptest = "1"` added to `consus-nwb` dev-dependencies
+- [x] Verified `cargo test -p consus-nwb --lib` → 166/166
+- [x] Verified `cargo test --workspace` → 2239/2239; `cargo check --workspace` → 0 errors, 0 warnings

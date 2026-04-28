@@ -377,8 +377,10 @@
 - [x] `consus-hdf5 list_group_at` fix: SYMBOL_TABLE guard prevents v1 fallback error on v2 empty groups
 - [ ] Nested container traversal via multi-level `open_path` (`/acquisition/{name}/`, `/processing/{name}/`)
 - [ ] Units table read (spike times)
+- [x] Subject metadata extraction — `NwbSubjectMetadata` model + `NwbFile::subject()` read path
+- [x] `NwbFile::list_acquisition()` — convenience wrapper over `list_time_series("acquisition")`
+- [x] `NwbFile::list_processing(module)` — convenience wrapper over `list_time_series("processing/{module}")`
 - [ ] ElectrodeTable read (electrode metadata)
-- [ ] Subject metadata extraction
 - [ ] Namespace version detection from `/specifications/` YAML specs
 
 ### P3.5 — NWB Write Path (Milestone 37 — this sprint — CLOSED)
@@ -400,8 +402,21 @@
 - [x] Six deterministic tests + one proptest (`prop_multi_page_i32_roundtrip`)
 - [x] `cargo test -p consus-parquet --lib` → 215/215
 
+### P3.8 — HDF5 Nested Group Write + NWB Extended APIs (Milestone 39 — CLOSED)
+- [x] `ChildGroupSpec<'a>` — new public struct in `consus-hdf5::file::writer`
+- [x] `write_group_node` — private recursive free function replacing duplicated group-write logic
+- [x] `Hdf5FileBuilder::add_group_with_attributes` refactored to delegate to `write_group_node` (backward compat)
+- [x] `Hdf5FileBuilder::add_group_with_children` — new method supporting arbitrary-depth nested groups
+- [x] `NwbSubjectMetadata` — `consus-nwb::metadata`, 5 optional fields, `from_parts` + accessors
+- [x] `NwbFile::subject()` — reads `general/subject` group attributes
+- [x] `NwbFileBuilder::write_subject(&NwbSubjectMetadata)` — writes `general/subject` via nested group API
+- [x] `NwbFile::list_acquisition()` and `list_processing(module)` convenience methods
+- [x] Proptest roundtrips: timestamps, rate (f32 precision invariant), units spike times
+- [x] `cargo test -p consus-nwb --lib` → 166/166; `cargo test --workspace` → 2239/2239
+
 ### P3.6 — NWB Verification
 - [ ] Read tests against Allen Brain Observatory NWB 2.x sample
 - [ ] Read tests against NWB tutorial files
 - [ ] Full conformance validation against NWB 2.x schema
-- [ ] Property-based tests for NwbFile roundtrips
+- [ ] ElectrodeTable read (electrode metadata) — requires `read_string_dataset` in `storage`
+- [ ] Namespace version detection from `/specifications/` YAML specs

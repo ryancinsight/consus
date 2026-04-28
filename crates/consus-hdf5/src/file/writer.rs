@@ -1478,6 +1478,89 @@ pub fn encode_attribute(
 }
 
 // ---------------------------------------------------------------------------
+// Recursive group node writer
+// ---------------------------------------------------------------------------
+
+/// Write a group node recursively: datasets first, then sub-groups, then the
+/// group object header.
+///
+/// Returns the byte offset of the written group object header.
+/// The caller is responsible for recording the returned address in its own
+/// link table (root group or parent group).
+///
+/// ### Write order (depth-first, leaf-first)
+///
+/// 1. Each dataset in `datasets`: contiguous data block → object header.
+/// 2. Each sub-group in `sub_groups`: recurse into `write_group_node`.
+/// 3. Group object header containing LINK messages for all children and
+///    ATTRIBUTE messages for `group_attributes`.
+#[cfg(feature = "alloc")]
+fn write_group_node(
+    sink: &mut consus_io::MemCursor,
+    state: &mut WriteState,
+    group_attributes: &[(&str, &Datatype, &Shape, &[u8])],
+    datasets: &[ChildDatasetSpec<'_>],
+    sub_groups: &[ChildGroupSpec<'_>],
+) -> Result<u64> {
+    let ctx = state.ctx;
+    let mut child_links: Vec<(String, u64)> = Vec::with_capacity(datasets.len() + sub_groups.len());
+
+    // Step 1: write each child dataset (data block + object header).
+    for child in datasets {
+        let data_addr = write_contiguous_data(sink, state, child.raw_data)?;
+
+        let dt_bytes = encode_datatype(child.datatype)?;
+        let ds_bytes = encode_dataspace(child.shape)?;
+        let layout_bytes = encode_layout(data_addr, &child.dcpl, &ctx)?;
+
+        let mut child_msgs: Vec<(u16, Vec<u8>)> = vec![
+            (message_types::DATATYPE, dt_bytes),
+            (message_types::DATASPACE, ds_bytes),
+            (message_types::DATA_LAYOUT, layout_bytes),
+        ];
+
+        for (attr_name, attr_dt, attr_shape, attr_data) in child.attributes {
+            child_msgs.push((
+                message_types::ATTRIBUTE,
+                encode_attribute(attr_name, attr_dt, attr_shape, attr_data)?,
+            ));
+        }
+
+        let msg_refs: Vec<(u16, &[u8])> =
+            child_msgs.iter().map(|(t, d)| (*t, d.as_slice())).collect();
+        let child_addr = write_object_header_v2(sink, state, &msg_refs)?;
+        child_links.push((String::from(child.name), child_addr));
+    }
+
+    // Step 2: recursively write each sub-group and record its address.
+    for sub in sub_groups {
+        let addr = write_group_node(sink, state, sub.attributes, sub.datasets, sub.sub_groups)?;
+        child_links.push((String::from(sub.name), addr));
+    }
+
+    // Step 3: build group object header messages (links + group attributes).
+    let mut group_msgs: Vec<(u16, Vec<u8>)> = Vec::new();
+
+    for (child_name, child_addr) in &child_links {
+        group_msgs.push((
+            message_types::LINK,
+            encode_hard_link(child_name, *child_addr, &ctx)?,
+        ));
+    }
+
+    for (attr_name, attr_dt, attr_shape, attr_data) in group_attributes {
+        group_msgs.push((
+            message_types::ATTRIBUTE,
+            encode_attribute(attr_name, attr_dt, attr_shape, attr_data)?,
+        ));
+    }
+
+    // Step 4: write the group object header and return its address.
+    let msg_refs: Vec<(u16, &[u8])> = group_msgs.iter().map(|(t, d)| (*t, d.as_slice())).collect();
+    write_object_header_v2(sink, state, &msg_refs)
+}
+
+// ---------------------------------------------------------------------------
 // High-level file builder
 // ---------------------------------------------------------------------------
 
@@ -1688,64 +1771,41 @@ impl Hdf5FileBuilder {
         group_attributes: &[(&str, &Datatype, &Shape, &[u8])],
         children: &[ChildDatasetSpec<'_>],
     ) -> Result<u64> {
-        let ctx = self.state.ctx;
-
-        // Step 1: write each child dataset (data + object header).
-        let mut child_links: Vec<(String, u64)> = Vec::with_capacity(children.len());
-        for child in children {
-            let data_addr =
-                write_contiguous_data(&mut self.sink, &mut self.state, child.raw_data)?;
-
-            let dt_bytes = encode_datatype(child.datatype)?;
-            let ds_bytes = encode_dataspace(child.shape)?;
-            let layout_bytes = encode_layout(data_addr, &child.dcpl, &ctx)?;
-
-            let mut child_msgs: Vec<(u16, Vec<u8>)> = vec![
-                (message_types::DATATYPE, dt_bytes),
-                (message_types::DATASPACE, ds_bytes),
-                (message_types::DATA_LAYOUT, layout_bytes),
-            ];
-
-            for (attr_name, attr_dt, attr_shape, attr_data) in child.attributes {
-                child_msgs.push((
-                    message_types::ATTRIBUTE,
-                    encode_attribute(attr_name, attr_dt, attr_shape, attr_data)?,
-                ));
-            }
-
-            let msg_refs: Vec<(u16, &[u8])> =
-                child_msgs.iter().map(|(t, d)| (*t, d.as_slice())).collect();
-            let child_addr =
-                write_object_header_v2(&mut self.sink, &mut self.state, &msg_refs)?;
-            child_links.push((String::from(child.name), child_addr));
-        }
-
-        // Step 2: build group object header messages (links + group attributes).
-        let mut group_msgs: Vec<(u16, Vec<u8>)> = Vec::new();
-
-        for (child_name, child_addr) in &child_links {
-            group_msgs.push((
-                message_types::LINK,
-                encode_hard_link(child_name, *child_addr, &ctx)?,
-            ));
-        }
-
-        for (attr_name, attr_dt, attr_shape, attr_data) in group_attributes {
-            group_msgs.push((
-                message_types::ATTRIBUTE,
-                encode_attribute(attr_name, attr_dt, attr_shape, attr_data)?,
-            ));
-        }
-
-        // Step 3: write the group object header.
-        let msg_refs: Vec<(u16, &[u8])> =
-            group_msgs.iter().map(|(t, d)| (*t, d.as_slice())).collect();
-        let group_addr =
-            write_object_header_v2(&mut self.sink, &mut self.state, &msg_refs)?;
-
-        // Step 4: link the group from the root group.
+        let group_addr = write_group_node(
+            &mut self.sink,
+            &mut self.state,
+            group_attributes,
+            children,
+            &[],
+        )?;
         self.root_links.push((String::from(group_name), group_addr));
+        Ok(group_addr)
+    }
 
+    /// Add a named group to the root group with both child datasets and child sub-groups.
+    ///
+    /// Sub-groups support arbitrary nesting depth: each [`ChildGroupSpec`] can
+    /// contain further `ChildGroupSpec` values in its `sub_groups` field.
+    /// The hierarchy is written depth-first (leaf nodes first).
+    ///
+    /// ## Errors
+    ///
+    /// Returns an error if any datatype or layout cannot be encoded.
+    pub fn add_group_with_children(
+        &mut self,
+        group_name: &str,
+        group_attributes: &[(&str, &Datatype, &Shape, &[u8])],
+        datasets: &[ChildDatasetSpec<'_>],
+        sub_groups: &[ChildGroupSpec<'_>],
+    ) -> Result<u64> {
+        let group_addr = write_group_node(
+            &mut self.sink,
+            &mut self.state,
+            group_attributes,
+            datasets,
+            sub_groups,
+        )?;
+        self.root_links.push((String::from(group_name), group_addr));
         Ok(group_addr)
     }
 }
@@ -1777,6 +1837,26 @@ pub struct ChildDatasetSpec<'a> {
     pub attributes: &'a [(&'a str, &'a Datatype, &'a Shape, &'a [u8])],
 }
 
+/// Specification for a child sub-group to be authored inside a parent group.
+///
+/// Supports arbitrary nesting depth: [`sub_groups`][ChildGroupSpec::sub_groups]
+/// can contain further `ChildGroupSpec` values, written recursively.
+///
+/// Only [`DatasetLayout::Contiguous`] is supported for dataset children.
+#[cfg(feature = "alloc")]
+pub struct ChildGroupSpec<'a> {
+    /// Name of this group within its parent group.
+    pub name: &'a str,
+    /// Attribute messages attached to this group's object header.
+    ///
+    /// Each entry is `(attribute_name, datatype, shape, raw_data)`.
+    pub attributes: &'a [(&'a str, &'a Datatype, &'a Shape, &'a [u8])],
+    /// Dataset children of this group.
+    pub datasets: &'a [ChildDatasetSpec<'a>],
+    /// Sub-group children of this group (written recursively before this group).
+    pub sub_groups: &'a [ChildGroupSpec<'a>],
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -1787,6 +1867,9 @@ mod tests {
     use byteorder::ByteOrder as _;
     use consus_core::ByteOrder;
     use core::num::NonZeroUsize;
+
+    #[cfg(feature = "alloc")]
+    use crate::file::Hdf5File;
 
     #[test]
     fn write_state_allocate() {
@@ -2009,6 +2092,174 @@ mod tests {
         assert_eq!(bytes[8], 2); // superblock version 2
         // Root group address at offset 36 (12 + 3*8) must be non-zero.
         assert_ne!(LittleEndian::read_u64(&bytes[36..44]), 0);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn add_group_with_children_creates_navigable_nested_group() {
+        use consus_core::{Datatype, Shape, StringEncoding};
+
+        let species_bytes = b"Mus musculus";
+        let species_dt = Datatype::FixedString {
+            length: species_bytes.len(),
+            encoding: StringEncoding::Ascii,
+        };
+        let species_shape = Shape::scalar();
+
+        let subject_attrs: &[(&str, &Datatype, &Shape, &[u8])] =
+            &[("species", &species_dt, &species_shape, species_bytes)];
+
+        let subject_spec = ChildGroupSpec {
+            name: "subject",
+            attributes: subject_attrs,
+            datasets: &[],
+            sub_groups: &[],
+        };
+
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        builder
+            .add_group_with_children("general", &[], &[], &[subject_spec])
+            .unwrap();
+        let bytes = builder.finish().unwrap();
+
+        let file = Hdf5File::open(consus_io::MemCursor::from_bytes(bytes)).expect("open hdf5 file");
+        let addr = file
+            .open_path("general/subject")
+            .expect("navigate to general/subject");
+        assert_ne!(addr, 0, "subject group address must be non-zero");
+
+        let attrs = file
+            .attributes_at(addr)
+            .expect("read attributes at subject");
+        let species_attr = attrs
+            .iter()
+            .find(|a| a.name == "species")
+            .expect("species attribute must be present");
+        assert_eq!(
+            species_attr.raw_data.as_slice(),
+            species_bytes,
+            "species attribute raw bytes must match 'Mus musculus'"
+        );
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn add_group_with_children_nested_group_datasets_are_readable() {
+        use consus_core::{ByteOrder as CoreByteOrder, Datatype, Shape};
+
+        let f64_dt = Datatype::Float {
+            bits: NonZeroUsize::new(64).unwrap(),
+            byte_order: CoreByteOrder::LittleEndian,
+        };
+        let values_shape = Shape::fixed(&[3]);
+        let raw_data: Vec<u8> = [1.0f64, 2.0, 3.0]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect();
+
+        let raw_data_spec = ChildDatasetSpec {
+            name: "raw_data",
+            datatype: &f64_dt,
+            shape: &values_shape,
+            raw_data: &raw_data,
+            dcpl: DatasetCreationProps::default(),
+            attributes: &[],
+        };
+        let values_spec = ChildGroupSpec {
+            name: "values",
+            attributes: &[],
+            datasets: &[raw_data_spec],
+            sub_groups: &[],
+        };
+
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        builder
+            .add_group_with_children("data_container", &[], &[], &[values_spec])
+            .unwrap();
+        let bytes = builder.finish().unwrap();
+
+        let file = Hdf5File::open(consus_io::MemCursor::from_bytes(bytes)).expect("open hdf5 file");
+        let dataset_addr = file
+            .open_path("data_container/values/raw_data")
+            .expect("navigate to raw_data dataset");
+        assert_ne!(dataset_addr, 0, "raw_data dataset address must be non-zero");
+
+        let dataset = file
+            .dataset_at(dataset_addr)
+            .expect("read dataset metadata");
+        let data_addr = dataset
+            .data_address
+            .expect("contiguous dataset must have a data_address");
+
+        let mut buf = [0u8; 24]; // 3 × 8 bytes
+        file.read_contiguous_dataset_bytes(data_addr, 0, &mut buf)
+            .expect("read contiguous dataset bytes");
+
+        let v0 = LittleEndian::read_f64(&buf[0..8]);
+        let v1 = LittleEndian::read_f64(&buf[8..16]);
+        let v2 = LittleEndian::read_f64(&buf[16..24]);
+        assert_eq!(
+            [v0, v1, v2],
+            [1.0f64, 2.0, 3.0],
+            "decoded f64 values must equal [1.0, 2.0, 3.0]"
+        );
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn add_group_with_attributes_still_works_after_refactor() {
+        use consus_core::{ByteOrder as CoreByteOrder, Datatype, Shape};
+
+        let dt = Datatype::Integer {
+            bits: NonZeroUsize::new(32).unwrap(),
+            byte_order: CoreByteOrder::LittleEndian,
+            signed: false,
+        };
+        let shape = Shape::fixed(&[2]);
+        let raw: Vec<u8> = [42u32, 99].iter().flat_map(|v| v.to_le_bytes()).collect();
+
+        let child = ChildDatasetSpec {
+            name: "my_dataset",
+            datatype: &dt,
+            shape: &shape,
+            raw_data: &raw,
+            dcpl: DatasetCreationProps::default(),
+            attributes: &[],
+        };
+
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        builder
+            .add_group_with_attributes("my_group", &[], &[child])
+            .unwrap();
+        let bytes = builder.finish().unwrap();
+
+        let file = Hdf5File::open(consus_io::MemCursor::from_bytes(bytes)).expect("open hdf5 file");
+        let dataset_addr = file
+            .open_path("my_group/my_dataset")
+            .expect("navigate to my_group/my_dataset");
+        assert_ne!(dataset_addr, 0, "dataset address must be non-zero");
+
+        let dataset = file
+            .dataset_at(dataset_addr)
+            .expect("read dataset metadata");
+        let data_addr = dataset
+            .data_address
+            .expect("contiguous dataset must have a data_address");
+
+        let mut buf = [0u8; 8]; // 2 × 4 bytes
+        file.read_contiguous_dataset_bytes(data_addr, 0, &mut buf)
+            .expect("read contiguous dataset bytes");
+
+        assert_eq!(
+            LittleEndian::read_u32(&buf[0..4]),
+            42,
+            "first element must be 42"
+        );
+        assert_eq!(
+            LittleEndian::read_u32(&buf[4..8]),
+            99,
+            "second element must be 99"
+        );
     }
 
     #[cfg(feature = "alloc")]

@@ -226,3 +226,255 @@ mod tests {
         assert_eq!(meta.session_start_time(), "2023-07-04T00:00:00+09:00");
     }
 }
+
+// ---------------------------------------------------------------------------
+// NwbSubjectMetadata
+// ---------------------------------------------------------------------------
+
+/// Optional NWB 2.x subject-level metadata.
+///
+/// Extracted from the `general/subject` HDF5 group of an NWB file.
+/// All fields are optional; the NWB 2.x specification does not require any
+/// particular attribute within the Subject group.
+///
+/// ## Specification
+///
+/// NWB 2.x Subject group (`general/subject`) stores these optional string
+/// attributes:
+///
+/// | HDF5 attribute | Field         | Example              |
+/// |----------------|---------------|----------------------|
+/// | `subject_id`   | `subject_id`  | `"sub-001"`          |
+/// | `species`      | `species`     | `"Mus musculus"`     |
+/// | `sex`          | `sex`         | `"M"`, `"F"`, `"U"`, `"O"` |
+/// | `age`          | `age`         | `"P90D"` (ISO 8601)  |
+/// | `description`  | `description` | `"C57BL/6J mouse"`   |
+///
+/// Reference: <https://nwb-schema.readthedocs.io/en/latest/format_description.html>
+///
+/// ## Example
+///
+/// ```
+/// # #[cfg(feature = "alloc")] {
+/// use consus_nwb::metadata::NwbSubjectMetadata;
+///
+/// let subj = NwbSubjectMetadata::from_parts(
+///     Some("sub-001".into()),
+///     Some("Mus musculus".into()),
+///     Some("M".into()),
+///     Some("P90D".into()),
+///     Some("C57BL/6J mouse".into()),
+/// );
+/// assert_eq!(subj.subject_id(), Some("sub-001"));
+/// assert_eq!(subj.species(), Some("Mus musculus"));
+/// # }
+/// ```
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NwbSubjectMetadata {
+    /// Unique subject identifier (maps to `subject_id` attribute).
+    subject_id: Option<String>,
+
+    /// Binomial species name (maps to `species` attribute).
+    species: Option<String>,
+
+    /// Biological sex code: `"M"`, `"F"`, `"U"` (unknown), or `"O"` (other).
+    sex: Option<String>,
+
+    /// Subject age in ISO 8601 duration format, e.g. `"P90D"` (maps to `age`).
+    age: Option<String>,
+
+    /// Free-text description of the subject (maps to `description` attribute).
+    description: Option<String>,
+}
+
+#[cfg(feature = "alloc")]
+impl NwbSubjectMetadata {
+    /// Construct from constituent optional fields.
+    ///
+    /// All fields are optional; pass `None` for absent metadata.
+    ///
+    /// ## Arguments
+    ///
+    /// - `subject_id`  — unique subject identifier (e.g. `"sub-001"`)
+    /// - `species`     — binomial species name (e.g. `"Mus musculus"`)
+    /// - `sex`         — sex code: `"M"`, `"F"`, `"U"`, or `"O"`
+    /// - `age`         — ISO 8601 duration string (e.g. `"P90D"`)
+    /// - `description` — free-text subject description
+    #[must_use]
+    pub fn from_parts(
+        subject_id: Option<String>,
+        species: Option<String>,
+        sex: Option<String>,
+        age: Option<String>,
+        description: Option<String>,
+    ) -> Self {
+        Self {
+            subject_id,
+            species,
+            sex,
+            age,
+            description,
+        }
+    }
+
+    /// Return the subject identifier, or `None` if absent.
+    #[must_use]
+    pub fn subject_id(&self) -> Option<&str> {
+        self.subject_id.as_deref()
+    }
+
+    /// Return the binomial species name, or `None` if absent.
+    #[must_use]
+    pub fn species(&self) -> Option<&str> {
+        self.species.as_deref()
+    }
+
+    /// Return the sex code (`"M"`, `"F"`, `"U"`, or `"O"`), or `None` if absent.
+    #[must_use]
+    pub fn sex(&self) -> Option<&str> {
+        self.sex.as_deref()
+    }
+
+    /// Return the ISO 8601 age duration string, or `None` if absent.
+    #[must_use]
+    pub fn age(&self) -> Option<&str> {
+        self.age.as_deref()
+    }
+
+    /// Return the free-text subject description, or `None` if absent.
+    #[must_use]
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+}
+
+#[cfg(all(test, feature = "alloc"))]
+mod subject_tests {
+    use super::*;
+
+    // ── NwbSubjectMetadata::from_parts and accessors ───────────────────────
+
+    #[test]
+    fn from_parts_all_some_stores_all_fields() {
+        // Theorem: from_parts with all Some values stores each field accessibly.
+        // Values follow NWB specimen conventions for a C57BL/6J male mouse.
+        let subj = NwbSubjectMetadata::from_parts(
+            Some("sub-001".into()),
+            Some("Mus musculus".into()),
+            Some("M".into()),
+            Some("P90D".into()),
+            Some("C57BL/6J mouse".into()),
+        );
+
+        assert_eq!(subj.subject_id(), Some("sub-001"));
+        assert_eq!(subj.species(), Some("Mus musculus"));
+        assert_eq!(subj.sex(), Some("M"));
+        assert_eq!(subj.age(), Some("P90D"));
+        assert_eq!(subj.description(), Some("C57BL/6J mouse"));
+    }
+
+    #[test]
+    fn from_parts_all_none_returns_all_none() {
+        // Theorem: from_parts with all None values returns None for every accessor.
+        let subj = NwbSubjectMetadata::from_parts(None, None, None, None, None);
+
+        assert_eq!(subj.subject_id(), None);
+        assert_eq!(subj.species(), None);
+        assert_eq!(subj.sex(), None);
+        assert_eq!(subj.age(), None);
+        assert_eq!(subj.description(), None);
+    }
+
+    #[test]
+    fn from_parts_partial_some() {
+        // Theorem: from_parts with only species and age set returns None for
+        // the other three fields and Some for species and age.
+        // Species and age follow NWB specimen conventions for a rat subject.
+        let subj = NwbSubjectMetadata::from_parts(
+            None,
+            Some("Rattus norvegicus".into()),
+            None,
+            Some("P120D".into()),
+            None,
+        );
+
+        assert_eq!(subj.subject_id(), None);
+        assert_eq!(subj.species(), Some("Rattus norvegicus"));
+        assert_eq!(subj.sex(), None);
+        assert_eq!(subj.age(), Some("P120D"));
+        assert_eq!(subj.description(), None);
+    }
+
+    #[test]
+    fn equality_holds_for_identical_values() {
+        // Theorem: two structs constructed with identical arguments compare equal.
+        let a = NwbSubjectMetadata::from_parts(
+            Some("sub-002".into()),
+            Some("Mus musculus".into()),
+            Some("F".into()),
+            Some("P60D".into()),
+            Some("C57BL/6J female mouse".into()),
+        );
+        let b = NwbSubjectMetadata::from_parts(
+            Some("sub-002".into()),
+            Some("Mus musculus".into()),
+            Some("F".into()),
+            Some("P60D".into()),
+            Some("C57BL/6J female mouse".into()),
+        );
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn equality_fails_on_differing_species() {
+        // Theorem: two structs differing only in species compare not equal.
+        let a = NwbSubjectMetadata::from_parts(
+            Some("sub-003".into()),
+            Some("Mus musculus".into()),
+            Some("M".into()),
+            Some("P90D".into()),
+            None,
+        );
+        let b = NwbSubjectMetadata::from_parts(
+            Some("sub-003".into()),
+            Some("Rattus norvegicus".into()),
+            Some("M".into()),
+            Some("P90D".into()),
+            None,
+        );
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn clone_produces_equal_independent_copy() {
+        // Theorem: clone yields a value equal to the original and independently owned.
+        let original = NwbSubjectMetadata::from_parts(
+            Some("sub-004".into()),
+            Some("Mus musculus".into()),
+            Some("U".into()),
+            Some("P45D".into()),
+            Some("Transgenic line: Thy1-GCaMP6f".into()),
+        );
+        let cloned = original.clone();
+
+        assert_eq!(original, cloned);
+        assert_eq!(cloned.subject_id(), original.subject_id());
+        assert_eq!(cloned.species(), original.species());
+        assert_eq!(cloned.sex(), original.sex());
+        assert_eq!(cloned.age(), original.age());
+        assert_eq!(cloned.description(), original.description());
+    }
+
+    #[test]
+    fn debug_output_contains_field_value() {
+        // Theorem: Debug output contains the subject_id string.
+        let subj =
+            NwbSubjectMetadata::from_parts(Some("sub-debug-001".into()), None, None, None, None);
+        let debug_str = alloc::format!("{:?}", subj);
+        assert!(
+            debug_str.contains("sub-debug-001"),
+            "Debug output should contain subject_id: {debug_str}"
+        );
+    }
+}
