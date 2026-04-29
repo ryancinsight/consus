@@ -40,3 +40,12 @@ pub mod namespace;
 pub mod storage;
 pub mod validation;
 pub mod version;
+
+#[cfg(feature = "alloc")]
+pub use model::electrode::{ElectrodeRow, ElectrodeTable};
+#[cfg(feature = "alloc")]
+pub use model::units::UnitsTable;
+#[cfg(feature = "alloc")]
+pub use namespace::NwbNamespaceSpec;
+#[cfg(feature = "alloc")]
+pub use namespace::NwbTypeSpec;

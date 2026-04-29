@@ -233,7 +233,11 @@ where
                 group.groups.push(child_group);
             }
             NodeType::NamedDatatype => {
-                // Named datatypes have no netCDF semantic equivalent; skip.
+                let datatype = file.named_datatype_at(child_addr)?;
+                group.user_types.push(crate::model::NetcdfUserType {
+                    name: child_name,
+                    datatype,
+                });
             }
         }
     }
@@ -260,4 +264,18 @@ where
     }
 
     Ok(group)
+}
+
+/// Read the canonical netCDF model from the HDF5 root group.
+///
+/// The returned model preserves a root group name of `/` when the HDF5
+/// root group is addressed as `/`.
+#[cfg(feature = "std")]
+pub fn read_model<R>(file: &consus_hdf5::file::Hdf5File<R>) -> Result<crate::model::NetcdfModel>
+where
+    R: ReadAt + Sync,
+{
+    let root = file.root_group();
+    let root = extract_group(file, root.path, root.object_header_address)?;
+    Ok(crate::model::NetcdfModel { root })
 }

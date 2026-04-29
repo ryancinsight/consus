@@ -31,6 +31,25 @@ use consus_core::{Error, Result};
 use crate::dimension::NetcdfDimension;
 use crate::variable::NetcdfVariable;
 
+/// A user-defined type declared in a netCDF-4 enhanced model group.
+///
+/// Corresponds to an HDF5 committed (named) datatype child of the group.
+///
+/// ## netCDF-4 enhanced model
+///
+/// NUG §2.5: user-defined types (compound, variable-length, opaque, enum)
+/// are stored as HDF5 named datatypes linked from the enclosing group.
+/// `extract_group` classifies them via `NodeType::NamedDatatype` and reads
+/// the canonical `Datatype` via `Hdf5File::named_datatype_at`.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetcdfUserType {
+    /// Type name (dataset name in the HDF5 group).
+    pub name: String,
+    /// Canonical datatype representation.
+    pub datatype: consus_core::Datatype,
+}
+
 /// Canonical netCDF group model.
 #[cfg(feature = "alloc")]
 #[derive(Debug, Clone, PartialEq)]
@@ -45,6 +64,8 @@ pub struct NetcdfGroup {
     pub variables: Vec<NetcdfVariable>,
     /// Group-level attributes (e.g. Conventions, title, history).
     pub attributes: Vec<(String, consus_core::AttributeValue)>,
+    /// User-defined types declared in this scope (netCDF-4 enhanced model).
+    pub user_types: Vec<NetcdfUserType>,
 }
 
 #[cfg(feature = "alloc")]
@@ -58,15 +79,19 @@ impl NetcdfGroup {
             dimensions: Vec::new(),
             variables: Vec::new(),
             attributes: Vec::new(),
+            user_types: Vec::new(),
         }
     }
 
     /// Validate the group and its children.
     pub fn validate(&self) -> Result<()> {
-        self.validate_with_ancestors(&[])
+        self.validate_with_ancestors(&[] as &[&NetcdfDimension])
     }
 
-    fn validate_with_ancestors(&self, ancestor_dimensions: &[&NetcdfDimension]) -> Result<()> {
+    pub(crate) fn validate_with_ancestors(
+        &self,
+        ancestor_dimensions: &[&NetcdfDimension],
+    ) -> Result<()> {
         let mut i = 0;
         while i < self.dimensions.len() {
             self.dimensions[i].validate()?;
@@ -252,6 +277,7 @@ impl NetcdfGroup {
             && self.dimensions.is_empty()
             && self.variables.is_empty()
             && self.attributes.is_empty()
+            && self.user_types.is_empty()
     }
 }
 

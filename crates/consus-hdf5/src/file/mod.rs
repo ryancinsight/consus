@@ -25,7 +25,7 @@ pub mod writer;
 use alloc::{string::String, vec::Vec};
 
 use byteorder::{ByteOrder, LittleEndian};
-use consus_core::{NodeType, Result};
+use consus_core::{Datatype, NodeType, Result};
 use consus_io::ReadAt;
 
 use crate::address::ParseContext;
@@ -485,6 +485,28 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
     pub fn fill_value_at(&self, address: u64) -> Result<Option<Vec<u8>>> {
         let header = reader::read_object_header(&self.source, address, &self.ctx)?;
         Ok(reader::read_fill_value(&header))
+    }
+
+    /// Read the canonical datatype from a committed (named) datatype object at `address`.
+    ///
+    /// ## HDF5 specification
+    ///
+    /// A committed datatype object header (§IV.A.2.3) carries exactly one
+    /// Datatype message (0x0003) without Dataspace or Data Layout.
+    /// `classify_object` returns `NodeType::NamedDatatype` for such objects.
+    ///
+    /// ## Errors
+    ///
+    /// - [`Error::InvalidFormat`] if the object header is missing a Datatype message
+    ///   or the datatype cannot be decoded.
+    #[cfg(feature = "alloc")]
+    pub fn named_datatype_at(&self, address: u64) -> Result<Datatype> {
+        let header = reader::read_object_header(&self.source, address, &self.ctx)?;
+        let dt_msg = reader::find_message(&header, crate::object_header::message_types::DATATYPE)
+            .ok_or_else(|| Error::InvalidFormat {
+            message: String::from("committed datatype object header missing datatype message"),
+        })?;
+        crate::datatype::compound::parse_datatype(&dt_msg.data)
     }
 
     #[cfg(feature = "alloc")]

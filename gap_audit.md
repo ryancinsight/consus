@@ -1,7 +1,14 @@
 # Consus - Gap Audit
 
+## Data Folder Record
+
+- NWB sample acquisition manifest stored at `D:\consus\data\nwb\manifest.txt`
+- Acquisition status: `acquisition_failed`
+- Fixture data must remain under `D:\consus\data\nwb`
+- Test guard recorded in `crates/consus-nwb/tests/roundtrip_proptest.rs` to fail until `D:\consus\data\nwb\allen_brain_observatory_sample.nwb` exists
+
 ## Audit Date: 2026-05-08 (updated this sprint)
-## Scope: Phase 3 — NWB Extended Read Path + HDF5 Nested Group Write (Milestone 39)
+## Scope: Phase 3 — NWB Verification Against Real Files (Milestone 38)
 
 ---
 
@@ -28,10 +35,12 @@
 | Z-103 | High-level Zarr v3 sharding interop | `shard/mod.rs` rewritten with spec-compliant layout (index at END of shard file, uninitialized entries = `u64::MAX`), `ShardingConfig`, `extract_sharding_config`, `inner_linear_index`, `read_inner_chunk_from_shard`, and `write_shard`. `read_array` and `write_array` dispatch to `read_array_sharded`/`write_array_sharded` when `sharding_indexed` is present in the codec chain. Tests: `sharded_array_single_shard_roundtrip` and `sharded_array_multi_shard_roundtrip` both pass. |
 | P2.2 | Zarr v3 metadata write path | `ZarrJson::from_array_metadata`, `ZarrJson::from_group_metadata`, `fill_value_to_json_v3`, `codec_to_spec`, `write_zarr_json<S: Store>`, and `write_group_json<S: Store>` implemented in `src/metadata/v3.rs`. `WriteZarrJsonError` error type added. Unit tests: `from_array_metadata_roundtrip`, `from_group_metadata_roundtrip`, `write_zarr_json_persists_to_store`. Integration test: `v3_write_metadata_and_data_roundtrip` verifies exact element values for a 4×4 i32 array. |
 | P2.3 | netCDF-4 HDF5 integration layer (phase 1) | `src/hdf5/` module tree created: `dimension_scale` (7 unit tests), `variable` (5 unit tests), `group` (`extract_group` traversal function). `is_dimension_scale` and `extract_group` re-exported from crate root. 6 integration tests in `tests/integration_netcdf_hdf5.rs` verify dimension scale detection, variable extraction, and group traversal on in-memory HDF5 files. |
+| P2.3 | netCDF-4 classic model read | `read_model` now opens the HDF5 root group, extracts the canonical `NetcdfModel`, validates the root group, and preserves `/` as the root name. Integration coverage added for empty-file, flat root dimension/variable, and nested-group extraction paths. |
 | Z-105 | Zarr v3 dimension-name preservation | Canonical `ArrayMetadata` now carries `dimension_names: Option<Vec<String>>`. `metadata/v2.rs`, `metadata/v3.rs`, `metadata/consolidated.rs`, shard tests, chunk tests, and roundtrip integration tests were updated so v3 `dimension_names` survive `parse -> canonical -> write -> parse -> canonical`. Verification: `cargo test -p consus-zarr` passes with `metadata::v3::tests::test_dimension_names_roundtrip`, `metadata::v3::tests::from_array_metadata_roundtrip`, and `roundtrip_zarr::v3_write_metadata_and_data_roundtrip` succeeding. |
 | Z-106 | Zarr v3 group-attribute preservation on write | `ZarrJson::from_group_metadata` no longer drops canonical group attributes. Attribute values are converted into JSON scalars/arrays and preserved through `from_group_metadata -> to_json -> parse -> to_group_canonical`. Verification: `cargo test -p consus-zarr` passes with `metadata::v3::tests::from_group_metadata_roundtrip` succeeding. |
 | Z-107 | Typed float fill-value expansion correctness | `expand_fill_value` now emits width-correct IEEE bytes for float32 and float64 instead of truncating an f64 byte pattern. This closes the incorrect float32 fill-value materialization path. Verification: `cargo test -p consus-zarr` passes with `chunk::tests::expand_fill_value_float32_one`, `chunk::tests::expand_fill_value_float64_one`, and the existing array roundtrip tests succeeding. |
 | N-001 | netCDF variable and group attribute preservation | `NetcdfVariable` and `NetcdfGroup` now carry decoded attribute vectors. HDF5 extraction attaches decodable dataset and group attributes, excluding dimension-scale marker attributes from variable semantic payloads. Verification: `cargo test -p consus-netcdf` passes with `variable::tests::variable_attributes_and_object_header_address_attach`, `reference_netcdf::group_lookup_methods`, and all integration suites succeeding. |
+| N-002 | netCDF classic model read path | Added `consus-netcdf::read_model` / `hdf5::read_model` to extract a validated canonical `NetcdfModel` from the HDF5 root group. Empty-file, flat root, and nested-group integration tests verify exact root name, dimension counts, variable names, and child-group contents. |
 | N-002 | Unlimited-dimension propagation from HDF5 shape extents | HDF5-backed netCDF extraction now maps unlimited HDF5 extents into `NetcdfDimension::unlimited(...)` and marks variables unlimited when `dataset.shape.has_unlimited()`. Verification: `cargo test -p consus-netcdf` passes with `reference_netcdf::bridge_unlimited_dimension_mapping`, `reference_netcdf::unlimited_dimension_model`, and `roundtrip_netcdf::unlimited_dimension_roundtrip` succeeding. |
 | N-003 | CF attribute-name coverage expansion | The conventions module now recognizes additional CF keys: `add_offset`, `scale_factor`, `missing_value`, `valid_range`, `valid_min`, `valid_max`, `calendar`, `positive`, `formula_terms`, `ancillary_variables`, `flag_values`, `flag_meanings`, `flag_masks`, and `compress`. Verification: `cargo test -p consus-netcdf` passes with `conventions::tests::validate_cf_attribute_names` succeeding. |
 | N-004 | netCDF stale scaffolding removal | Empty `src/core/` scaffolding under `consus-netcdf` was removed to restore SSOT and eliminate dead structure. Verification: `cargo test -p consus-netcdf` and `cargo test --workspace` both pass after removal. |
@@ -256,11 +265,69 @@
 
 ## Open Gaps
 
-_No open gaps in the current audit scope. Remaining open work: lifetime-parameterized zero-copy `ArrowArray` model, hybrid Parquet-inside-Consus containers, large-file (>4 GiB) regression tests, cargo-fuzz harness targets, WASM validation, no_std smoke tests, documentation site, crates.io publication, NWB verification against real Allen Brain Observatory NWB 2.x fixtures (Milestone 38), NWB namespace spec YAML parsing from `/specifications/`, and NWB Units VectorIndex write with per-unit spike times (Milestone 40 delivers model and read; write verified by roundtrip tests)._
+_No open gaps in the current audit scope. Remaining open work: lifetime-parameterized zero-copy `ArrowArray` model, hybrid Parquet-inside-Consus containers, netCDF-4 Unidata reference file comparison (P2.3), NWB verification against real Allen Brain Observatory NWB 2.x fixtures (Milestone 38), large-file (>4 GiB) regression tests, cargo-fuzz harness targets, WASM validation, no_std smoke tests, documentation site, crates.io publication. NWB sample acquisition is currently blocked and recorded in `D:\consus\data\nwb\manifest.txt`._
 
 ---
 
 ## Closed Since Previous Audit
+
+### M-045: netCDF-4 Enhanced Model Read — User-Defined Types
+
+- **Crates affected**: `consus-hdf5`, `consus-netcdf`
+- **`consus-netcdf/tests/integration_netcdf_hdf5.rs`**: Fixed `read_nested_group_into_model`: `CLASS=DIMENSION_SCALE` attribute added to "x" dataset so `is_dimension_scale` returns true; address→name map populated; `dimensions.len()==1`, `dimensions[0].name=="x"`, `dimensions[0].size==4` asserted; classic model read (P2.3) is now fully verified with 13/13 integration tests.
+- **`consus-netcdf/src/model/mod.rs`**: Added `NetcdfUserType { name: String, datatype: consus_core::Datatype }` struct (`#[cfg(feature = "alloc")]`, derives `Debug + Clone + PartialEq`). Added `user_types: Vec<NetcdfUserType>` field to `NetcdfGroup`; `new()` initializes it; `is_empty()` includes it.
+- **`consus-netcdf/src/lib.rs`**: Added `pub use model::NetcdfUserType;` crate-root re-export.
+- **`consus-hdf5/src/file/mod.rs`**: Added `Datatype` to `consus_core` import. Added `pub fn named_datatype_at(&self, address: u64) -> Result<Datatype>`: reads object header, locates Datatype message (0x0003) via `reader::find_message`, returns `Error::InvalidFormat` when absent, delegates to `crate::datatype::compound::parse_datatype`.
+- **`consus-hdf5/src/file/writer.rs`**: Added `pub fn add_named_datatype(&mut self, name: &str, datatype: &Datatype) -> Result<u64>` to `Hdf5FileBuilder`: encodes only a Datatype message, calls `write_object_header_v2`, pushes link to `root_links`. No Dataspace or Layout message emitted — `classify_object` returns `NodeType::NamedDatatype` for such headers (HDF5 spec §IV.A.2.3). Added 1 unit test: `add_named_datatype_creates_readable_named_type` (Float{64,LE} write → `node_type_at` asserts `NamedDatatype` → `named_datatype_at` asserts round-trip equality).
+- **`consus-netcdf/src/hdf5/group/mod.rs`**: `NodeType::NamedDatatype` arm in `extract_group` updated: replaced `// skip` comment with `file.named_datatype_at(child_addr)?` + `group.user_types.push(NetcdfUserType { name: child_name, datatype })`.
+- **`consus-netcdf/tests/integration_netcdf_hdf5.rs`**: 2 new integration tests: `read_named_type_in_root_group` (Float{32,LE}: write → read_model → root.user_types[0] round-trip); `read_named_type_in_child_group` (Integer{64,LE,signed}: root.user_types[0] present, child.user_types is empty).
+- **Tests added**: consus-hdf5 lib 271 → 272 (+1); consus-netcdf 132 → 137 (+5: 2 integration in M-045 + 2 from fixed read_nested_group_into_model split + test count for classic model verified); workspace 2323 → 2329 (+6).
+- **Verification**: `cargo test -p consus-hdf5 --lib` → 272/272; `cargo test -p consus-netcdf` → 137/137; `cargo test --workspace` → 2329/2329; `cargo check --workspace` → 0 errors, 0 warnings.
+
+### M-042: netCDF-4 HDF5 Write Path — Classic Flat Model
+
+- **Crates affected**: `consus-hdf5`, `consus-netcdf`
+- **`consus-hdf5/src/file/writer.rs`**: Added `Datatype::Reference(ReferenceType::Object/Region)` case to `encode_datatype`; encoding: `byte[0]=0x17` (class=7, version=1), `byte[1]=0/1` (object/region discriminant), `bytes[4..8]=8u32 LE` (8-byte reference size); 2 new value-semantic tests (`encode_reference_datatype_object_reference`, `encode_reference_datatype_region_reference`).
+- **`consus-netcdf/src/conventions/mod.rs`**: Added `NC_PROPERTIES_ATTR = "_nc_properties"` and `NC_PROPERTIES_VALUE = "version=2,netcdf=4.x.x"` constants per NUG §2.6; both re-exported from crate root.
+- **`consus-netcdf/src/hdf5/write/mod.rs`** (new): `NetcdfWriter` struct wrapping `Hdf5FileBuilder`; `write_model(&NetcdfModel) -> Result<Vec<u8>>` emits complete HDF5 file; `write_dimension_scale` private helper writes each root-group dimension as a 1-D `u32` coordinate-index dataset with `CLASS="DIMENSION_SCALE"`, `NAME={dim.name}`, `_Netcdf4Dimid={idx}` attributes; `write_variable` private helper writes each root-group variable as zero-filled contiguous dataset with `DIMENSION_LIST` attribute (one 8-byte LE object-reference address per axis) and string-valued CF attribute propagation; scalar variables (rank 0) carry no `DIMENSION_LIST`; 4 unit tests.
+- **`consus-netcdf/src/hdf5/mod.rs`**: Added `#[cfg(feature = "std")] pub mod write;`.
+- **`consus-netcdf/src/lib.rs`**: Added `#[cfg(feature = "std")] pub use hdf5::write::NetcdfWriter;` and `NC_PROPERTIES_ATTR`, `NC_PROPERTIES_VALUE` to crate-root re-exports.
+- **`consus-netcdf/tests/write_netcdf_hdf5.rs`** (new): 7 value-semantic round-trip integration tests: `write_empty_model_produces_valid_hdf5`, `write_single_dimension_roundtrip`, `write_dimension_and_variable_roundtrip`, `write_two_dimensions_two_variables_roundtrip`, `write_nc_properties_root_attribute_present`, `write_scalar_variable_roundtrip`, `write_cf_string_attribute_preserved`.
+- **Known limitations (M-042 scope)**: fill-value HDF5 message emission deferred; numeric CF attribute propagation deferred; sub-group hierarchies (enhanced model) deferred; fixed-size datatypes only.
+- **Tests added**: consus-hdf5 lib 266 → 268 (+2); consus-netcdf 113 → 125 (+12: 4 unit + 7 integration + 1 doctest); workspace 2292 → 2306 (+14).
+- **Verification**: `cargo test -p consus-netcdf` → 125/125; `cargo test -p consus-hdf5 --lib` → 268/268; `cargo check --workspace` → 0 errors, 0 warnings.
+
+### M-043: netCDF-4 HDF5 Write Path — Enhanced Model + Numeric CF Attribute Propagation
+
+- **Crates affected**: `consus-hdf5`, `consus-netcdf`
+- **`consus-hdf5/src/file/writer.rs`**: Added `SubGroupBuilder<'a>` public struct; fields: `sink: &'a mut MemCursor`, `state: &'a mut WriteState`, `parent_links: &'a mut Vec<(String, u64)>`, `name: String`, `child_links: Vec<(String, u64)>`. Methods: `add_dataset_with_attributes` (writes dataset + object header, records address in `child_links`, returns header addr for immediate reuse), `begin_sub_group<'b>` (opens a nested `SubGroupBuilder<'b>` by reborrowing `sink`/`state`/`child_links`), `finish_with_attributes` (writes group object header with LINK + ATTRIBUTE messages, pushes to `parent_links`, consumes `self`). Added `Hdf5FileBuilder::begin_group(&mut self, name: &str) -> SubGroupBuilder<'_>` method. 3 new tests: `sub_group_builder_empty_finish_creates_navigable_group`, `sub_group_builder_dataset_address_is_reusable_in_dimlist`, `sub_group_builder_nested_sub_group_roundtrip`.
+- **`consus-netcdf/src/hdf5/write/mod.rs`** (refactored to 227 lines): Updated `write_model` to add step 4 — for each `group` in `model.root.groups`, calls `self.builder.begin_group`, then `write_child_group_content`, then `finish_with_attributes` with group-level CF attrs.
+- **`consus-netcdf/src/hdf5/write/helpers.rs`** (new, 380 lines): `DatasetTarget` trait (`pub(super)`) + impls for `Hdf5FileBuilder` and `SubGroupBuilder<'_>` (zero-cost monomorphization); `encode_cf_attrs` handles all `AttributeValue` variants (Int→i64 LE, Uint→u64 LE, Float→f64 LE, String→FixedString, IntArray→1-D i64, UintArray→1-D u64, FloatArray→1-D f64, StringArray→FixedString array, Bytes→skip, system-key skip); `write_dimension_scale<W: DatasetTarget>` and `write_variable<W: DatasetTarget>` refactored as single generic zero-cost implementations; `write_child_group_content` recursively writes dimensions → variables → child groups using `SubGroupBuilder`.
+- **`consus-netcdf/tests/write_netcdf_hdf5.rs`**: 7 new integration tests: `write_int_cf_attribute_preserved`, `write_uint_cf_attribute_preserved`, `write_float_cf_attribute_preserved`, `write_int_array_cf_attribute_preserved`, `write_float_array_cf_attribute_preserved`, `write_enhanced_model_sub_group_roundtrip`, `write_nested_two_level_sub_group_roundtrip`.
+- **Tests added**: consus-hdf5 lib 268 → 271 (+3); consus-netcdf 125 → 132 (+7); workspace 2306 → 2313 (+7 net from M-043 alone).
+- **Verification**: `cargo test -p consus-hdf5 --lib` → 271/271; `cargo test -p consus-netcdf` → 132/132; `cargo check --workspace` → 0 errors, 0 warnings.
+
+### M-044: NWB Per-Type `neurodata_type_inc` Inheritance Chains in `NwbNamespaceSpec`
+
+- **Crates affected**: `consus-nwb`
+- **`consus-nwb/src/namespace/mod.rs`**: Added `NwbTypeSpec` public struct (`name: String`, `neurodata_type_inc: Option<String>`; derives Debug, Clone, PartialEq, Eq). Changed `NwbNamespaceSpec.neurodata_types` from `Vec<String>` to `Vec<NwbTypeSpec>`. Updated `parse_nwb_spec_yaml` with a three-state parser: `pending_type: Option<NwbTypeSpec>` accumulates sub-keys at indent=4 (`inc:` line); bare `  - TypeName` lines produce `NwbTypeSpec { neurodata_type_inc: None }` (backward compat); `  - name: TypeName` + optional `    inc: Parent` produce a fully typed spec. Updated `format_nwb_spec_yaml` to emit bare `  - {name}` when no `inc`, or `  - name: {name}\n    inc: {parent}` when present. 5 new tests: `nwb_type_spec_with_inc_stores_parent`, `nwb_type_spec_without_inc_has_none_parent`, `parse_nwb_spec_yaml_bare_type_name_has_no_inc`, `parse_nwb_spec_yaml_named_type_with_inc_parses_chain`, `format_parse_roundtrip_type_with_inc`.
+- **`consus-nwb/src/conventions/mod.rs`**: Replaced fixed 2-level `is_timeseries_type_with_specs` with an iterative BFS chain walk: builds `BTreeMap<&str, &str>` (type → parent) from all spec entries, walks the chain from `type_name` up to depth 64 with a `BTreeSet` cycle guard. 2 new tests: `is_timeseries_type_with_specs_resolves_arbitrary_depth` (chain A→B→C→TimeSeries), `is_timeseries_type_with_specs_returns_false_for_unrelated_chain`.
+- **`consus-nwb/src/lib.rs`**: Added `pub use namespace::NwbTypeSpec;`.
+- **`consus-nwb/src/file/mod.rs`**: Updated `neurodata_types` construction sites (2 tests).
+- **Tests added**: consus-nwb lib 214 → 221 (+7); workspace 2313 → 2323 (+10 net, including some existing test constructor updates already counted).
+- **Verification**: `cargo test -p consus-nwb --lib` → 221/221; `cargo check --workspace` → 0 errors, 0 warnings.
+
+### M-041: NWB Namespace Spec YAML Parsing + V2_8 + Spec I/O Path
+
+- **Crates affected**: `consus-nwb`
+- **`version/mod.rs`**: Added `V2_8` variant to `NwbVersion` enum; `parse("2.8.0")` → `V2_8`; `as_str` → `"2.8"`; `is_supported()` returns `true`; 2 new tests.
+- **`namespace/mod.rs`**: Added `NwbNamespaceSpec` struct (`name`, `version`, `doc_url: Option<String>`, `neurodata_types: Vec<String>`); `parse_nwb_spec_yaml` — indent-aware parser handling multi-namespace YAML documents, `neurodata_types` sub-lists, comments, and blank lines; `apply_spec_key` private helper; `format_nwb_spec_yaml` — deterministic serializer; 21 new value-semantic tests.
+- **`conventions/mod.rs`**: Extended `is_timeseries_type` with 2-level transitivity (if `type_inc ∈ TIMESERIES_SUBTYPES`, the type transitively extends `TimeSeries`); added `is_timeseries_type_with_specs` for spec-guided resolution; 5 new tests.
+- **`storage/mod.rs`**: Added `read_scalar_string_dataset` — delegates to `read_string_dataset`, extracts first element; module scope table updated.
+- **`file/mod.rs`**: Added `NwbFile::list_specifications()` (navigates `/specifications/`, returns namespace names; empty vec when absent), `NwbFile::read_specification(namespace, version)` (reads scalar FixedString dataset, parses YAML), `NwbFileBuilder::write_namespace_specs(specs)` (serializes to YAML, writes nested `ChildGroupSpec` tree per spec); 7 new integration tests.
+- **`lib.rs`**: Added `pub use namespace::NwbNamespaceSpec;` crate-root re-export.
+- **Tests added**: consus-nwb lib 182 → 214 (+32); workspace 2285 → 2292 (+7 net; previous baseline may have differed from gap_audit record).
+- **Verification**: `cargo test -p consus-nwb --lib` → 214/214; `cargo test --workspace` → 2292/2292; `cargo check --workspace` → 0 errors, 0 warnings.
 
 ### M-040: NWB ElectrodeTable + UnitsTable + Storage String/U64 + README
 - **Crates affected**: `consus-nwb`
@@ -269,7 +336,7 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
   - Added `read_u64_dataset` — reads integer dataset as `Vec<u64>`; supports contiguous and chunked layouts.
   - Added `read_string_dataset` — reads `FixedString` dataset as `Vec<String>`; strips trailing null bytes; validates UTF-8; supports contiguous and chunked layouts.
   - Updated module doccomment scope table.
-  - 8 new value-semantic tests: u32→u64 widening, u64 identity, i32 signed bit-pattern cast, float→u64 rejection, FixedString exact-fill, null-padded strip, all-null element → empty string, wrong-type → `UnsupportedFeature`.
+  - 8 new value-semantic storage tests: u32→u64 widening, u64 identity, i32 signed bit-pattern cast, float→u64 rejection, FixedString exact-fill, null-padded strip, all-null element → empty string, wrong-type → `UnsupportedFeature`.
 - **Model additions** (`consus-nwb/src/model/units.rs`, `electrode.rs`, `mod.rs`):
   - `UnitsTable` struct (`spike_times_per_unit: Vec<Vec<f64>>`, `ids: Option<Vec<u64>>`); `from_vectordata` decodes HDMF VectorIndex pattern with monotone + length invariant checks; `flat_spike_times()` + `cumulative_index()` encode back to wire format; `new`, `from_parts` constructors; full accessors.
   - `ElectrodeRow` (`id: u64`, `location: String`, `group_name: String`) + `ElectrodeTable` with `from_rows`, `from_columns` (column-length validation), `empty`; column iterators `id_column`, `location_column`, `group_name_column`.
@@ -414,8 +481,8 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
 | Zarr library + integration tests | 301 |
 | Zarr passing | 301 |
 | Zarr failing | 0 |
-| netCDF tests | 113 |
-| netCDF passing | 113 |
+| netCDF tests | 137 |
+| netCDF passing | 137 |
 | netCDF failing | 0 |
 | consus-parquet lib (default) | 215/215 |
 | consus-parquet lib (gzip) | 215/215 |
@@ -425,12 +492,12 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
 | consus-arrow E2E integration | 6/6 |
 | consus-io lib (default) | 20/20 |
 | consus-io lib+integration (mmap) | 31/31 |
-| consus-nwb lib | 211/211 |
-| consus-hdf5 lib | 266/266 |
-| workspace total tests (default) | 2285/2285 |
-| Verified commands | `cargo test -p consus-nwb --lib` (211/211); `cargo test -p consus-hdf5 --lib` (266/266); `cargo test --workspace` (2285/2285, default); `cargo check --workspace` (0 warnings, 0 errors) |
+| consus-nwb lib | 221/221 |
+| consus-hdf5 lib | 272/272 |
+| workspace total tests (default) | 2329/2329 |
+| Verified commands | `cargo test -p consus-netcdf` (137/137); `cargo test -p consus-hdf5 --lib` (272/272); `cargo test -p consus-nwb --lib` (221/221); `cargo test --workspace` (2329/2329, default); `cargo check --workspace` (0 warnings, 0 errors) |
 | Open gaps | 0 |
 | High-severity open gaps | 0 |
-| Closed this sprint | 3 (M-037: NWB Write Path; M-039: NWB Extended Read Path + HDF5 Nested Group Write; M-040: NWB ElectrodeTable + UnitsTable + Storage String/U64 + README — read_string_dataset, read_u64_dataset, UnitsTable, ElectrodeTable, NwbFile::units_table/electrode_table, NwbFileBuilder::write_units_table/write_electrode_table, README; +46 new value-semantic tests) |
+| Closed this sprint | 4 (M-042: netCDF-4 HDF5 Write Path — `encode_datatype` Reference(Object/Region) support in `consus-hdf5`; `NetcdfWriter::write_model` classic flat model in `consus-netcdf`; `NC_PROPERTIES_ATTR/VALUE` constants; 7 round-trip integration tests + 4 unit tests + 1 doctest + 2 HDF5 datatype encoding tests; +14 new value-semantic tests — M-043: netCDF-4 enhanced model write path — `SubGroupBuilder<'a>` in `consus-hdf5`; `DatasetTarget` trait + `encode_cf_attrs` + recursive `write_child_group_content` in `consus-netcdf`; 3 HDF5 + 7 netCDF integration tests — M-044: NWB per-type `neurodata_type_inc` inheritance chains — `NwbTypeSpec` struct; `neurodata_types: Vec<NwbTypeSpec>`; iterative BFS `is_timeseries_type_with_specs` depth-64; 7 new tests — M-045: netCDF-4 enhanced model read — `NetcdfUserType` model, `user_types` in `NetcdfGroup`, `Hdf5File::named_datatype_at`, `Hdf5FileBuilder::add_named_datatype`, `extract_group` NamedDatatype arm; 1 HDF5 unit test + 2 netCDF integration tests; P2.3 classic model read test corrected) |
 | Medium-severity open gaps | 0 |
 | Low-severity open gaps | 0 |

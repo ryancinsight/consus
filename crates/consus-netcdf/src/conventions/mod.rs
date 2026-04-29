@@ -16,6 +16,17 @@
 //! - Validation is structural: it checks naming and compatibility rules,
 //!   not full semantic interpretation of physical units or CF tables.
 
+/// Root-group attribute name written by netCDF-4 writers to identify the file
+/// as netCDF-4 and record the library version.
+///
+/// Reference: NUG (NetCDF Users' Guide) §2.6 "NetCDF-4 File Format".
+pub const NC_PROPERTIES_ATTR: &str = "_nc_properties";
+
+/// Canonical value written to `_nc_properties` by this implementation.
+///
+/// Format: `"version=2,netcdf=<version>"` per the NUG §2.6 specification.
+pub const NC_PROPERTIES_VALUE: &str = "version=2,netcdf=4.x.x";
+
 /// HDF5 attribute name marking a dataset as a netCDF-4 dimension scale.
 pub const DIMENSION_SCALE_CLASS: &str = "CLASS";
 

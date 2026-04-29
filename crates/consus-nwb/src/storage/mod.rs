@@ -12,8 +12,9 @@
 //! | [`read_f64_attr`]         | attribute list + name       | `f64`          |
 //! | [`read_f64_dataset`]      | `Hdf5File` + object address | `Vec<f64>`     |
 //! | [`read_scalar_f64_dataset`]| `Hdf5File` + object address | `f64`         |
-//! | [`read_string_dataset`]     | `Hdf5File` + object address | `Vec<String>`  |
-//! | [`read_u64_dataset`]        | `Hdf5File` + object address | `Vec<u64>`     |
+//! | [`read_string_dataset`]        | `Hdf5File` + object address | `Vec<String>`  |
+//! | [`read_scalar_string_dataset`] | `Hdf5File` + object address | `String`       |
+//! | [`read_u64_dataset`]           | `Hdf5File` + object address | `Vec<u64>`     |
 //!
 //! All helpers propagate [`consus_core::Error`] variants directly; no
 //! intermediate error type is introduced.
@@ -376,6 +377,34 @@ pub fn read_string_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> R
     }
 
     Ok(strings)
+}
+
+/// Read a scalar fixed-string dataset as a single `String`.
+///
+/// A thin wrapper over [`read_string_dataset`] for the common NWB pattern of
+/// storing a single YAML or plain-text string as a scalar (rank-0)
+/// `FixedString` dataset.  The dataset must contain exactly one element
+/// (scalar shape has `num_elements() == 1` per the empty-product convention).
+///
+/// ## Errors
+///
+/// - Propagates all errors from [`read_string_dataset`].
+/// - [`Error::InvalidFormat`] when the dataset contains no elements
+///   (length == 0 `FixedString` type).
+#[cfg(feature = "alloc")]
+pub fn read_scalar_string_dataset<R: ReadAt + Sync>(
+    file: &Hdf5File<R>,
+    addr: u64,
+) -> Result<String> {
+    let strings = read_string_dataset(file, addr)?;
+    strings
+        .into_iter()
+        .next()
+        .ok_or_else(|| Error::InvalidFormat {
+            message: String::from(
+                "NWB: scalar string dataset contains no elements (length-0 FixedString)",
+            ),
+        })
 }
 
 /// Interpret raw bytes as `Vec<u64>` according to `dtype`.

@@ -510,6 +510,21 @@ pub fn encode_datatype(dt: &Datatype) -> Result<Vec<u8>> {
             LittleEndian::write_u32(&mut buf[4..8], *length as u32);
             Ok(buf)
         }
+        Datatype::Reference(ref_type) => {
+            // HDF5 reference datatype: class=7, version=1.
+            // Byte 0: (version=1 << 4) | class=7 = 0x17
+            // Byte 1: 0 = object reference, 1 = region reference
+            // Bytes 2–3: reserved (0)
+            // Bytes 4–7: size in bytes = 8 (all HDF5 object/region references are 8 bytes)
+            let mut buf = vec![0u8; 8];
+            buf[0] = 0x17; // class=7 (Reference), version=1
+            buf[1] = match ref_type {
+                consus_core::ReferenceType::Object => 0x00,
+                consus_core::ReferenceType::Region => 0x01,
+            };
+            LittleEndian::write_u32(&mut buf[4..8], 8);
+            Ok(buf)
+        }
         _ => Err(Error::UnsupportedFeature {
             feature: alloc::format!("write-path encoding for datatype {dt:?} not yet supported"),
         }),
@@ -1700,6 +1715,30 @@ impl Hdf5FileBuilder {
         Ok(header_addr)
     }
 
+    /// Add a named datatype to the root group.
+    ///
+    /// Emits an object header containing only a Datatype message (no Dataspace,
+    /// no Layout). The object is linked from the root group under `name`.
+    /// Returns the object header address.
+    ///
+    /// ## HDF5 specification
+    ///
+    /// HDF5 spec §IV.A.2.3: a committed datatype object header carries a
+    /// single Datatype message (0x0003) without Dataspace or Data Layout.
+    /// `classify_object` returns `NodeType::NamedDatatype` for such headers.
+    ///
+    /// ## Errors
+    ///
+    /// - [`Error::InvalidFormat`] or [`Error::UnsupportedFeature`] if the
+    ///   datatype cannot be encoded.
+    pub fn add_named_datatype(&mut self, name: &str, datatype: &Datatype) -> Result<u64> {
+        let dt_bytes = encode_datatype(datatype)?;
+        let msgs: &[(u16, &[u8])] = &[(message_types::DATATYPE, &dt_bytes)];
+        let header_addr = write_object_header_v2(&mut self.sink, &mut self.state, msgs)?;
+        self.root_links.push((String::from(name), header_addr));
+        Ok(header_addr)
+    }
+
     /// Add an attribute to the root group.
     ///
     /// ## Errors
@@ -1807,6 +1846,145 @@ impl Hdf5FileBuilder {
         )?;
         self.root_links.push((String::from(group_name), group_addr));
         Ok(group_addr)
+    }
+
+    /// Open an incremental write context for a named group linked from the root.
+    ///
+    /// Datasets can be written one at a time, and the returned address from each
+    /// write is immediately available for constructing attributes on subsequent
+    /// datasets (e.g. `DIMENSION_LIST` referencing dimension-scale addresses).
+    ///
+    /// The group must be finished with
+    /// [`SubGroupBuilder::finish_with_attributes`] before [`finish`][Self::finish]
+    /// is called.
+    pub fn begin_group(&mut self, name: &str) -> SubGroupBuilder<'_> {
+        SubGroupBuilder {
+            sink: &mut self.sink,
+            state: &mut self.state,
+            parent_links: &mut self.root_links,
+            name: String::from(name),
+            child_links: Vec::new(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Incremental group write context
+// ---------------------------------------------------------------------------
+
+/// An incremental write context for a named HDF5 group.
+///
+/// Obtained from [`Hdf5FileBuilder::begin_group`] or
+/// [`SubGroupBuilder::begin_sub_group`].  Datasets are written one at a time
+/// via [`add_dataset_with_attributes`][Self::add_dataset_with_attributes]; the
+/// returned address is available immediately for use in subsequent attributes
+/// (e.g. `DIMENSION_LIST`).  Nested sub-groups are opened with
+/// [`begin_sub_group`][Self::begin_sub_group] and must be finished before
+/// the parent is used again.
+///
+/// ## Invariants
+///
+/// - Datasets within this group are written in the order `add_dataset_with_attributes`
+///   is called.
+/// - `finish_with_attributes` must be called exactly once; it consumes `self`,
+///   writes the group object header, and registers the group link in the parent.
+/// - Nested `SubGroupBuilder` values borrow the parent exclusively (standard
+///   Rust exclusion) and must be finished before the parent can be used.
+#[cfg(feature = "alloc")]
+pub struct SubGroupBuilder<'a> {
+    sink: &'a mut consus_io::MemCursor,
+    state: &'a mut WriteState,
+    /// Link destination table in the parent (root_links or parent child_links).
+    parent_links: &'a mut Vec<(String, u64)>,
+    name: String,
+    child_links: Vec<(String, u64)>,
+}
+
+#[cfg(feature = "alloc")]
+impl<'a> SubGroupBuilder<'a> {
+    /// Write a contiguous dataset with attached attributes into this group.
+    ///
+    /// The dataset is written immediately (data block + object header).
+    /// Returns the object-header address, which can be used in subsequent
+    /// `DIMENSION_LIST` attribute bytes for other datasets in the same group.
+    pub fn add_dataset_with_attributes(
+        &mut self,
+        name: &str,
+        dt: &Datatype,
+        shape: &Shape,
+        raw_data: &[u8],
+        dcpl: &DatasetCreationProps,
+        attributes: &[(&str, &Datatype, &Shape, &[u8])],
+    ) -> Result<u64> {
+        let data_addr = write_contiguous_data(&mut *self.sink, &mut *self.state, raw_data)?;
+
+        let dt_bytes = encode_datatype(dt)?;
+        let ds_bytes = encode_dataspace(shape)?;
+        let layout_bytes = encode_layout(data_addr, dcpl, &self.state.ctx)?;
+
+        let mut msgs: Vec<(u16, Vec<u8>)> = vec![
+            (message_types::DATATYPE, dt_bytes),
+            (message_types::DATASPACE, ds_bytes),
+            (message_types::DATA_LAYOUT, layout_bytes),
+        ];
+
+        for (attr_name, attr_dt, attr_shape, attr_data) in attributes {
+            msgs.push((
+                message_types::ATTRIBUTE,
+                encode_attribute(attr_name, attr_dt, attr_shape, attr_data)?,
+            ));
+        }
+
+        let msg_refs: Vec<(u16, &[u8])> = msgs.iter().map(|(t, d)| (*t, d.as_slice())).collect();
+        let header_addr = write_object_header_v2(&mut *self.sink, &mut *self.state, &msg_refs)?;
+        self.child_links.push((String::from(name), header_addr));
+        Ok(header_addr)
+    }
+
+    /// Open a nested sub-group write context within this group.
+    ///
+    /// The returned `SubGroupBuilder` borrows `self` exclusively.  It must be
+    /// finished with [`finish_with_attributes`][SubGroupBuilder::finish_with_attributes]
+    /// before `self` can be used again.
+    pub fn begin_sub_group<'b>(&'b mut self, name: &str) -> SubGroupBuilder<'b> {
+        SubGroupBuilder {
+            sink: &mut *self.sink,
+            state: &mut *self.state,
+            parent_links: &mut self.child_links,
+            name: String::from(name),
+            child_links: Vec::new(),
+        }
+    }
+
+    /// Finalise this group: write its object header (links + attributes) and
+    /// register it as a child of the parent group.
+    ///
+    /// Consumes `self`.  After this call the parent group context is usable again.
+    pub fn finish_with_attributes(
+        self,
+        group_attrs: &[(&str, &Datatype, &Shape, &[u8])],
+    ) -> Result<()> {
+        let ctx = self.state.ctx;
+        let mut msgs: Vec<(u16, Vec<u8>)> = Vec::new();
+
+        for (child_name, child_addr) in &self.child_links {
+            msgs.push((
+                message_types::LINK,
+                encode_hard_link(child_name, *child_addr, &ctx)?,
+            ));
+        }
+
+        for (attr_name, attr_dt, attr_shape, attr_data) in group_attrs {
+            msgs.push((
+                message_types::ATTRIBUTE,
+                encode_attribute(attr_name, attr_dt, attr_shape, attr_data)?,
+            ));
+        }
+
+        let msg_refs: Vec<(u16, &[u8])> = msgs.iter().map(|(t, d)| (*t, d.as_slice())).collect();
+        let group_addr = write_object_header_v2(&mut *self.sink, &mut *self.state, &msg_refs)?;
+        self.parent_links.push((self.name, group_addr));
+        Ok(())
     }
 }
 
@@ -2044,6 +2222,73 @@ mod tests {
         assert_eq!(&bytes[3..14], b"temperature");
         // Address at offset 14
         assert_eq!(LittleEndian::read_u64(&bytes[14..22]), 0x200);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn encode_reference_datatype_object_reference() {
+        use consus_core::{Datatype, ReferenceType};
+        let bytes = encode_datatype(&Datatype::Reference(ReferenceType::Object))
+            .expect("encode_datatype(Reference(Object)) must succeed");
+        assert_eq!(bytes.len(), 8, "reference datatype message must be 8 bytes");
+        assert_eq!(
+            bytes[0], 0x17,
+            "byte[0]: class=7 (Reference), version=1 => 0x17"
+        );
+        assert_eq!(
+            bytes[1], 0x00,
+            "byte[1]: object reference discriminant must be 0"
+        );
+        assert_eq!(bytes[2], 0x00, "byte[2]: reserved must be 0");
+        assert_eq!(bytes[3], 0x00, "byte[3]: reserved must be 0");
+        let size = LittleEndian::read_u32(&bytes[4..8]);
+        assert_eq!(size, 8, "reference element size must be 8 bytes");
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn encode_reference_datatype_region_reference() {
+        use consus_core::{Datatype, ReferenceType};
+        let bytes = encode_datatype(&Datatype::Reference(ReferenceType::Region))
+            .expect("encode_datatype(Reference(Region)) must succeed");
+        assert_eq!(bytes.len(), 8, "reference datatype message must be 8 bytes");
+        assert_eq!(
+            bytes[0], 0x17,
+            "byte[0]: class=7 (Reference), version=1 => 0x17"
+        );
+        assert_eq!(
+            bytes[1], 0x01,
+            "byte[1]: region reference discriminant must be 1"
+        );
+        let size = LittleEndian::read_u32(&bytes[4..8]);
+        assert_eq!(size, 8, "reference element size must be 8 bytes");
+    }
+
+    /// `add_named_datatype` writes an object that `node_type_at` classifies as
+    /// `NodeType::NamedDatatype` and that `named_datatype_at` decodes back to
+    /// the original canonical type.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn add_named_datatype_creates_readable_named_type() {
+        use consus_core::{ByteOrder, Datatype, NodeType};
+        use core::num::NonZeroUsize;
+
+        let expected = Datatype::Float {
+            bits: NonZeroUsize::new(64).unwrap(),
+            byte_order: ByteOrder::LittleEndian,
+        };
+        let mut b = Hdf5FileBuilder::new(FileCreationProps::default());
+        let addr = b.add_named_datatype("my_type", &expected).expect("write");
+        let bytes = b.finish().expect("finish");
+
+        let file = Hdf5File::open(consus_io::SliceReader::new(&bytes)).expect("open");
+        assert_eq!(
+            file.node_type_at(addr).expect("node_type_at"),
+            NodeType::NamedDatatype,
+            "object must be classified as NamedDatatype"
+        );
+        let got = file.named_datatype_at(addr).expect("named_datatype_at");
+        assert_eq!(got, expected, "decoded datatype must match original");
     }
 
     #[cfg(feature = "alloc")]
@@ -2286,5 +2531,182 @@ mod tests {
             LittleEndian::read_u16(&bytes[addr as usize + 6..addr as usize + 8]),
             1
         );
+    }
+
+    /// `begin_group` + `finish_with_attributes(&[])` + `finish()` produces
+    /// an HDF5 file where the group is navigable and classified as
+    /// `NodeType::Group`.
+    ///
+    /// ## Invariant
+    ///
+    /// An empty group written via `SubGroupBuilder` has a valid object header
+    /// that the reader classifies as a `NodeType::Group`.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn sub_group_builder_empty_finish_creates_navigable_group() {
+        use consus_core::NodeType;
+
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let grp = builder.begin_group("empty_grp");
+        grp.finish_with_attributes(&[]).unwrap();
+        let bytes = builder.finish().unwrap();
+
+        let file = Hdf5File::open(consus_io::MemCursor::from_bytes(bytes)).expect("open hdf5 file");
+        let addr = file.open_path("empty_grp").expect("navigate to empty_grp");
+        assert_ne!(addr, 0, "empty_grp address must be non-zero");
+
+        let node_type = file
+            .node_type_at(addr)
+            .expect("node_type_at must succeed for empty_grp");
+        assert_eq!(
+            node_type,
+            NodeType::Group,
+            "empty_grp must be classified as NodeType::Group"
+        );
+    }
+
+    /// `add_dataset_with_attributes` returns the dataset's object-header
+    /// address, which can be embedded verbatim in a subsequent
+    /// `DIMENSION_LIST` attribute byte payload and round-trips correctly.
+    ///
+    /// ## Invariant
+    ///
+    /// The `dim_addr` returned by the first `add_dataset_with_attributes` call
+    /// equals the u64 LE value read from the `DIMENSION_LIST` attribute bytes
+    /// on the variable dataset.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn sub_group_builder_dataset_address_is_reusable_in_dimlist() {
+        use consus_core::{ByteOrder as CoreByteOrder, Datatype, ReferenceType, Shape};
+
+        let u32_dt = Datatype::Integer {
+            bits: NonZeroUsize::new(32).unwrap(),
+            byte_order: CoreByteOrder::LittleEndian,
+            signed: false,
+        };
+        let f32_dt = Datatype::Float {
+            bits: NonZeroUsize::new(32).unwrap(),
+            byte_order: CoreByteOrder::LittleEndian,
+        };
+        let dim_raw: Vec<u8> = [0u32, 1, 2, 3]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect();
+        let var_raw = vec![0u8; 4 * 4]; // 4 × f32
+
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let mut grp = builder.begin_group("grp");
+
+        // Write dimension dataset; capture its object-header address.
+        let dim_addr = grp
+            .add_dataset_with_attributes(
+                "x",
+                &u32_dt,
+                &Shape::fixed(&[4]),
+                &dim_raw,
+                &DatasetCreationProps::default(),
+                &[],
+            )
+            .expect("write dim dataset");
+
+        // Build DIMENSION_LIST attribute using dim_addr.
+        let ref_dt = Datatype::Reference(ReferenceType::Object);
+        let ref_shape = Shape::fixed(&[1]);
+        let ref_data = dim_addr.to_le_bytes().to_vec();
+
+        // Write variable dataset with DIMENSION_LIST pointing to dim_addr.
+        grp.add_dataset_with_attributes(
+            "var",
+            &f32_dt,
+            &Shape::fixed(&[4]),
+            &var_raw,
+            &DatasetCreationProps::default(),
+            &[("DIMENSION_LIST", &ref_dt, &ref_shape, &ref_data)],
+        )
+        .expect("write variable dataset");
+
+        grp.finish_with_attributes(&[]).unwrap();
+        let bytes = builder.finish().unwrap();
+
+        let file = Hdf5File::open(consus_io::MemCursor::from_bytes(bytes)).expect("open hdf5 file");
+        let var_addr = file.open_path("grp/var").expect("navigate to grp/var");
+
+        let attrs = file
+            .attributes_at(var_addr)
+            .expect("read attributes at grp/var");
+        let dim_list_attr = attrs
+            .iter()
+            .find(|a| a.name == "DIMENSION_LIST")
+            .expect("DIMENSION_LIST attribute must be present");
+
+        assert!(
+            dim_list_attr.raw_data.len() >= 8,
+            "DIMENSION_LIST raw_data must be at least 8 bytes"
+        );
+        let decoded_addr = u64::from_le_bytes(dim_list_attr.raw_data[0..8].try_into().unwrap());
+        assert_eq!(
+            decoded_addr, dim_addr,
+            "DIMENSION_LIST bytes must decode back to dim_addr={dim_addr:#x}"
+        );
+    }
+
+    /// `begin_sub_group` creates a nested group under the parent, and datasets
+    /// inside the nested group are navigable after `finish`.
+    ///
+    /// ## Invariant
+    ///
+    /// Navigating `outer/inner/ds` reaches a readable dataset whose raw bytes
+    /// match the written content.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn sub_group_builder_nested_sub_group_roundtrip() {
+        use consus_core::{ByteOrder as CoreByteOrder, Datatype, Shape};
+
+        let u32_dt = Datatype::Integer {
+            bits: NonZeroUsize::new(32).unwrap(),
+            byte_order: CoreByteOrder::LittleEndian,
+            signed: false,
+        };
+        let raw: Vec<u8> = [7u32, 42, 99]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect();
+
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let mut outer = builder.begin_group("outer");
+        {
+            let mut inner = outer.begin_sub_group("inner");
+            inner
+                .add_dataset_with_attributes(
+                    "ds",
+                    &u32_dt,
+                    &Shape::fixed(&[3]),
+                    &raw,
+                    &DatasetCreationProps::default(),
+                    &[],
+                )
+                .expect("write ds in inner");
+            inner.finish_with_attributes(&[]).unwrap();
+        }
+        outer.finish_with_attributes(&[]).unwrap();
+        let bytes = builder.finish().unwrap();
+
+        let file = Hdf5File::open(consus_io::MemCursor::from_bytes(bytes)).expect("open hdf5 file");
+        let ds_addr = file
+            .open_path("outer/inner/ds")
+            .expect("navigate to outer/inner/ds");
+        assert_ne!(ds_addr, 0, "ds address must be non-zero");
+
+        let dataset = file.dataset_at(ds_addr).expect("read dataset metadata");
+        let data_addr = dataset
+            .data_address
+            .expect("contiguous dataset must have a data_address");
+
+        let mut buf = [0u8; 12]; // 3 × u32
+        file.read_contiguous_dataset_bytes(data_addr, 0, &mut buf)
+            .expect("read ds bytes");
+        assert_eq!(LittleEndian::read_u32(&buf[0..4]), 7, "ds[0] must be 7");
+        assert_eq!(LittleEndian::read_u32(&buf[4..8]), 42, "ds[1] must be 42");
+        assert_eq!(LittleEndian::read_u32(&buf[8..12]), 99, "ds[2] must be 99");
     }
 }

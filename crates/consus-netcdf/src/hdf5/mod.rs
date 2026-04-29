@@ -27,10 +27,12 @@ pub mod dimension_scale;
 pub mod group;
 #[cfg(feature = "alloc")]
 pub mod variable;
+#[cfg(feature = "std")]
+pub mod write;
 
 #[cfg(feature = "alloc")]
 pub use dimension_scale::is_dimension_scale;
 #[cfg(feature = "std")]
-pub use group::extract_group;
+pub use group::{extract_group, read_model};
 #[cfg(feature = "std")]
 pub use variable::read_variable_bytes;

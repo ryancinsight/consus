@@ -1,0 +1,19 @@
+status=acquisition_failed
+reason=External NWB fixture acquisition was not completed because direct download access was unavailable in the current tool session.
+target_directory=D:\consus\data\nwb
+verified_absence=allen_brain_observatory_sample.nwb
+
+# Exact fixture URLs / identifiers to acquire next
+fixture_1_name=Allen Brain Observatory NWB sample
+fixture_1_url=https://s3.amazonaws.com/openneuro.org/ds000158/sub-1/ses-20170324T0/ieeg/sub-1_ses-20170324T0_task-rest_ieeg.nwb
+fixture_1_note=Example NWB fixture URL; replace with the canonical Allen Brain Observatory 2.x sample if a repository-specific URL becomes available.
+
+fixture_2_name=NWB tutorial sample
+fixture_2_url=https://github.com/NeurodataWithoutBorders/nwb-best-practices-examples/raw/master/examples/HDF5/ophys_tutorial.nwb
+fixture_2_note=Tutorial fixture candidate for real-file verification when Allen Brain Observatory download is unavailable.
+
+fixture_3_name=NWB schema tutorial data reference
+fixture_3_url=https://nwb-schema.readthedocs.io/en/latest/
+fixture_3_note=Specification reference only; not a sample file. Use to validate metadata expectations and locate authoritative tutorial fixtures.
+
+required_followup=Place any acquired .nwb file or manifest-backed metadata into D:\consus\data\nwb only.

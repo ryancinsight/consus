@@ -48,27 +48,30 @@ pub mod hdf5;
 pub mod model;
 pub mod variable;
 
-#[cfg(feature = "std")]
-pub use hdf5::extract_group;
 #[cfg(feature = "alloc")]
 pub use hdf5::is_dimension_scale;
 #[cfg(feature = "std")]
 pub use hdf5::variable::read_variable_bytes;
+#[cfg(feature = "std")]
+pub use hdf5::write::NetcdfWriter;
+#[cfg(feature = "std")]
+pub use hdf5::{extract_group, read_model};
 
 pub use conventions::{
     ADD_OFFSET_ATTR, ANCILLARY_VARIABLES_ATTR, AXIS_ATTR, BOUNDS_ATTR, CALENDAR_ATTR,
     CELL_METHODS_ATTR, COMPRESS_ATTR, CONVENTIONS_ATTR, COORDINATES_ATTR, DIMENSION_SCALE_CLASS,
     DIMENSION_SCALE_VALUE, FILL_VALUE_ATTR, FLAG_MASKS_ATTR, FLAG_MEANINGS_ATTR, FLAG_VALUES_ATTR,
-    FORMULA_TERMS_ATTR, GRID_MAPPING_ATTR, LONG_NAME_ATTR, MISSING_VALUE_ATTR,
-    NETCDF_CONVENTIONS_VALUE, POSITIVE_ATTR, ROOT_GROUP_NAME, SCALE_FACTOR_ATTR,
-    STANDARD_NAME_ATTR, UNITS_ATTR, VALID_MAX_ATTR, VALID_MIN_ATTR, VALID_RANGE_ATTR,
-    is_cf_attribute_name, is_dimension_scale_marker, is_recognized_convention, is_valid_name,
-    root_group_name,
+    FORMULA_TERMS_ATTR, GRID_MAPPING_ATTR, LONG_NAME_ATTR, MISSING_VALUE_ATTR, NC_PROPERTIES_ATTR,
+    NC_PROPERTIES_VALUE, NETCDF_CONVENTIONS_VALUE, POSITIVE_ATTR, ROOT_GROUP_NAME,
+    SCALE_FACTOR_ATTR, STANDARD_NAME_ATTR, UNITS_ATTR, VALID_MAX_ATTR, VALID_MIN_ATTR,
+    VALID_RANGE_ATTR, is_cf_attribute_name, is_dimension_scale_marker, is_recognized_convention,
+    is_valid_name, root_group_name,
 };
 
 pub use dimension::NetcdfDimension;
 pub use model::{
     Hdf5DimensionMapping, Hdf5GroupMapping, Hdf5VariableMapping, NetcdfGroup, NetcdfModel,
+    NetcdfUserType,
 };
 pub use variable::NetcdfVariable;
 

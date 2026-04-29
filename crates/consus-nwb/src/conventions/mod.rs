@@ -15,6 +15,7 @@
 //! - Its `neurodata_type_def` is `"TimeSeries"`.
 //! - Its `neurodata_type_inc` is `"TimeSeries"` (direct single-level inheritance).
 //! - Its `neurodata_type_def` is in `TIMESERIES_SUBTYPES`.
+//! - Its `neurodata_type_inc` is in `TIMESERIES_SUBTYPES` (two-level transitivity).
 
 #[cfg(feature = "alloc")]
 use alloc::string::String;
@@ -160,18 +161,22 @@ pub fn classify_neurodata_type(type_def: &str) -> NeuroDataType {
 
 /// Returns `true` when the neurodata type is a TimeSeries or a known subtype.
 ///
-/// Three conditions independently satisfy membership:
+/// Four conditions independently satisfy membership:
 ///
 /// 1. `type_def == "TimeSeries"` — the group is the base type itself.
 /// 2. `type_inc == Some("TimeSeries")` — single-level inheritance declaration.
 /// 3. `type_def` is in [`TIMESERIES_SUBTYPES`] — known direct subtypes per
 ///    the NWB 2.x core specification.
+/// 4. `type_inc` is in [`TIMESERIES_SUBTYPES`] — two-level transitivity: the
+///    type extends a known TimeSeries subtype (depth-2 inheritance chain).
+///    Example: `CustomType → ElectricalSeries → TimeSeries`.
 ///
 /// ## Note on inheritance depth
 ///
-/// This function performs a single-level inheritance check only. Multi-level
-/// inheritance chains (subtypes of subtypes) are not resolved; they would
-/// require namespace YAML parsing which is a future roadmap item.
+/// This function resolves up to two levels of inheritance. Chains deeper than
+/// two levels require spec-guided resolution via
+/// [`is_timeseries_type_with_specs`], which consults parsed namespace
+/// specifications to attempt one additional resolution step.
 pub fn is_timeseries_type(type_def: &str, type_inc: Option<&str>) -> bool {
     if type_def == "TimeSeries" {
         return true;
@@ -179,7 +184,75 @@ pub fn is_timeseries_type(type_def: &str, type_inc: Option<&str>) -> bool {
     if type_inc == Some("TimeSeries") {
         return true;
     }
-    TIMESERIES_SUBTYPES.contains(&type_def)
+    if TIMESERIES_SUBTYPES.contains(&type_def) {
+        return true;
+    }
+    // Two-level transitivity: if `type_inc` is itself a known TimeSeries subtype,
+    // then this type transitively extends `TimeSeries` (depth-2 inheritance chain).
+    // Example: CustomType → ElectricalSeries → TimeSeries.
+    if let Some(inc) = type_inc {
+        if TIMESERIES_SUBTYPES.contains(&inc) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Resolve `TimeSeries` membership using parsed namespace specifications.
+///
+/// Builds a parent-lookup map from all [`NwbTypeSpec`] entries across all
+/// provided specs, then walks the `neurodata_type_inc` chain starting from
+/// `type_name`. Returns `true` when any node in the chain satisfies
+/// [`is_timeseries_type`].
+///
+/// ## Chain walk
+///
+/// 1. If `is_timeseries_type(current, None)` → `true`.
+/// 2. Look up the declared `neurodata_type_inc` for `current` in the spec map.
+///    If absent → `false`.
+/// 3. Advance `current` to the parent and repeat.
+/// 4. Cycle guard: if `current` was already visited, return `false`.
+/// 5. Depth guard: after 64 steps without resolution, return `false`.
+///    This bounds iteration on malformed or pathologically deep specs.
+///
+/// [`NwbTypeSpec`]: crate::namespace::NwbTypeSpec
+/// [`NwbNamespaceSpec`]: crate::namespace::NwbNamespaceSpec
+#[cfg(feature = "alloc")]
+pub fn is_timeseries_type_with_specs(
+    type_name: &str,
+    specs: &[crate::namespace::NwbNamespaceSpec],
+) -> bool {
+    use alloc::collections::BTreeMap;
+    use alloc::collections::BTreeSet;
+
+    // Build parent lookup: declared type name → neurodata_type_inc.
+    let mut parent_map: BTreeMap<&str, &str> = BTreeMap::new();
+    for spec in specs {
+        for type_spec in &spec.neurodata_types {
+            if let Some(ref inc) = type_spec.neurodata_type_inc {
+                parent_map.insert(type_spec.name.as_str(), inc.as_str());
+            }
+        }
+    }
+
+    let mut current = type_name;
+    let mut visited: BTreeSet<&str> = BTreeSet::new();
+
+    for _ in 0..64_usize {
+        if is_timeseries_type(current, None) {
+            return true;
+        }
+        if !visited.insert(current) {
+            // Cycle detected.
+            return false;
+        }
+        match parent_map.get(current) {
+            Some(&parent) => current = parent,
+            None => return false,
+        }
+    }
+
+    false
 }
 
 // ---------------------------------------------------------------------------
@@ -391,6 +464,104 @@ mod tests {
     #[test]
     fn is_timeseries_type_true_for_decompositionseries() {
         assert!(is_timeseries_type("DecompositionSeries", None));
+    }
+
+    #[test]
+    fn is_timeseries_type_true_via_two_level_transitivity() {
+        // Depth-2: CustomType has type_inc = "ElectricalSeries", which is in TIMESERIES_SUBTYPES.
+        assert!(is_timeseries_type("CustomType", Some("ElectricalSeries")));
+    }
+
+    #[test]
+    fn is_timeseries_type_false_for_unknown_type_with_non_timeseries_inc() {
+        // type_inc is "Units" which is not a TimeSeries or known subtype.
+        assert!(!is_timeseries_type("CustomType", Some("Units")));
+    }
+
+    #[test]
+    fn is_timeseries_type_with_specs_returns_true_when_flat_check_passes() {
+        let specs: &[crate::namespace::NwbNamespaceSpec] = &[];
+        assert!(is_timeseries_type_with_specs("TimeSeries", specs));
+    }
+
+    #[test]
+    fn is_timeseries_type_with_specs_returns_true_via_spec_declared_type() {
+        let spec = crate::namespace::NwbNamespaceSpec {
+            name: alloc::string::String::from("core"),
+            version: alloc::string::String::from("2.8.0"),
+            doc_url: None,
+            neurodata_types: vec![crate::namespace::NwbTypeSpec {
+                name: alloc::string::String::from("CustomType"),
+                neurodata_type_inc: Some(alloc::string::String::from("ElectricalSeries")),
+            }],
+        };
+        // CustomType has neurodata_type_inc = "ElectricalSeries" which is a TimeSeries subtype.
+        assert!(is_timeseries_type_with_specs("CustomType", &[spec]));
+    }
+
+    #[test]
+    fn is_timeseries_type_with_specs_returns_false_for_non_timeseries_inc() {
+        let spec = crate::namespace::NwbNamespaceSpec {
+            name: alloc::string::String::from("core"),
+            version: alloc::string::String::from("2.8.0"),
+            doc_url: None,
+            neurodata_types: vec![crate::namespace::NwbTypeSpec {
+                name: alloc::string::String::from("CustomType"),
+                neurodata_type_inc: Some(alloc::string::String::from("Units")),
+            }],
+        };
+        // "Units" is not a TimeSeries type; chain terminates without resolution.
+        assert!(!is_timeseries_type_with_specs("CustomType", &[spec]));
+    }
+
+    #[test]
+    fn is_timeseries_type_with_specs_resolves_arbitrary_depth() {
+        // Chain: A → B → C → TimeSeries (depth 4 from A).
+        let spec = crate::namespace::NwbNamespaceSpec {
+            name: alloc::string::String::from("custom"),
+            version: alloc::string::String::from("1.0.0"),
+            doc_url: None,
+            neurodata_types: vec![
+                crate::namespace::NwbTypeSpec {
+                    name: alloc::string::String::from("A"),
+                    neurodata_type_inc: Some(alloc::string::String::from("B")),
+                },
+                crate::namespace::NwbTypeSpec {
+                    name: alloc::string::String::from("B"),
+                    neurodata_type_inc: Some(alloc::string::String::from("C")),
+                },
+                crate::namespace::NwbTypeSpec {
+                    name: alloc::string::String::from("C"),
+                    neurodata_type_inc: Some(alloc::string::String::from("TimeSeries")),
+                },
+            ],
+        };
+        assert!(is_timeseries_type_with_specs("A", &[spec]));
+    }
+
+    #[test]
+    fn is_timeseries_type_with_specs_returns_false_for_unrelated_chain() {
+        // Chain: A → B → C (C has no parent and is not a TimeSeries).
+        let spec = crate::namespace::NwbNamespaceSpec {
+            name: alloc::string::String::from("custom"),
+            version: alloc::string::String::from("1.0.0"),
+            doc_url: None,
+            neurodata_types: vec![
+                crate::namespace::NwbTypeSpec {
+                    name: alloc::string::String::from("A"),
+                    neurodata_type_inc: Some(alloc::string::String::from("B")),
+                },
+                crate::namespace::NwbTypeSpec {
+                    name: alloc::string::String::from("B"),
+                    neurodata_type_inc: Some(alloc::string::String::from("C")),
+                },
+                crate::namespace::NwbTypeSpec {
+                    name: alloc::string::String::from("C"),
+                    neurodata_type_inc: None,
+                },
+            ],
+        };
+        assert!(!is_timeseries_type_with_specs("A", &[spec]));
     }
 
     // ── NeuroDataType — Clone / PartialEq ────────────────────────────────

@@ -112,15 +112,17 @@
 
 ### P2.3 — netCDF-4
 - [x] Dimension scale detection via HDF5 attributes
+- [x] netCDF-4 classic model read — root-group HDF5 read entry point now extracts a validated canonical `NetcdfModel` from `/`; covered by empty-file, flat root, and nested-group integration tests; `read_nested_group_into_model` test corrected (CLASS=DIMENSION_SCALE on "x" required; 13/13 integration tests verified)
 - [x] Variable → HDF5 dataset mapping
 - [x] CF conventions attribute parsing
 - [x] Unlimited dimension handling
 - [x] Full variable byte extraction for contiguous and chunked HDF5-backed netCDF variables
 - [x] DIMENSION_LIST-based variable-to-dimension binding for HDF5-backed netCDF extraction
 - [x] Nested-group dimension inheritance and nearest-scope shadowing validation
-- [ ] netCDF-4 classic model read
-- [ ] netCDF-4 enhanced model read (groups, user-defined types)
-- [ ] netCDF-4 write path
+- [x] netCDF-4 classic model read
+- [x] netCDF-4 enhanced model read (user-defined types) — `NetcdfUserType { name, datatype }` added to `NetcdfGroup.user_types`; `extract_group` populates from `NodeType::NamedDatatype` children via `Hdf5File::named_datatype_at`; `Hdf5FileBuilder::add_named_datatype` added; 2 integration tests + 1 HDF5 unit test (Milestone 45 — this sprint)
+- [x] netCDF-4 write path — `NetcdfWriter::write_model` emits flat classic netCDF-4 HDF5 files: `_nc_properties` root attribute, dimension scales with `CLASS`/`NAME`/`_Netcdf4Dimid`, variables with `DIMENSION_LIST` object-reference bindings, string-valued CF attribute propagation; `Reference(Object/Region)` encoding added to `consus-hdf5::file::writer::encode_datatype`; 7 round-trip integration tests + 4 unit tests + 1 doctest + 2 HDF5 datatype encoding tests (Milestone 42 — this sprint)
+- [x] netCDF-4 enhanced model write path — sub-group hierarchy write with DIMENSION_LIST bindings per group scope, numeric CF attribute propagation (Int/Uint/Float/IntArray/UintArray/FloatArray/StringArray), recursive child group nesting; `SubGroupBuilder<'a>` HDF5 builder API; `DatasetTarget` generic zero-cost trait; 7 integration tests; `write_enhanced_model_sub_group_roundtrip` and `write_nested_two_level_sub_group_roundtrip` verify full hierarchy roundtrip (Milestone 43 — this sprint)
 - [ ] Comparison with Unidata netCDF-C reference files
 
 ## Phase 1.5 — Workspace Test Integrity
@@ -252,8 +254,8 @@
 - [x] `ColumnValuesWithLevels` type with Dremel level accessors
 - [x] `read_column_chunk_with_levels` reader API
 - [x] `dataset_from_file_metadata` row_count correctness fix (use rg.num_rows)
-- [ ] Nested group column write/read support (Milestone 34 — Dremel full traversal)
-- [ ] Multi-page splitting within a column chunk
+- [x] Nested group column write/read support (Milestone 34 — Dremel full traversal) — `traverse_dremel_into` recursive encoding for Required/Optional/Repeated at any depth; `encode_leaf_columns` unified to single Dremel path; 4 value-semantic roundtrip tests
+- [x] Multi-page splitting within a column chunk (Milestone 36/P3.7 — CLOSED) — `ParquetWriter::with_page_row_limit`; 6 deterministic tests + 1 proptest
 
 ### P3.3 — Production Readiness
 - [x] CI/CD pipeline (GitHub Actions)
@@ -381,7 +383,8 @@
 - [x] `NwbFile::list_acquisition()` — convenience wrapper over `list_time_series("acquisition")`
 - [x] `NwbFile::list_processing(module)` — convenience wrapper over `list_time_series("processing/{module}")`
 - [ ] ElectrodeTable read (electrode metadata)
-- [ ] Namespace version detection from `/specifications/` YAML specs
+- [x] Namespace version detection and spec YAML parsing from `/specifications/` (NwbVersion V2_8, NwbNamespaceSpec, parse_nwb_spec_yaml, format_nwb_spec_yaml, list_specifications, read_specification, write_namespace_specs — this sprint)
+- [x] Per-type `neurodata_type_inc` inheritance chains in `NwbNamespaceSpec` — `NwbTypeSpec` struct; `neurodata_types: Vec<NwbTypeSpec>`; iterative BFS `is_timeseries_type_with_specs` with depth-64 guard; backward-compatible YAML parse/format (Milestone 44 — this sprint)
 
 ### P3.5 — NWB Write Path (Milestone 37 — this sprint — CLOSED)
 - [x] `NwbFileBuilder` — construct root HDF5 group with required NWB metadata attributes
@@ -439,4 +442,4 @@
 - [ ] Read tests against NWB tutorial files
 - [ ] Full conformance validation against NWB 2.x schema
 - [x] ElectrodeTable read (electrode metadata) — `read_string_dataset` added; `NwbFile::electrode_table()` + `NwbFileBuilder::write_electrode_table()` implemented (Milestone 40)
-- [ ] Namespace version detection from `/specifications/` YAML specs
+- [x] Namespace version detection and spec YAML parsing from `/specifications/` (NwbVersion V2_8, NwbNamespaceSpec, parse_nwb_spec_yaml, format_nwb_spec_yaml, list_specifications, read_specification, write_namespace_specs — this sprint)

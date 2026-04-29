@@ -1,2 +1,0 @@
-# helper
-print(42)

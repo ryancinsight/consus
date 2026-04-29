@@ -1,8 +1,10 @@
 //! Core NWB semantic model.
 //!
 //! Canonical types for the most commonly used NWB neurodata types.
-//! This module covers `TimeSeries` — the foundational neurodata type
-//! for continuously sampled or event-driven time-varying measurements.
+//! This module covers `TimeSeries`, `UnitsTable`, and `ElectrodeTable`.
+//! `TimeSeries` models continuously sampled or event-driven measurements.
+//! `UnitsTable` models HDMF VectorData + VectorIndex spike-unit storage.
+//! `ElectrodeTable` models the NWB `electrodes` DynamicTable.
 //!
 //! ## Specification
 //!
@@ -29,6 +31,11 @@
 //! - `rate` is `None` when `timestamps` is `Some` (per NWB spec; one
 //!   timing representation is canonical).
 //! - `starting_time` is `None` when `timestamps` is `Some`.
+//! - `UnitsTable::cumulative_index()` is monotonically non-decreasing and the
+//!   last index equals the flattened spike count when `UnitsTable` is
+//!   constructed via `from_vectordata`.
+//! - `ElectrodeTable::from_columns()` requires equal-length `id`, `location`,
+//!   and `group_name` columns.
 //! - The model is independent of HDF5 wire encoding.
 
 #[cfg(feature = "alloc")]

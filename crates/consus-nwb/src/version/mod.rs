@@ -46,6 +46,8 @@ pub enum NwbVersion {
     V2_6,
     /// NWB 2.7.x
     V2_7,
+    /// NWB 2.8.x
+    V2_8,
     /// Unrecognised version string, preserved verbatim.
     #[cfg(feature = "alloc")]
     Unknown(String),
@@ -80,6 +82,8 @@ impl NwbVersion {
             NwbVersion::V2_6
         } else if s.starts_with("2.7") {
             NwbVersion::V2_7
+        } else if s.starts_with("2.8") {
+            NwbVersion::V2_8
         } else {
             NwbVersion::Unknown(String::from(s))
         }
@@ -107,6 +111,7 @@ impl NwbVersion {
             NwbVersion::V2_5 => "2.5",
             NwbVersion::V2_6 => "2.6",
             NwbVersion::V2_7 => "2.7",
+            NwbVersion::V2_8 => "2.8",
             #[cfg(feature = "alloc")]
             NwbVersion::Unknown(s) => s.as_str(),
         }
@@ -199,6 +204,7 @@ mod tests {
             NwbVersion::V2_5,
             NwbVersion::V2_6,
             NwbVersion::V2_7,
+            NwbVersion::V2_8,
         ];
         for v in &known {
             assert!(v.is_supported(), "expected {:?} to be supported", v);
@@ -212,6 +218,16 @@ mod tests {
     }
 
     // ── NwbVersion::as_str ─────────────────────────────────────────────────
+
+    #[test]
+    fn parse_2_8_0_returns_v2_8() {
+        assert_eq!(NwbVersion::parse("2.8.0"), NwbVersion::V2_8);
+    }
+
+    #[test]
+    fn as_str_v2_8_returns_2_8() {
+        assert_eq!(NwbVersion::V2_8.as_str(), "2.8");
+    }
 
     #[test]
     fn as_str_v2_7_returns_2_7() {
