@@ -150,6 +150,306 @@ pub fn validate_time_series_for_write(ts: &crate::model::TimeSeries) -> Result<(
 }
 
 // ---------------------------------------------------------------------------
+// ISO 8601 temporal validation
+// ---------------------------------------------------------------------------
+
+/// Returns `true` iff `s` matches the NWB 2.x required ISO 8601 datetime format.
+///
+/// ## Specification
+///
+/// NWB 2.x requires session timestamps to be RFC 3339-compatible ISO 8601
+/// strings of the form `YYYY-MM-DDTHH:MM:SS[Z|±HH:MM]`.
+///
+/// ## Proof
+///
+/// The check is structural: date `YYYY-MM-DD` (10 bytes), `T` separator,
+/// time `HH:MM:SS` (8 bytes), then one of:
+/// - `Z`                → total 20 bytes (UTC)
+/// - `+HH:MM` or `-HH:MM` → total 25 bytes (signed offset)
+///
+/// No calendar arithmetic is performed; the function validates digit positions
+/// and field separators only.
+pub fn is_valid_iso8601(s: &str) -> bool {
+    let b = s.as_bytes();
+    if b.len() < 20 {
+        return false;
+    }
+    // Date: YYYY-MM-DD
+    if !all_digits(&b[0..4]) {
+        return false;
+    }
+    if b[4] != b'-' {
+        return false;
+    }
+    if !all_digits(&b[5..7]) {
+        return false;
+    }
+    if b[7] != b'-' {
+        return false;
+    }
+    if !all_digits(&b[8..10]) {
+        return false;
+    }
+    // T separator
+    if b[10] != b'T' {
+        return false;
+    }
+    // Time: HH:MM:SS
+    if !all_digits(&b[11..13]) {
+        return false;
+    }
+    if b[13] != b':' {
+        return false;
+    }
+    if !all_digits(&b[14..16]) {
+        return false;
+    }
+    if b[16] != b':' {
+        return false;
+    }
+    if !all_digits(&b[17..19]) {
+        return false;
+    }
+    // Timezone: Z (length 20) or ±HH:MM (length 25)
+    match b[19] {
+        b'Z' => b.len() == 20,
+        b'+' | b'-' => {
+            b.len() == 25 && all_digits(&b[20..22]) && b[22] == b':' && all_digits(&b[23..25])
+        }
+        _ => false,
+    }
+}
+
+#[inline]
+fn all_digits(b: &[u8]) -> bool {
+    !b.is_empty() && b.iter().all(u8::is_ascii_digit)
+}
+
+// ---------------------------------------------------------------------------
+// Conformance report types
+// ---------------------------------------------------------------------------
+
+/// A single NWB 2.x conformance violation.
+///
+/// Each variant corresponds to one normative constraint from the NWB 2.x
+/// specification.  Multiple violations can be collected before reporting.
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConformanceViolation {
+    /// A required root-group attribute is absent from the file.
+    MissingRootAttribute {
+        /// Attribute name as it appears in the NWB 2.x specification.
+        name: String,
+    },
+    /// A required root-group attribute is present but its value is invalid.
+    InvalidRootAttributeValue {
+        /// Attribute name.
+        name: String,
+        /// Human-readable description of the constraint that was violated.
+        detail: String,
+    },
+    /// A required top-level NWB group (`acquisition`, `analysis`, etc.) is absent.
+    MissingRequiredGroup {
+        /// Group name relative to the HDF5 root (e.g. `"acquisition"`).
+        path: String,
+    },
+    /// A `neurodata_type_def` attribute is absent from a group that requires one.
+    GroupMissingAttribute {
+        /// HDF5 path to the offending group.
+        group_path: String,
+        /// Name of the expected attribute.
+        attr_name: String,
+    },
+    /// A TimeSeries group is missing the mandatory `data` sub-dataset.
+    TimeSeriesMissingData {
+        /// HDF5 path to the offending TimeSeries group.
+        group_path: String,
+    },
+}
+
+/// Collected result of a full NWB 2.x conformance check.
+///
+/// Holds zero or more [`ConformanceViolation`]s gathered during multi-layer
+/// validation of a single file.  An empty report indicates full conformance.
+///
+/// ## Invariant
+///
+/// `is_conformant()` ⟺ `violations().is_empty()`
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NwbConformanceReport {
+    violations: alloc::vec::Vec<ConformanceViolation>,
+}
+
+#[cfg(feature = "alloc")]
+impl NwbConformanceReport {
+    /// Create an empty (conformant) report.
+    pub fn new() -> Self {
+        Self {
+            violations: alloc::vec::Vec::new(),
+        }
+    }
+
+    /// Returns `true` iff no violations were recorded.
+    pub fn is_conformant(&self) -> bool {
+        self.violations.is_empty()
+    }
+
+    /// Borrow the collected violations in recording order.
+    pub fn violations(&self) -> &[ConformanceViolation] {
+        &self.violations
+    }
+
+    /// Record one violation.  Use [`NwbFile::validate_conformance`] to
+    /// trigger full multi-layer validation instead of calling this directly.
+    pub(crate) fn push(&mut self, v: ConformanceViolation) {
+        self.violations.push(v);
+    }
+
+    /// Convert to `Result<()>`, mapping any violation to an `InvalidFormat` error.
+    ///
+    /// All violations after the first are discarded.  Callers that need the
+    /// complete list must inspect [`violations`](Self::violations) before
+    /// calling this.
+    pub fn into_result(self) -> Result<()> {
+        if self.is_conformant() {
+            return Ok(());
+        }
+        Err(Error::InvalidFormat {
+            message: alloc::format!(
+                "NWB conformance: {} violation(s); first: {:?}",
+                self.violations.len(),
+                &self.violations[0],
+            ),
+        })
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl Default for NwbConformanceReport {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Extended session attribute checking
+// ---------------------------------------------------------------------------
+
+/// Scan root-group attributes and record missing or invalid session fields.
+///
+/// Checks for `identifier` (non-empty string), `session_description`
+/// (non-empty string), and `session_start_time` (present + ISO 8601 format).
+/// All violations are appended to `report`; the function does not
+/// short-circuit on the first failure.
+///
+/// These attributes are required by NWB 2.x §4.1 but are not checked by
+/// [`validate_root_attributes`] to avoid redundant I/O on the normal open path.
+///
+/// ## Errors
+///
+/// Returns `Err` only on HDF5 I/O failure during attribute enumeration.
+/// Constraint violations are recorded in `report`, not returned as errors.
+#[cfg(feature = "alloc")]
+pub fn check_root_session_attrs<R: ReadAt + Sync>(
+    file: &Hdf5File<R>,
+    report: &mut NwbConformanceReport,
+) -> Result<()> {
+    let root_addr = file.superblock().root_group_address;
+    let attrs = file.attributes_at(root_addr)?;
+
+    let mut found_identifier = false;
+    let mut found_session_description = false;
+    let mut found_session_start_time = false;
+
+    for attr in &attrs {
+        match attr.name.as_str() {
+            "identifier" => {
+                found_identifier = true;
+                match attr.decode_value() {
+                    Ok(AttributeValue::String(ref s)) if s.is_empty() => {
+                        report.push(ConformanceViolation::InvalidRootAttributeValue {
+                            name: String::from("identifier"),
+                            detail: String::from("must not be empty"),
+                        });
+                    }
+                    Ok(AttributeValue::String(_)) => {}
+                    Ok(_) => {
+                        report.push(ConformanceViolation::InvalidRootAttributeValue {
+                            name: String::from("identifier"),
+                            detail: String::from("must be a string"),
+                        });
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            "session_description" => {
+                found_session_description = true;
+                match attr.decode_value() {
+                    Ok(AttributeValue::String(ref s)) if s.is_empty() => {
+                        report.push(ConformanceViolation::InvalidRootAttributeValue {
+                            name: String::from("session_description"),
+                            detail: String::from("must not be empty"),
+                        });
+                    }
+                    Ok(AttributeValue::String(_)) => {}
+                    Ok(_) => {
+                        report.push(ConformanceViolation::InvalidRootAttributeValue {
+                            name: String::from("session_description"),
+                            detail: String::from("must be a string"),
+                        });
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            "session_start_time" => {
+                found_session_start_time = true;
+                match attr.decode_value() {
+                    Ok(AttributeValue::String(ref s)) => {
+                        if !is_valid_iso8601(s) {
+                            report.push(ConformanceViolation::InvalidRootAttributeValue {
+                                name: String::from("session_start_time"),
+                                detail: alloc::format!(
+                                    "'{}' does not match ISO 8601 format \
+                                     YYYY-MM-DDTHH:MM:SS[Z|±HH:MM]",
+                                    s
+                                ),
+                            });
+                        }
+                    }
+                    Ok(_) => {
+                        report.push(ConformanceViolation::InvalidRootAttributeValue {
+                            name: String::from("session_start_time"),
+                            detail: String::from("must be a string"),
+                        });
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if !found_identifier {
+        report.push(ConformanceViolation::MissingRootAttribute {
+            name: String::from("identifier"),
+        });
+    }
+    if !found_session_description {
+        report.push(ConformanceViolation::MissingRootAttribute {
+            name: String::from("session_description"),
+        });
+    }
+    if !found_session_start_time {
+        report.push(ConformanceViolation::MissingRootAttribute {
+            name: String::from("session_start_time"),
+        });
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Unit tests
 // ---------------------------------------------------------------------------
 
@@ -457,5 +757,209 @@ mod tests {
             f64::MIN_POSITIVE,
         );
         validate_time_series_for_write(&ts).unwrap();
+    }
+
+    // -----------------------------------------------------------------------
+    // is_valid_iso8601 tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn iso8601_valid_z_timezone() {
+        assert!(is_valid_iso8601("2023-01-01T00:00:00Z"));
+    }
+
+    #[test]
+    fn iso8601_valid_positive_offset() {
+        assert!(is_valid_iso8601("2023-06-15T12:30:45+05:30"));
+    }
+
+    #[test]
+    fn iso8601_valid_negative_offset() {
+        assert!(is_valid_iso8601("2023-06-15T12:30:45-07:00"));
+    }
+
+    #[test]
+    fn iso8601_valid_zero_offset() {
+        assert!(is_valid_iso8601("2020-12-31T23:59:59+00:00"));
+    }
+
+    #[test]
+    fn iso8601_invalid_too_short_no_timezone() {
+        // 19 chars — no timezone designator
+        assert!(!is_valid_iso8601("2023-01-01T00:00:00"));
+    }
+
+    #[test]
+    fn iso8601_invalid_space_instead_of_t() {
+        assert!(!is_valid_iso8601("2023-01-01 00:00:00Z"));
+    }
+
+    #[test]
+    fn iso8601_invalid_missing_date_dashes() {
+        assert!(!is_valid_iso8601("20230101T00:00:00Z"));
+    }
+
+    #[test]
+    fn iso8601_invalid_missing_time_colons() {
+        assert!(!is_valid_iso8601("2023-01-01T000000Z"));
+    }
+
+    #[test]
+    fn iso8601_invalid_non_digit_year() {
+        assert!(!is_valid_iso8601("XXXX-01-01T00:00:00Z"));
+    }
+
+    #[test]
+    fn iso8601_invalid_empty_string() {
+        assert!(!is_valid_iso8601(""));
+    }
+
+    #[test]
+    fn iso8601_invalid_offset_too_short() {
+        // 24 chars — offset missing last digit
+        assert!(!is_valid_iso8601("2023-01-01T00:00:00+07:0"));
+    }
+
+    #[test]
+    fn iso8601_invalid_unknown_tz_char() {
+        assert!(!is_valid_iso8601("2023-01-01T00:00:00X"));
+    }
+
+    // -----------------------------------------------------------------------
+    // ConformanceViolation variant tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn missing_root_attribute_variant_carries_name() {
+        let v = ConformanceViolation::MissingRootAttribute {
+            name: String::from("session_start_time"),
+        };
+        match v {
+            ConformanceViolation::MissingRootAttribute { ref name } => {
+                assert_eq!(name, "session_start_time");
+            }
+            other => panic!("unexpected variant: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn invalid_root_attribute_value_variant_carries_detail() {
+        let v = ConformanceViolation::InvalidRootAttributeValue {
+            name: String::from("session_start_time"),
+            detail: String::from("not ISO 8601"),
+        };
+        match &v {
+            ConformanceViolation::InvalidRootAttributeValue { name, detail } => {
+                assert_eq!(name, "session_start_time");
+                assert!(detail.contains("ISO"), "detail must mention ISO: {detail}");
+            }
+            other => panic!("unexpected variant: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn missing_required_group_variant_carries_path() {
+        let v = ConformanceViolation::MissingRequiredGroup {
+            path: String::from("acquisition"),
+        };
+        match v {
+            ConformanceViolation::MissingRequiredGroup { ref path } => {
+                assert_eq!(path, "acquisition");
+            }
+            other => panic!("unexpected variant: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn timeseries_missing_data_variant_carries_group_path() {
+        let v = ConformanceViolation::TimeSeriesMissingData {
+            group_path: String::from("acquisition/my_ts"),
+        };
+        match v {
+            ConformanceViolation::TimeSeriesMissingData { ref group_path } => {
+                assert!(
+                    group_path.contains("my_ts"),
+                    "must contain group name: {group_path}"
+                );
+            }
+            other => panic!("unexpected variant: {:?}", other),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // NwbConformanceReport tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn conformance_report_new_is_conformant() {
+        let report = NwbConformanceReport::new();
+        assert!(report.is_conformant());
+        assert!(report.violations().is_empty());
+    }
+
+    #[test]
+    fn conformance_report_default_is_conformant() {
+        let report = NwbConformanceReport::default();
+        assert!(report.is_conformant());
+    }
+
+    #[test]
+    fn conformance_report_with_one_violation_is_not_conformant() {
+        let mut report = NwbConformanceReport::new();
+        report.push(ConformanceViolation::MissingRootAttribute {
+            name: String::from("foo"),
+        });
+        assert!(!report.is_conformant());
+        assert_eq!(report.violations().len(), 1);
+    }
+
+    #[test]
+    fn conformance_report_into_result_ok_when_clean() {
+        let report = NwbConformanceReport::new();
+        assert!(report.into_result().is_ok());
+    }
+
+    #[test]
+    fn conformance_report_into_result_err_when_violations_present() {
+        let mut report = NwbConformanceReport::new();
+        report.push(ConformanceViolation::MissingRequiredGroup {
+            path: String::from("acquisition"),
+        });
+        let err = report.into_result().unwrap_err();
+        match err {
+            Error::InvalidFormat { ref message } => {
+                assert!(
+                    message.contains('1'),
+                    "message must contain violation count: {message}"
+                );
+            }
+            other => panic!("expected InvalidFormat, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn conformance_report_collects_multiple_violations_without_short_circuit() {
+        let mut report = NwbConformanceReport::new();
+        report.push(ConformanceViolation::MissingRootAttribute {
+            name: String::from("identifier"),
+        });
+        report.push(ConformanceViolation::MissingRequiredGroup {
+            path: String::from("acquisition"),
+        });
+        report.push(ConformanceViolation::MissingRequiredGroup {
+            path: String::from("analysis"),
+        });
+        assert_eq!(report.violations().len(), 3);
+        assert!(!report.is_conformant());
+    }
+
+    #[test]
+    fn conformance_report_clone_and_eq() {
+        let mut report = NwbConformanceReport::new();
+        report.push(ConformanceViolation::MissingRootAttribute {
+            name: String::from("x"),
+        });
+        let cloned = report.clone();
+        assert_eq!(report, cloned);
     }
 }

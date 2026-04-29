@@ -444,7 +444,7 @@ test result: ok. 136 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fi
 - [x] Verified `cargo test -p consus-hdf5 --lib` (263/263)
 
 ### Milestone 18: Production Readiness
-- [ ] Memory-mapped I/O backend
+- [x] Memory-mapped I/O backend — implemented as `consus-io::io::sync::mmap::MmapReader` (Milestone 29; `cargo test -p consus-io --features mmap` → 31/31)
 - [ ] Large file (>4 GiB) regression tests
 - [ ] Fuzz testing (`cargo-fuzz` / `proptest`)
 - [ ] WASM target validation
@@ -816,6 +816,19 @@ test result: ok. 136 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fi
 - [x] `crates/consus-nwb/README.md` created — format overview, feature flag table, quick-start read/write examples, module architecture tree, NWB compliance table (implemented / not-yet-implemented), spec references, license
 - [x] Verified `cargo test -p consus-nwb --lib` → 211/211
 - [x] Verified `cargo test --workspace` → 2285/2285; `cargo check --workspace` → 0 errors, 0 warnings
+
+### Milestone 47: NWB Full Conformance Validation — CLOSED (this sprint)
+- [x] `is_valid_iso8601(s: &str) -> bool` — structural ISO 8601 check `YYYY-MM-DDTHH:MM:SS[Z|±HH:MM]`; pure byte arithmetic, no calendar lookup; `all_digits` private helper
+- [x] `ConformanceViolation` enum — 5 variants: `MissingRootAttribute`, `InvalidRootAttributeValue`, `MissingRequiredGroup`, `GroupMissingAttribute`, `TimeSeriesMissingData`
+- [x] `NwbConformanceReport` struct — `is_conformant()`, `violations()`, `into_result()`, `push(crate)`, `Default`; invariant: `is_conformant() ⟺ violations().is_empty()`
+- [x] `check_root_session_attrs<R: ReadAt + Sync>(file, report)` — scans root attrs for `identifier` (non-empty), `session_description` (non-empty), `session_start_time` (ISO 8601 format); records violations without short-circuiting
+- [x] `NwbFile::validate_conformance(&self) -> Result<NwbConformanceReport>` — 4-layer multi-pass validator: layer 1 fail-fast (neurodata_type_def + nwb_version), layer 2 session attrs, layer 3 required groups (acquisition/analysis/processing/stimulus/general), layer 4 TimeSeries data presence under /acquisition
+- [x] `NwbFileBuilder::write_empty_group(path: &str)` — delegates to `add_group_with_attributes` with empty slices; used to satisfy required-group conformance in tests
+- [x] `ConformanceViolation` and `NwbConformanceReport` re-exported at `consus-nwb` crate root
+- [x] 23 new tests in `validation/mod.rs`: 12 ISO 8601 validity tests, 4 ConformanceViolation variant tests, 7 NwbConformanceReport behavior tests
+- [x] 6 new tests in `file/mod.rs`: missing-groups reporting, all-five-groups collection, full-conformance pass, bad-datetime format, TimeSeries-missing-data, non-short-circuit proof
+- [x] Verified `cargo test -p consus-nwb --lib` → 250/250
+- [x] Verified `cargo test --workspace` → 2359/2359; `cargo check --workspace` → 0 errors, 0 warnings
 
 ### Milestone 39: NWB Extended Read Path + HDF5 Nested Group Write — CLOSED
 - [x] `ChildGroupSpec<'a>` — new public struct in `consus-hdf5::file::writer` for specifying sub-group children

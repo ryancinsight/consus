@@ -323,6 +323,105 @@ impl<'a> NwbFile<'a> {
             }
         })
     }
+
+    /// Run all NWB 2.x conformance checks and return a collected violation report.
+    ///
+    /// ## Validation layers
+    ///
+    /// 1. **Root identity** (fail-fast): `neurodata_type_def == "NWBFile"` and
+    ///    `nwb_version` present — delegates to
+    ///    [`crate::validation::validate_root_attributes`].
+    /// 2. **Session attributes**: `identifier` (non-empty string),
+    ///    `session_description` (non-empty string), `session_start_time`
+    ///    (present, ISO 8601 format `YYYY-MM-DDTHH:MM:SS[Z|±HH:MM]`).
+    /// 3. **Required top-level groups**: `/acquisition`, `/analysis`,
+    ///    `/processing`, `/stimulus`, `/general`.
+    /// 4. **TimeSeries constraints** for each child group under `/acquisition`
+    ///    that is identified as a TimeSeries type: `neurodata_type_def`
+    ///    attribute must be present; `data` sub-dataset must be present.
+    ///
+    /// Layers 2–4 collect all violations without short-circuiting so that
+    /// the caller can inspect the full list in one pass.
+    ///
+    /// ## Errors
+    ///
+    /// Returns `Err` only when layer 1 fails (fatal format identity error) or
+    /// when an I/O error occurs during HDF5 navigation.  Conformance
+    /// violations in layers 2–4 are accumulated into the report.
+    pub fn validate_conformance(&self) -> Result<crate::validation::NwbConformanceReport> {
+        use crate::validation::{
+            check_root_session_attrs, ConformanceViolation, NwbConformanceReport,
+        };
+        use consus_core::Error;
+
+        // Layer 1: fail-fast identity + version gatekeeper.
+        crate::validation::validate_root_attributes(&self.hdf5)?;
+
+        let mut report = NwbConformanceReport::new();
+
+        // Layer 2: session attributes (identifier, session_description,
+        // session_start_time ISO 8601 format).
+        check_root_session_attrs(&self.hdf5, &mut report)?;
+
+        // Layer 3: required top-level NWB groups.
+        const REQUIRED_GROUPS: &[&str] = &[
+            "acquisition",
+            "analysis",
+            "processing",
+            "stimulus",
+            "general",
+        ];
+        for group_name in REQUIRED_GROUPS {
+            match self.hdf5.open_path(group_name) {
+                Ok(_) => {}
+                Err(Error::NotFound { .. }) => {
+                    report.push(ConformanceViolation::MissingRequiredGroup {
+                        path: alloc::string::String::from(*group_name),
+                    });
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        // Layer 4: per-child constraints for groups under /acquisition.
+        // Only children identified as TimeSeries types are checked for `data`.
+        let acq_children = match crate::group::list_typed_group_children(&self.hdf5, "acquisition")
+        {
+            Ok(children) => children,
+            // Already reported as missing in layer 3; skip layer 4 for it.
+            Err(Error::NotFound { .. }) => alloc::vec::Vec::new(),
+            Err(e) => return Err(e),
+        };
+        for child in &acq_children {
+            let child_path = alloc::format!("acquisition/{}", child.name);
+
+            // Every neurodata object must carry neurodata_type_def.
+            if child.neurodata_type_def.is_none() {
+                report.push(ConformanceViolation::GroupMissingAttribute {
+                    group_path: child_path.clone(),
+                    attr_name: alloc::string::String::from("neurodata_type_def"),
+                });
+            }
+
+            // TimeSeries types must have a `data` sub-dataset.
+            let type_def = child.neurodata_type_def.as_deref().unwrap_or("");
+            let type_inc = child.neurodata_type_inc.as_deref();
+            if crate::conventions::is_timeseries_type(type_def, type_inc) {
+                let data_path = alloc::format!("{}/data", child_path);
+                match self.hdf5.open_path(&data_path) {
+                    Ok(_) => {}
+                    Err(Error::NotFound { .. }) => {
+                        report.push(ConformanceViolation::TimeSeriesMissingData {
+                            group_path: child_path,
+                        });
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+
+        Ok(report)
+    }
 }
 
 /// Builder for constructing NWB 2.x files.
@@ -815,6 +914,20 @@ impl NwbFileBuilder {
         Ok(())
     }
 
+    /// Create an empty HDF5 group at `path` with no attributes or datasets.
+    ///
+    /// Use this to satisfy NWB 2.x required group structure when no content
+    /// is written to a mandatory group (`acquisition`, `analysis`, `processing`,
+    /// `stimulus`, `general`).
+    ///
+    /// ## Errors
+    ///
+    /// Propagates HDF5 format errors from the underlying group writer.
+    pub fn write_empty_group(&mut self, path: &str) -> Result<&mut Self> {
+        self.hdf5.add_group_with_attributes(path, &[], &[])?;
+        Ok(self)
+    }
+
     pub fn finish(self) -> Result<alloc::vec::Vec<u8>> {
         self.hdf5.finish()
     }
@@ -825,7 +938,7 @@ mod tests {
     use super::*;
     use consus_core::{ByteOrder, Datatype, Shape, StringEncoding};
     use consus_hdf5::file::writer::{
-        ChildDatasetSpec, DatasetCreationProps, FileCreationProps, Hdf5FileBuilder,
+        ChildDatasetSpec, ChildGroupSpec, DatasetCreationProps, FileCreationProps, Hdf5FileBuilder,
     };
     use core::num::NonZeroUsize;
 
@@ -1274,5 +1387,256 @@ mod tests {
         let nwb = NwbFile::open(&bytes28).unwrap();
         assert_eq!(nwb.nwb_version().unwrap(), NwbVersion::V2_8);
         let _ = bytes; // suppress unused warning
+    }
+
+    // -----------------------------------------------------------------------
+    // validate_conformance tests
+    // -----------------------------------------------------------------------
+
+    /// A file with only root attributes (no required groups) must report
+    /// MissingRequiredGroup violations for all 5 mandatory groups.
+    #[test]
+    fn validate_conformance_reports_missing_required_groups() {
+        let bytes = make_minimal_nwb("test-id", "session desc", "2023-01-01T00:00:00Z");
+        let file = NwbFile::open(&bytes).unwrap();
+        let report = file.validate_conformance().unwrap();
+        assert!(
+            !report.is_conformant(),
+            "minimal file must have group violations"
+        );
+        let missing: alloc::vec::Vec<&str> = report
+            .violations()
+            .iter()
+            .filter_map(|v| match v {
+                crate::validation::ConformanceViolation::MissingRequiredGroup { path } => {
+                    Some(path.as_str())
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(
+            missing.contains(&"acquisition"),
+            "acquisition must be reported missing: {missing:?}"
+        );
+        assert!(
+            missing.contains(&"analysis"),
+            "analysis must be reported missing: {missing:?}"
+        );
+        assert!(
+            missing.contains(&"processing"),
+            "processing must be reported missing: {missing:?}"
+        );
+    }
+
+    /// All 5 required groups must be reported when none are present.
+    #[test]
+    fn validate_conformance_collects_all_five_missing_groups() {
+        let bytes = make_minimal_nwb("id", "desc", "2023-01-01T00:00:00Z");
+        let file = NwbFile::open(&bytes).unwrap();
+        let report = file.validate_conformance().unwrap();
+        let missing_count = report
+            .violations()
+            .iter()
+            .filter(|v| {
+                matches!(
+                    v,
+                    crate::validation::ConformanceViolation::MissingRequiredGroup { .. }
+                )
+            })
+            .count();
+        assert_eq!(
+            missing_count,
+            5,
+            "all 5 required groups must be reported; got: {:?}",
+            report.violations()
+        );
+    }
+
+    /// A fully conformant file (all required groups present, valid session
+    /// attributes) must pass validation with zero violations.
+    #[test]
+    fn validate_conformance_passes_with_all_required_groups() {
+        let mut builder = NwbFileBuilder::new(
+            "2.7.0",
+            "test-id",
+            "test description",
+            "2023-01-01T00:00:00Z",
+        )
+        .unwrap();
+        for group in &[
+            "acquisition",
+            "analysis",
+            "processing",
+            "stimulus",
+            "general",
+        ] {
+            builder.write_empty_group(group).unwrap();
+        }
+        let bytes = builder.finish().unwrap();
+        let file = NwbFile::open(&bytes).unwrap();
+        let report = file.validate_conformance().unwrap();
+        assert!(
+            report.is_conformant(),
+            "file with all required groups must be conformant: {:?}",
+            report.violations()
+        );
+    }
+
+    /// A file with a bad `session_start_time` format must report exactly one
+    /// InvalidRootAttributeValue violation for that attribute.
+    #[test]
+    fn validate_conformance_reports_bad_session_start_time_format() {
+        // NwbFile::open only checks neurodata_type_def + nwb_version, so a file
+        // with a bad timestamp format opens successfully but fails full conformance.
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+        for (name, value) in &[
+            ("neurodata_type_def", "NWBFile"),
+            ("nwb_version", "2.7.0"),
+            ("identifier", "id-001"),
+            ("session_description", "desc"),
+            ("session_start_time", "not-a-date"),
+        ] {
+            let (dt, raw) = fixed_string_dt(value);
+            builder
+                .add_root_attribute(name, &dt, &scalar, &raw)
+                .unwrap();
+        }
+        for group in &[
+            "acquisition",
+            "analysis",
+            "processing",
+            "stimulus",
+            "general",
+        ] {
+            builder.add_group_with_attributes(group, &[], &[]).unwrap();
+        }
+        let bytes = builder.finish().unwrap();
+        let file = NwbFile::open(&bytes).unwrap();
+        let report = file.validate_conformance().unwrap();
+        assert!(!report.is_conformant());
+        let bad_ts_violations: alloc::vec::Vec<_> = report
+            .violations()
+            .iter()
+            .filter(|v| {
+                matches!(v,
+                    crate::validation::ConformanceViolation::InvalidRootAttributeValue { name, .. }
+                    if name == "session_start_time"
+                )
+            })
+            .collect();
+        assert_eq!(
+            bad_ts_violations.len(),
+            1,
+            "exactly one bad-format violation expected: {:?}",
+            report.violations()
+        );
+    }
+
+    /// A TimeSeries group under /acquisition that is missing a `data` dataset
+    /// must produce a TimeSeriesMissingData violation naming the group path.
+    #[test]
+    fn validate_conformance_reports_timeseries_missing_data() {
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+        for (name, value) in &[
+            ("neurodata_type_def", "NWBFile"),
+            ("nwb_version", "2.7.0"),
+            ("identifier", "id-001"),
+            ("session_description", "desc"),
+            ("session_start_time", "2023-01-01T00:00:00Z"),
+        ] {
+            let (dt, raw) = fixed_string_dt(value);
+            builder
+                .add_root_attribute(name, &dt, &scalar, &raw)
+                .unwrap();
+        }
+        // Add the 4 non-acquisition required groups directly.
+        for group in &["analysis", "processing", "stimulus", "general"] {
+            builder.add_group_with_attributes(group, &[], &[]).unwrap();
+        }
+        // Build /acquisition with a TimeSeries child that has NO `data` dataset.
+        let (ndt_dt, ndt_raw) = fixed_string_dt("TimeSeries");
+        let ts_group = ChildGroupSpec {
+            name: "test_ts",
+            attributes: &[("neurodata_type_def", &ndt_dt, &scalar, ndt_raw.as_slice())],
+            datasets: &[],
+            sub_groups: &[],
+        };
+        builder
+            .add_group_with_children("acquisition", &[], &[], &[ts_group])
+            .unwrap();
+        let bytes = builder.finish().unwrap();
+        let file = NwbFile::open(&bytes).unwrap();
+        let report = file.validate_conformance().unwrap();
+        let missing_data: alloc::vec::Vec<_> = report
+            .violations()
+            .iter()
+            .filter(|v| {
+                matches!(
+                    v,
+                    crate::validation::ConformanceViolation::TimeSeriesMissingData { .. }
+                )
+            })
+            .collect();
+        assert!(
+            !missing_data.is_empty(),
+            "missing-data violation must be present: {:?}",
+            report.violations()
+        );
+        match &missing_data[0] {
+            crate::validation::ConformanceViolation::TimeSeriesMissingData { group_path } => {
+                assert!(
+                    group_path.contains("test_ts"),
+                    "violation must name the group: {group_path}"
+                );
+            }
+            other => panic!("unexpected variant: {:?}", other),
+        }
+    }
+
+    /// validate_conformance must not short-circuit: a file missing all 5
+    /// required groups must report exactly 5 MissingRequiredGroup violations,
+    /// not stop after the first.
+    #[test]
+    fn validate_conformance_does_not_short_circuit() {
+        let bytes = make_minimal_nwb("id", "desc", "2023-01-01T00:00:00Z");
+        let file = NwbFile::open(&bytes).unwrap();
+        let report = file.validate_conformance().unwrap();
+        // Layer 2 finds no session-attribute violations (they are all valid).
+        let session_violations = report
+            .violations()
+            .iter()
+            .filter(|v| {
+                matches!(
+                    v,
+                    crate::validation::ConformanceViolation::MissingRootAttribute { .. }
+                        | crate::validation::ConformanceViolation::InvalidRootAttributeValue { .. }
+                )
+            })
+            .count();
+        assert_eq!(
+            session_violations,
+            0,
+            "no session-attr violations expected: {:?}",
+            report.violations()
+        );
+        // Layer 3 must find 5 missing groups — not short-circuit after 1.
+        let group_violations = report
+            .violations()
+            .iter()
+            .filter(|v| {
+                matches!(
+                    v,
+                    crate::validation::ConformanceViolation::MissingRequiredGroup { .. }
+                )
+            })
+            .count();
+        assert_eq!(
+            group_violations,
+            5,
+            "all 5 missing-group violations must be collected: {:?}",
+            report.violations()
+        );
     }
 }

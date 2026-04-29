@@ -427,6 +427,24 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
 
 ---
 
+## M-047: NWB Full Conformance Validation (this sprint — CLOSED)
+
+**Root cause**: `validate_root_attributes` covered only 2 of 7 normative root-group constraints; required group structure (5 groups), session attribute format (ISO 8601), and TimeSeries data presence were unchecked.
+
+**Resolution**:
+- `is_valid_iso8601` — structural ISO 8601 byte-level validator (`YYYY-MM-DDTHH:MM:SS[Z|±HH:MM]`); no calendar arithmetic; ungated (no `alloc`)
+- `ConformanceViolation` enum — 5 variants covering all implemented check layers
+- `NwbConformanceReport` — non-short-circuiting report accumulator; `is_conformant()`, `violations()`, `into_result()`
+- `check_root_session_attrs` — scans root HDF5 attributes for `identifier`, `session_description`, `session_start_time` (ISO 8601 checked)
+- `NwbFile::validate_conformance()` — 4-layer multi-pass validator: fail-fast identity (layer 1), session attrs (layer 2), required group presence (5 groups, layer 3), TimeSeries data presence (layer 4)
+- `NwbFileBuilder::write_empty_group(path)` — creates empty required groups for test infrastructure
+
+**Verification**: 29 new value-semantic tests; `cargo test -p consus-nwb --lib` → 250/250; `cargo test --workspace` → 2359/2359; `cargo check --workspace` → 0 errors, 0 warnings
+
+**Residual**: `timestamps_reference_time` (NWB ≥ 2.2), `file_create_date`, HDMF DynamicTable `colnames` consistency, electrode reference integrity, and namespace type-system validation remain unimplemented and are roadmap items beyond current sprint scope.
+
+---
+
 ## M-001: consus-mat correctness and coverage gaps (resolved this sprint)
 
 | ID | File | Gap | Resolution |
@@ -501,13 +519,13 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
 | consus-arrow E2E integration | 6/6 |
 | consus-io lib (default) | 20/20 |
 | consus-io lib+integration (mmap) | 31/31 |
-| consus-nwb lib | 221/221 |
+| consus-nwb lib | 250/250 |
 | consus-nwb integration (real file) | 1/1 |
 | consus-hdf5 lib | 272/272 |
-| workspace total tests (default) | 2330/2330 |
-| Verified commands | `cargo test -p consus-netcdf` (137/137); `cargo test -p consus-hdf5 --lib` (272/272); `cargo test -p consus-nwb --lib` (221/221); `cargo test -p consus-nwb --test integration_real_file` (1/1); `cargo test --workspace` (2330/2330, default); `cargo check --workspace` (0 warnings, 0 errors) |
+| workspace total tests (default) | 2359/2359 |
+| Verified commands | `cargo test -p consus-netcdf` (137/137); `cargo test -p consus-hdf5 --lib` (272/272); `cargo test -p consus-nwb --lib` (250/250); `cargo test -p consus-nwb --test integration_real_file` (1/1); `cargo test --workspace` (2359/2359, default); `cargo check --workspace` (0 warnings, 0 errors) |
 | Open gaps | 0 |
 | High-severity open gaps | 0 |
-| Closed this sprint | 4 (M-042: netCDF-4 HDF5 Write Path — `encode_datatype` Reference(Object/Region) support in `consus-hdf5`; `NetcdfWriter::write_model` classic flat model in `consus-netcdf`; `NC_PROPERTIES_ATTR/VALUE` constants; 7 round-trip integration tests + 4 unit tests + 1 doctest + 2 HDF5 datatype encoding tests; +14 new value-semantic tests — M-043: netCDF-4 enhanced model write path — `SubGroupBuilder<'a>` in `consus-hdf5`; `DatasetTarget` trait + `encode_cf_attrs` + recursive `write_child_group_content` in `consus-netcdf`; 3 HDF5 + 7 netCDF integration tests — M-044: NWB per-type `neurodata_type_inc` inheritance chains — `NwbTypeSpec` struct; `neurodata_types: Vec<NwbTypeSpec>`; iterative BFS `is_timeseries_type_with_specs` depth-64; 7 new tests — M-045: netCDF-4 enhanced model read — `NetcdfUserType` model, `user_types` in `NetcdfGroup`, `Hdf5File::named_datatype_at`, `Hdf5FileBuilder::add_named_datatype`, `extract_group` NamedDatatype arm; 1 HDF5 unit test + 2 netCDF integration tests; P2.3 classic model read test corrected) |
+| Closed this sprint | 5 (M-042: netCDF-4 HDF5 Write Path — `encode_datatype` Reference(Object/Region) support in `consus-hdf5`; `NetcdfWriter::write_model` classic flat model in `consus-netcdf`; `NC_PROPERTIES_ATTR/VALUE` constants; 7 round-trip integration tests + 4 unit tests + 1 doctest + 2 HDF5 datatype encoding tests; +14 new value-semantic tests — M-043: netCDF-4 enhanced model write path — `SubGroupBuilder<'a>` in `consus-hdf5`; `DatasetTarget` trait + `encode_cf_attrs` + recursive `write_child_group_content` in `consus-netcdf`; 3 HDF5 + 7 netCDF integration tests — M-044: NWB per-type `neurodata_type_inc` inheritance chains — `NwbTypeSpec` struct; `neurodata_types: Vec<NwbTypeSpec>`; iterative BFS `is_timeseries_type_with_specs` depth-64; 7 new tests — M-045: netCDF-4 enhanced model read — `NetcdfUserType` model, `user_types` in `NetcdfGroup`, `Hdf5File::named_datatype_at`, `Hdf5FileBuilder::add_named_datatype`, `extract_group` NamedDatatype arm; 1 HDF5 unit test + 2 netCDF integration tests; P2.3 classic model read test corrected — M-047: NWB Full Conformance Validation — `is_valid_iso8601`, `ConformanceViolation`, `NwbConformanceReport`, `check_root_session_attrs`, `NwbFile::validate_conformance`, `NwbFileBuilder::write_empty_group`; 29 new value-semantic tests) |
 | Medium-severity open gaps | 0 |
 | Low-severity open gaps | 0 |

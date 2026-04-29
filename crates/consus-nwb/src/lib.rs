@@ -49,3 +49,5 @@ pub use model::units::UnitsTable;
 pub use namespace::NwbNamespaceSpec;
 #[cfg(feature = "alloc")]
 pub use namespace::NwbTypeSpec;
+#[cfg(feature = "alloc")]
+pub use validation::{ConformanceViolation, NwbConformanceReport};

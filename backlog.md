@@ -378,11 +378,11 @@
 - [x] `namespace/mod.rs` — `NwbNamespace` with `core()`, `hdmf_common()`, `CORE_NAME` constant
 - [x] `consus-hdf5 list_group_at` fix: SYMBOL_TABLE guard prevents v1 fallback error on v2 empty groups
 - [x] Multi-level open_path verified in integration test: list_acquisition returns both nested paths; time_series reads through /acquisition/{name}/ hierarchy
-- [ ] Units table read (spike times)
+- [x] Units table read (spike times) — `NwbFile::units_table()` + `UnitsTable::from_vectordata` (Milestone 40 — closed)
 - [x] Subject metadata extraction — `NwbSubjectMetadata` model + `NwbFile::subject()` read path
 - [x] `NwbFile::list_acquisition()` — convenience wrapper over `list_time_series("acquisition")`
 - [x] `NwbFile::list_processing(module)` — convenience wrapper over `list_time_series("processing/{module}")`
-- [ ] ElectrodeTable read (electrode metadata)
+- [x] ElectrodeTable read (electrode metadata) — `NwbFile::electrode_table()` + `read_string_dataset`/`read_u64_dataset` (Milestone 40 — closed)
 - [x] Namespace version detection and spec YAML parsing from `/specifications/` (NwbVersion V2_8, NwbNamespaceSpec, parse_nwb_spec_yaml, format_nwb_spec_yaml, list_specifications, read_specification, write_namespace_specs — this sprint)
 - [x] Per-type `neurodata_type_inc` inheritance chains in `NwbNamespaceSpec` — `NwbTypeSpec` struct; `neurodata_types: Vec<NwbTypeSpec>`; iterative BFS `is_timeseries_type_with_specs` with depth-64 guard; backward-compatible YAML parse/format (Milestone 44 — this sprint)
 
@@ -440,6 +440,6 @@
 ### P3.6 — NWB Verification
 - [x] h5py-generated NWB 2.7 fixture verification (Milestone 46 — this sprint)
 - [x] All read paths verified against h5py fixture: session_metadata, list_acquisition, time_series (f64+i16 promotion+rate), units_table, electrode_table (VL strings), subject — `tests/integration_real_file.rs` (Milestone 46 — this sprint)
-- [ ] Full conformance validation against NWB 2.x schema
+- [x] Full conformance validation against NWB 2.x schema — `NwbFile::validate_conformance()` + `NwbConformanceReport` + 4 validation layers + 29 new tests (Milestone 47 — this sprint — CLOSED)
 - [x] ElectrodeTable read (electrode metadata) — `read_string_dataset` added; `NwbFile::electrode_table()` + `NwbFileBuilder::write_electrode_table()` implemented (Milestone 40)
 - [x] Namespace version detection and spec YAML parsing from `/specifications/` (NwbVersion V2_8, NwbNamespaceSpec, parse_nwb_spec_yaml, format_nwb_spec_yaml, list_specifications, read_specification, write_namespace_specs — this sprint)
