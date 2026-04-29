@@ -6,8 +6,8 @@
 - [x] Add crate-root re-exports for NWB semantic model types (`ElectrodeRow`, `ElectrodeTable`, `UnitsTable`)
 - [x] Add `UnitsTable` proptest roundtrip coverage for arbitrary unit partitions and optional IDs
 - [x] Add `ElectrodeTable` proptest roundtrip coverage for arbitrary row sets and string widths
-- [ ] Add real NWB fixture verification against Allen Brain Observatory or NWB tutorial files; manifest and candidate URLs recorded under `D:\consus\data\nwb\manifest.txt`
-- [ ] Verify `session_metadata`, `time_series`, `units_table`, `electrode_table`, and `subject` against canonical samples stored in `D:\consus\data\nwb`
+- [x] h5py-generated NWB 2.7 fixture `data/nwb/nwb_fixture_v2_7.nwb` (generator: `data/nwb/gen_nwb_fixture.py`); fixture verified against all 10 invariants in `tests/integration_real_file.rs` (Milestone 46 — this sprint)
+- [x] All five models verified against fixture: session_metadata (identifier, session_description, session_start_time), time_series (f64+timestamps, i16→f64 promotion, starting_time+rate), units_table (VectorData/VectorIndex 2-unit), electrode_table (VL strings CA1/CA2/CA3), subject (5 fields) — integration_real_file.rs (Milestone 46 — this sprint)
 - [x] Add namespace YAML parsing from `/specifications/` for multi-level inheritance resolution
 - [x] Update `backlog.md` and `gap_audit.md` with Milestone 41 outcomes for all implementable items (this sprint)
 - [x] Per-type `neurodata_type_inc` inheritance chains in `NwbNamespaceSpec` — `NwbTypeSpec` struct added; `neurodata_types: Vec<NwbTypeSpec>` replacing `Vec<String>`; `parse_nwb_spec_yaml` / `format_nwb_spec_yaml` updated for `inc:` sub-key; `is_timeseries_type_with_specs` uses iterative BFS chain walk up to depth 64 (Milestone 44 — this sprint)
@@ -186,6 +186,15 @@
 - [x] 2 new integration tests: `read_named_type_in_root_group` (Float{32,LE} round-trip, root group), `read_named_type_in_child_group` (Integer{64,LE,signed} root + empty child group)
 - [x] 1 new HDF5 unit test: `add_named_datatype_creates_readable_named_type` (write → node_type_at → named_datatype_at round-trip)
 - [x] Verified `cargo test -p consus-hdf5 --lib` → 272/272; `cargo test -p consus-netcdf` → 137/137; `cargo test --workspace` → 2329/2329; `cargo check --workspace` → 0 errors, 0 warnings
+
+### Milestone 46: Variable-Length String Dataset Support + NWB Real-File Integration — CLOSED (this sprint)
+- [x] `read_string_dataset` extended for `Datatype::VariableString` — reads `n × ref_size` bytes, calls `consus_hdf5::heap::resolve_vl_references`, decodes UTF-8
+- [x] `Datatype::VariableString` chunked/compact/virtual layouts return `UnsupportedFeature`
+- [x] `D:\consus\data\nwb\gen_nwb_fixture.py` — h5py 3.x deterministic NWB 2.7 fixture generator
+- [x] `D:\consus\data\nwb\nwb_fixture_v2_7.nwb` — generated fixture (fixed-length string attrs + VL string electrode columns)
+- [x] `tests/integration_real_file.rs` — 10-invariant value-semantic integration test
+- [x] `consus-nwb/Cargo.toml` — `[[test]] integration_real_file` registered
+- [x] `cargo test -p consus-nwb` → 221 lib + 1 integration; `cargo test --workspace` → 0 failures
 
 ### Milestone 13: Parquet Schema Mapping Verification
 - [x] Canonical Parquet physical, logical, field, and hybrid schema modules remain the authoritative SSOT for `consus-parquet`

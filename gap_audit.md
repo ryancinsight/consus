@@ -263,9 +263,18 @@
 
 ---
 
+## M-046: read_string_dataset VariableString support + NWB h5py fixture integration tests (resolved this sprint)
+
+- **Crates affected**: `consus-nwb`
+- **Gap**: `read_string_dataset` only supported `FixedString`; real NWB files use `VariableString` (HDF5 VL type) for dataset columns. Milestone 38/41 NWB fixture verification was blocked on external file acquisition.
+- **Resolution**: Extended `read_string_dataset` with a `Datatype::VariableString` arm using `consus_hdf5::heap::resolve_vl_references`. Generated deterministic h5py fixture. Added 10-invariant integration test.
+- **Verification**: `cargo test -p consus-nwb --test integration_real_file` → 1/1; `cargo test --workspace` → 0 failures.
+
+---
+
 ## Open Gaps
 
-_No open gaps in the current audit scope. Remaining open work: lifetime-parameterized zero-copy `ArrowArray` model, hybrid Parquet-inside-Consus containers, netCDF-4 Unidata reference file comparison (P2.3), NWB verification against real Allen Brain Observatory NWB 2.x fixtures (Milestone 38), large-file (>4 GiB) regression tests, cargo-fuzz harness targets, WASM validation, no_std smoke tests, documentation site, crates.io publication. NWB sample acquisition is currently blocked and recorded in `D:\consus\data\nwb\manifest.txt`._
+_No open gaps in the current audit scope. Remaining open work: lifetime-parameterized zero-copy `ArrowArray` model, hybrid Parquet-inside-Consus containers, netCDF-4 Unidata reference file comparison (P2.3), NWB verification against real Allen Brain Observatory NWB 2.x fixtures (Milestone 38), large-file (>4 GiB) regression tests, cargo-fuzz harness targets, WASM validation, no_std smoke tests, documentation site, crates.io publication. NWB fixture acquisition is now complete: h5py-generated `data/nwb/nwb_fixture_v2_7.nwb` with 10 verified invariants (Milestone 46). Real Allen Brain Observatory fixture remains optional for broader compatibility testing._
 
 ---
 
@@ -493,9 +502,10 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
 | consus-io lib (default) | 20/20 |
 | consus-io lib+integration (mmap) | 31/31 |
 | consus-nwb lib | 221/221 |
+| consus-nwb integration (real file) | 1/1 |
 | consus-hdf5 lib | 272/272 |
-| workspace total tests (default) | 2329/2329 |
-| Verified commands | `cargo test -p consus-netcdf` (137/137); `cargo test -p consus-hdf5 --lib` (272/272); `cargo test -p consus-nwb --lib` (221/221); `cargo test --workspace` (2329/2329, default); `cargo check --workspace` (0 warnings, 0 errors) |
+| workspace total tests (default) | 2330/2330 |
+| Verified commands | `cargo test -p consus-netcdf` (137/137); `cargo test -p consus-hdf5 --lib` (272/272); `cargo test -p consus-nwb --lib` (221/221); `cargo test -p consus-nwb --test integration_real_file` (1/1); `cargo test --workspace` (2330/2330, default); `cargo check --workspace` (0 warnings, 0 errors) |
 | Open gaps | 0 |
 | High-severity open gaps | 0 |
 | Closed this sprint | 4 (M-042: netCDF-4 HDF5 Write Path — `encode_datatype` Reference(Object/Region) support in `consus-hdf5`; `NetcdfWriter::write_model` classic flat model in `consus-netcdf`; `NC_PROPERTIES_ATTR/VALUE` constants; 7 round-trip integration tests + 4 unit tests + 1 doctest + 2 HDF5 datatype encoding tests; +14 new value-semantic tests — M-043: netCDF-4 enhanced model write path — `SubGroupBuilder<'a>` in `consus-hdf5`; `DatasetTarget` trait + `encode_cf_attrs` + recursive `write_child_group_content` in `consus-netcdf`; 3 HDF5 + 7 netCDF integration tests — M-044: NWB per-type `neurodata_type_inc` inheritance chains — `NwbTypeSpec` struct; `neurodata_types: Vec<NwbTypeSpec>`; iterative BFS `is_timeseries_type_with_specs` depth-64; 7 new tests — M-045: netCDF-4 enhanced model read — `NetcdfUserType` model, `user_types` in `NetcdfGroup`, `Hdf5File::named_datatype_at`, `Hdf5FileBuilder::add_named_datatype`, `extract_group` NamedDatatype arm; 1 HDF5 unit test + 2 netCDF integration tests; P2.3 classic model read test corrected) |

@@ -12,7 +12,7 @@
 //! | [`read_f64_attr`]         | attribute list + name       | `f64`          |
 //! | [`read_f64_dataset`]      | `Hdf5File` + object address | `Vec<f64>`     |
 //! | [`read_scalar_f64_dataset`]| `Hdf5File` + object address | `f64`         |
-//! | [`read_string_dataset`]        | `Hdf5File` + object address | `Vec<String>`  |
+//! | [`read_string_dataset`]        | `Hdf5File` + object address | `Vec<String>` (FixedString + VariableString) |
 //! | [`read_scalar_string_dataset`] | `Hdf5File` + object address | `String`       |
 //! | [`read_u64_dataset`]           | `Hdf5File` + object address | `Vec<u64>`     |
 //!
@@ -309,74 +309,141 @@ pub fn read_u64_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Resu
 /// Each element is `length` bytes wide.  Trailing null bytes (`\0`) are
 /// stripped; the remaining bytes are decoded as UTF-8.
 ///
+/// For `VariableString` datasets each element is an HDF5 VL reference
+/// `{sequence_length(4) | heap_address(offset_size) | object_index(4)}` that
+/// is resolved against the file's global heap via
+/// [`consus_hdf5::heap::resolve_vl_references`].
+///
 /// ## Errors
 ///
-/// - [`Error::UnsupportedFeature`] — datatype is not `FixedString`, or the
-///   layout is compact or virtual.
-/// - [`Error::InvalidFormat`] — contiguous dataset has no data address, or
-///   an element contains invalid UTF-8.
+/// - [`Error::UnsupportedFeature`] — datatype is not `FixedString` or
+///   `VariableString`, or the layout is compact or virtual (for `VariableString`
+///   chunked is also unsupported).
+/// - [`Error::InvalidFormat`] — contiguous dataset has no data address, a
+///   VL reference is malformed, or an element contains invalid UTF-8.
 /// - Propagates HDF5 I/O errors.
 #[cfg(feature = "alloc")]
 pub fn read_string_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Result<Vec<String>> {
     let ds = file.dataset_at(addr)?;
 
-    let length = match &ds.datatype {
-        Datatype::FixedString { length, .. } => *length,
-        other => {
-            return Err(Error::UnsupportedFeature {
-                feature: format!(
-                    "NWB: expected FixedString dataset for string read, got {:?}",
-                    other
-                ),
-            });
+    match &ds.datatype {
+        Datatype::FixedString { length, .. } => {
+            let length = *length;
+            if length == 0 {
+                return Ok(alloc::vec![]);
+            }
+            let n_elements = ds.shape.num_elements();
+            let n_bytes = n_elements * length;
+            let raw: Vec<u8> = match ds.layout {
+                StorageLayout::Contiguous => {
+                    let data_addr = ds.data_address.ok_or_else(|| Error::InvalidFormat {
+                        message: String::from("NWB: contiguous string dataset has no data address"),
+                    })?;
+                    let mut buf = vec![0u8; n_bytes];
+                    file.read_contiguous_dataset_bytes(data_addr, 0, &mut buf)?;
+                    buf
+                }
+                StorageLayout::Chunked => file.read_chunked_dataset_all_bytes(addr)?,
+                StorageLayout::Compact => {
+                    return Err(Error::UnsupportedFeature {
+                        feature: String::from(
+                            "NWB: compact FixedString dataset layout is not supported",
+                        ),
+                    });
+                }
+                StorageLayout::Virtual => {
+                    return Err(Error::UnsupportedFeature {
+                        feature: String::from(
+                            "NWB: virtual FixedString dataset layout is not supported",
+                        ),
+                    });
+                }
+            };
+            let mut strings = Vec::with_capacity(n_elements);
+            for chunk in raw.chunks(length) {
+                // Strip trailing null bytes (NWB uses null-padded fixed-length strings).
+                let trimmed = match chunk.iter().rposition(|&b| b != 0) {
+                    Some(pos) => &chunk[..=pos],
+                    None => &chunk[..0],
+                };
+                let s = core::str::from_utf8(trimmed)
+                    .map_err(|e| Error::InvalidFormat {
+                        message: format!("NWB: string dataset contains invalid UTF-8: {}", e),
+                    })?
+                    .to_owned();
+                strings.push(s);
+            }
+            Ok(strings)
         }
-    };
 
-    if length == 0 {
-        return Ok(alloc::vec![]);
+        Datatype::VariableString { .. } => {
+            // Each element is an HDF5 VL reference:
+            // { sequence_length(4 LE) | heap_address(offset_size) | object_index(4 LE) }
+            // resolve_vl_references resolves all references against the global heap
+            // and returns one Vec<u8> per element.
+            let n_elements = ds.shape.num_elements();
+            if n_elements == 0 {
+                return Ok(alloc::vec![]);
+            }
+            let ctx = file.context();
+            let ref_size = 4 + ctx.offset_bytes() + 4;
+            let n_bytes = n_elements * ref_size;
+            let raw: Vec<u8> = match ds.layout {
+                StorageLayout::Contiguous => {
+                    let data_addr = ds.data_address.ok_or_else(|| Error::InvalidFormat {
+                        message: String::from(
+                            "NWB: contiguous variable-length string dataset has no data address",
+                        ),
+                    })?;
+                    let mut buf = vec![0u8; n_bytes];
+                    file.read_contiguous_dataset_bytes(data_addr, 0, &mut buf)?;
+                    buf
+                }
+                StorageLayout::Chunked => {
+                    return Err(Error::UnsupportedFeature {
+                        feature: String::from(
+                            "NWB: chunked variable-length string dataset is not supported",
+                        ),
+                    });
+                }
+                StorageLayout::Compact => {
+                    return Err(Error::UnsupportedFeature {
+                        feature: String::from(
+                            "NWB: compact variable-length string dataset is not supported",
+                        ),
+                    });
+                }
+                StorageLayout::Virtual => {
+                    return Err(Error::UnsupportedFeature {
+                        feature: String::from(
+                            "NWB: virtual variable-length string dataset is not supported",
+                        ),
+                    });
+                }
+            };
+            let byte_vecs = consus_hdf5::heap::resolve_vl_references(file.source(), &raw, ctx)?;
+            let mut strings = Vec::with_capacity(byte_vecs.len());
+            for bytes in byte_vecs {
+                let s = core::str::from_utf8(&bytes)
+                    .map_err(|e| Error::InvalidFormat {
+                        message: format!(
+                            "NWB: variable-length string dataset contains invalid UTF-8: {}",
+                            e
+                        ),
+                    })?
+                    .to_owned();
+                strings.push(s);
+            }
+            Ok(strings)
+        }
+
+        other => Err(Error::UnsupportedFeature {
+            feature: format!(
+                "NWB: expected FixedString or VariableString dataset for string read, got {:?}",
+                other
+            ),
+        }),
     }
-
-    let n_elements = ds.shape.num_elements();
-    let n_bytes = n_elements * length;
-
-    let raw: Vec<u8> = match ds.layout {
-        StorageLayout::Contiguous => {
-            let data_addr = ds.data_address.ok_or_else(|| Error::InvalidFormat {
-                message: String::from("NWB: contiguous string dataset has no data address"),
-            })?;
-            let mut buf = vec![0u8; n_bytes];
-            file.read_contiguous_dataset_bytes(data_addr, 0, &mut buf)?;
-            buf
-        }
-        StorageLayout::Chunked => file.read_chunked_dataset_all_bytes(addr)?,
-        StorageLayout::Compact => {
-            return Err(Error::UnsupportedFeature {
-                feature: String::from("NWB: compact string dataset layout is not supported"),
-            });
-        }
-        StorageLayout::Virtual => {
-            return Err(Error::UnsupportedFeature {
-                feature: String::from("NWB: virtual string dataset layout is not supported"),
-            });
-        }
-    };
-
-    let mut strings = Vec::with_capacity(n_elements);
-    for chunk in raw.chunks(length) {
-        // Strip trailing null bytes (NWB uses null-padded fixed-length strings).
-        let trimmed = match chunk.iter().rposition(|&b| b != 0) {
-            Some(pos) => &chunk[..=pos],
-            None => &chunk[..0],
-        };
-        let s = core::str::from_utf8(trimmed)
-            .map_err(|e| Error::InvalidFormat {
-                message: format!("NWB: string dataset contains invalid UTF-8: {}", e),
-            })?
-            .to_owned();
-        strings.push(s);
-    }
-
-    Ok(strings)
 }
 
 /// Read a scalar fixed-string dataset as a single `String`.
@@ -1194,7 +1261,7 @@ mod tests {
 
     #[test]
     fn read_string_dataset_wrong_datatype_returns_unsupported_feature() {
-        // Analytical: Float datatype is rejected; FixedString is the only accepted type.
+        // Analytical: Float datatype is rejected; only FixedString and VariableString are accepted.
         use consus_core::{Datatype, Shape};
         use consus_hdf5::file::writer::{DatasetCreationProps, FileCreationProps, Hdf5FileBuilder};
         use consus_hdf5::file::Hdf5File;

@@ -20,3 +20,7 @@ consus-io   = { workspace = true }
 consus-hdf5 = { workspace = true, features = ["std"] }
 consus-io   = { workspace = true, features = ["std"] }
 proptest    = "1"
+
+[[test]]
+name = "integration_real_file"
+path = "tests/integration_real_file.rs"

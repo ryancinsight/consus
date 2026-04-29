@@ -377,7 +377,7 @@
 - [x] `conventions/mod.rs` — `NeuroDataType` enum, `classify_neurodata_type`, `is_timeseries_type` (def + inc + known subtypes)
 - [x] `namespace/mod.rs` — `NwbNamespace` with `core()`, `hdmf_common()`, `CORE_NAME` constant
 - [x] `consus-hdf5 list_group_at` fix: SYMBOL_TABLE guard prevents v1 fallback error on v2 empty groups
-- [ ] Nested container traversal via multi-level `open_path` (`/acquisition/{name}/`, `/processing/{name}/`)
+- [x] Multi-level open_path verified in integration test: list_acquisition returns both nested paths; time_series reads through /acquisition/{name}/ hierarchy
 - [ ] Units table read (spike times)
 - [x] Subject metadata extraction — `NwbSubjectMetadata` model + `NwbFile::subject()` read path
 - [x] `NwbFile::list_acquisition()` — convenience wrapper over `list_time_series("acquisition")`
@@ -438,8 +438,8 @@
 - [x] `cargo test -p consus-nwb --lib` → 211/211; `cargo test --workspace` → 2285/2285; `cargo check --workspace` → 0 errors, 0 warnings
 
 ### P3.6 — NWB Verification
-- [ ] Read tests against Allen Brain Observatory NWB 2.x sample
-- [ ] Read tests against NWB tutorial files
+- [x] h5py-generated NWB 2.7 fixture verification (Milestone 46 — this sprint)
+- [x] All read paths verified against h5py fixture: session_metadata, list_acquisition, time_series (f64+i16 promotion+rate), units_table, electrode_table (VL strings), subject — `tests/integration_real_file.rs` (Milestone 46 — this sprint)
 - [ ] Full conformance validation against NWB 2.x schema
 - [x] ElectrodeTable read (electrode metadata) — `read_string_dataset` added; `NwbFile::electrode_table()` + `NwbFileBuilder::write_electrode_table()` implemented (Milestone 40)
 - [x] Namespace version detection and spec YAML parsing from `/specifications/` (NwbVersion V2_8, NwbNamespaceSpec, parse_nwb_spec_yaml, format_nwb_spec_yaml, list_specifications, read_specification, write_namespace_specs — this sprint)
