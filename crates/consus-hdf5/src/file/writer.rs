@@ -1131,6 +1131,23 @@ fn write_chunked_data<W: WriteAt>(
     raw_data: &[u8],
     props: &DatasetCreationProps,
 ) -> Result<u64> {
+    let element_size = datatype
+        .element_size()
+        .ok_or_else(|| Error::UnsupportedFeature {
+            feature: String::from("chunked write requires fixed-size element datatype"),
+        })?;
+    write_chunked_data_with_element_size(sink, state, element_size, shape, raw_data, props)
+}
+
+#[cfg(feature = "alloc")]
+fn write_chunked_data_with_element_size<W: WriteAt>(
+    sink: &mut W,
+    state: &mut WriteState,
+    element_size: usize,
+    shape: &Shape,
+    raw_data: &[u8],
+    props: &DatasetCreationProps,
+) -> Result<u64> {
     let chunk_dims = props
         .chunk_dims
         .as_ref()
@@ -1147,12 +1164,6 @@ fn write_chunked_data<W: WriteAt>(
             ),
         });
     }
-
-    let element_size = datatype
-        .element_size()
-        .ok_or_else(|| Error::UnsupportedFeature {
-            feature: String::from("chunked write requires fixed-size element datatype"),
-        })?;
     let dataset_dims = shape.current_dims();
     let expected_len = shape
         .num_elements()
@@ -1638,9 +1649,21 @@ impl Hdf5FileBuilder {
         raw_data: &[u8],
         dcpl: &DatasetCreationProps,
     ) -> Result<u64> {
+        let vlen_ref_size = 4 + self.state.ctx.offset_bytes() + 4;
         let data_addr = match dcpl.layout {
             DatasetLayout::Chunked => {
-                write_chunked_data(&mut self.sink, &mut self.state, dt, shape, raw_data, dcpl)?
+                if matches!(dt, Datatype::VariableString { .. }) {
+                    write_chunked_data_with_element_size(
+                        &mut self.sink,
+                        &mut self.state,
+                        vlen_ref_size,
+                        shape,
+                        raw_data,
+                        dcpl,
+                    )?
+                } else {
+                    write_chunked_data(&mut self.sink, &mut self.state, dt, shape, raw_data, dcpl)?
+                }
             }
             _ => write_contiguous_data(&mut self.sink, &mut self.state, raw_data)?,
         };
@@ -1663,9 +1686,21 @@ impl Hdf5FileBuilder {
         dcpl: &DatasetCreationProps,
         attributes: &[(&str, &Datatype, &Shape, &[u8])],
     ) -> Result<u64> {
+        let vlen_ref_size = 4 + self.state.ctx.offset_bytes() + 4;
         let data_addr = match dcpl.layout {
             DatasetLayout::Chunked => {
-                write_chunked_data(&mut self.sink, &mut self.state, dt, shape, raw_data, dcpl)?
+                if matches!(dt, Datatype::VariableString { .. }) {
+                    write_chunked_data_with_element_size(
+                        &mut self.sink,
+                        &mut self.state,
+                        vlen_ref_size,
+                        shape,
+                        raw_data,
+                        dcpl,
+                    )?
+                } else {
+                    write_chunked_data(&mut self.sink, &mut self.state, dt, shape, raw_data, dcpl)?
+                }
             }
             _ => write_contiguous_data(&mut self.sink, &mut self.state, raw_data)?,
         };
@@ -1676,9 +1711,13 @@ impl Hdf5FileBuilder {
         let filter_ids = dataset_filter_ids(dcpl);
         let layout_bytes = match dcpl.layout {
             DatasetLayout::Chunked => {
-                let element_size = dt.element_size().ok_or_else(|| Error::UnsupportedFeature {
-                    feature: String::from("chunked write requires fixed-size element datatype"),
-                })?;
+                let element_size = if matches!(dt, Datatype::VariableString { .. }) {
+                    4 + ctx.offset_bytes() + 4
+                } else {
+                    dt.element_size().ok_or_else(|| Error::UnsupportedFeature {
+                        feature: String::from("chunked write requires fixed-size element datatype"),
+                    })?
+                };
                 encode_layout_with_chunk_index(
                     data_addr,
                     dcpl,
