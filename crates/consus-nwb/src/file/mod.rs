@@ -423,6 +423,10 @@ impl<'a> NwbFile<'a> {
         // Layer 5: DynamicTable groups must carry a `colnames` attribute.
         crate::validation::check_dynamic_table_colnames(&self.hdf5, &mut report)?;
 
+        // Layer 6: DynamicTable column-content consistency — each name in
+        // `colnames` must correspond to a child dataset.
+        crate::validation::check_dynamic_table_column_content(&self.hdf5, &mut report)?;
+
         Ok(report)
     }
 }
@@ -1916,6 +1920,121 @@ mod tests {
                 } if group_path == "my_table" && attr_name == "colnames"
             )),
             "expected GroupMissingAttribute(my_table, colnames): {:?}",
+            report.violations()
+        );
+    }
+
+    /// Layer 6 must report DynamicTableColumnMissing when a DynamicTable
+    /// declares a column in `colnames` that has no corresponding child dataset.
+    #[test]
+    fn validate_conformance_reports_dynamic_table_column_missing() {
+        let ts = "2023-01-01T00:00:00Z";
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+        for (name, value) in &[
+            ("neurodata_type_def", "NWBFile"),
+            ("nwb_version", "2.7.0"),
+            ("identifier", "id"),
+            ("session_description", "desc"),
+            ("session_start_time", ts),
+            ("timestamps_reference_time", ts),
+        ] {
+            let (dt, raw) = fixed_string_dt(value);
+            builder
+                .add_root_attribute(name, &dt, &scalar, &raw)
+                .unwrap();
+        }
+        let (fcd_dt, fcd_raw) = fixed_string_dt(ts);
+        let fcd_shape = Shape::fixed(&[1]);
+        builder
+            .add_root_attribute("file_create_date", &fcd_dt, &fcd_shape, &fcd_raw)
+            .unwrap();
+        for group in &[
+            "acquisition",
+            "analysis",
+            "processing",
+            "stimulus",
+            "general",
+        ] {
+            builder.add_group_with_attributes(group, &[], &[]).unwrap();
+        }
+        // DynamicTable with colnames="x" but no child dataset "x"
+        let (ndt_dt, ndt_raw) = fixed_string_dt("DynamicTable");
+        let (col_dt, col_raw) = fixed_string_dt("x");
+        builder
+            .add_group_with_attributes(
+                "ghost_table",
+                &[
+                    ("neurodata_type_def", &ndt_dt, &scalar, &ndt_raw),
+                    ("colnames", &col_dt, &scalar, &col_raw),
+                ],
+                &[], // no child datasets — column "x" is missing
+            )
+            .unwrap();
+        let bytes = builder.finish().unwrap();
+        let file = NwbFile::open(&bytes).unwrap();
+        let report = file.validate_conformance().unwrap();
+        assert!(
+            report.violations().iter().any(|v| matches!(
+                v,
+                crate::validation::ConformanceViolation::DynamicTableColumnMissing {
+                    group_path,
+                    column_name,
+                } if group_path == "ghost_table" && column_name == "x"
+            )),
+            "expected DynamicTableColumnMissing(ghost_table, x): {:?}",
+            report.violations()
+        );
+    }
+
+    /// Layer 6 must NOT report DynamicTableColumnMissing for a properly-written
+    /// electrode table where all colnames columns are present as child datasets.
+    #[test]
+    fn validate_conformance_passes_electrode_table_column_content() {
+        let ts = "2023-01-01T00:00:00Z";
+        let mut builder = NwbFileBuilder::new("2.7.0", "uid1", "desc", ts).unwrap();
+        for group in &[
+            "acquisition",
+            "analysis",
+            "processing",
+            "stimulus",
+            "general",
+        ] {
+            builder.write_empty_group(group).unwrap();
+        }
+        // Write a 1-row electrode table: colnames="location,group_name" with
+        // child datasets "id", "location", and "group_name" all present.
+        let table = crate::model::electrode::ElectrodeTable::from_rows(alloc::vec![
+            crate::model::electrode::ElectrodeRow {
+                id: 0,
+                location: alloc::string::String::from("CA1"),
+                group_name: alloc::string::String::from("tetrode1"),
+            },
+        ]);
+        builder.write_electrode_table(&table).unwrap();
+        let bytes = builder.finish().unwrap();
+        let file = NwbFile::open(&bytes).unwrap();
+        let report = file.validate_conformance().unwrap();
+        // No DynamicTableColumnMissing for "location" or "group_name"
+        let col_missing: alloc::vec::Vec<_> = report
+            .violations()
+            .iter()
+            .filter(|v| {
+                matches!(
+                    v,
+                    crate::validation::ConformanceViolation::DynamicTableColumnMissing { .. }
+                )
+            })
+            .collect();
+        assert!(
+            col_missing.is_empty(),
+            "electrode table with all colnames columns present must not trigger Layer 6: {:?}",
+            col_missing
+        );
+        // The entire report must be conformant (no violations at all)
+        assert!(
+            report.is_conformant(),
+            "complete electrode table file must be fully conformant: {:?}",
             report.violations()
         );
     }

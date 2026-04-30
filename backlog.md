@@ -264,9 +264,10 @@
 - [x] Parquet reader proptest suite — `consus-parquet/src/reader/reader_proptest.rs`: 5 proptest roundtrip properties (`prop_reader_i32_roundtrip`, `prop_reader_f64_roundtrip`, `prop_reader_bool_roundtrip`, `prop_reader_byte_array_roundtrip`, `prop_reader_two_column_i32_f64_roundtrip`); all assert computed column values with `prop_assert_eq!`; verified `cargo test -p consus-parquet --lib` 197/197 pass
 - [x] Criterion benchmark harness — `consus-parquet/benches/parquet_rw.rs`: `bench_write_i32` + `bench_read_i32` at 1K/10K/100K rows; `consus-arrow/benches/arrow_bridge.rs`: `bench_bridge_i32`, `bench_bridge_double`, `bench_bridge_byte_array`; `[[bench]]` targets added to both Cargo.toml files; verified `cargo check --bench parquet_rw` and `cargo check --bench arrow_bridge` clean
 - [ ] Large file (>4 GiB) regression tests
-- [ ] Fuzz testing (`cargo-fuzz` harness targets)
+- [x] proptest harnesses delivered: `is_valid_iso8601` (4 property tests, consus-nwb) + `decode_attribute_value` (4 property tests, consus-hdf5) — Milestone 52 (this sprint — CLOSED)
+- [ ] `cargo-fuzz` harness targets (heap-buffer and logic fuzz)
 - [ ] WASM target validation
-- [ ] `no_std` smoke tests (`thumbv7em-none-eabihf`)
+- [ ] `no_std` smoke tests (`thumbv7em-none-eabihf`) — workspace `no_std + alloc` compilation now fully clean: NO-STD-001 closed (M-050); embedded target smoke test still pending
 - [ ] Documentation site
 - [ ] crates.io publication
 
@@ -442,6 +443,8 @@
 - [x] All read paths verified against h5py fixture: session_metadata, list_acquisition, time_series (f64+i16 promotion+rate), units_table, electrode_table (VL strings), subject — `tests/integration_real_file.rs` (Milestone 46 — this sprint)
 - [x] Full conformance validation against NWB 2.x schema — `NwbFile::validate_conformance()` + `NwbConformanceReport` + 4 validation layers + 29 new tests (Milestone 47 — this sprint — CLOSED)
 - [x] Extended conformance: `timestamps_reference_time` (ISO 8601) + `file_create_date` (≥1 ISO 8601 entry) layer-2 validation; DynamicTable `colnames` layer-5 validation; `NwbFileBuilder::new` writes both new required attrs automatically — 12 new tests (Milestone 48 — this sprint — CLOSED)
+- [x] DynamicTable column-content consistency validation — `check_dynamic_table_column_content`, `DynamicTableColumnMissing` variant, layer 6 in `validate_conformance` (Milestone 51 — this sprint — CLOSED)
 - [x] no_std + alloc compilation verified for consus-core, consus-io, consus-hdf5, consus-nwb; consus-hdf5 and consus-nwb no_std gaps fixed (Milestone 49 — this sprint — CLOSED)
+- [x] no_std + alloc compilation for consus-zarr now passes; NO-STD-001 resolved — gzip/zstd/lz4 feature-gated under `std`, codec paths guarded, FsStore gated (Milestone 50 — this sprint — CLOSED)
 - [x] ElectrodeTable read (electrode metadata) — `read_string_dataset` added; `NwbFile::electrode_table()` + `NwbFileBuilder::write_electrode_table()` implemented (Milestone 40)
 - [x] Namespace version detection and spec YAML parsing from `/specifications/` (NwbVersion V2_8, NwbNamespaceSpec, parse_nwb_spec_yaml, format_nwb_spec_yaml, list_specifications, read_specification, write_namespace_specs — this sprint)

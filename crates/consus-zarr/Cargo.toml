@@ -10,7 +10,7 @@ description = "Pure-Rust Zarr v2/v3 format implementation for the Consus scienti
 
 [features]
 default = ["std"]
-std = ["alloc", "consus-core/std", "consus-io/std", "consus-compression/std", "serde/std", "serde_json/std"]
+std = ["alloc", "consus-core/std", "consus-io/std", "consus-compression/std", "consus-compression/gzip", "consus-compression/zstd", "consus-compression/lz4", "serde/std", "serde_json/std"]
 alloc = ["consus-core/alloc", "consus-io/alloc", "consus-compression/alloc", "serde/alloc", "serde_json/alloc"]
 
 
@@ -19,7 +19,7 @@ s3 = ["std", "rusoto_s3", "rusoto_core", "tokio", "reqwest", "md5", "futures", "
 [dependencies]
 consus-core = { workspace = true }
 consus-io = { workspace = true }
-consus-compression = { workspace = true, features = ["gzip", "zstd", "lz4"] }
+consus-compression = { workspace = true }
 # JSON parsing/serialization for Zarr metadata.
 serde = { workspace = true }
 serde_json = { workspace = true }

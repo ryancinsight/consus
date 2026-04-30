@@ -8,7 +8,7 @@ pub mod traits;
 #[cfg(feature = "deflate")]
 pub mod deflate;
 
-#[cfg(feature = "gzip")]
+#[cfg(all(feature = "gzip", feature = "std"))]
 pub mod gzip;
 
 #[cfg(feature = "zstd")]

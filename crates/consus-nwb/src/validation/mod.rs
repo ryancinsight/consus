@@ -265,6 +265,14 @@ pub enum ConformanceViolation {
         /// HDF5 path to the offending TimeSeries group.
         group_path: String,
     },
+    /// A column named in a DynamicTable's `colnames` attribute has no corresponding
+    /// child dataset in the group.
+    DynamicTableColumnMissing {
+        /// HDF5 path to the DynamicTable group (relative to root).
+        group_path: String,
+        /// Column name that is listed in `colnames` but absent as a child.
+        column_name: String,
+    },
 }
 
 /// Collected result of a full NWB 2.x conformance check.
@@ -584,6 +592,98 @@ pub fn check_dynamic_table_colnames<R: ReadAt + Sync>(
                 report.push(ConformanceViolation::GroupMissingAttribute {
                     group_path: name.clone(),
                     attr_name: String::from("colnames"),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Layer 6: For each DynamicTable group that has a `colnames` attribute,
+/// verify that each named column has a corresponding child dataset.
+///
+/// ## Invariant
+/// ∀ DynamicTable group G with `colnames` = [c₁, c₂, …, cₙ]:
+///   ∀ cᵢ ∈ colnames: ∃ child dataset named cᵢ in G
+///
+/// ## Column Name Encoding
+/// `colnames` may be stored as:
+/// - `AttributeValue::String(s)`: comma-separated (e.g. "location,group_name")
+/// - `AttributeValue::StringArray(names)`: 1-D array of strings
+///
+/// Both formats are handled. Unknown formats are skipped.
+#[cfg(feature = "alloc")]
+pub fn check_dynamic_table_column_content<R: ReadAt + Sync>(
+    file: &Hdf5File<R>,
+    report: &mut NwbConformanceReport,
+) -> Result<()> {
+    use consus_core::LinkType;
+
+    let root_addr = file.superblock().root_group_address;
+    let children = match file.list_group_at(root_addr) {
+        Ok(c) => c,
+        Err(consus_core::Error::NotFound { .. }) => return Ok(()),
+        Err(e) => return Err(e),
+    };
+
+    for (name, addr, link_type) in &children {
+        if *link_type != LinkType::Hard {
+            continue;
+        }
+        let attrs = match file.attributes_at(*addr) {
+            Ok(a) => a,
+            Err(_) => continue,
+        };
+
+        // Only process DynamicTable groups
+        let is_dynamic_table = attrs.iter().any(|a| {
+            a.name == "neurodata_type_def"
+                && matches!(
+                    a.decode_value(),
+                    Ok(AttributeValue::String(ref s)) if s == "DynamicTable"
+                )
+        });
+        if !is_dynamic_table {
+            continue;
+        }
+
+        // Get colnames attribute; skip if absent (layer 5 already reported it)
+        let colnames_attr = match attrs.iter().find(|a| a.name == "colnames") {
+            Some(a) => a,
+            None => continue,
+        };
+
+        // Decode column names from colnames attribute
+        let col_names: alloc::vec::Vec<String> = match colnames_attr.decode_value() {
+            Ok(AttributeValue::StringArray(names)) => names,
+            Ok(AttributeValue::String(s)) => {
+                // comma-separated scalar form
+                s.split(',')
+                    .map(|c| String::from(c.trim()))
+                    .filter(|c| !c.is_empty())
+                    .collect()
+            }
+            _ => continue, // unknown encoding: skip
+        };
+
+        if col_names.is_empty() {
+            continue;
+        }
+
+        // List children of this DynamicTable group
+        let table_children = match file.list_group_at(*addr) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let child_names: alloc::collections::BTreeSet<&str> =
+            table_children.iter().map(|(n, _, _)| n.as_str()).collect();
+
+        // Report any column name that has no corresponding child
+        for col in &col_names {
+            if !child_names.contains(col.as_str()) {
+                report.push(ConformanceViolation::DynamicTableColumnMissing {
+                    group_path: name.clone(),
+                    column_name: col.clone(),
                 });
             }
         }
@@ -1368,5 +1468,313 @@ mod tests {
             )),
             "expected InvalidRootAttributeValue(file_create_date): {:?}", report.violations()
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Layer 6: DynamicTable column-content consistency (M-051)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn dynamic_table_column_missing_variant_carries_fields() {
+        // Theorem: DynamicTableColumnMissing stores group_path and column_name.
+        let v = ConformanceViolation::DynamicTableColumnMissing {
+            group_path: String::from("electrodes"),
+            column_name: String::from("location"),
+        };
+        match v {
+            ConformanceViolation::DynamicTableColumnMissing {
+                ref group_path,
+                ref column_name,
+            } => {
+                assert_eq!(group_path, "electrodes");
+                assert_eq!(column_name, "location");
+            }
+            other => panic!("unexpected variant: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn check_dynamic_table_column_content_passes_when_all_columns_present() {
+        // Theorem: DynamicTable with colnames="x" and child dataset "x" produces
+        // no DynamicTableColumnMissing violation.
+        use consus_core::{ByteOrder, Datatype, Shape, StringEncoding};
+        use consus_hdf5::file::writer::{
+            ChildDatasetSpec, DatasetCreationProps, FileCreationProps, Hdf5FileBuilder,
+        };
+        use core::num::NonZeroUsize;
+
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+
+        let ndt_dt = Datatype::FixedString {
+            length: 12,
+            encoding: StringEncoding::Ascii,
+        };
+        let ndt_raw = b"DynamicTable".to_vec();
+
+        // colnames="x" stored as scalar FixedString (comma-separated form, single name)
+        let col_dt = Datatype::FixedString {
+            length: 1,
+            encoding: StringEncoding::Ascii,
+        };
+        let col_raw = b"x".to_vec();
+
+        // child dataset "x": single f64 element
+        let f64_dt = Datatype::Float {
+            bits: NonZeroUsize::new(64).unwrap(),
+            byte_order: ByteOrder::LittleEndian,
+        };
+        let x_shape = Shape::fixed(&[1]);
+        let x_raw = 1.0f64.to_le_bytes().to_vec();
+
+        builder
+            .add_group_with_attributes(
+                "my_table",
+                &[
+                    ("neurodata_type_def", &ndt_dt, &scalar, &ndt_raw),
+                    ("colnames", &col_dt, &scalar, &col_raw),
+                ],
+                &[ChildDatasetSpec {
+                    name: "x",
+                    datatype: &f64_dt,
+                    shape: &x_shape,
+                    raw_data: &x_raw,
+                    dcpl: DatasetCreationProps::default(),
+                    attributes: &[],
+                }],
+            )
+            .unwrap();
+
+        let bytes = builder.finish().unwrap();
+        let reader = consus_io::SliceReader::new(&bytes);
+        let file = consus_hdf5::file::Hdf5File::open(reader).unwrap();
+        let mut report = NwbConformanceReport::new();
+        check_dynamic_table_column_content(&file, &mut report).unwrap();
+
+        let missing: alloc::vec::Vec<_> = report
+            .violations()
+            .iter()
+            .filter(|v| matches!(v, ConformanceViolation::DynamicTableColumnMissing { .. }))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "must not report DynamicTableColumnMissing when column 'x' is present: {:?}",
+            report.violations()
+        );
+    }
+
+    #[test]
+    fn check_dynamic_table_column_content_reports_missing_column() {
+        // Theorem: DynamicTable with colnames="x,y" but only child "x" reports
+        // DynamicTableColumnMissing for column "y".
+        use consus_core::{ByteOrder, Datatype, Shape, StringEncoding};
+        use consus_hdf5::file::writer::{
+            ChildDatasetSpec, DatasetCreationProps, FileCreationProps, Hdf5FileBuilder,
+        };
+        use core::num::NonZeroUsize;
+
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+
+        let ndt_dt = Datatype::FixedString {
+            length: 12,
+            encoding: StringEncoding::Ascii,
+        };
+        let ndt_raw = b"DynamicTable".to_vec();
+
+        // colnames="x,y" as scalar FixedString (3 bytes)
+        let col_dt = Datatype::FixedString {
+            length: 3,
+            encoding: StringEncoding::Ascii,
+        };
+        let col_raw = b"x,y".to_vec();
+
+        // Only child dataset "x" is written; "y" is intentionally absent.
+        let f64_dt = Datatype::Float {
+            bits: NonZeroUsize::new(64).unwrap(),
+            byte_order: ByteOrder::LittleEndian,
+        };
+        let x_shape = Shape::fixed(&[1]);
+        let x_raw = 1.0f64.to_le_bytes().to_vec();
+
+        builder
+            .add_group_with_attributes(
+                "my_table",
+                &[
+                    ("neurodata_type_def", &ndt_dt, &scalar, &ndt_raw),
+                    ("colnames", &col_dt, &scalar, &col_raw),
+                ],
+                &[ChildDatasetSpec {
+                    name: "x",
+                    datatype: &f64_dt,
+                    shape: &x_shape,
+                    raw_data: &x_raw,
+                    dcpl: DatasetCreationProps::default(),
+                    attributes: &[],
+                }],
+            )
+            .unwrap();
+
+        let bytes = builder.finish().unwrap();
+        let reader = consus_io::SliceReader::new(&bytes);
+        let file = consus_hdf5::file::Hdf5File::open(reader).unwrap();
+        let mut report = NwbConformanceReport::new();
+        check_dynamic_table_column_content(&file, &mut report).unwrap();
+
+        let y_missing = report.violations().iter().any(|v| {
+            matches!(
+                v,
+                ConformanceViolation::DynamicTableColumnMissing {
+                    group_path,
+                    column_name,
+                } if group_path == "my_table" && column_name == "y"
+            )
+        });
+        assert!(
+            y_missing,
+            "expected DynamicTableColumnMissing(my_table, y): {:?}",
+            report.violations()
+        );
+        // "x" must NOT be reported missing (it is present as a child)
+        let x_missing = report.violations().iter().any(|v| {
+            matches!(
+                v,
+                ConformanceViolation::DynamicTableColumnMissing {
+                    group_path,
+                    column_name,
+                } if group_path == "my_table" && column_name == "x"
+            )
+        });
+        assert!(
+            !x_missing,
+            "must not report DynamicTableColumnMissing for column 'x' which is present: {:?}",
+            report.violations()
+        );
+    }
+
+    #[test]
+    fn check_dynamic_table_column_content_skips_group_without_colnames() {
+        // Theorem: a DynamicTable group that has no `colnames` attribute is
+        // skipped by layer 6 — no DynamicTableColumnMissing is recorded.
+        // (Layer 5 would have reported GroupMissingAttribute, but not layer 6.)
+        use consus_core::{Datatype, Shape, StringEncoding};
+        use consus_hdf5::file::writer::{FileCreationProps, Hdf5FileBuilder};
+
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+
+        let ndt_dt = Datatype::FixedString {
+            length: 12,
+            encoding: StringEncoding::Ascii,
+        };
+        let ndt_raw = b"DynamicTable".to_vec();
+
+        // DynamicTable group with neurodata_type_def but NO colnames
+        builder
+            .add_group_with_attributes(
+                "bare_table",
+                &[("neurodata_type_def", &ndt_dt, &scalar, &ndt_raw)],
+                &[],
+            )
+            .unwrap();
+
+        let bytes = builder.finish().unwrap();
+        let reader = consus_io::SliceReader::new(&bytes);
+        let file = consus_hdf5::file::Hdf5File::open(reader).unwrap();
+        let mut report = NwbConformanceReport::new();
+        check_dynamic_table_column_content(&file, &mut report).unwrap();
+
+        let col_missing: alloc::vec::Vec<_> = report
+            .violations()
+            .iter()
+            .filter(|v| matches!(v, ConformanceViolation::DynamicTableColumnMissing { .. }))
+            .collect();
+        assert!(
+            col_missing.is_empty(),
+            "layer 6 must not emit DynamicTableColumnMissing for group with no colnames: {:?}",
+            report.violations()
+        );
+    }
+
+    // ── proptest harnesses (M-052) ─────────────────────────────────────────
+
+    #[cfg(test)]
+    mod proptest_harnesses {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            /// Safety invariant: `is_valid_iso8601` never panics on any input.
+            #[test]
+            fn is_valid_iso8601_never_panics(s in ".*") {
+                let _ = is_valid_iso8601(&s);
+            }
+
+            /// Structural invariant: strings shorter than 20 chars can never be
+            /// valid ISO 8601 (minimum: YYYY-MM-DDTHH:MM:SSZ = 20 chars).
+            #[test]
+            fn is_valid_iso8601_returns_false_for_short_strings(
+                s in ".{0,18}"
+            ) {
+                if s.len() < 20 {
+                    assert!(
+                        !is_valid_iso8601(&s),
+                        "string shorter than 20 chars must not be valid ISO 8601: {:?}",
+                        s
+                    );
+                }
+            }
+        }
+
+        proptest! {
+            /// Completeness invariant: all analytically-constructed valid ISO 8601
+            /// strings with Z timezone are accepted.
+            #[test]
+            fn is_valid_iso8601_accepts_generated_valid_z_strings(
+                year in 1000u32..=9999,
+                month in 1u32..=12,
+                day in 1u32..=28,   // conservative: avoids month-length edge cases
+                hour in 0u32..=23,
+                minute in 0u32..=59,
+                second in 0u32..=59,
+            ) {
+                let s = alloc::format!(
+                    "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+                    year, month, day, hour, minute, second
+                );
+                assert!(
+                    is_valid_iso8601(&s),
+                    "analytically valid ISO 8601 must be accepted: {:?}",
+                    s
+                );
+            }
+
+            /// Completeness invariant: all analytically-constructed valid ISO 8601
+            /// strings with ±HH:MM offset timezone are accepted.
+            #[test]
+            fn is_valid_iso8601_accepts_generated_valid_offset_strings(
+                year in 1000u32..=9999,
+                month in 1u32..=12,
+                day in 1u32..=28,
+                hour in 0u32..=23,
+                minute in 0u32..=59,
+                second in 0u32..=59,
+                sign in 0u32..=1u32,
+                tz_hour in 0u32..=14,
+                tz_minute in 0u32..=59,
+            ) {
+                let sign_char = if sign == 0 { '+' } else { '-' };
+                let s = alloc::format!(
+                    "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}{}{:02}:{:02}",
+                    year, month, day, hour, minute, second,
+                    sign_char, tz_hour, tz_minute
+                );
+                assert!(
+                    is_valid_iso8601(&s),
+                    "analytically valid ISO 8601 with offset must be accepted: {:?}",
+                    s
+                );
+            }
+        }
     }
 }

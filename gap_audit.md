@@ -460,7 +460,7 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
 
 ---
 
-## M-049: no_std + alloc Compilation Verification (this sprint — PARTIALLY CLOSED)
+## M-049: no_std + alloc Compilation Verification (this sprint — CLOSED)
 
 **Root cause**: consus-hdf5 and consus-nwb had implicit `std` dependencies in `no_std+alloc` compilation paths: missing `vec!` macro import, `ToString`/`ToOwned` traits not in no_std prelude, `Vec` not imported.
 
@@ -477,20 +477,59 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
 - `cargo check -p consus-io --no-default-features --features alloc` → 0 errors
 - `cargo check -p consus-hdf5 --no-default-features --features alloc` → 0 errors
 - `cargo check -p consus-nwb --no-default-features --features alloc` → 0 errors
-- `consus-zarr --no-default-features --features alloc`: BLOCKED — see NO-STD-001
+- `cargo check -p consus-zarr --no-default-features --features alloc` → 0 errors (NO-STD-001 resolved — M-050)
+
+---
+
+## M-050: NO-STD-001 Fix — consus-zarr no_std alloc Compatibility (this sprint — CLOSED)
+
+**Root cause**: `consus-compression/src/codec/gzip.rs` used `std::io::Read` without feature gating. `consus-zarr` unconditionally enabled gzip/zstd/lz4 compression features, causing `E0433: use of unresolved module std` when compiling with `--no-default-features --features alloc`.
+
+**Resolution**:
+- `consus-compression/src/codec/mod.rs`: gzip module gated under `all(feature = "gzip", feature = "std")`
+- `consus-zarr/Cargo.toml`: gzip/zstd/lz4 features gated under `std` feature
+- `consus-zarr/src/codec/mod.rs`: `default_registry()` and `get_codec_by_name()` moved to `#[cfg(feature = "std")]`
+- `consus-zarr/src/chunk/mod.rs`: split CodecPipeline/default_registry imports; codec paths gated under std; alloc-only fallback returns `DecompressFailed`/`CompressFailed`
+- `consus-zarr/src/shard/mod.rs`: split imports; codec path gated; alloc-only fallback returns `UnsupportedFeature`
+- Additional alloc-import fixes across zarr metadata/store/shard/codec modules; `chunk/mod.rs.bak` deleted
+
+**Verification**:
+- `cargo check -p consus-zarr --no-default-features --features alloc` → 0 errors (warnings pre-existing)
+- `cargo test -p consus-zarr` → 303/303
+- `cargo check --workspace` → 0 errors
+
+---
+
+## M-051: NWB DynamicTable Column-Content Consistency Validation — Layer 6 (this sprint — CLOSED)
+
+**Root cause**: Layer 5 (`check_dynamic_table_colnames`) verified that `colnames` attribute exists on DynamicTable groups but did not validate that each declared column name was present as a child dataset in the group.
+
+**Resolution**:
+- `DynamicTableColumnMissing { group_path: String, column_name: String }` variant added to `ConformanceViolation`
+- `check_dynamic_table_column_content<R: ReadAt + Sync>(file, report)` implemented: scans root-level DynamicTable groups, decodes `colnames` (String comma-separated + StringArray variants), lists group children via `file.list_group_at(addr)`, reports `DynamicTableColumnMissing` for any column name absent as a child
+- Layer 6 call added to `NwbFile::validate_conformance` after layer 5
+- 4 unit tests: enum variant fields, pass (all columns present), fail (missing "y"), skip (no colnames)
+- 2 integration tests: `validate_conformance_reports_dynamic_table_column_missing`, `validate_conformance_passes_electrode_table_column_content`
+
+**Verification**: `cargo test -p consus-nwb --lib` → 272/272
+
+---
+
+## M-052: proptest Harnesses for Critical Parsers (this sprint — CLOSED)
+
+**Root cause**: `is_valid_iso8601` and `decode_attribute_value` had no property-based coverage; panic safety and domain completeness on arbitrary inputs were unverified.
+
+**Resolution**:
+- `consus-nwb/src/validation/mod.rs` — `mod proptest_harnesses`: 4 proptest properties for `is_valid_iso8601`: `never_panics` (arbitrary strings), `returns_false_for_short_strings` (len < 20 → always false), `accepts_generated_valid_z_strings` (analytically-generated Z-timezone → always true), `accepts_generated_valid_offset_strings` (analytically-generated ±offset → always true)
+- `consus-hdf5/src/attribute/mod.rs` — `mod proptest_harnesses`: 4 proptest properties for `decode_attribute_value`: FixedString scalar arbitrary bytes, f64 scalar arbitrary bytes, i32 scalar arbitrary bytes, FixedString 1-D array arbitrary bytes — all assert no panic
+
+**Verification**: `cargo test -p consus-nwb --lib` → 272/272; `cargo test -p consus-hdf5 --lib` → 276/276; `cargo test --workspace` → 2449/2449
 
 ---
 
 ## Open Gaps
 
-### NO-STD-001: consus-zarr + consus-compression no_std incompatibility
-
-- **Severity**: Low
-- **Crates affected**: `consus-zarr`, `consus-compression`
-- **Description**: `consus-compression/src/codec/gzip.rs` uses `use std::io::Read` directly (not feature-gated). `consus-zarr` unconditionally enables `features = ["gzip", "zstd", "lz4"]` on `consus-compression`, so any attempt to compile `consus-zarr --no-default-features --features alloc` fails with `E0433: use of unresolved module std`.
-- **Root cause**: Compression codec trait implementations require `std::io::Read` for streaming decompression. The `flate2`, `zstd`, and `lz4_flex` crate implementations used here are `std`-only.
-- **Remediation**: Gate the gzip/zstd/lz4 features under `consus-zarr`'s `std` feature (not unconditional). In `consus-zarr/Cargo.toml`, move compression feature enablement from the `[dependencies]` block to the `std` feature entry. This is a `[minor]` change with no API surface change.
-- **Blocker**: Depends on `consus-zarr` API behaviour not changing — no functional regression expected.
+_No open gaps._
 
 ---
 
@@ -554,8 +593,8 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
 
 | Metric | Value |
 |--------|---------|
-| Zarr library + integration tests | 301 |
-| Zarr passing | 301 |
+| Zarr library + integration tests | 303 |
+| Zarr passing | 303 |
 | Zarr failing | 0 |
 | netCDF tests | 137 |
 | netCDF passing | 137 |
@@ -568,13 +607,13 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
 | consus-arrow E2E integration | 6/6 |
 | consus-io lib (default) | 20/20 |
 | consus-io lib+integration (mmap) | 31/31 |
-| consus-nwb lib | 262/262 |
+| consus-nwb lib | 272/272 |
 | consus-nwb integration (real file) | 1/1 |
-| consus-hdf5 lib | 272/272 |
-| workspace total tests (default) | 2371/2371 |
-| Verified commands | `cargo test -p consus-netcdf` (137/137); `cargo test -p consus-hdf5 --lib` (272/272); `cargo test -p consus-nwb --lib` (262/262); `cargo test -p consus-nwb --test integration_real_file` (1/1); `cargo test --workspace` (2371/2371, default); `cargo check --workspace` (0 warnings, 0 errors); `cargo check -p consus-core/consus-io/consus-hdf5/consus-nwb --no-default-features --features alloc` (0 errors each) |
-| Open gaps | 1 (NO-STD-001: consus-zarr/consus-compression no_std incompatibility — Low severity) |
+| consus-hdf5 lib | 276/276 |
+| workspace total tests (default) | 2449/2449 |
+| Verified commands | `cargo test -p consus-netcdf` (137/137); `cargo test -p consus-hdf5 --lib` (276/276); `cargo test -p consus-nwb --lib` (272/272); `cargo test -p consus-zarr` (303/303); `cargo test -p consus-nwb --test integration_real_file` (1/1); `cargo test --workspace` (2449/2449, default); `cargo check --workspace` (0 warnings, 0 errors); `cargo check -p consus-core/consus-io/consus-hdf5/consus-nwb/consus-zarr --no-default-features --features alloc` (0 errors each) |
+| Open gaps | 0 |
 | High-severity open gaps | 0 |
-| Closed this sprint | 7 (M-042 through M-047 + M-048: NWB Extended Conformance — `check_root_session_attrs` + `timestamps_reference_time`/`file_create_date`, `check_dynamic_table_colnames`, layer-5 `validate_conformance`, `NwbFileBuilder::new` extended, 12 new value-semantic tests + M-049: no_std + alloc verification — consus-hdf5/consus-nwb no_std fixes; 4 crates verified) |
+| Closed this sprint | 10 (M-042 through M-052: NWB Extended Conformance + no_std fixes (M-042–M-049); NO-STD-001 consus-zarr no_std resolved (M-050); DynamicTable column-content layer-6 validation (M-051); proptest harnesses for `is_valid_iso8601` + `decode_attribute_value` (M-052)) |
 | Medium-severity open gaps | 0 |
-| Low-severity open gaps | 1 (NO-STD-001) |
+| Low-severity open gaps | 0 |

@@ -20,7 +20,11 @@
 extern crate alloc;
 
 #[cfg(feature = "alloc")]
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+    vec::Vec,
+};
 
 #[cfg(feature = "alloc")]
 use crate::store::Store;

@@ -29,6 +29,12 @@
 extern crate alloc;
 
 #[cfg(feature = "alloc")]
+use alloc::boxed::Box;
+#[cfg(feature = "alloc")]
+use alloc::string::ToString;
+#[cfg(feature = "alloc")]
+use alloc::vec;
+#[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
 #[cfg(feature = "alloc")]
@@ -308,7 +314,7 @@ pub trait CodecTrait: Send + Sync {
 ///
 /// The registry is initialized lazily on first access with all codecs
 /// enabled by cargo features (deflate, gzip, zstd, lz4, blosc, szip).
-#[cfg(feature = "alloc")]
+#[cfg(feature = "std")]
 pub fn default_registry() -> &'static impl CompressionRegistryTrait {
     static REGISTRY: std::sync::OnceLock<consus_compression::DefaultCodecRegistry> =
         std::sync::OnceLock::new();
@@ -318,7 +324,7 @@ pub fn default_registry() -> &'static impl CompressionRegistryTrait {
 /// Look up a codec by name from the default registry.
 /// This is a convenience wrapper for cases where a full registry
 /// reference is not available.
-#[cfg(feature = "alloc")]
+#[cfg(feature = "std")]
 pub fn get_codec_by_name(name: &str) -> Result<Box<dyn CodecTrait + 'static>> {
     default_registry().get_by_name(name)
 }

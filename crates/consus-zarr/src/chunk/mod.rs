@@ -7,10 +7,17 @@
 use core::fmt;
 
 #[cfg(feature = "alloc")]
-use alloc::{string::String, vec, vec::Vec};
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 
-#[cfg(feature = "alloc")]
-use crate::codec::{CodecPipeline, default_registry};
+#[cfg(feature = "std")]
+use crate::codec::CodecPipeline;
+#[cfg(feature = "std")]
+use crate::codec::default_registry;
 
 #[cfg(feature = "alloc")]
 use crate::metadata::{ArrayMetadata, FillValue};
@@ -156,6 +163,7 @@ impl fmt::Display for ChunkError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for ChunkError {}
 
 #[cfg(feature = "alloc")]
@@ -477,14 +485,14 @@ pub fn read_chunk<S: Store>(
 
     // Apply codec pipeline for decompression
     if !meta.codecs.is_empty() {
-        let codec_pipeline = CodecPipeline::new(meta.codecs.clone());
-        let registry = default_registry();
-        codec_pipeline
-            .decompress(&data, registry)
-            .map_err(|_| ChunkError::DecompressFailed)
-    } else {
-        Ok(data)
+        #[cfg(not(feature = "std"))]
+        return Err(ChunkError::DecompressFailed);
+        #[cfg(feature = "std")]
+        return CodecPipeline::new(meta.codecs.clone())
+            .decompress(&data, default_registry())
+            .map_err(|_| ChunkError::DecompressFailed);
     }
+    Ok(data)
 }
 
 /// Writes and compresses a single chunk to the store.
@@ -501,10 +509,11 @@ pub fn write_chunk<S: Store>(
     let key = chunk_key_for_array(array_key, coords, &meta.chunk_key_encoding);
 
     let encoded_data = if !meta.codecs.is_empty() {
-        let codec_pipeline = CodecPipeline::new(meta.codecs.clone());
-        let registry = default_registry();
-        codec_pipeline
-            .compress(data, registry)
+        #[cfg(not(feature = "std"))]
+        return Err(ChunkError::CompressFailed);
+        #[cfg(feature = "std")]
+        CodecPipeline::new(meta.codecs.clone())
+            .compress(data, default_registry())
             .map_err(|_| ChunkError::CompressFailed)?
     } else {
         data.to_vec()
@@ -1230,8 +1239,10 @@ fn write_array_sharded<S: Store>(
             let compressed = if shard_cfg.inner_codecs.is_empty() {
                 chunk_data
             } else {
-                let pipeline = crate::codec::CodecPipeline::new(shard_cfg.inner_codecs.clone());
-                pipeline
+                #[cfg(not(feature = "std"))]
+                return Err(ChunkError::CompressFailed);
+                #[cfg(feature = "std")]
+                crate::codec::CodecPipeline::new(shard_cfg.inner_codecs.clone())
                     .compress(&chunk_data, crate::codec::default_registry())
                     .map_err(|_| ChunkError::CompressFailed)?
             };

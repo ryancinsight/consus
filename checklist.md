@@ -446,9 +446,9 @@ test result: ok. 136 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fi
 ### Milestone 18: Production Readiness
 - [x] Memory-mapped I/O backend — implemented as `consus-io::io::sync::mmap::MmapReader` (Milestone 29; `cargo test -p consus-io --features mmap` → 31/31)
 - [ ] Large file (>4 GiB) regression tests
-- [ ] Fuzz testing (`cargo-fuzz` / `proptest`)
+- [x] proptest harnesses for `is_valid_iso8601` (4 tests, consus-nwb) and `decode_attribute_value` (4 tests, consus-hdf5) — Milestone 52 (this sprint)
 - [ ] WASM target validation (`wasm32-unknown-unknown`)
-- [x] `no_std + alloc` smoke verification (Milestone 49): consus-core, consus-io, consus-hdf5, consus-nwb all pass `cargo check --no-default-features --features alloc`; consus-zarr blocked by NO-STD-001 (gzip codec requires std::io)
+- [x] `no_std + alloc` smoke verification (Milestone 49): consus-core, consus-io, consus-hdf5, consus-nwb all pass `cargo check --no-default-features --features alloc`; consus-zarr now passes (NO-STD-001 closed — Milestone 50)
 - [ ] Embedded target smoke test (`thumbv7em-none-eabihf`) — requires target toolchain
 - [ ] Documentation site
 - [ ] crates.io publication
@@ -853,9 +853,35 @@ test result: ok. 136 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fi
 - [x] Verified `cargo check -p consus-io --no-default-features --features alloc` → 0 errors
 - [x] Verified `cargo check -p consus-hdf5 --no-default-features --features alloc` → 0 errors
 - [x] Verified `cargo check -p consus-nwb --no-default-features --features alloc` → 0 errors
-- [ ] `consus-zarr --no-default-features --features alloc` BLOCKED: `consus-compression/codec/gzip.rs` uses `std::io::Read`; gap recorded as NO-STD-001
+- [x] `consus-zarr --no-default-features --features alloc` → 0 errors — NO-STD-001 resolved (Milestone 50)
 - [ ] WASM target validation (`wasm32-unknown-unknown`)
 - [ ] Embedded target smoke test (`thumbv7em-none-eabihf`) — requires toolchain install
+
+### Milestone 50: NO-STD-001 Fix — consus-zarr no_std alloc Compatibility — CLOSED (this sprint)
+- [x] `consus-compression/src/codec/mod.rs`: gzip module gated under `#[cfg(all(feature = "gzip", feature = "std"))]`
+- [x] `consus-zarr/Cargo.toml`: gzip/zstd/lz4 features moved from unconditional dep to `std` feature
+- [x] `consus-zarr/src/codec/mod.rs`: `default_registry()` and `get_codec_by_name()` moved to `#[cfg(feature = "std")]`
+- [x] `consus-zarr/src/chunk/mod.rs`: split CodecPipeline/default_registry imports; codec paths gated under std; alloc-only fallback returns `DecompressFailed`/`CompressFailed`
+- [x] `consus-zarr/src/shard/mod.rs`: split imports; codec path gated; alloc-only fallback returns `UnsupportedFeature`
+- [x] Additional no_std fixes: FsStore gated under std; alloc imports corrected in metadata, store, codec, shard modules
+- [x] `chunk/mod.rs.bak` deleted (stale backup file)
+- [x] Verified `cargo check -p consus-zarr --no-default-features --features alloc` → 0 errors (warnings pre-existing)
+- [x] Verified `cargo test -p consus-zarr` → 303/303
+- [x] Verified `cargo check --workspace` → 0 errors
+
+### Milestone 51: NWB DynamicTable Column-Content Consistency Validation (Layer 6) — CLOSED (this sprint)
+- [x] `DynamicTableColumnMissing { group_path, column_name }` variant added to `ConformanceViolation`
+- [x] `check_dynamic_table_column_content<R: ReadAt + Sync>(file, report)` implemented: scans root DynamicTable groups, decodes `colnames` (String comma-separated + StringArray), lists group children via `list_group_at`, reports missing columns
+- [x] Layer 6 call added to `NwbFile::validate_conformance` after layer 5
+- [x] 4 unit tests: enum variant, pass (all columns present), fail (missing "y"), skip (no colnames)
+- [x] 2 integration tests: `validate_conformance_reports_dynamic_table_column_missing`, `validate_conformance_passes_electrode_table_column_content`
+- [x] Verified `cargo test -p consus-nwb --lib` → 272/272
+
+### Milestone 52: proptest Harnesses for Critical Parsers — CLOSED (this sprint)
+- [x] `consus-nwb` `mod proptest_harnesses`: 4 proptest tests for `is_valid_iso8601` (panic safety, length bound, Z-timezone completeness, ±offset completeness)
+- [x] `consus-hdf5` `mod proptest_harnesses`: 4 proptest tests for `decode_attribute_value` (panic safety for FixedString scalar, f64 scalar, i32 scalar, FixedString 1-D array)
+- [x] Verified `cargo test -p consus-nwb --lib` → 272/272; `cargo test -p consus-hdf5 --lib` → 276/276
+- [x] Verified `cargo test --workspace` → 2449/2449
 
 ### Milestone 39: NWB Extended Read Path + HDF5 Nested Group Write — CLOSED
 - [x] `ChildGroupSpec<'a>` — new public struct in `consus-hdf5::file::writer` for specifying sub-group children

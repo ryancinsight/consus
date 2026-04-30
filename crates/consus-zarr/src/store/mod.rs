@@ -44,6 +44,9 @@
 extern crate alloc;
 
 #[cfg(feature = "alloc")]
+use alloc::vec::Vec;
+
+#[cfg(feature = "std")]
 mod filesystem;
 #[cfg(feature = "alloc")]
 mod memory;
@@ -52,7 +55,7 @@ mod memory;
 mod s3;
 
 // Re-export store backends at the crate root.
-#[cfg(feature = "alloc")]
+#[cfg(feature = "std")]
 pub use filesystem::FsStore;
 #[cfg(feature = "alloc")]
 pub use memory::InMemoryStore;

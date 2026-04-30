@@ -163,8 +163,10 @@ pub mod codec;
 #[cfg(feature = "alloc")]
 pub mod store;
 
+#[cfg(feature = "std")]
+pub use store::FsStore;
 #[cfg(feature = "alloc")]
-pub use store::{FsStore, InMemoryStore, PrefixedStore, ReadWriteStore, SplitStore};
+pub use store::{InMemoryStore, PrefixedStore, ReadWriteStore, SplitStore};
 
 /// Zarr v3 sharding codec support.
 #[cfg(feature = "alloc")]

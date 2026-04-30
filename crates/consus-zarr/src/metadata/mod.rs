@@ -107,7 +107,7 @@ pub enum FillValue {
     /// Unsigned integer fill value.
     Uint(u64),
     /// Float fill value stored as raw JSON representation.
-    Float(String),
+    Float(alloc::string::String),
     /// String fill value.
     String(alloc::string::String),
     /// Byte array fill value.

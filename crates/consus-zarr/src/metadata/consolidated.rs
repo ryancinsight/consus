@@ -28,7 +28,7 @@
 extern crate alloc;
 
 #[cfg(feature = "alloc")]
-use alloc::{string::String, vec::Vec};
+use alloc::{string::String, vec, vec::Vec};
 
 #[cfg(feature = "alloc")]
 use serde::{Deserialize, Serialize};

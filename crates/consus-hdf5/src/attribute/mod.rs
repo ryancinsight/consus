@@ -754,4 +754,76 @@ mod tests {
             other => panic!("expected String, got {other:?}"),
         }
     }
+
+    // ── proptest harnesses (M-052) ─────────────────────────────────────────
+    #[cfg(feature = "alloc")]
+    mod proptest_harnesses {
+        use super::*;
+        use consus_core::{ByteOrder, Datatype, Shape, StringEncoding};
+        use proptest::prelude::*;
+
+        proptest! {
+            /// Safety invariant: `decode_attribute_value` never panics on arbitrary
+            /// raw bytes for a FixedString scalar datatype.
+            ///
+            /// The function must return Ok or Err, never panic.
+            #[test]
+            fn decode_attribute_value_never_panics_on_arbitrary_bytes(
+                raw in proptest::collection::vec(any::<u8>(), 0..=256),
+            ) {
+                let dtype = Datatype::FixedString {
+                    length: 8,
+                    encoding: StringEncoding::Ascii,
+                };
+                let shape = Shape::scalar();
+                let _ = decode_attribute_value(&raw, &dtype, &shape);
+            }
+
+            /// Safety invariant: `decode_attribute_value` never panics for f64
+            /// scalar with arbitrary raw bytes.
+            #[test]
+            fn decode_attribute_value_f64_scalar_never_panics(
+                raw in proptest::collection::vec(any::<u8>(), 0..=256),
+            ) {
+                use core::num::NonZeroUsize;
+                let dtype = Datatype::Float {
+                    bits: NonZeroUsize::new(64).unwrap(),
+                    byte_order: ByteOrder::LittleEndian,
+                };
+                let shape = Shape::scalar();
+                let _ = decode_attribute_value(&raw, &dtype, &shape);
+            }
+
+            /// Safety invariant: `decode_attribute_value` never panics for i32
+            /// scalar with arbitrary raw bytes.
+            #[test]
+            fn decode_attribute_value_i32_scalar_never_panics(
+                raw in proptest::collection::vec(any::<u8>(), 0..=256),
+            ) {
+                use core::num::NonZeroUsize;
+                let dtype = Datatype::Integer {
+                    bits: NonZeroUsize::new(32).unwrap(),
+                    signed: true,
+                    byte_order: ByteOrder::LittleEndian,
+                };
+                let shape = Shape::scalar();
+                let _ = decode_attribute_value(&raw, &dtype, &shape);
+            }
+
+            /// Safety invariant: `decode_attribute_value` never panics for 1-D
+            /// FixedString array with arbitrary raw bytes and arbitrary element counts.
+            #[test]
+            fn decode_attribute_value_string_array_never_panics(
+                raw in proptest::collection::vec(any::<u8>(), 0..=256),
+                n in 1usize..=8,
+            ) {
+                let dtype = Datatype::FixedString {
+                    length: 4,
+                    encoding: StringEncoding::Ascii,
+                };
+                let shape = Shape::fixed(&[n]);
+                let _ = decode_attribute_value(&raw, &dtype, &shape);
+            }
+        }
+    }
 }

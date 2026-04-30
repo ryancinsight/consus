@@ -16,9 +16,18 @@
 //! Inner chunk offsets are absolute byte positions from the start of the shard file.
 
 #[cfg(feature = "alloc")]
-use alloc::{collections::BTreeMap, format, string::String, vec, vec::Vec};
+use alloc::{
+    collections::BTreeMap,
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 
-use crate::codec::{CodecPipeline, default_registry};
+#[cfg(feature = "std")]
+use crate::codec::CodecPipeline;
+#[cfg(feature = "std")]
+use crate::codec::default_registry;
 use crate::metadata::Codec;
 use consus_core::Result;
 
@@ -342,8 +351,12 @@ pub fn read_inner_chunk_from_shard(
     if inner_codecs.is_empty() {
         return Ok(compressed.to_vec());
     }
-    let pipeline = CodecPipeline::new(inner_codecs.to_vec());
-    pipeline.decompress(compressed, default_registry())
+    #[cfg(not(feature = "std"))]
+    return Err(consus_core::Error::UnsupportedFeature {
+        feature: alloc::string::String::from("shard_codec_requires_std"),
+    });
+    #[cfg(feature = "std")]
+    return CodecPipeline::new(inner_codecs.to_vec()).decompress(compressed, default_registry());
 }
 
 // ---------------------------------------------------------------------------

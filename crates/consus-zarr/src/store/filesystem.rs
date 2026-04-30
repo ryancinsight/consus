@@ -36,13 +36,13 @@ use std::io::{Read, Write};
 #[cfg(feature = "std")]
 use std::path::{Path, PathBuf};
 
-#[cfg(feature = "alloc")]
+#[cfg(feature = "std")]
 use alloc::{string::String, vec::Vec};
 
-#[cfg(feature = "alloc")]
+#[cfg(feature = "std")]
 use consus_core::Result;
 
-#[cfg(feature = "alloc")]
+#[cfg(feature = "std")]
 use crate::store::Store;
 
 /// A Zarr store backed by a local filesystem directory.
@@ -54,14 +54,14 @@ use crate::store::Store;
 ///
 /// - `root` must be a directory that exists when the store is created.
 /// - All keys are relative paths; no absolute paths or `..` escapes.
-#[cfg(feature = "alloc")]
+#[cfg(feature = "std")]
 #[derive(Debug)]
 pub struct FsStore {
     /// Root directory of the store.
     root: PathBuf,
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(feature = "std")]
 impl FsStore {
     /// Open an existing directory as a Zarr store.
     ///
@@ -99,7 +99,7 @@ impl FsStore {
     }
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(feature = "std")]
 impl Store for FsStore {
     fn get(&self, key: &str) -> Result<Vec<u8>> {
         let path = self.key_to_path(key);
@@ -169,7 +169,7 @@ impl Store for FsStore {
     }
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(feature = "std")]
 impl FsStore {
     /// Recursively collect all file paths under `dir` that start with `prefix`.
     fn collect_files_recursive(root: &Path, dir: &Path, prefix: &str, out: &mut Vec<String>) {
@@ -197,7 +197,7 @@ impl FsStore {
     }
 }
 
-#[cfg(feature = "alloc")]
+#[cfg(feature = "std")]
 impl Clone for FsStore {
     fn clone(&self) -> Self {
         Self {
