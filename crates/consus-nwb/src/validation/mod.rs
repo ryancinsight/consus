@@ -361,6 +361,8 @@ pub fn check_root_session_attrs<R: ReadAt + Sync>(
     let mut found_identifier = false;
     let mut found_session_description = false;
     let mut found_session_start_time = false;
+    let mut found_timestamps_reference_time = false;
+    let mut found_file_create_date = false;
 
     for attr in &attrs {
         match attr.name.as_str() {
@@ -426,6 +428,79 @@ pub fn check_root_session_attrs<R: ReadAt + Sync>(
                     Err(e) => return Err(e),
                 }
             }
+            "timestamps_reference_time" => {
+                found_timestamps_reference_time = true;
+                match attr.decode_value() {
+                    Ok(AttributeValue::String(ref s)) => {
+                        if !is_valid_iso8601(s) {
+                            report.push(ConformanceViolation::InvalidRootAttributeValue {
+                                name: String::from("timestamps_reference_time"),
+                                detail: alloc::format!(
+                                    "'{}' does not match ISO 8601 format \
+                                     YYYY-MM-DDTHH:MM:SS[Z|±HH:MM]",
+                                    s
+                                ),
+                            });
+                        }
+                    }
+                    Ok(_) => {
+                        report.push(ConformanceViolation::InvalidRootAttributeValue {
+                            name: String::from("timestamps_reference_time"),
+                            detail: String::from("must be a string"),
+                        });
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            "file_create_date" => {
+                found_file_create_date = true;
+                match attr.decode_value() {
+                    Ok(AttributeValue::String(ref s)) => {
+                        if !is_valid_iso8601(s) {
+                            report.push(ConformanceViolation::InvalidRootAttributeValue {
+                                name: String::from("file_create_date"),
+                                detail: alloc::format!(
+                                    "entry 0 '{}' does not match ISO 8601 format \
+                                     YYYY-MM-DDTHH:MM:SS[Z|±HH:MM]",
+                                    s
+                                ),
+                            });
+                        }
+                    }
+                    Ok(AttributeValue::StringArray(ref v)) => {
+                        if v.is_empty() {
+                            report.push(ConformanceViolation::InvalidRootAttributeValue {
+                                name: String::from("file_create_date"),
+                                detail: String::from(
+                                    "array must contain at least one ISO 8601 entry",
+                                ),
+                            });
+                        } else {
+                            for (i, s) in v.iter().enumerate() {
+                                if !is_valid_iso8601(s) {
+                                    report.push(ConformanceViolation::InvalidRootAttributeValue {
+                                        name: String::from("file_create_date"),
+                                        detail: alloc::format!(
+                                            "entry {} '{}' does not match ISO 8601 format \
+                                             YYYY-MM-DDTHH:MM:SS[Z|±HH:MM]",
+                                            i,
+                                            s
+                                        ),
+                                    });
+                                    break; // report first invalid entry only
+                                }
+                            }
+                        }
+                    }
+                    Ok(_) => {
+                        report.push(ConformanceViolation::InvalidRootAttributeValue {
+                            name: String::from("file_create_date"),
+                            detail: String::from("must be a string or string array"),
+                        });
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
             _ => {}
         }
     }
@@ -445,7 +520,74 @@ pub fn check_root_session_attrs<R: ReadAt + Sync>(
             name: String::from("session_start_time"),
         });
     }
+    if !found_timestamps_reference_time {
+        report.push(ConformanceViolation::MissingRootAttribute {
+            name: String::from("timestamps_reference_time"),
+        });
+    }
+    if !found_file_create_date {
+        report.push(ConformanceViolation::MissingRootAttribute {
+            name: String::from("file_create_date"),
+        });
+    }
 
+    Ok(())
+}
+
+/// Validate that every root-level group with `neurodata_type_def == "DynamicTable"`
+/// carries a `colnames` attribute.
+///
+/// ## Specification
+///
+/// HDMF `DynamicTable` groups must expose a `colnames` attribute that lists
+/// the names of all VectorData child columns. Absence of `colnames` renders
+/// the table unreadable by HDMF-compliant readers.
+///
+/// ## Invariants
+///
+/// - Only direct children of the root group are examined.
+/// - A missing `colnames` attribute produces `GroupMissingAttribute`.
+/// - No column-content validation is performed (name-to-dataset binding
+///   verification is deferred to a future layer).
+#[cfg(feature = "alloc")]
+pub fn check_dynamic_table_colnames<R: ReadAt + Sync>(
+    file: &Hdf5File<R>,
+    report: &mut NwbConformanceReport,
+) -> Result<()> {
+    use consus_core::LinkType;
+
+    let root_addr = file.superblock().root_group_address;
+    let children = match file.list_group_at(root_addr) {
+        Ok(c) => c,
+        Err(consus_core::Error::NotFound { .. }) => return Ok(()),
+        Err(e) => return Err(e),
+    };
+
+    for (name, addr, link_type) in &children {
+        if *link_type != LinkType::Hard {
+            continue;
+        }
+        let attrs = match file.attributes_at(*addr) {
+            Ok(a) => a,
+            Err(_) => continue,
+        };
+        let is_dynamic_table = attrs.iter().any(|a| {
+            a.name == "neurodata_type_def"
+                && matches!(
+                    a.decode_value(),
+                    Ok(AttributeValue::String(ref s)) if s == "DynamicTable"
+                )
+        });
+        if is_dynamic_table {
+            let has_colnames = attrs.iter().any(|a| a.name == "colnames");
+            if !has_colnames {
+                report.push(ConformanceViolation::GroupMissingAttribute {
+                    group_path: name.clone(),
+                    attr_name: String::from("colnames"),
+                });
+            }
+        }
+    }
     Ok(())
 }
 
@@ -961,5 +1103,270 @@ mod tests {
         });
         let cloned = report.clone();
         assert_eq!(report, cloned);
+    }
+
+    // ── Extended session attribute tests (M-048) ─────────────────────────────
+
+    #[test]
+    fn check_root_session_attrs_passes_with_timestamps_reference_time() {
+        // Build minimal HDF5 with all 5 session attrs + timestamps_reference_time
+        use consus_core::{Datatype, Shape, StringEncoding};
+        use consus_hdf5::file::writer::{FileCreationProps, Hdf5FileBuilder};
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+        for (name, value) in &[
+            ("neurodata_type_def", "NWBFile"),
+            ("nwb_version", "2.7.0"),
+            ("identifier", "id1"),
+            ("session_description", "desc"),
+            ("session_start_time", "2023-06-15T09:30:00+05:30"),
+            ("timestamps_reference_time", "2023-06-15T09:30:00+05:30"),
+            ("file_create_date", "2023-06-15T09:30:00+05:30"),
+        ] {
+            let len = value.len().max(1);
+            let dt = Datatype::FixedString {
+                length: len,
+                encoding: StringEncoding::Ascii,
+            };
+            let mut raw = value.as_bytes().to_vec();
+            while raw.len() < len {
+                raw.push(0u8);
+            }
+            builder
+                .add_root_attribute(name, &dt, &scalar, &raw)
+                .unwrap();
+        }
+        let bytes = builder.finish().unwrap();
+        let reader = consus_io::SliceReader::new(&bytes);
+        let file = consus_hdf5::file::Hdf5File::open(reader).unwrap();
+        let mut report = NwbConformanceReport::default();
+        check_root_session_attrs(&file, &mut report).unwrap();
+        let missing: alloc::vec::Vec<_> = report.violations().iter()
+            .filter(|v| matches!(v, ConformanceViolation::MissingRootAttribute { name } if name == "timestamps_reference_time"))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "should not report missing timestamps_reference_time: {:?}",
+            report.violations()
+        );
+        let invalid: alloc::vec::Vec<_> = report.violations().iter()
+            .filter(|v| matches!(v, ConformanceViolation::InvalidRootAttributeValue { name, .. } if name == "timestamps_reference_time"))
+            .collect();
+        assert!(
+            invalid.is_empty(),
+            "should not report invalid timestamps_reference_time: {:?}",
+            report.violations()
+        );
+    }
+
+    #[test]
+    fn check_root_session_attrs_reports_missing_timestamps_reference_time() {
+        // NWB file without timestamps_reference_time should report MissingRootAttribute
+        use consus_core::{Datatype, Shape, StringEncoding};
+        use consus_hdf5::file::writer::{FileCreationProps, Hdf5FileBuilder};
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+        for (name, value) in &[
+            ("neurodata_type_def", "NWBFile"),
+            ("nwb_version", "2.7.0"),
+            ("identifier", "id1"),
+            ("session_description", "desc"),
+            ("session_start_time", "2023-01-01T00:00:00Z"),
+            ("file_create_date", "2023-01-01T00:00:00Z"),
+            // timestamps_reference_time intentionally omitted
+        ] {
+            let len = value.len().max(1);
+            let dt = Datatype::FixedString {
+                length: len,
+                encoding: StringEncoding::Ascii,
+            };
+            let mut raw = value.as_bytes().to_vec();
+            while raw.len() < len {
+                raw.push(0u8);
+            }
+            builder
+                .add_root_attribute(name, &dt, &scalar, &raw)
+                .unwrap();
+        }
+        let bytes = builder.finish().unwrap();
+        let reader = consus_io::SliceReader::new(&bytes);
+        let file = consus_hdf5::file::Hdf5File::open(reader).unwrap();
+        let mut report = NwbConformanceReport::default();
+        check_root_session_attrs(&file, &mut report).unwrap();
+        assert!(
+            report.violations().iter().any(|v| matches!(v,
+                ConformanceViolation::MissingRootAttribute { name } if name == "timestamps_reference_time"
+            )),
+            "expected MissingRootAttribute(timestamps_reference_time): {:?}", report.violations()
+        );
+    }
+
+    #[test]
+    fn check_root_session_attrs_reports_invalid_timestamps_reference_time() {
+        use consus_core::{Datatype, Shape, StringEncoding};
+        use consus_hdf5::file::writer::{FileCreationProps, Hdf5FileBuilder};
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+        for (name, value) in &[
+            ("neurodata_type_def", "NWBFile"),
+            ("nwb_version", "2.7.0"),
+            ("identifier", "id1"),
+            ("session_description", "desc"),
+            ("session_start_time", "2023-01-01T00:00:00Z"),
+            ("timestamps_reference_time", "not-a-date"), // invalid
+            ("file_create_date", "2023-01-01T00:00:00Z"),
+        ] {
+            let len = value.len().max(1);
+            let dt = Datatype::FixedString {
+                length: len,
+                encoding: StringEncoding::Ascii,
+            };
+            let mut raw = value.as_bytes().to_vec();
+            while raw.len() < len {
+                raw.push(0u8);
+            }
+            builder
+                .add_root_attribute(name, &dt, &scalar, &raw)
+                .unwrap();
+        }
+        let bytes = builder.finish().unwrap();
+        let reader = consus_io::SliceReader::new(&bytes);
+        let file = consus_hdf5::file::Hdf5File::open(reader).unwrap();
+        let mut report = NwbConformanceReport::default();
+        check_root_session_attrs(&file, &mut report).unwrap();
+        assert!(
+            report.violations().iter().any(|v| matches!(v,
+                ConformanceViolation::InvalidRootAttributeValue { name, .. } if name == "timestamps_reference_time"
+            )),
+            "expected InvalidRootAttributeValue(timestamps_reference_time): {:?}", report.violations()
+        );
+    }
+
+    #[test]
+    fn check_root_session_attrs_reports_missing_file_create_date() {
+        use consus_core::{Datatype, Shape, StringEncoding};
+        use consus_hdf5::file::writer::{FileCreationProps, Hdf5FileBuilder};
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+        for (name, value) in &[
+            ("neurodata_type_def", "NWBFile"),
+            ("nwb_version", "2.7.0"),
+            ("identifier", "id1"),
+            ("session_description", "desc"),
+            ("session_start_time", "2023-01-01T00:00:00Z"),
+            ("timestamps_reference_time", "2023-01-01T00:00:00Z"),
+            // file_create_date intentionally omitted
+        ] {
+            let len = value.len().max(1);
+            let dt = Datatype::FixedString {
+                length: len,
+                encoding: StringEncoding::Ascii,
+            };
+            let mut raw = value.as_bytes().to_vec();
+            while raw.len() < len {
+                raw.push(0u8);
+            }
+            builder
+                .add_root_attribute(name, &dt, &scalar, &raw)
+                .unwrap();
+        }
+        let bytes = builder.finish().unwrap();
+        let reader = consus_io::SliceReader::new(&bytes);
+        let file = consus_hdf5::file::Hdf5File::open(reader).unwrap();
+        let mut report = NwbConformanceReport::default();
+        check_root_session_attrs(&file, &mut report).unwrap();
+        assert!(
+            report.violations().iter().any(|v| matches!(v,
+                ConformanceViolation::MissingRootAttribute { name } if name == "file_create_date"
+            )),
+            "expected MissingRootAttribute(file_create_date): {:?}",
+            report.violations()
+        );
+    }
+
+    #[test]
+    fn check_root_session_attrs_passes_valid_file_create_date_scalar() {
+        // file_create_date stored as scalar FixedString (single entry)
+        use consus_core::{Datatype, Shape, StringEncoding};
+        use consus_hdf5::file::writer::{FileCreationProps, Hdf5FileBuilder};
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+        for (name, value) in &[
+            ("neurodata_type_def", "NWBFile"),
+            ("nwb_version", "2.7.0"),
+            ("identifier", "id1"),
+            ("session_description", "desc"),
+            ("session_start_time", "2023-01-01T00:00:00Z"),
+            ("timestamps_reference_time", "2023-01-01T00:00:00Z"),
+            ("file_create_date", "2023-01-01T00:00:00Z"),
+        ] {
+            let len = value.len().max(1);
+            let dt = Datatype::FixedString {
+                length: len,
+                encoding: StringEncoding::Ascii,
+            };
+            let mut raw = value.as_bytes().to_vec();
+            while raw.len() < len {
+                raw.push(0u8);
+            }
+            builder
+                .add_root_attribute(name, &dt, &scalar, &raw)
+                .unwrap();
+        }
+        let bytes = builder.finish().unwrap();
+        let reader = consus_io::SliceReader::new(&bytes);
+        let file = consus_hdf5::file::Hdf5File::open(reader).unwrap();
+        let mut report = NwbConformanceReport::default();
+        check_root_session_attrs(&file, &mut report).unwrap();
+        assert!(
+            !report.violations().iter().any(|v| matches!(v,
+                ConformanceViolation::MissingRootAttribute { name }
+                | ConformanceViolation::InvalidRootAttributeValue { name, .. }
+                if name == "file_create_date"
+            )),
+            "unexpected file_create_date violation: {:?}",
+            report.violations()
+        );
+    }
+
+    #[test]
+    fn check_root_session_attrs_reports_invalid_file_create_date_scalar() {
+        use consus_core::{Datatype, Shape, StringEncoding};
+        use consus_hdf5::file::writer::{FileCreationProps, Hdf5FileBuilder};
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+        for (name, value) in &[
+            ("neurodata_type_def", "NWBFile"),
+            ("nwb_version", "2.7.0"),
+            ("identifier", "id1"),
+            ("session_description", "desc"),
+            ("session_start_time", "2023-01-01T00:00:00Z"),
+            ("timestamps_reference_time", "2023-01-01T00:00:00Z"),
+            ("file_create_date", "bad-date"), // invalid ISO 8601
+        ] {
+            let len = value.len().max(1);
+            let dt = Datatype::FixedString {
+                length: len,
+                encoding: StringEncoding::Ascii,
+            };
+            let mut raw = value.as_bytes().to_vec();
+            while raw.len() < len {
+                raw.push(0u8);
+            }
+            builder
+                .add_root_attribute(name, &dt, &scalar, &raw)
+                .unwrap();
+        }
+        let bytes = builder.finish().unwrap();
+        let reader = consus_io::SliceReader::new(&bytes);
+        let file = consus_hdf5::file::Hdf5File::open(reader).unwrap();
+        let mut report = NwbConformanceReport::default();
+        check_root_session_attrs(&file, &mut report).unwrap();
+        assert!(
+            report.violations().iter().any(|v| matches!(v,
+                ConformanceViolation::InvalidRootAttributeValue { name, .. } if name == "file_create_date"
+            )),
+            "expected InvalidRootAttributeValue(file_create_date): {:?}", report.violations()
+        );
     }
 }

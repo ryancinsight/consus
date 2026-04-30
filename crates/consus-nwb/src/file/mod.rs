@@ -178,12 +178,12 @@ impl<'a> NwbFile<'a> {
             (None, None)
         };
 
-        let name = path
-            .split('/')
-            .filter(|s| !s.is_empty())
-            .last()
-            .unwrap_or(path)
-            .to_owned();
+        let name = String::from(
+            path.split('/')
+                .filter(|s| !s.is_empty())
+                .last()
+                .unwrap_or(path),
+        );
 
         Ok(TimeSeries::from_parts(
             name,
@@ -420,6 +420,9 @@ impl<'a> NwbFile<'a> {
             }
         }
 
+        // Layer 5: DynamicTable groups must carry a `colnames` attribute.
+        crate::validation::check_dynamic_table_colnames(&self.hdf5, &mut report)?;
+
         Ok(report)
     }
 }
@@ -461,17 +464,31 @@ impl NwbFileBuilder {
         let mut hdf5 = Hdf5FileBuilder::new(FileCreationProps::default());
         let scalar = Shape::scalar();
 
-        let attrs: &[(&str, &str)] = &[
+        // Scalar fixed-string attributes: identity, version, session metadata,
+        // and reference time.  NWB 2.x §4.1 requires timestamps_reference_time;
+        // for new files with no explicit reference epoch it defaults to
+        // session_start_time per NWB convention.
+        let scalar_attrs: &[(&str, &str)] = &[
             ("neurodata_type_def", "NWBFile"),
             ("nwb_version", nwb_version),
             ("identifier", identifier.as_str()),
             ("session_description", session_description.as_str()),
             ("session_start_time", session_start_time.as_str()),
+            ("timestamps_reference_time", session_start_time.as_str()),
         ];
-        for (name, value) in attrs {
+        for (name, value) in scalar_attrs {
             let (dt, raw) = fixed_string_bytes(value);
             hdf5.add_root_attribute(name, &dt, &scalar, &raw)?;
         }
+
+        // file_create_date: NWB 2.x §4.1 specifies a list of ISO 8601
+        // timestamps recording when the file was created or appended to.
+        // Encoded as a 1-D FixedString array of length 1 so it decodes as
+        // AttributeValue::StringArray — the representation expected by
+        // HDMF-compliant readers.
+        let (fcd_dt, fcd_raw) = fixed_string_bytes(session_start_time.as_str());
+        let fcd_shape = Shape::fixed(&[1]);
+        hdf5.add_root_attribute("file_create_date", &fcd_dt, &fcd_shape, &fcd_raw)?;
 
         Ok(Self { hdf5 })
     }
@@ -719,7 +736,7 @@ impl NwbFileBuilder {
         let id_raw: alloc::vec::Vec<u8> = table.id_column().flat_map(|v| v.to_le_bytes()).collect();
         let id_shape = Shape::fixed(&[n]);
 
-        let locs: alloc::vec::Vec<String> = table.location_column().map(|s| s.to_owned()).collect();
+        let locs: alloc::vec::Vec<String> = table.location_column().map(String::from).collect();
         let loc_max = locs.iter().map(|s| s.len()).max().unwrap_or(1).max(1);
         let mut loc_raw: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(n * loc_max);
         for s in &locs {
@@ -734,8 +751,7 @@ impl NwbFileBuilder {
         };
         let loc_shape = Shape::fixed(&[n]);
 
-        let grps: alloc::vec::Vec<String> =
-            table.group_name_column().map(|s| s.to_owned()).collect();
+        let grps: alloc::vec::Vec<String> = table.group_name_column().map(String::from).collect();
         let grp_max = grps.iter().map(|s| s.len()).max().unwrap_or(1).max(1);
         let mut grp_raw: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(n * grp_max);
         for s in &grps {
@@ -940,6 +956,8 @@ mod tests {
     use consus_hdf5::file::writer::{
         ChildDatasetSpec, ChildGroupSpec, DatasetCreationProps, FileCreationProps, Hdf5FileBuilder,
     };
+    use consus_hdf5::file::Hdf5File;
+    use consus_io::SliceReader;
     use core::num::NonZeroUsize;
 
     fn fixed_string_dt(value: &str) -> (Datatype, alloc::vec::Vec<u8>) {
@@ -965,12 +983,19 @@ mod tests {
             ("identifier", id),
             ("session_description", desc),
             ("session_start_time", ts),
+            ("timestamps_reference_time", ts),
         ] {
             let (dt, raw) = fixed_string_dt(value);
             builder
                 .add_root_attribute(name, &dt, &scalar, &raw)
                 .unwrap();
         }
+        // file_create_date as 1-D array (matches NwbFileBuilder output).
+        let (fcd_dt, fcd_raw) = fixed_string_dt(ts);
+        let fcd_shape = Shape::fixed(&[1]);
+        builder
+            .add_root_attribute("file_create_date", &fcd_dt, &fcd_shape, &fcd_raw)
+            .unwrap();
 
         builder.finish().unwrap()
     }
@@ -1636,6 +1661,261 @@ mod tests {
             group_violations,
             5,
             "all 5 missing-group violations must be collected: {:?}",
+            report.violations()
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // M-048: NWB extended conformance — timestamps_reference_time,
+    // file_create_date, and DynamicTable colnames.
+    // -----------------------------------------------------------------------
+
+    /// NwbFileBuilder::new must write timestamps_reference_time as a scalar
+    /// FixedString equal to session_start_time.
+    #[test]
+    fn nwb_file_builder_writes_timestamps_reference_time() {
+        let ts = "2024-03-15T08:00:00Z";
+        let bytes = NwbFileBuilder::new("2.7.0", "uid1", "desc", ts)
+            .unwrap()
+            .finish()
+            .unwrap();
+        // NwbFile::hdf5 is private; open via Hdf5File directly for raw attr access.
+        let hdf5 = Hdf5File::open(SliceReader::new(&bytes)).unwrap();
+        let root_addr = hdf5.superblock().root_group_address;
+        let attrs = hdf5.attributes_at(root_addr).unwrap();
+        let trt_attr = attrs.iter().find(|a| a.name == "timestamps_reference_time");
+        assert!(
+            trt_attr.is_some(),
+            "timestamps_reference_time attribute must be written"
+        );
+        match trt_attr.unwrap().decode_value().unwrap() {
+            consus_core::AttributeValue::String(ref s) => {
+                assert_eq!(
+                    s.as_str(),
+                    ts,
+                    "timestamps_reference_time must equal session_start_time"
+                );
+            }
+            other => panic!("expected String, got {:?}", other),
+        }
+    }
+
+    /// NwbFileBuilder::new must write file_create_date as a 1-D FixedString
+    /// array with exactly one entry equal to session_start_time.
+    #[test]
+    fn nwb_file_builder_writes_file_create_date() {
+        let ts = "2024-03-15T08:00:00Z";
+        let bytes = NwbFileBuilder::new("2.7.0", "uid2", "desc", ts)
+            .unwrap()
+            .finish()
+            .unwrap();
+        let hdf5 = Hdf5File::open(SliceReader::new(&bytes)).unwrap();
+        let root_addr = hdf5.superblock().root_group_address;
+        let attrs = hdf5.attributes_at(root_addr).unwrap();
+        let fcd_attr = attrs.iter().find(|a| a.name == "file_create_date");
+        assert!(
+            fcd_attr.is_some(),
+            "file_create_date attribute must be written"
+        );
+        match fcd_attr.unwrap().decode_value().unwrap() {
+            consus_core::AttributeValue::String(ref s) => {
+                assert_eq!(s.as_str(), ts);
+            }
+            consus_core::AttributeValue::StringArray(ref v) => {
+                assert_eq!(v.len(), 1, "file_create_date must have exactly 1 entry");
+                assert_eq!(v[0].as_str(), ts);
+            }
+            other => panic!("expected String or StringArray, got {:?}", other),
+        }
+    }
+
+    /// A file built with NwbFileBuilder::new and all required groups must
+    /// report no violations for timestamps_reference_time or file_create_date.
+    #[test]
+    fn validate_conformance_passes_with_all_extended_attrs() {
+        let ts = "2023-07-04T12:00:00Z";
+        let mut builder = NwbFileBuilder::new("2.7.0", "full-id", "full desc", ts).unwrap();
+        for group in &[
+            "acquisition",
+            "analysis",
+            "processing",
+            "stimulus",
+            "general",
+        ] {
+            builder.write_empty_group(group).unwrap();
+        }
+        let bytes = builder.finish().unwrap();
+        let file = NwbFile::open(&bytes).unwrap();
+        let report = file.validate_conformance().unwrap();
+        let trt_violations: alloc::vec::Vec<_> = report
+            .violations()
+            .iter()
+            .filter(|v| {
+                matches!(
+                    v,
+                    crate::validation::ConformanceViolation::MissingRootAttribute { name }
+                    | crate::validation::ConformanceViolation::InvalidRootAttributeValue {
+                        name, ..
+                    } if name == "timestamps_reference_time" || name == "file_create_date"
+                )
+            })
+            .collect();
+        assert!(
+            trt_violations.is_empty(),
+            "unexpected timestamps_reference_time or file_create_date violations: {:?}",
+            report.violations()
+        );
+    }
+
+    /// A file whose root group lacks timestamps_reference_time must report
+    /// MissingRootAttribute for that attribute.
+    #[test]
+    fn validate_conformance_reports_missing_timestamps_reference_time() {
+        let ts = "2023-01-01T00:00:00Z";
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+        for (name, value) in &[
+            ("neurodata_type_def", "NWBFile"),
+            ("nwb_version", "2.7.0"),
+            ("identifier", "id"),
+            ("session_description", "desc"),
+            ("session_start_time", ts),
+            // timestamps_reference_time intentionally omitted
+            ("file_create_date", ts),
+        ] {
+            let (dt, raw) = fixed_string_dt(value);
+            builder
+                .add_root_attribute(name, &dt, &scalar, &raw)
+                .unwrap();
+        }
+        for group in &[
+            "acquisition",
+            "analysis",
+            "processing",
+            "stimulus",
+            "general",
+        ] {
+            builder.add_group_with_attributes(group, &[], &[]).unwrap();
+        }
+        let bytes = builder.finish().unwrap();
+        let file = NwbFile::open(&bytes).unwrap();
+        let report = file.validate_conformance().unwrap();
+        assert!(
+            report.violations().iter().any(|v| matches!(
+                v,
+                crate::validation::ConformanceViolation::MissingRootAttribute { name }
+                    if name == "timestamps_reference_time"
+            )),
+            "expected MissingRootAttribute(timestamps_reference_time): {:?}",
+            report.violations()
+        );
+    }
+
+    /// A file whose root group lacks file_create_date must report
+    /// MissingRootAttribute for that attribute.
+    #[test]
+    fn validate_conformance_reports_missing_file_create_date() {
+        let ts = "2023-01-01T00:00:00Z";
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+        for (name, value) in &[
+            ("neurodata_type_def", "NWBFile"),
+            ("nwb_version", "2.7.0"),
+            ("identifier", "id"),
+            ("session_description", "desc"),
+            ("session_start_time", ts),
+            ("timestamps_reference_time", ts),
+            // file_create_date intentionally omitted
+        ] {
+            let (dt, raw) = fixed_string_dt(value);
+            builder
+                .add_root_attribute(name, &dt, &scalar, &raw)
+                .unwrap();
+        }
+        for group in &[
+            "acquisition",
+            "analysis",
+            "processing",
+            "stimulus",
+            "general",
+        ] {
+            builder.add_group_with_attributes(group, &[], &[]).unwrap();
+        }
+        let bytes = builder.finish().unwrap();
+        let file = NwbFile::open(&bytes).unwrap();
+        let report = file.validate_conformance().unwrap();
+        assert!(
+            report.violations().iter().any(|v| matches!(
+                v,
+                crate::validation::ConformanceViolation::MissingRootAttribute { name }
+                    if name == "file_create_date"
+            )),
+            "expected MissingRootAttribute(file_create_date): {:?}",
+            report.violations()
+        );
+    }
+
+    /// A DynamicTable root-level group without a `colnames` attribute must
+    /// produce a GroupMissingAttribute violation for that group.
+    ///
+    /// The file is built manually using Hdf5FileBuilder because NwbFileBuilder
+    /// does not expose its internal hdf5 field (private invariant).
+    #[test]
+    fn validate_conformance_reports_dynamic_table_missing_colnames() {
+        let ts = "2023-01-01T00:00:00Z";
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+        let scalar = Shape::scalar();
+        // Write all 7 required root attributes.
+        for (name, value) in &[
+            ("neurodata_type_def", "NWBFile"),
+            ("nwb_version", "2.7.0"),
+            ("identifier", "id"),
+            ("session_description", "desc"),
+            ("session_start_time", ts),
+            ("timestamps_reference_time", ts),
+        ] {
+            let (dt, raw) = fixed_string_dt(value);
+            builder
+                .add_root_attribute(name, &dt, &scalar, &raw)
+                .unwrap();
+        }
+        // file_create_date as 1-D array.
+        let (fcd_dt, fcd_raw) = fixed_string_dt(ts);
+        let fcd_shape = Shape::fixed(&[1]);
+        builder
+            .add_root_attribute("file_create_date", &fcd_dt, &fcd_shape, &fcd_raw)
+            .unwrap();
+        // Required top-level groups.
+        for group in &[
+            "acquisition",
+            "analysis",
+            "processing",
+            "stimulus",
+            "general",
+        ] {
+            builder.add_group_with_attributes(group, &[], &[]).unwrap();
+        }
+        // DynamicTable group without colnames — layer 5 must report this.
+        let (ndt_dt, ndt_raw) = fixed_string_dt("DynamicTable");
+        builder
+            .add_group_with_attributes(
+                "my_table",
+                &[("neurodata_type_def", &ndt_dt, &scalar, &ndt_raw)],
+                &[],
+            )
+            .unwrap();
+        let bytes = builder.finish().unwrap();
+        let file = NwbFile::open(&bytes).unwrap();
+        let report = file.validate_conformance().unwrap();
+        assert!(
+            report.violations().iter().any(|v| matches!(
+                v,
+                crate::validation::ConformanceViolation::GroupMissingAttribute {
+                    group_path,
+                    attr_name,
+                } if group_path == "my_table" && attr_name == "colnames"
+            )),
+            "expected GroupMissingAttribute(my_table, colnames): {:?}",
             report.violations()
         );
     }

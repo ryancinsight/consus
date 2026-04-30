@@ -9,7 +9,7 @@ repository = "https://github.com/ryancinsight/consus"
 [features]
 default = ["std"]
 std    = ["alloc", "consus-core/std", "consus-hdf5/std", "consus-io/std"]
-alloc  = ["consus-core/alloc", "consus-io/alloc"]
+alloc  = ["consus-core/alloc", "consus-io/alloc", "consus-hdf5/alloc"]
 
 [dependencies]
 consus-core = { workspace = true }

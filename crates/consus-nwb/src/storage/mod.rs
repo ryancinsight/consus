@@ -369,8 +369,8 @@ pub fn read_string_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> R
                 let s = core::str::from_utf8(trimmed)
                     .map_err(|e| Error::InvalidFormat {
                         message: format!("NWB: string dataset contains invalid UTF-8: {}", e),
-                    })?
-                    .to_owned();
+                    })
+                    .map(String::from)?;
                 strings.push(s);
             }
             Ok(strings)
@@ -430,8 +430,8 @@ pub fn read_string_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> R
                             "NWB: variable-length string dataset contains invalid UTF-8: {}",
                             e
                         ),
-                    })?
-                    .to_owned();
+                    })
+                    .map(String::from)?;
                 strings.push(s);
             }
             Ok(strings)

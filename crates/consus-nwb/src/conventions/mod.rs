@@ -151,7 +151,7 @@ pub fn classify_neurodata_type(type_def: &str) -> NeuroDataType {
         "Units" => NeuroDataType::Units,
         "ElectrodeTable" => NeuroDataType::ElectrodeTable,
         "Subject" => NeuroDataType::Subject,
-        other => NeuroDataType::Other(other.to_owned()),
+        other => NeuroDataType::Other(String::from(other)),
     }
 }
 

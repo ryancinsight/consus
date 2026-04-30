@@ -18,7 +18,7 @@
 //!   deterministically.
 
 #[cfg(feature = "alloc")]
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
 
 // ---------------------------------------------------------------------------
 // Errors

@@ -282,14 +282,14 @@ fn parse_opaque(size: usize, props: &[u8]) -> Result<(Datatype, usize)> {
             })?;
             // Consume tag + null, rounded up to 8-byte boundary.
             let padded = ((n + 1) + 7) & !7;
-            (Some(tag_str.to_string()), padded.min(props.len()))
+            (Some(String::from(tag_str)), padded.min(props.len()))
         }
         None => {
             // No null found; consume all available bytes as the tag.
             let tag_str = core::str::from_utf8(props).map_err(|_| Error::InvalidFormat {
                 message: String::from("opaque tag is not valid UTF-8"),
             })?;
-            (Some(tag_str.to_string()), props.len())
+            (Some(String::from(tag_str)), props.len())
         }
     };
 
@@ -378,8 +378,8 @@ fn parse_compound_member(
     let name = core::str::from_utf8(&data[name_start..pos])
         .map_err(|_| Error::InvalidFormat {
             message: format!("compound member {member_index} name is not valid UTF-8"),
-        })?
-        .to_string();
+        })
+        .map(String::from)?;
     pos += 1; // skip null terminator
 
     // For version 1/2: name field (including null) is padded to 8-byte boundary.
@@ -533,8 +533,8 @@ fn parse_enum(flags: [u8; 3], props: &[u8], version: u8) -> Result<(Datatype, us
         let name = core::str::from_utf8(&props[name_start..pos])
             .map_err(|_| Error::InvalidFormat {
                 message: format!("enum member {i} name is not valid UTF-8"),
-            })?
-            .to_string();
+            })
+            .map(String::from)?;
         pos += 1; // skip null
 
         // Version 1/2: each name is padded to 8-byte boundary.
