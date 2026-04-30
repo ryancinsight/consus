@@ -445,6 +445,55 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
 
 ---
 
+## M-048: NWB Extended Conformance — timestamps_reference_time + file_create_date + DynamicTable colnames (this sprint — CLOSED)
+
+**Root cause**: M-047 closed layers 1–4 but left 3 normative NWB 2.x root attributes (`timestamps_reference_time`, `file_create_date`) unchecked and DynamicTable `colnames` consistency unverified.
+
+**Resolution**:
+- `check_root_session_attrs` extended: 2 new match arms for `timestamps_reference_time` (ISO 8601 scalar) and `file_create_date` (String or StringArray, ≥1 entry, each ISO 8601); 2 new missing-attribute guards after loop
+- `check_dynamic_table_colnames<R: ReadAt + Sync>(file, report)` — new `pub fn`; scans root-level group children; for any with `neurodata_type_def == "DynamicTable"`, checks `colnames` attribute presence; reports `GroupMissingAttribute` if absent
+- `NwbFile::validate_conformance` layer 5: delegates to `check_dynamic_table_colnames`
+- `NwbFileBuilder::new` extended: writes `timestamps_reference_time` (scalar FixedString = `session_start_time`) and `file_create_date` (1-D FixedString array Shape::fixed(&[1]) = `session_start_time`) — all builder-produced files are now fully conformant per NWB 2.x §4.1
+- `consus-nwb/Cargo.toml` `alloc` feature now propagates to `consus-hdf5/alloc`
+
+**Verification**: 12 new value-semantic tests (6 validation + 6 file); `cargo test -p consus-nwb --lib` → 262/262; `cargo test --workspace` → 2371/2371; `cargo check --workspace` → 0 errors
+
+---
+
+## M-049: no_std + alloc Compilation Verification (this sprint — PARTIALLY CLOSED)
+
+**Root cause**: consus-hdf5 and consus-nwb had implicit `std` dependencies in `no_std+alloc` compilation paths: missing `vec!` macro import, `ToString`/`ToOwned` traits not in no_std prelude, `Vec` not imported.
+
+**Resolution**:
+- `consus-hdf5/src/lib.rs`: `#[macro_use]` added to `extern crate alloc` (makes `vec!` available)
+- `consus-hdf5/src/datatype/compound.rs`: 4× `to_string()`/`to_owned()` on `&str` → `String::from()` and `.map(String::from)?`
+- `consus-nwb/src/namespace/mod.rs`: `Vec` added to alloc import
+- `consus-nwb/src/conventions/mod.rs`: `other.to_owned()` → `String::from(other)`
+- `consus-nwb/src/file/mod.rs`: 3× `.to_owned()` on `&str` → `String::from()`
+- `consus-nwb/src/storage/mod.rs`: 2× `?.to_owned()` restructured to `.map(String::from)?`
+
+**Verification**:
+- `cargo check -p consus-core --no-default-features --features alloc` → 0 errors
+- `cargo check -p consus-io --no-default-features --features alloc` → 0 errors
+- `cargo check -p consus-hdf5 --no-default-features --features alloc` → 0 errors
+- `cargo check -p consus-nwb --no-default-features --features alloc` → 0 errors
+- `consus-zarr --no-default-features --features alloc`: BLOCKED — see NO-STD-001
+
+---
+
+## Open Gaps
+
+### NO-STD-001: consus-zarr + consus-compression no_std incompatibility
+
+- **Severity**: Low
+- **Crates affected**: `consus-zarr`, `consus-compression`
+- **Description**: `consus-compression/src/codec/gzip.rs` uses `use std::io::Read` directly (not feature-gated). `consus-zarr` unconditionally enables `features = ["gzip", "zstd", "lz4"]` on `consus-compression`, so any attempt to compile `consus-zarr --no-default-features --features alloc` fails with `E0433: use of unresolved module std`.
+- **Root cause**: Compression codec trait implementations require `std::io::Read` for streaming decompression. The `flate2`, `zstd`, and `lz4_flex` crate implementations used here are `std`-only.
+- **Remediation**: Gate the gzip/zstd/lz4 features under `consus-zarr`'s `std` feature (not unconditional). In `consus-zarr/Cargo.toml`, move compression feature enablement from the `[dependencies]` block to the `std` feature entry. This is a `[minor]` change with no API surface change.
+- **Blocker**: Depends on `consus-zarr` API behaviour not changing — no functional regression expected.
+
+---
+
 ## M-001: consus-mat correctness and coverage gaps (resolved this sprint)
 
 | ID | File | Gap | Resolution |
@@ -504,7 +553,7 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
 ## Summary Metrics
 
 | Metric | Value |
-|--------|-------|
+|--------|---------|
 | Zarr library + integration tests | 301 |
 | Zarr passing | 301 |
 | Zarr failing | 0 |
@@ -519,13 +568,13 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
 | consus-arrow E2E integration | 6/6 |
 | consus-io lib (default) | 20/20 |
 | consus-io lib+integration (mmap) | 31/31 |
-| consus-nwb lib | 250/250 |
+| consus-nwb lib | 262/262 |
 | consus-nwb integration (real file) | 1/1 |
 | consus-hdf5 lib | 272/272 |
-| workspace total tests (default) | 2359/2359 |
-| Verified commands | `cargo test -p consus-netcdf` (137/137); `cargo test -p consus-hdf5 --lib` (272/272); `cargo test -p consus-nwb --lib` (250/250); `cargo test -p consus-nwb --test integration_real_file` (1/1); `cargo test --workspace` (2359/2359, default); `cargo check --workspace` (0 warnings, 0 errors) |
-| Open gaps | 0 |
+| workspace total tests (default) | 2371/2371 |
+| Verified commands | `cargo test -p consus-netcdf` (137/137); `cargo test -p consus-hdf5 --lib` (272/272); `cargo test -p consus-nwb --lib` (262/262); `cargo test -p consus-nwb --test integration_real_file` (1/1); `cargo test --workspace` (2371/2371, default); `cargo check --workspace` (0 warnings, 0 errors); `cargo check -p consus-core/consus-io/consus-hdf5/consus-nwb --no-default-features --features alloc` (0 errors each) |
+| Open gaps | 1 (NO-STD-001: consus-zarr/consus-compression no_std incompatibility — Low severity) |
 | High-severity open gaps | 0 |
-| Closed this sprint | 5 (M-042: netCDF-4 HDF5 Write Path — `encode_datatype` Reference(Object/Region) support in `consus-hdf5`; `NetcdfWriter::write_model` classic flat model in `consus-netcdf`; `NC_PROPERTIES_ATTR/VALUE` constants; 7 round-trip integration tests + 4 unit tests + 1 doctest + 2 HDF5 datatype encoding tests; +14 new value-semantic tests — M-043: netCDF-4 enhanced model write path — `SubGroupBuilder<'a>` in `consus-hdf5`; `DatasetTarget` trait + `encode_cf_attrs` + recursive `write_child_group_content` in `consus-netcdf`; 3 HDF5 + 7 netCDF integration tests — M-044: NWB per-type `neurodata_type_inc` inheritance chains — `NwbTypeSpec` struct; `neurodata_types: Vec<NwbTypeSpec>`; iterative BFS `is_timeseries_type_with_specs` depth-64; 7 new tests — M-045: netCDF-4 enhanced model read — `NetcdfUserType` model, `user_types` in `NetcdfGroup`, `Hdf5File::named_datatype_at`, `Hdf5FileBuilder::add_named_datatype`, `extract_group` NamedDatatype arm; 1 HDF5 unit test + 2 netCDF integration tests; P2.3 classic model read test corrected — M-047: NWB Full Conformance Validation — `is_valid_iso8601`, `ConformanceViolation`, `NwbConformanceReport`, `check_root_session_attrs`, `NwbFile::validate_conformance`, `NwbFileBuilder::write_empty_group`; 29 new value-semantic tests) |
+| Closed this sprint | 7 (M-042 through M-047 + M-048: NWB Extended Conformance — `check_root_session_attrs` + `timestamps_reference_time`/`file_create_date`, `check_dynamic_table_colnames`, layer-5 `validate_conformance`, `NwbFileBuilder::new` extended, 12 new value-semantic tests + M-049: no_std + alloc verification — consus-hdf5/consus-nwb no_std fixes; 4 crates verified) |
 | Medium-severity open gaps | 0 |
-| Low-severity open gaps | 0 |
+| Low-severity open gaps | 1 (NO-STD-001) |

@@ -447,8 +447,9 @@ test result: ok. 136 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fi
 - [x] Memory-mapped I/O backend — implemented as `consus-io::io::sync::mmap::MmapReader` (Milestone 29; `cargo test -p consus-io --features mmap` → 31/31)
 - [ ] Large file (>4 GiB) regression tests
 - [ ] Fuzz testing (`cargo-fuzz` / `proptest`)
-- [ ] WASM target validation
-- [ ] `no_std` smoke tests (`thumbv7em-none-eabihf`)
+- [ ] WASM target validation (`wasm32-unknown-unknown`)
+- [x] `no_std + alloc` smoke verification (Milestone 49): consus-core, consus-io, consus-hdf5, consus-nwb all pass `cargo check --no-default-features --features alloc`; consus-zarr blocked by NO-STD-001 (gzip codec requires std::io)
+- [ ] Embedded target smoke test (`thumbv7em-none-eabihf`) — requires target toolchain
 - [ ] Documentation site
 - [ ] crates.io publication
 
@@ -829,6 +830,32 @@ test result: ok. 136 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fi
 - [x] 6 new tests in `file/mod.rs`: missing-groups reporting, all-five-groups collection, full-conformance pass, bad-datetime format, TimeSeries-missing-data, non-short-circuit proof
 - [x] Verified `cargo test -p consus-nwb --lib` → 250/250
 - [x] Verified `cargo test --workspace` → 2359/2359; `cargo check --workspace` → 0 errors, 0 warnings
+
+### Milestone 48: NWB Extended Conformance — CLOSED (this sprint)
+- [x] `check_root_session_attrs` extended: `timestamps_reference_time` (scalar string, ISO 8601 required) + `file_create_date` (String or StringArray, ≥1 ISO 8601 entry required)
+- [x] `check_dynamic_table_colnames<R: ReadAt + Sync>(file, report)` — layer-5 validator: scans root-level groups for `neurodata_type_def == "DynamicTable"`; reports `GroupMissingAttribute { attr_name: "colnames" }` for any without `colnames`
+- [x] `NwbFileBuilder::new` extended to write `timestamps_reference_time` (scalar FixedString, default = `session_start_time`) and `file_create_date` (1-D FixedString array, 1 entry = `session_start_time`) — fully conformant NWB 2.x §4.1 output
+- [x] `validate_conformance` layer 5 added: delegates to `check_dynamic_table_colnames`
+- [x] `consus-nwb/Cargo.toml`: `alloc` feature now propagates to `consus-hdf5/alloc`
+- [x] 6 new tests in `validation/mod.rs`: passes-with-trt, missing-trt, invalid-trt, missing-fcd, passes-with-scalar-fcd, invalid-scalar-fcd
+- [x] 6 new tests in `file/mod.rs`: builder-writes-trt, builder-writes-fcd, conformance-passes-extended-attrs, missing-trt-report, missing-fcd-report, DynamicTable-missing-colnames
+- [x] Verified `cargo test -p consus-nwb --lib` → 262/262
+- [x] Verified `cargo test --workspace` → 2371/2371; `cargo check --workspace` → 0 errors
+
+### Milestone 49: no_std + alloc Compilation Verification — CLOSED (this sprint)
+- [x] `consus-hdf5/src/lib.rs`: `#[macro_use]` added to `extern crate alloc` — makes `vec!`/`format!` available without explicit path in no_std+alloc mode
+- [x] `consus-hdf5/src/datatype/compound.rs`: replace 4× `.to_string()` / `.to_owned()` on `&str` with `String::from()` and `.map(String::from)?` — `ToString`/`ToOwned` not in no_std prelude
+- [x] `consus-nwb/src/namespace/mod.rs`: add `Vec` to alloc import (`use alloc::{string::String, vec::Vec}`)
+- [x] `consus-nwb/src/conventions/mod.rs`: replace `other.to_owned()` with `String::from(other)`
+- [x] `consus-nwb/src/file/mod.rs`: replace 3× `.to_owned()` on `&str` with `String::from()`
+- [x] `consus-nwb/src/storage/mod.rs`: restructure 2× `?.to_owned()` chains to `.map(String::from)?`
+- [x] Verified `cargo check -p consus-core --no-default-features --features alloc` → 0 errors
+- [x] Verified `cargo check -p consus-io --no-default-features --features alloc` → 0 errors
+- [x] Verified `cargo check -p consus-hdf5 --no-default-features --features alloc` → 0 errors
+- [x] Verified `cargo check -p consus-nwb --no-default-features --features alloc` → 0 errors
+- [ ] `consus-zarr --no-default-features --features alloc` BLOCKED: `consus-compression/codec/gzip.rs` uses `std::io::Read`; gap recorded as NO-STD-001
+- [ ] WASM target validation (`wasm32-unknown-unknown`)
+- [ ] Embedded target smoke test (`thumbv7em-none-eabihf`) — requires toolchain install
 
 ### Milestone 39: NWB Extended Read Path + HDF5 Nested Group Write — CLOSED
 - [x] `ChildGroupSpec<'a>` — new public struct in `consus-hdf5::file::writer` for specifying sub-group children

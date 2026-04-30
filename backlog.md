@@ -441,5 +441,7 @@
 - [x] h5py-generated NWB 2.7 fixture verification (Milestone 46 — this sprint)
 - [x] All read paths verified against h5py fixture: session_metadata, list_acquisition, time_series (f64+i16 promotion+rate), units_table, electrode_table (VL strings), subject — `tests/integration_real_file.rs` (Milestone 46 — this sprint)
 - [x] Full conformance validation against NWB 2.x schema — `NwbFile::validate_conformance()` + `NwbConformanceReport` + 4 validation layers + 29 new tests (Milestone 47 — this sprint — CLOSED)
+- [x] Extended conformance: `timestamps_reference_time` (ISO 8601) + `file_create_date` (≥1 ISO 8601 entry) layer-2 validation; DynamicTable `colnames` layer-5 validation; `NwbFileBuilder::new` writes both new required attrs automatically — 12 new tests (Milestone 48 — this sprint — CLOSED)
+- [x] no_std + alloc compilation verified for consus-core, consus-io, consus-hdf5, consus-nwb; consus-hdf5 and consus-nwb no_std gaps fixed (Milestone 49 — this sprint — CLOSED)
 - [x] ElectrodeTable read (electrode metadata) — `read_string_dataset` added; `NwbFile::electrode_table()` + `NwbFileBuilder::write_electrode_table()` implemented (Milestone 40)
 - [x] Namespace version detection and spec YAML parsing from `/specifications/` (NwbVersion V2_8, NwbNamespaceSpec, parse_nwb_spec_yaml, format_nwb_spec_yaml, list_specifications, read_specification, write_namespace_specs — this sprint)
