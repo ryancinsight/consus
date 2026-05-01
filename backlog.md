@@ -49,7 +49,8 @@
 - [x] Chunked dataset write with persisted chunk index and end-to-end value roundtrip in current scope
 - [x] V4 layout message emission with B-tree v2 chunk index (layout_version=4)
 - [x] Chunked dataset compression roundtrip coverage (deflate, fletcher32)
-- [ ] Local heap writer for v1 group emission
+- [x] Local heap writer for v1 group emission — `write_local_heap` now emits a valid HEAP header + null-terminated name pool; `write_v1_group_header` emits SNOD + B-tree v1 group index; `add_v1_group_with_children` exposes root-linked v1 group emission; covered by writer roundtrip tests and `list_group_v1` verification
+- [x] BUG-HDF5-001 through BUG-HDF5-005 resolved (Milestone 53): `write_v1_group_index` B-tree v1 layout; local heap header size constant; v1 object header `V1_HEADER_PADDING = 4` + async reader correction; compound member `dim_overhead = 28`; variable-length string embedded base type consumption
 
 ### P1.3 — HDF5 Verification
 - [x] In-memory round-trip tests for contiguous datasets
@@ -61,8 +62,8 @@
 - [x] Read tests against `t_filter.h5`
 - [x] Read tests against `t_compound.h5`
 - [x] Read tests against `t_vlen.h5`
-- [ ] Read tests against `t_string.h5`
-- [ ] Read tests against `t_group.h5`
+- [x] Read tests against `t_string.h5` equivalent — `data/hdf5_string_ref_sample.h5` h5py fixture; 6 value-semantic integration tests in `tests/integration_hdf5_string_ref.rs` (Milestone 53)
+- [x] Read tests against `t_group.h5` equivalent — `data/hdf5_group_ref_sample.h5` h5py fixture; 7 value-semantic integration tests in `tests/integration_hdf5_group_ref.rs` (Milestone 53)
 - [x] Read tests against `t_chunk.h5`
 - [x] Read tests against `t_filter.h5`
 - [x] V4 B-tree v2 chunk index roundtrip tests (2D, 3D, single-chunk)
@@ -265,7 +266,7 @@
 - [x] Criterion benchmark harness — `consus-parquet/benches/parquet_rw.rs`: `bench_write_i32` + `bench_read_i32` at 1K/10K/100K rows; `consus-arrow/benches/arrow_bridge.rs`: `bench_bridge_i32`, `bench_bridge_double`, `bench_bridge_byte_array`; `[[bench]]` targets added to both Cargo.toml files; verified `cargo check --bench parquet_rw` and `cargo check --bench arrow_bridge` clean
 - [ ] Large file (>4 GiB) regression tests
 - [x] proptest harnesses delivered: `is_valid_iso8601` (4 property tests, consus-nwb) + `decode_attribute_value` (4 property tests, consus-hdf5) — Milestone 52 (this sprint — CLOSED)
-- [ ] `cargo-fuzz` harness targets (heap-buffer and logic fuzz)
+- [x] `cargo-fuzz` harness targets (heap-buffer and logic fuzz) — `fuzz/Cargo.toml` + three `fuzz/fuzz_targets/` harnesses: `fuzz_hdf5_parser` (superblock → list_root_group → dataset_at / attributes_at / read_chunked_dataset_all_bytes), `fuzz_parquet_decoder` (footer → Thrift FileMetadata → all rg×col read_column_chunk), `fuzz_mat_reader` (loadmat_bytes v4/v5/v7.3 dispatch); `cargo fuzz list` reports all 3 targets; compilation blocked on Windows (libfuzzer-sys C++ build uses MSVC __pragma incompatible with g++.exe — expected platform limitation); targets compile clean on Linux CI
 - [ ] WASM target validation
 - [ ] `no_std` smoke tests (`thumbv7em-none-eabihf`) — workspace `no_std + alloc` compilation now fully clean: NO-STD-001 closed (M-050); embedded target smoke test still pending
 - [ ] Documentation site

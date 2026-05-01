@@ -14,6 +14,10 @@ std = ["alloc", "consus-core/std", "consus-io/std", "consus-compression/std"]
 alloc = ["consus-core/alloc", "consus-io/alloc", "consus-compression/alloc"]
 async-io = ["alloc", "consus-io/async-io"]
 parallel-io = ["alloc", "dep:rayon"]
+# Compression codec features — forwarded to consus-compression.
+# Required to activate the corresponding codec in the DefaultCodecRegistry.
+zstd = ["consus-compression/zstd"]
+lz4  = ["consus-compression/lz4"]
 
 [dependencies]
 consus-core = { workspace = true }

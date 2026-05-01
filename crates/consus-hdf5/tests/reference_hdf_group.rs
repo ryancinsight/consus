@@ -285,17 +285,25 @@ fn charset_dataset_metadata() {
         .iter()
         .filter_map(|(_, addr)| {
             let ds = file.dataset_at(*addr).ok()?;
-            match &ds.datatype {
-                Datatype::VariableString { .. } | Datatype::FixedString { .. } => Some(ds),
-                _ => None,
-            }
+            let has_string = match &ds.datatype {
+                Datatype::VariableString { .. } | Datatype::FixedString { .. } => true,
+                // Compound types whose members include string fields count.
+                Datatype::Compound { fields, .. } => fields.iter().any(|f| {
+                    matches!(
+                        f.datatype,
+                        Datatype::VariableString { .. } | Datatype::FixedString { .. }
+                    )
+                }),
+                _ => false,
+            };
+            if has_string { Some(ds) } else { None }
         })
         .collect();
 
-    // File should have at least one string dataset
+    // File should have at least one string or string-containing compound dataset.
     assert!(
         !string_datasets.is_empty(),
-        "charset sample must contain string datasets"
+        "charset sample must contain string datasets or compound datasets with string members"
     );
 
     for dataset in &string_datasets {
@@ -321,6 +329,43 @@ fn charset_dataset_metadata() {
                     ),
                     "string encoding must be ASCII or UTF-8"
                 );
+            }
+            Datatype::Compound { fields, .. } => {
+                // Validate string member encodings within the compound.
+                for field in fields {
+                    match &field.datatype {
+                        Datatype::VariableString { encoding } => {
+                            assert!(
+                                matches!(
+                                    encoding,
+                                    consus_core::StringEncoding::Ascii
+                                        | consus_core::StringEncoding::Utf8
+                                ),
+                                "compound string member '{}' encoding must be ASCII or UTF-8",
+                                field.name
+                            );
+                        }
+                        Datatype::FixedString {
+                            length, encoding, ..
+                        } => {
+                            assert!(
+                                *length > 0,
+                                "compound fixed string member '{}' must have positive length",
+                                field.name
+                            );
+                            assert!(
+                                matches!(
+                                    encoding,
+                                    consus_core::StringEncoding::Ascii
+                                        | consus_core::StringEncoding::Utf8
+                                ),
+                                "compound string member '{}' encoding must be ASCII or UTF-8",
+                                field.name
+                            );
+                        }
+                        _ => {}
+                    }
+                }
             }
             _ => {}
         }

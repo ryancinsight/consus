@@ -55,10 +55,16 @@ use crate::constants::UNDEFINED_ADDRESS;
 use crate::object_header::message_types::CONTINUATION;
 use crate::object_header::{HeaderMessage, ObjectHeader};
 
-/// Fixed size of the version 1 object header prefix (before messages).
+/// Fixed size of the version 1 object header prefix (before padding and messages).
 ///
 /// Layout: version(1) + reserved(1) + num_messages(2) + ref_count(4) + header_size(4) = 12.
 const V1_HEADER_PREFIX_SIZE: usize = 12;
+
+/// Reserved padding inserted between the 12-byte prefix and the first message.
+///
+/// The HDF5 spec places 4 reserved/padding bytes (set to zero) at offset 12–15
+/// of a version 1 object header, making messages start at byte 16.
+const V1_HEADER_PADDING: u64 = 4;
 
 /// Fixed size of a version 1 message entry header (before message data).
 ///
@@ -122,7 +128,7 @@ pub(crate) fn parse<R: ReadAt>(
     let _ref_count = LittleEndian::read_u32(&prefix_buf[4..8]);
     let header_data_size = LittleEndian::read_u32(&prefix_buf[8..12]) as u64;
 
-    let messages_start = address + V1_HEADER_PREFIX_SIZE as u64;
+    let messages_start = address + V1_HEADER_PREFIX_SIZE as u64 + V1_HEADER_PADDING;
 
     let mut messages: Vec<HeaderMessage> = Vec::new();
 

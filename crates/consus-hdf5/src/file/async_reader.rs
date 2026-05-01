@@ -271,9 +271,7 @@ pub(crate) fn scan_v1_continuations(
 /// - `Error::InvalidFormat` if `source` is empty or contains no valid
 ///   HDF5 superblock at any expected offset.
 #[cfg(all(feature = "async-io", feature = "alloc"))]
-pub async fn async_read_superblock<R: AsyncReadAt + AsyncLength>(
-    source: &R,
-) -> Result<Superblock> {
+pub async fn async_read_superblock<R: AsyncReadAt + AsyncLength>(source: &R) -> Result<Superblock> {
     let file_len = AsyncLength::len(source).await? as usize;
     // 2048 (last valid search offset) + 64 (max superblock size) = 2112
     let window = file_len.min(2112);
@@ -329,10 +327,7 @@ async fn async_read_ohdr_v2<R: AsyncReadAt>(
     if preamble[4] != 2 {
         return Err(Error::InvalidFormat {
             #[cfg(feature = "alloc")]
-            message: alloc::format!(
-                "expected object header version 2, found {}",
-                preamble[4]
-            ),
+            message: alloc::format!("expected object header version 2, found {}", preamble[4]),
         });
     }
     let flags = preamble[5];
@@ -349,14 +344,11 @@ async fn async_read_ohdr_v2<R: AsyncReadAt>(
     }
     let variable_len = vlen;
 
-    let var_data =
-        read_region(source, address + OHDR_PREAMBLE_LEN as u64, variable_len).await?;
+    let var_data = read_region(source, address + OHDR_PREAMBLE_LEN as u64, variable_len).await?;
     // Chunk data-size field occupies the last `size_width` bytes of the variable region.
     let size_field_offset = variable_len - size_width;
-    let chunk_data_size = crate::object_header::v2::read_chunk_data_size(
-        &var_data[size_field_offset..],
-        size_width,
-    )?;
+    let chunk_data_size =
+        crate::object_header::v2::read_chunk_data_size(&var_data[size_field_offset..], size_width)?;
 
     if chunk_data_size as usize > MAX_CHUNK_BYTES {
         return Err(Error::InvalidFormat {
@@ -370,15 +362,13 @@ async fn async_read_ohdr_v2<R: AsyncReadAt>(
     }
 
     // -- Full first chunk -------------------------------------------------
-    let total =
-        OHDR_PREAMBLE_LEN + variable_len + chunk_data_size as usize + CHECKSUM_LEN;
+    let total = OHDR_PREAMBLE_LEN + variable_len + chunk_data_size as usize + CHECKSUM_LEN;
     let ohdr_data = read_region(source, address, total).await?;
 
     // -- Scan initial continuations ---------------------------------------
     let msg_start = OHDR_PREAMBLE_LEN + variable_len;
     let msg_end = msg_start + chunk_data_size as usize;
-    let initial_conts =
-        scan_v2_continuations(&ohdr_data[msg_start..msg_end], flags, ctx)?;
+    let initial_conts = scan_v2_continuations(&ohdr_data[msg_start..msg_end], flags, ctx)?;
 
     // -- Build multi-region buffer ----------------------------------------
     let mut multi_buf = MultiRegionBuffer::new();
@@ -397,9 +387,7 @@ async fn async_read_ohdr_v2<R: AsyncReadAt>(
         if depth > MAX_DEPTH {
             return Err(Error::Corrupted {
                 #[cfg(feature = "alloc")]
-                message: alloc::string::String::from(
-                    "continuation chain exceeded 256 hops",
-                ),
+                message: alloc::string::String::from("continuation chain exceeded 256 hops"),
             });
         }
         let ochk_data = read_region(source, cont_addr, cont_len as usize).await?;
@@ -407,11 +395,8 @@ async fn async_read_ohdr_v2<R: AsyncReadAt>(
             let ochk_msg_start = OCHK_PREAMBLE_LEN;
             let ochk_msg_end = (cont_len as usize).saturating_sub(CHECKSUM_LEN);
             if ochk_msg_end > ochk_msg_start {
-                let more = scan_v2_continuations(
-                    &ochk_data[ochk_msg_start..ochk_msg_end],
-                    flags,
-                    ctx,
-                )?;
+                let more =
+                    scan_v2_continuations(&ochk_data[ochk_msg_start..ochk_msg_end], flags, ctx)?;
                 pending.extend(more);
             }
         }
@@ -443,25 +428,24 @@ async fn async_read_ohdr_v1<R: AsyncReadAt>(
     ctx: &ParseContext,
 ) -> Result<crate::object_header::ObjectHeader> {
     // version(1) + reserved(1) + num_messages(2) + ref_count(4) + header_size(4) = 12
+    // + 4 bytes of reserved padding = 16 bytes before the first message.
     const V1_HEADER_PREFIX_SIZE: usize = 12;
+    const V1_HEADER_PADDING: usize = 4;
+    const V1_MESSAGES_START: usize = V1_HEADER_PREFIX_SIZE + V1_HEADER_PADDING; // = 16
 
     let prefix = read_region(source, address, V1_HEADER_PREFIX_SIZE).await?;
     if prefix[0] != 1 {
         return Err(Error::InvalidFormat {
             #[cfg(feature = "alloc")]
-            message: alloc::format!(
-                "expected object header version 1, found {}",
-                prefix[0]
-            ),
+            message: alloc::format!("expected object header version 1, found {}", prefix[0]),
         });
     }
 
     let header_data_size = LittleEndian::read_u32(&prefix[8..12]) as usize;
-    let initial_len = V1_HEADER_PREFIX_SIZE + header_data_size;
+    let initial_len = V1_MESSAGES_START + header_data_size;
     let initial_data = read_region(source, address, initial_len).await?;
 
-    let continuations =
-        scan_v1_continuations(&initial_data[V1_HEADER_PREFIX_SIZE..], ctx)?;
+    let continuations = scan_v1_continuations(&initial_data[V1_MESSAGES_START..], ctx)?;
 
     let mut multi_buf = MultiRegionBuffer::new();
     multi_buf.add_region(address, initial_data);

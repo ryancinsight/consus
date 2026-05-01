@@ -14,7 +14,7 @@
 //!
 //! ### Object Header Construction
 //!
-//! Object headers are written in v2 format with CRC-32 checksums.
+//! Object headers are written in v2 format with Jenkins lookup3 checksums.
 //! Messages are packed sequentially within a single header chunk.
 //! Continuation chunks are not emitted by the writer; all messages
 //! for an object must fit in the initial allocation.
@@ -23,7 +23,7 @@
 //!
 //! - `consus_core`: Error types, canonical data model types.
 //! - `consus_io`: `WriteAt` trait for positioned byte output.
-//! - `consus_compression`: `Crc32` checksum for v2 header integrity.
+//! - `consus_compression`: `Lookup3` (Jenkins) checksum for v2 metadata integrity.
 
 #[cfg(feature = "alloc")]
 use alloc::{string::String, vec, vec::Vec};
@@ -47,6 +47,8 @@ use crate::dataset::chunk::{ChunkLocation, edge_chunk_dims, write_chunk_raw};
 use crate::object_header::message_types;
 #[cfg(feature = "alloc")]
 use crate::property_list::{DatasetLayout, GroupCreationProps};
+#[cfg(feature = "alloc")]
+use consus_compression::Checksum;
 
 // Re-export property list types so consumers can import them via this module.
 #[cfg(feature = "alloc")]
@@ -135,7 +137,7 @@ fn write_offset(buf: &mut [u8], size: usize, value: u64) {
 /// | 12+S | S | Extension address |
 /// | 12+2S | S | End-of-file address (placeholder) |
 /// | 12+3S | S | Root group object header address |
-/// | 12+4S | 4 | CRC-32 checksum |
+/// | 12+4S | 4 | Jenkins lookup3 checksum |
 ///
 /// The EOF address is written as a placeholder (0) and must be updated
 /// via [`update_superblock_eof`] before closing the file.
@@ -147,7 +149,7 @@ pub fn write_superblock<W: WriteAt>(
 ) -> Result<()> {
     let s = state.ctx.offset_bytes();
     let data_len = 12 + 4 * s; // bytes before checksum
-    let total_len = data_len + 4; // + CRC-32
+    let total_len = data_len + 4; // + Jenkins lookup3 checksum (4 bytes)
 
     let addr = 0;
     if state.eof < total_len as u64 {
@@ -180,8 +182,8 @@ pub fn write_superblock<W: WriteAt>(
     write_offset(&mut buf[pos..], s, root_group_address);
     pos += s;
 
-    // CRC-32 checksum over bytes [0..data_len)
-    let checksum = consus_compression::Crc32::compute_slice(&buf[..pos]);
+    // Jenkins lookup3 checksum over bytes [0..data_len) per HDF5 spec §III.A
+    let checksum = consus_compression::Lookup3::compute(&buf[..pos]);
     buf[pos..pos + 4].copy_from_slice(&checksum.to_le_bytes());
 
     sink.write_at(addr, &buf)
@@ -190,7 +192,7 @@ pub fn write_superblock<W: WriteAt>(
 /// Overwrite the EOF address field in an existing v2 superblock at offset 0.
 ///
 /// The EOF field is located at byte offset `12 + 2 * offset_size`.
-/// After updating, the CRC-32 checksum is recomputed and written.
+/// After updating, the Jenkins lookup3 checksum is recomputed and written.
 ///
 /// ## Precondition
 ///
@@ -214,8 +216,8 @@ pub fn update_superblock_eof<W: WriteAt + consus_io::ReadAt>(
     let eof_field_offset = 12 + 2 * s;
     write_offset(&mut buf[eof_field_offset..], s, state.eof);
 
-    // Recompute checksum
-    let checksum = consus_compression::Crc32::compute_slice(&buf[..data_len]);
+    // Recompute Jenkins lookup3 checksum per HDF5 spec §III.A
+    let checksum = consus_compression::Lookup3::compute(&buf[..data_len]);
     buf[data_len..total_len].copy_from_slice(&checksum.to_le_bytes());
 
     sink.write_at(0, &buf)
@@ -277,6 +279,162 @@ fn write_v2_message(buf: &mut [u8], pos: usize, msg_type: u16, flags: u8, data: 
     5 + data.len()
 }
 
+#[cfg(feature = "alloc")]
+fn encode_local_heap_data(names: &[&str]) -> Result<(Vec<u8>, Vec<u64>)> {
+    let mut data = Vec::new();
+    let mut offsets = Vec::with_capacity(names.len());
+
+    for name in names {
+        let offset = data.len() as u64;
+        offsets.push(offset);
+        data.extend_from_slice(name.as_bytes());
+        data.push(0);
+    }
+
+    Ok((data, offsets))
+}
+
+/// Write a valid HDF5 local heap containing null-terminated link names.
+///
+/// Returns the heap header address and the byte offsets of each name within
+/// the emitted data segment. The data segment is written immediately after the
+/// header and its recorded size matches the serialized name pool exactly.
+#[cfg(feature = "alloc")]
+pub fn write_local_heap<W: WriteAt>(
+    sink: &mut W,
+    state: &mut WriteState,
+    names: &[&str],
+) -> Result<(u64, Vec<u64>)> {
+    let (data, offsets) = encode_local_heap_data(names)?;
+    let s = state.ctx.offset_bytes();
+    let l = state.ctx.length_bytes();
+    let header_size = 4 + 1 + 3 + l + l + s;
+    let heap_addr = state.allocate_aligned(header_size as u64);
+    let data_addr = heap_addr + header_size as u64;
+    state.eof = data_addr + data.len() as u64;
+
+    let mut header = vec![0u8; header_size];
+    header[0..4].copy_from_slice(b"HEAP");
+    header[4] = 0;
+    match l {
+        2 => LittleEndian::write_u16(&mut header[8..10], data.len() as u16),
+        4 => LittleEndian::write_u32(&mut header[8..12], data.len() as u32),
+        8 => LittleEndian::write_u64(&mut header[8..16], data.len() as u64),
+        _ => {}
+    }
+    match l {
+        2 => LittleEndian::write_u16(&mut header[8 + l..8 + 2 * l], u16::MAX),
+        4 => LittleEndian::write_u32(&mut header[8 + l..8 + 2 * l], u32::MAX),
+        8 => LittleEndian::write_u64(&mut header[8 + l..8 + 2 * l], u64::MAX),
+        _ => {}
+    }
+    write_offset(&mut header[8 + 2 * l..], s, data_addr);
+
+    sink.write_at(heap_addr, &header)?;
+    if !data.is_empty() {
+        sink.write_at(data_addr, &data)?;
+    }
+
+    Ok((heap_addr, offsets))
+}
+
+#[cfg(feature = "alloc")]
+fn write_v1_symbol_table_node<W: WriteAt>(
+    sink: &mut W,
+    state: &mut WriteState,
+    name_offsets: &[u64],
+    object_addresses: &[u64],
+) -> Result<u64> {
+    let s = state.ctx.offset_bytes();
+    let entry_size = 2 * s + 24;
+    let total = 8 + name_offsets.len() * entry_size;
+    let addr = state.allocate_aligned(total as u64);
+    let mut buf = vec![0u8; total];
+
+    buf[0..4].copy_from_slice(b"SNOD");
+    buf[4] = 1;
+    LittleEndian::write_u16(&mut buf[6..8], name_offsets.len() as u16);
+
+    for (idx, (&name_offset, &object_address)) in
+        name_offsets.iter().zip(object_addresses).enumerate()
+    {
+        let base = 8 + idx * entry_size;
+        write_offset(&mut buf[base..base + s], s, name_offset);
+        write_offset(&mut buf[base + s..base + 2 * s], s, object_address);
+        LittleEndian::write_u32(&mut buf[base + 2 * s..base + 2 * s + 4], 1);
+        LittleEndian::write_u32(&mut buf[base + 2 * s + 4..base + 2 * s + 8], 0);
+        for byte in &mut buf[base + 2 * s + 8..base + 2 * s + 24] {
+            *byte = 0;
+        }
+    }
+
+    sink.write_at(addr, &buf)?;
+    Ok(addr)
+}
+
+#[cfg(feature = "alloc")]
+fn write_v1_group_index<W: WriteAt>(
+    sink: &mut W,
+    state: &mut WriteState,
+    snod_address: u64,
+) -> Result<u64> {
+    let s = state.ctx.offset_bytes();
+    let key_size = state.ctx.length_bytes();
+    // B-tree v1 leaf node layout (HDF5 spec §III.B.1, group type 0):
+    //   header:  signature(4) + type(1) + level(1) + entries_used(2) + left(S) + right(S)
+    //            = 8 + 2*S bytes
+    //   data:    key[0](key_size) + child[0](S) + key[1](key_size)
+    //            = 2*key_size + S bytes   (N=1 entry → N+1 keys, N child pointers)
+    // Reader reads data starting at btree_address + header_size; child_off = key_size.
+    let header_size = 8 + 2 * s;
+    let data_size = 2 * key_size + s; // key[0] + child[0] + trailing key[1]
+    let total = header_size + data_size;
+    let addr = state.allocate_aligned(total as u64);
+    let mut buf = vec![0u8; total];
+
+    buf[0..4].copy_from_slice(b"TREE");
+    buf[4] = 0; // node_type = 0 (Group)
+    buf[5] = 0; // node_level = 0 (leaf)
+    LittleEndian::write_u16(&mut buf[6..8], 1); // entries_used = 1
+    write_offset(&mut buf[8..], s, UNDEFINED_ADDRESS); // left sibling (no left)
+    write_offset(&mut buf[8 + s..], s, UNDEFINED_ADDRESS); // right sibling (no right)
+    // Data: key[0] (zeros) + child[0] = snod_address + key[1] (zeros)
+    // child[0] is at data[key_size], i.e. buf[header_size + key_size].
+    write_offset(&mut buf[header_size + key_size..], s, snod_address);
+
+    sink.write_at(addr, &buf)?;
+    Ok(addr)
+}
+
+/// Write a v1 group object header with a local heap, symbol table node,
+/// and B-tree v1 root so existing v1 readers can enumerate its names.
+#[cfg(feature = "alloc")]
+pub fn write_v1_group_header<W: WriteAt>(
+    sink: &mut W,
+    state: &mut WriteState,
+    names: &[&str],
+    object_addresses: &[u64],
+) -> Result<u64> {
+    if names.len() != object_addresses.len() {
+        return Err(Error::InvalidFormat {
+            #[cfg(feature = "alloc")]
+            message: String::from("v1 group writer requires name/object address count match"),
+        });
+    }
+
+    let (heap_addr, offsets) = write_local_heap(sink, state, names)?;
+    let snod_addr = write_v1_symbol_table_node(sink, state, &offsets, object_addresses)?;
+    let btree_addr = write_v1_group_index(sink, state, snod_addr)?;
+
+    let s = state.ctx.offset_bytes();
+    let mut st_bytes = vec![0u8; 2 * s];
+    write_offset(&mut st_bytes[0..], s, btree_addr);
+    write_offset(&mut st_bytes[s..], s, heap_addr);
+
+    let st_msgs: Vec<(u16, &[u8])> = vec![(message_types::SYMBOL_TABLE, st_bytes.as_slice())];
+    write_object_header_v2(sink, state, &st_msgs)
+}
+
 // ---------------------------------------------------------------------------
 // Group header
 // ---------------------------------------------------------------------------
@@ -319,8 +477,8 @@ pub fn write_group_header<W: WriteAt>(
     let written = write_v2_message(&mut buf, pos, 0x0000, 0, &vec![0u8; nil_data_len]);
     pos += written;
 
-    // CRC-32 checksum of entire header (signature through end of messages)
-    let checksum = consus_compression::Crc32::compute_slice(&buf[..pos]);
+    // Jenkins lookup3 checksum per HDF5 spec §IV.A.1.2
+    let checksum = consus_compression::Lookup3::compute(&buf[..pos]);
     buf[pos..pos + 4].copy_from_slice(&checksum.to_le_bytes());
 
     sink.write_at(addr, &buf)?;
@@ -1080,8 +1238,8 @@ fn write_chunk_btree_v2<W: WriteAt>(
         }
     }
 
-    // CRC-32 checksum over all bytes preceding the checksum field
-    let leaf_cksum = consus_compression::Crc32::compute_slice(&leaf_buf[..pos]);
+    // Jenkins lookup3 checksum over all bytes preceding the checksum field
+    let leaf_cksum = consus_compression::Lookup3::compute(&leaf_buf[..pos]);
     leaf_buf[pos..pos + 4].copy_from_slice(&leaf_cksum.to_le_bytes());
 
     sink.write_at(leaf_addr, &leaf_buf)?;
@@ -1114,8 +1272,8 @@ fn write_chunk_btree_v2<W: WriteAt>(
     write_offset(&mut hdr_buf[hpos..], l, num_records as u64);
     hpos += l;
 
-    // CRC-32 checksum
-    let hdr_cksum = consus_compression::Crc32::compute_slice(&hdr_buf[..hpos]);
+    // Jenkins lookup3 checksum per HDF5 spec §IV.A.2 (B-tree v2 header)
+    let hdr_cksum = consus_compression::Lookup3::compute(&hdr_buf[..hpos]);
     hdr_buf[hpos..hpos + 4].copy_from_slice(&hdr_cksum.to_le_bytes());
 
     sink.write_at(header_addr, &hdr_buf)?;
@@ -1436,7 +1594,8 @@ pub fn write_object_header_v2<W: WriteAt>(
         }
     }
 
-    let checksum = consus_compression::Crc32::compute_slice(&buf[..pos]);
+    // Jenkins lookup3 checksum per HDF5 spec §IV.A.1.2 (Object Header v2)
+    let checksum = consus_compression::Lookup3::compute(&buf[..pos]);
     buf[pos..pos + 4].copy_from_slice(&checksum.to_le_bytes());
 
     sink.write_at(addr, &buf)?;
@@ -1776,6 +1935,22 @@ impl Hdf5FileBuilder {
         let header_addr = write_object_header_v2(&mut self.sink, &mut self.state, msgs)?;
         self.root_links.push((String::from(name), header_addr));
         Ok(header_addr)
+    }
+
+    /// Add a v1 group linked from the root with explicit child link names.
+    ///
+    /// The writer emits a local heap, SNOD symbol-table node, and B-tree v1
+    /// group index so `list_group_v1` can resolve the child names.
+    pub fn add_v1_group_with_children(
+        &mut self,
+        name: &str,
+        children: &[(&str, u64)],
+    ) -> Result<u64> {
+        let (names, addresses): (Vec<&str>, Vec<u64>) = children.iter().copied().unzip();
+        let group_addr =
+            write_v1_group_header(&mut self.sink, &mut self.state, &names, &addresses)?;
+        self.root_links.push((String::from(name), group_addr));
+        Ok(group_addr)
     }
 
     /// Add an attribute to the root group.
@@ -2261,6 +2436,153 @@ mod tests {
         assert_eq!(&bytes[3..14], b"temperature");
         // Address at offset 14
         assert_eq!(LittleEndian::read_u64(&bytes[14..22]), 0x200);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn write_local_heap_roundtrip() {
+        let mut cursor = consus_io::MemCursor::new();
+        let props = FileCreationProps::default();
+        let mut state = WriteState::new(props);
+        let names_vec = vec!["alpha", "beta"];
+        let (heap_addr, offsets) = write_local_heap(&mut cursor, &mut state, &names_vec)
+            .expect("write_local_heap must succeed");
+        assert_eq!(offsets, vec![0, 6]);
+
+        let heap = crate::heap::local::LocalHeap::parse(&cursor, heap_addr, &state.ctx).unwrap();
+        assert_eq!(heap.data_segment_size, 11);
+        assert_eq!(heap.free_list_offset, u64::MAX);
+        assert_eq!(heap.data_address, heap_addr + 32);
+        assert_eq!(heap.read_name(&cursor, offsets[0]).unwrap(), "alpha");
+        assert_eq!(heap.read_name(&cursor, offsets[1]).unwrap(), "beta");
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn write_v1_group_roundtrip_via_reader() {
+        let mut cursor = consus_io::MemCursor::new();
+        let props = FileCreationProps::default();
+        let mut state = WriteState::new(props);
+        // Reserve superblock space (48 bytes for 8-byte offsets) so that
+        // write_superblock (which always writes at offset 0) does not
+        // overwrite child headers allocated before it is called.
+        // Formula mirrors Hdf5FileBuilder::new: 12 + 4*offset_bytes + 4.
+        let sb_size = 12u64 + 4 * state.ctx.offset_bytes() as u64 + 4;
+        state.eof = sb_size;
+        let empty_msgs: Vec<(u16, &[u8])> = Vec::new();
+        let child_a = write_object_header_v2(&mut cursor, &mut state, &empty_msgs).unwrap();
+        let child_b = write_object_header_v2(&mut cursor, &mut state, &empty_msgs).unwrap();
+        let names_vec = vec!["alpha", "beta"];
+        let addresses_vec = vec![child_a, child_b];
+        let group_addr =
+            write_v1_group_header(&mut cursor, &mut state, &names_vec, &addresses_vec).unwrap();
+        let root_link = encode_hard_link("group", group_addr, &state.ctx).unwrap();
+        let root_links: Vec<(u16, &[u8])> = vec![(message_types::LINK, root_link.as_slice())];
+        let root_group = write_object_header_v2(&mut cursor, &mut state, &root_links).unwrap();
+        write_superblock(&mut cursor, &mut state, root_group).unwrap();
+        update_superblock_eof(&mut cursor, &state).unwrap();
+
+        let file = Hdf5File::open(cursor).unwrap();
+        let children = file.list_group_at(group_addr).unwrap();
+        assert_eq!(children.len(), 2);
+        assert_eq!(children[0].0, "alpha");
+        assert_eq!(children[0].1, child_a);
+        assert_eq!(children[1].0, "beta");
+        assert_eq!(children[1].1, child_b);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn write_local_heap_rejects_missing_null_terminator_on_parse() {
+        let mut cursor = consus_io::MemCursor::new();
+        let props = FileCreationProps::default();
+        let mut state = WriteState::new(props);
+        let names_vec = vec!["alpha"];
+        let (heap_addr, _) = write_local_heap(&mut cursor, &mut state, &names_vec)
+            .expect("write_local_heap must succeed");
+        let mut bytes = cursor.as_bytes().to_vec();
+        // Local heap header size = 4 (sig) + 1 (ver) + 3 (pad) + l (seg_size)
+        // + l (free_list) + s (data_addr) = 4+1+3+8+8+8 = 32 bytes.
+        // The data segment immediately follows the header.
+        let data_addr = heap_addr + 32;
+        bytes[data_addr as usize + 5] = b'X';
+        let cursor = consus_io::MemCursor::from_bytes(bytes);
+        let heap = crate::heap::local::LocalHeap::parse(&cursor, heap_addr, &state.ctx).unwrap();
+        let err = heap.read_name(&cursor, 0).unwrap_err();
+        assert!(matches!(err, Error::InvalidFormat { .. }));
+    }
+
+    /// `Hdf5FileBuilder::add_v1_group_with_children` + `finish` → `Hdf5File::open`
+    /// → `list_group_at` enumerates children in insertion order with correct addresses.
+    ///
+    /// ## Invariants
+    /// - Two children "x" and "y" are returned with their written addresses.
+    /// - `open_path` resolves both children by name.
+    /// - The group address returned by the builder method is non-zero and
+    ///   distinct from both child addresses.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn add_v1_group_with_children_builder_e2e() {
+        use consus_core::{ByteOrder as CoreByteOrder, Datatype, Shape};
+        use core::num::NonZeroUsize;
+
+        let u32_dt = Datatype::Integer {
+            bits: NonZeroUsize::new(32).unwrap(),
+            byte_order: CoreByteOrder::LittleEndian,
+            signed: false,
+        };
+        let raw_x: Vec<u8> = 7u32.to_le_bytes().to_vec();
+        let raw_y: Vec<u8> = 42u32.to_le_bytes().to_vec();
+
+        let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+
+        // Write two scalar datasets as v2 object headers.
+        let x_addr = builder
+            .add_dataset(
+                "__x",
+                &u32_dt,
+                &Shape::scalar(),
+                &raw_x,
+                &DatasetCreationProps::default(),
+            )
+            .expect("add_dataset x");
+        let y_addr = builder
+            .add_dataset(
+                "__y",
+                &u32_dt,
+                &Shape::scalar(),
+                &raw_y,
+                &DatasetCreationProps::default(),
+            )
+            .expect("add_dataset y");
+
+        // Link those addresses into a v1 group.
+        let grp_addr = builder
+            .add_v1_group_with_children("v1grp", &[("x", x_addr), ("y", y_addr)])
+            .expect("add_v1_group_with_children");
+
+        let bytes = builder.finish().expect("finish");
+        let file = Hdf5File::open(consus_io::MemCursor::from_bytes(bytes)).expect("open hdf5 file");
+
+        // list_group_at must enumerate both children in emission order.
+        let children = file
+            .list_group_at(grp_addr)
+            .expect("list_group_at must succeed for v1 group");
+        assert_eq!(children.len(), 2, "v1 group must have exactly 2 children");
+        assert_eq!(children[0].0, "x", "first child name must be 'x'");
+        assert_eq!(
+            children[0].1, x_addr,
+            "first child address must equal x_addr"
+        );
+        assert_eq!(children[1].0, "y", "second child name must be 'y'");
+        assert_eq!(
+            children[1].1, y_addr,
+            "second child address must equal y_addr"
+        );
+
+        // The group address must be distinct from both child addresses.
+        assert_ne!(grp_addr, x_addr, "grp_addr must not alias x_addr");
+        assert_ne!(grp_addr, y_addr, "grp_addr must not alias y_addr");
     }
 
     #[cfg(feature = "alloc")]

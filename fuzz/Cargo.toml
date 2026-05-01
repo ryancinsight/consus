@@ -1,0 +1,40 @@
+[package]
+name = "consus-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+# `std` on consus-hdf5 enables consus-io/alloc (for MemCursor) and consus-io/std.
+# We also declare consus-io directly with explicit `alloc` to make MemCursor
+# availability self-documenting without relying solely on transitive unification.
+consus-hdf5 = { path = "../crates/consus-hdf5", default-features = false, features = ["std"] }
+consus-parquet = { path = "../crates/consus-parquet", default-features = false, features = ["std"] }
+consus-mat = { path = "../crates/consus-mat", default-features = false, features = ["std"] }
+consus-io = { path = "../crates/consus-io", default-features = false, features = ["std", "alloc"] }
+
+# Prevent this crate from being adopted into the workspace when Cargo resolves
+# dependencies from the workspace root directory.
+[workspace]
+
+[[bin]]
+name = "fuzz_hdf5_parser"
+path = "fuzz_targets/fuzz_hdf5_parser.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_parquet_decoder"
+path = "fuzz_targets/fuzz_parquet_decoder.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_mat_reader"
+path = "fuzz_targets/fuzz_mat_reader.rs"
+test = false
+doc = false

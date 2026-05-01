@@ -16,6 +16,7 @@
 
 | ID | Description | Resolution |
 |----|-------------|------------|
+| HDF5-V1-HEAP-001 | Local heap writer for v1 group emission | `consus-hdf5::file::writer` now emits valid HEAP headers and serialized name pools via `write_local_heap`, materializes SNOD symbol-table nodes and a B-tree v1 group index via `write_v1_group_header`, and exposes `Hdf5FileBuilder::add_v1_group_with_children` for root-linked v1 group emission. Verified by `LocalHeap::parse` + `read_name` roundtrip and `Hdf5File::list_group_at` enumeration tests. |
 | Z-001 | Zarr v2 metadata parsing | `.zarray`, `.zgroup`, and `.zattrs` parsing implemented and covered by unit/integration tests |
 | Z-002 | Canonical metadata model | `ArrayMetadata` / `GroupMetadata` conversion path implemented for v2 and v3 metadata |
 | Z-003 | Store backends | In-memory store, filesystem store, prefixed store, and split store implemented and verified |
@@ -274,7 +275,7 @@
 
 ## Open Gaps
 
-_No open gaps in the current audit scope. Remaining open work: lifetime-parameterized zero-copy `ArrowArray` model, hybrid Parquet-inside-Consus containers, netCDF-4 Unidata reference file comparison (P2.3), NWB verification against real Allen Brain Observatory NWB 2.x fixtures (Milestone 38), large-file (>4 GiB) regression tests, cargo-fuzz harness targets, WASM validation, no_std smoke tests, documentation site, crates.io publication. NWB fixture acquisition is now complete: h5py-generated `data/nwb/nwb_fixture_v2_7.nwb` with 10 verified invariants (Milestone 46). Real Allen Brain Observatory fixture remains optional for broader compatibility testing._
+_No open gaps in the current audit scope. Remaining open work: lifetime-parameterized zero-copy `ArrowArray` model, hybrid Parquet-inside-Consus containers, netCDF-4 Unidata reference file comparison (P2.3), NWB verification against real Allen Brain Observatory NWB 2.x fixtures (Milestone 38), large-file (>4 GiB) regression tests, cargo-fuzz harness targets, WASM validation, no_std smoke tests, documentation site, crates.io publication. NWB fixture acquisition is now complete: h5py-generated `data/nwb/nwb_fixture_v2_7.nwb` with 10 verified invariants (Milestone 46). Real Allen Brain Observatory fixture remains optional for broader compatibility testing. HDF5 v1 parser correctness gaps (BUG-HDF5-001 through BUG-HDF5-005) and h5py reference fixture coverage (GAP-HDF5-REF-001) are closed (Milestone 53); `t_string.h5` and `t_group.h5` equivalents delivered as `hdf5_string_ref_sample.h5` and `hdf5_group_ref_sample.h5` with 13 value-semantic integration tests._
 
 ---
 
@@ -424,6 +425,12 @@ _No open gaps in the current audit scope. Remaining open work: lifetime-paramete
 - **Status**: Closed.
 - **Evidence**: `FitsTableColumn` extended with `datatype: Datatype` and `byte_width: usize` fields populated from TFORM during header parsing. `from_binary_tform()` constructor derives both fields via `tform_to_datatype` and `binary_format_element_size`. `parse_column` dispatches binary→`from_binary_tform`, ASCII→`FixedString` with `parse_ascii_column_width`. `FitsBinaryTableDescriptor::from_header()` validates per-column byte widths sum to `NAXIS1`. 5 new value-semantic tests: Boolean/Int32/Float64 datatype roundtrip, Array datatype from repeat>1, NAXIS1 mismatch rejection, ASCII FixedString derivation, Complex/Compound descriptor types.
 - **Verification**: `cargo test -p consus-fits --lib` passes with 128/128 tests.
+
+### M-053: HDF5 v1 Parser Correctness + Reference Fixture Coverage
+
+- **Status**: Closed.
+- **Items**: BUG-HDF5-001 (`write_v1_group_index` B-tree v1 layout — node_type=0, UNDEFINED_ADDRESS siblings, SNOD at correct offset); BUG-HDF5-002 (local heap header size constant corrected to 32 bytes); BUG-HDF5-003 (v1 object header messages offset + 4-byte reserved padding; async reader continuation scan corrected); BUG-HDF5-004 (compound member `dim_overhead = 28`; 4 fixed dim-size slots per spec); BUG-HDF5-005 (variable-length string embedded base type consumed via `parse_datatype_inner`); GAP-HDF5-REF-001 (h5py-generated `hdf5_string_ref_sample.h5` + `hdf5_group_ref_sample.h5` fixtures; 13 value-semantic integration tests across `tests/integration_hdf5_string_ref.rs` and `tests/integration_hdf5_group_ref.rs`).
+- **Verification**: `cargo test -p consus-hdf5` → 351/351; `cargo test --workspace` → 2402/2402; `cargo check --workspace` → 0 errors, 0 warnings.
 
 ---
 
@@ -589,6 +596,24 @@ _No open gaps._
 
 ---
 
+## M-053: HDF5 v1 Parser Correctness + Reference Fixture Coverage (this sprint — CLOSED)
+
+| ID | File | Gap | Resolution |
+|----|------|-----|------------|
+| BUG-HDF5-001 | src/file/writer.rs | `write_v1_group_index` emitted wrong B-tree v1 layout: node_type=1, no sibling fields, SNOD address at wrong position | Fixed: node_type=0, UNDEFINED_ADDRESS siblings, SNOD at `header(24)+key_size(8)` offset; test superblock reservation corrected; `add_v1_group_with_children_builder_e2e` added |
+| BUG-HDF5-002 | src/file/writer.rs | `write_local_heap_rejects_missing_null_terminator_on_parse` test patched wrong byte: hardcoded `+24` but header is 32 bytes | Fixed: `data_addr = heap_addr + 32` |
+| BUG-HDF5-003 | src/object_header/v1.rs, src/file/async_reader.rs | v1 object header parser started messages at `address + 12` skipping the 4-byte reserved padding; HDF5 spec places padding at bytes 12–15, messages at byte 16 | Added `V1_HEADER_PADDING = 4`; `messages_start = address + 16`; async reader `initial_len = 16 + header_data_size`; continuation scan starts at `initial_data[16..]` |
+| BUG-HDF5-004 | src/datatype/compound.rs | Compound member v1/v2 dimensionality section used `12 + rank * 4` but spec mandates 4 fixed dim-size slots (16 bytes) regardless of rank | Fixed: `dim_overhead = 28 = 1+3+4+4+16`; unit test updated |
+| BUG-HDF5-005 | src/datatype/compound.rs | `parse_variable_length` string case returned `props_consumed = 0` but base type (12 bytes) is always present per spec; compound member 2 offset was wrong | Fixed: call `parse_datatype_inner(props)` and return consumed; fallback to 0 for empty props |
+| GAP-HDF5-REF-001 | tests/, data/ | Missing h5py-generated reference fixtures for string datasets and group navigation | Added `hdf5_string_ref_sample.h5` (6 nodes) and `hdf5_group_ref_sample.h5` (8 nodes) with generators; 13 value-semantic integration tests |
+
+### Verification
+- cargo test -p consus-hdf5: 351/351 (lib 280 + integration 71)
+- cargo test --workspace: 2402/2402
+- cargo check --workspace: 0 errors, 0 warnings
+
+---
+
 ## Summary Metrics
 
 | Metric | Value |
@@ -609,11 +634,12 @@ _No open gaps._
 | consus-io lib+integration (mmap) | 31/31 |
 | consus-nwb lib | 272/272 |
 | consus-nwb integration (real file) | 1/1 |
-| consus-hdf5 lib | 276/276 |
-| workspace total tests (default) | 2449/2449 |
-| Verified commands | `cargo test -p consus-netcdf` (137/137); `cargo test -p consus-hdf5 --lib` (276/276); `cargo test -p consus-nwb --lib` (272/272); `cargo test -p consus-zarr` (303/303); `cargo test -p consus-nwb --test integration_real_file` (1/1); `cargo test --workspace` (2449/2449, default); `cargo check --workspace` (0 warnings, 0 errors); `cargo check -p consus-core/consus-io/consus-hdf5/consus-nwb/consus-zarr --no-default-features --features alloc` (0 errors each) |
+| consus-hdf5 lib | 280/280 |
+| consus-hdf5 integration | 351/351 |
+| workspace total tests (default) | 2402/2402 |
+| Verified commands | `cargo test -p consus-netcdf` (137/137); `cargo test -p consus-hdf5 --lib` (280/280); `cargo test -p consus-hdf5` (351/351); `cargo test -p consus-nwb --lib` (272/272); `cargo test -p consus-zarr` (303/303); `cargo test -p consus-nwb --test integration_real_file` (1/1); `cargo test --workspace` (2402/2402, default); `cargo check --workspace` (0 errors, 0 warnings); `cargo check -p consus-core/consus-io/consus-hdf5/consus-nwb/consus-zarr --no-default-features --features alloc` (0 errors each) |
 | Open gaps | 0 |
 | High-severity open gaps | 0 |
-| Closed this sprint | 10 (M-042 through M-052: NWB Extended Conformance + no_std fixes (M-042–M-049); NO-STD-001 consus-zarr no_std resolved (M-050); DynamicTable column-content layer-6 validation (M-051); proptest harnesses for `is_valid_iso8601` + `decode_attribute_value` (M-052)) |
+| Closed this sprint | 11 (M-042 through M-053: NWB Extended Conformance + no_std fixes (M-042–M-049); NO-STD-001 consus-zarr no_std resolved (M-050); DynamicTable column-content layer-6 validation (M-051); proptest harnesses for `is_valid_iso8601` + `decode_attribute_value` (M-052); HDF5 v1 parser correctness + reference fixture coverage (M-053)) |
 | Medium-severity open gaps | 0 |
 | Low-severity open gaps | 0 |

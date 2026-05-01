@@ -411,30 +411,30 @@ fn parse_compound_member(
         off
     };
 
-    // -- Dimensionality (version 1/2 only, deprecated) -----------------------
+    // Dimensionality (version 1/2 only, deprecated) -----------------------
     //
     // | Size | Field                                              |
-    // |------|----------------------------------------------------|
+    // |------|----------------------------------------------------- |
     // | 1    | Number of dimensions (rank; typically 0 for scalar)|
     // | 3    | Reserved                                           |
     // | 4    | Dimension permutation index (deprecated)           |
     // | 4    | Reserved                                           |
-    // | 4×r  | Dimension sizes (u32 LE each)                     |
+    // | 4×4  | Dimension sizes — ALWAYS 4 slots × 4 bytes (16 B) |
+    //
+    // HDF5 spec III.4.5: versions 1 and 2 reserve space for exactly 4
+    // dimension size entries (16 bytes) regardless of the actual rank.
+    // The total fixed overhead is 1+3+4+4+16 = 28 bytes.
     if version < 3 {
-        if pos >= data.len() {
-            return Err(Error::InvalidFormat {
-                message: format!("compound member {member_index} dimensionality truncated"),
-            });
-        }
-        let rank = data[pos] as usize;
-        // 1 (rank) + 3 (reserved) + 4 (perm) + 4 (reserved) = 12 fixed
-        let dim_overhead = 12 + rank * 4;
-        if pos + dim_overhead > data.len() {
+        if pos + 28 > data.len() {
             return Err(Error::InvalidFormat {
                 message: format!("compound member {member_index} dimensionality section truncated"),
             });
         }
-        pos += dim_overhead;
+        // Read rank for documentation purposes; it is not used to size the
+        // array because the 4-slot layout is fixed by the spec.
+        let _rank = data[pos];
+        // 1 (rank) + 3 (reserved) + 4 (perm) + 4 (reserved) + 4×4 (dim_sizes) = 28
+        pos += 28;
     }
 
     // -- Member datatype (recursive) -----------------------------------------
@@ -619,7 +619,22 @@ fn parse_variable_length(flags: [u8; 3], props: &[u8]) -> Result<(Datatype, usiz
         1 => {
             let charset = flags[1] & 0x0F;
             let encoding = charset_to_encoding(charset)?;
-            Ok((Datatype::VariableString { encoding }, 0))
+            // HDF5 spec: all VL types carry an embedded base type message.
+            // For VL STRING the base type is typically a 1-byte FIXED_POINT char
+            // (8 header + 4 properties = 12 bytes). We parse it to advance the
+            // position correctly when this type appears inside a compound member,
+            // but discard the base type in favour of the canonical VariableString.
+            // If props is empty (written by an older encoder that omitted the base
+            // type), fall back to consuming 0 bytes.
+            let base_consumed = if !props.is_empty() {
+                match parse_datatype_inner(props) {
+                    Ok((_, consumed)) => consumed,
+                    Err(_) => 0,
+                }
+            } else {
+                0
+            };
+            Ok((Datatype::VariableString { encoding }, base_consumed))
         }
 
         _ => Err(Error::UnsupportedFeature {
@@ -1071,12 +1086,13 @@ mod tests {
         // Byte offset (4 bytes, u32 LE): 0
         msg.extend_from_slice(&0u32.to_le_bytes());
 
-        // Dimensionality: rank=0, reserved(3), perm(4), reserved(4) = 12 bytes
-        msg.push(0); // rank
+        // Dimensionality: rank(1) + reserved(3) + perm(4) + reserved(4) + 4×dim_sizes(16) = 28 bytes
+        // HDF5 spec: always 4 dimension size slots regardless of rank.
+        msg.push(0); // rank = 0
         msg.extend_from_slice(&[0u8; 3]); // reserved
         msg.extend_from_slice(&[0u8; 4]); // dimension permutation
         msg.extend_from_slice(&[0u8; 4]); // reserved
-        // No dimension sizes (rank=0)
+        msg.extend_from_slice(&[0u8; 16]); // 4 × u32 dim_sizes (always present)
 
         // Member datatype: u32 LE
         msg.extend_from_slice(&int_msg(4, false, true));

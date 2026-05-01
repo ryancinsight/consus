@@ -72,7 +72,7 @@ fn undefined_chunk_fill_value_benchmark(c: &mut Criterion) {
 fn selection_decomposition_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("hdf5_selection_decomposition");
 
-    let dataset_shape = Shape::fixed(vec![512, 512, 64]);
+    let dataset_shape = Shape::fixed(&[512, 512, 64]);
     let chunk_dims = vec![64usize, 64, 16];
 
     let simple = Hyperslab::new(
@@ -352,6 +352,7 @@ fn v4_chunked_dataset_throughput_benchmark(c: &mut Criterion) {
     group.finish();
 }
 
+#[cfg(feature = "zstd")]
 fn zstd_compressed_chunked_dataset_read_benchmark(c: &mut Criterion) {
     use consus_core::Compression;
 
@@ -393,6 +394,7 @@ fn zstd_compressed_chunked_dataset_read_benchmark(c: &mut Criterion) {
     group.finish();
 }
 
+#[cfg(feature = "lz4")]
 fn lz4_compressed_chunked_dataset_read_benchmark(c: &mut Criterion) {
     use consus_core::Compression;
 
@@ -433,6 +435,14 @@ fn lz4_compressed_chunked_dataset_read_benchmark(c: &mut Criterion) {
     });
     group.finish();
 }
+
+/// No-op benchmark stub used when a compression feature is absent.
+/// Prevents `criterion_group!` from failing when the feature-gated
+/// function is not compiled in.
+#[cfg(not(feature = "zstd"))]
+fn zstd_compressed_chunked_dataset_read_benchmark(_c: &mut Criterion) {}
+#[cfg(not(feature = "lz4"))]
+fn lz4_compressed_chunked_dataset_read_benchmark(_c: &mut Criterion) {}
 
 criterion_group!(
     benches,

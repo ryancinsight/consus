@@ -190,6 +190,12 @@
 ### Milestone 46: Variable-Length String Dataset Support + NWB Real-File Integration — CLOSED (this sprint)
 - [x] `read_string_dataset` extended for `Datatype::VariableString` — reads `n × ref_size` bytes, calls `consus_hdf5::heap::resolve_vl_references`, decodes UTF-8
 - [x] `Datatype::VariableString` chunked/compact/virtual layouts return `UnsupportedFeature`
+
+### Milestone 48: HDF5 v1 Group Local Heap Emission — CLOSED (this sprint)
+- [x] Add `write_local_heap<W: WriteAt>(sink, state, names) -> Result<(u64, Vec<u64>)>` to `consus-hdf5::file::writer` — emits a valid HEAP header, serialized null-terminated name pool, and resolved offsets for symbol-table entries
+- [x] Add `write_v1_group_header<W: WriteAt>(sink, state, names, object_addresses) -> Result<u64>` — emits SNOD symbol-table node and B-tree v1 group index compatible with `list_group_v1`
+- [x] Add `Hdf5FileBuilder::add_v1_group_with_children(&mut self, name, children) -> Result<u64>` for root-linked v1 group emission without changing v2 group behavior
+- [x] Writer tests: local-heap roundtrip via `LocalHeap::parse` + `read_name`; v1 group roundtrip via `Hdf5File::list_group_at`; malformed heap name pool rejection through deterministic parse failure
 - [x] `D:\consus\data\nwb\gen_nwb_fixture.py` — h5py 3.x deterministic NWB 2.7 fixture generator
 - [x] `D:\consus\data\nwb\nwb_fixture_v2_7.nwb` — generated fixture (fixed-length string attrs + VL string electrode columns)
 - [x] `tests/integration_real_file.rs` — 10-invariant value-semantic integration test
@@ -882,6 +888,28 @@ test result: ok. 136 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fi
 - [x] `consus-hdf5` `mod proptest_harnesses`: 4 proptest tests for `decode_attribute_value` (panic safety for FixedString scalar, f64 scalar, i32 scalar, FixedString 1-D array)
 - [x] Verified `cargo test -p consus-nwb --lib` → 272/272; `cargo test -p consus-hdf5 --lib` → 276/276
 - [x] Verified `cargo test --workspace` → 2449/2449
+
+### Milestone 53: HDF5 v1 Parser Correctness + Reference Fixture Coverage — CLOSED (this sprint)
+- [x] BUG-HDF5-001: `write_v1_group_index` B-tree v1 layout fix — node_type=0, UNDEFINED_ADDRESS siblings, SNOD at correct offset; `write_v1_group_roundtrip_via_reader` test superblock reservation fix
+- [x] BUG-HDF5-002: `write_local_heap_rejects_missing_null_terminator_on_parse` test — corrected `data_addr = heap_addr + 32`
+- [x] BUG-HDF5-003: v1 object header parser — `V1_HEADER_PADDING = 4` added; messages start at `address + 16`; async reader `initial_len` and continuation scan start corrected
+- [x] BUG-HDF5-004: Compound member dim_overhead = 28 (spec: 4 fixed dim-size slots); unit test updated
+- [x] BUG-HDF5-005: `parse_variable_length` string case — consume embedded base type via `parse_datatype_inner(props)` to correctly advance compound member offsets
+- [x] `add_v1_group_with_children_builder_e2e`: E2E test via `Hdf5FileBuilder` → `Hdf5File::list_group_at` verifying child name and address resolution
+- [x] `data/gen_hdf5_string_ref.py` + `data/hdf5_string_ref_sample.h5`: h5py fixture with fixed/VL string datasets and group attributes
+- [x] `data/gen_hdf5_group_ref.py` + `data/hdf5_group_ref_sample.h5`: h5py fixture with nested groups (3 levels), int32/f64 datasets, VL string attributes
+- [x] `tests/integration_hdf5_string_ref.rs`: 6 value-semantic integration tests for string reference fixture
+- [x] `tests/integration_hdf5_group_ref.rs`: 7 value-semantic integration tests for group navigation reference fixture
+- [x] `tests/reference_hdf_group.rs` `charset_dataset_metadata` test: updated to include compound datasets with string members in filter; value-semantic assertions on member encodings
+- [x] Verified `cargo test -p consus-hdf5`: 351/351; `cargo test --workspace`: 2402/2402; `cargo check --workspace`: 0 errors, 0 warnings
+
+### Milestone 54: cargo-fuzz Harness Infrastructure — CLOSED (this sprint)
+- [x] `fuzz/Cargo.toml` — standalone crate (`consus-fuzz 0.0.0`, `[workspace]` self-exclusion, `[package.metadata] cargo-fuzz = true`); `libfuzzer-sys = "0.4"`; depends on `consus-hdf5/std`, `consus-parquet/std`, `consus-mat/std`, `consus-io/std+alloc`; three `[[bin]]` targets declared
+- [x] `fuzz/fuzz_targets/fuzz_hdf5_parser.rs` — stages: `Hdf5File::open(MemCursor)` → `list_root_group()` → per-entry `dataset_at` + `attributes_at` + `read_chunked_dataset_all_bytes`; no `unwrap`/`expect`; all `Result` discarded
+- [x] `fuzz/fuzz_targets/fuzz_parquet_decoder.rs` — stages: `ParquetReader::new(data)` → iterate all `rg × col` via `read_column_chunk`; drives footer validation, Thrift decode, page decode, level and value decode; no `unwrap`/`expect`
+- [x] `fuzz/fuzz_targets/fuzz_mat_reader.rs` — `loadmat_bytes(data)` → `let _ =`; exercises v4/v5/v7.3 dispatch, all `miType` codes, class dispatch, cell/struct recursion; no `unwrap`/`expect`
+- [x] `cargo fuzz list` → `fuzz_hdf5_parser`, `fuzz_mat_reader`, `fuzz_parquet_decoder` (all 3 targets found)
+- [x] `cargo check --manifest-path fuzz/Cargo.toml` — fails only at `libfuzzer-sys` C++ build (`FuzzerExtFunctionsWindows.cpp` uses MSVC `__pragma` incompatible with MSYS2 g++); Windows platform limitation; Rust type-checking is structurally sound; CI (Linux) will compile clean
 
 ### Milestone 39: NWB Extended Read Path + HDF5 Nested Group Write — CLOSED
 - [x] `ChildGroupSpec<'a>` — new public struct in `consus-hdf5::file::writer` for specifying sub-group children

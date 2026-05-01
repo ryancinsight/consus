@@ -3,7 +3,7 @@
 //! ## Specification (HDF5 File Format Specification, Section IV.A.2)
 //!
 //! Version 2 object headers use a chunk-based layout with explicit signatures
-//! and CRC-32 checksums. The first chunk starts with the `OHDR` signature;
+//! and Jenkins lookup3 checksums. The first chunk starts with the `OHDR` signature;
 //! continuation chunks start with the `OCHK` signature.
 //!
 //! ### Version 2 Object Header (first chunk)
@@ -17,7 +17,7 @@
 //! | var    | (opt) 4   | Max compact attrs (2) + min dense attrs (2) (bit 4)                    |
 //! | var    | 1/2/4/8   | Chunk 0 data size (width from flags bits 0–1)                          |
 //! | var    | var       | Header messages                                                        |
-//! | var    | 4         | CRC-32 checksum over entire chunk from signature                       |
+//! | var    | 4         | Jenkins lookup3 checksum over entire chunk from signature                       |
 //!
 //! ### Version 2 Header Message
 //!
@@ -35,7 +35,7 @@
 //! |--------|------|------------------------------------------------|
 //! | 0      | 4    | Signature `"OCHK"`                               |
 //! | 4      | var  | Header messages                                  |
-//! | var    | 4    | CRC-32 checksum over entire chunk from signature |
+//! | var    | 4    | Jenkins lookup3 checksum over entire chunk from signature |
 //!
 //! ### Flags Encoding
 //!
@@ -48,9 +48,11 @@
 //!
 //! ## Checksums
 //!
-//! Each chunk (OHDR or OCHK) is protected by a CRC-32 (IEEE 802.3) over
-//! all bytes from the signature through the last byte before the stored
-//! checksum field. The stored checksum is the 4-byte LE u32 immediately
+//! Each chunk (OHDR or OCHK) is protected by a Jenkins lookup3 (`hashlittle`)
+//! checksum over all bytes from the signature through the last byte before the
+//! stored checksum field. This is the same algorithm used for all HDF5 v2
+//! metadata checksums (superblock, B-tree v2, etc.).
+//! The stored checksum is the 4-byte LE u32 immediately
 //! following the message area.
 
 #[cfg(feature = "alloc")]
@@ -59,7 +61,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use byteorder::{ByteOrder, LittleEndian};
-use consus_compression::checksum::Crc32;
+use consus_compression::{Checksum, Lookup3};
 use consus_core::{Error, Result};
 use consus_io::ReadAt;
 
@@ -96,7 +98,7 @@ pub(crate) const OHDR_PREAMBLE_LEN: usize = 6;
 /// OCHK preamble length: signature(4).
 pub(crate) const OCHK_PREAMBLE_LEN: usize = 4;
 
-/// CRC-32 stored value size in bytes.
+/// Checksum stored value size in bytes (Jenkins lookup3 u32).
 pub(crate) const CHECKSUM_LEN: usize = 4;
 
 /// Maximum single-chunk allocation to prevent unbounded memory usage (64 MiB).
@@ -132,7 +134,7 @@ const V2_MSG_CREATION_ORDER_LEN: usize = 2;
 ///
 /// - [`Error::InvalidFormat`] — signature mismatch, unexpected version,
 ///   chunk data-size exceeds safety limit, or message overflows chunk.
-/// - [`Error::Corrupted`] — CRC-32 verification failure or continuation
+/// - [`Error::Corrupted`] — lookup3 checksum verification failure or continuation
 ///   chain exceeds [`MAX_CONTINUATION_DEPTH`].
 #[cfg(feature = "alloc")]
 pub(crate) fn parse<R: ReadAt>(
@@ -501,21 +503,21 @@ pub(crate) fn read_chunk_data_size(buf: &[u8], width: usize) -> Result<u64> {
     }
 }
 
-/// Verify the CRC-32 checksum of a complete chunk buffer.
+/// Verify the Jenkins lookup3 checksum of a complete chunk buffer.
 ///
 /// The last [`CHECKSUM_LEN`] bytes of `chunk` are the stored checksum
-/// (LE u32). The CRC-32 is computed over all preceding bytes.
+/// (LE u32). The lookup3 hash is computed over all preceding bytes.
 ///
 /// ## Errors
 ///
-/// Returns [`Error::Corrupted`] if the computed CRC does not match the
+/// Returns [`Error::Corrupted`] if the computed hash does not match the
 /// stored value, or if the buffer is too short to contain a checksum.
 fn verify_checksum(chunk: &[u8]) -> Result<()> {
     if chunk.len() < CHECKSUM_LEN {
         return Err(Error::Corrupted {
             #[cfg(feature = "alloc")]
             message: alloc::format!(
-                "chunk too short for CRC-32 verification: {} bytes",
+                "chunk too short for checksum verification: {} bytes",
                 chunk.len()
             ),
         });
@@ -523,13 +525,13 @@ fn verify_checksum(chunk: &[u8]) -> Result<()> {
 
     let data_end = chunk.len() - CHECKSUM_LEN;
     let stored = LittleEndian::read_u32(&chunk[data_end..]);
-    let computed = Crc32::compute_slice(&chunk[..data_end]);
+    let computed = Lookup3::compute(&chunk[..data_end]);
 
     if computed != stored {
         return Err(Error::Corrupted {
             #[cfg(feature = "alloc")]
             message: alloc::format!(
-                "CRC-32 mismatch: computed {:#010x}, stored {:#010x}",
+                "lookup3 checksum mismatch: computed {:#010x}, stored {:#010x}",
                 computed,
                 stored
             ),
@@ -597,10 +599,10 @@ mod tests {
     fn verify_checksum_valid() {
         // Construct: 4 data bytes + 4 checksum bytes.
         let data = [0x01, 0x02, 0x03, 0x04];
-        let crc = Crc32::compute_slice(&data);
+        let cs = Lookup3::compute(&data);
         let mut chunk = [0u8; 8];
         chunk[..4].copy_from_slice(&data);
-        LittleEndian::write_u32(&mut chunk[4..], crc);
+        LittleEndian::write_u32(&mut chunk[4..], cs);
         assert!(verify_checksum(&chunk).is_ok());
     }
 
