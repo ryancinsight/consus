@@ -35,81 +35,12 @@ use alloc::{vec, vec::Vec};
 
 use core::fmt;
 
-/// Null bitmap for an array.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValidityBitmap {
-    /// Packed validity bits, least-significant bit first.
-    #[cfg(feature = "alloc")]
-    bits: Vec<u8>,
-    /// Logical number of values represented by the bitmap.
-    len: usize,
-}
-
-impl ValidityBitmap {
-    /// Create an all-valid bitmap for `len` values.
-    #[must_use]
-    pub fn all_valid(len: usize) -> Self {
-        let byte_len = len.div_ceil(8);
-        Self {
-            #[cfg(feature = "alloc")]
-            bits: vec![0xFF; byte_len],
-            len,
-        }
-    }
-
-    /// Create an empty bitmap.
-    #[must_use]
-    pub const fn empty() -> Self {
-        Self {
-            #[cfg(feature = "alloc")]
-            bits: Vec::new(),
-            len: 0,
-        }
-    }
-
-    /// Return the logical length.
-    #[must_use]
-    pub const fn len(&self) -> usize {
-        self.len
-    }
-
-    /// Returns `true` if the bitmap has no logical values.
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    /// Returns `true` if the value at `index` is valid.
-    #[must_use]
-    pub fn is_valid(&self, index: usize) -> bool {
-        if index >= self.len {
-            return false;
-        }
-
-        #[cfg(feature = "alloc")]
-        {
-            let byte = self.bits[index / 8];
-            let mask = 1u8 << (index % 8);
-            return byte & mask != 0;
-        }
-
-        #[cfg(not(feature = "alloc"))]
-        {
-            let _ = index;
-            false
-        }
-    }
-}
-
-impl fmt::Display for ValidityBitmap {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ValidityBitmap(len={})", self.len)
-    }
-}
+#[cfg(feature = "alloc")]
+use crate::memory::{ArrowBitmap, ArrowBuffer, ArrowOffsets};
 
 /// Fixed-width or variable-width array payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ArrayData {
+pub enum ArrayData<'a> {
     /// Fixed-width values with a contiguous byte buffer.
     FixedWidth {
         /// Number of logical values.
@@ -118,9 +49,12 @@ pub enum ArrayData {
         element_width: usize,
         /// Raw value bytes.
         #[cfg(feature = "alloc")]
-        values: Vec<u8>,
+        values: ArrowBuffer<'a>,
         /// Optional validity bitmap.
-        validity: Option<ValidityBitmap>,
+        #[cfg(feature = "alloc")]
+        validity: Option<ArrowBitmap<'a>>,
+        #[cfg(not(feature = "alloc"))]
+        validity: Option<()>,
     },
     /// Variable-width UTF-8 or binary values.
     VariableWidth {
@@ -128,16 +62,19 @@ pub enum ArrayData {
         len: usize,
         /// Offsets into the values buffer. Length is `len + 1`.
         #[cfg(feature = "alloc")]
-        offsets: Vec<usize>,
+        offsets: ArrowOffsets<'a>,
         /// Raw concatenated payload bytes.
         #[cfg(feature = "alloc")]
-        values: Vec<u8>,
+        values: ArrowBuffer<'a>,
         /// Optional validity bitmap.
-        validity: Option<ValidityBitmap>,
+        #[cfg(feature = "alloc")]
+        validity: Option<ArrowBitmap<'a>>,
+        #[cfg(not(feature = "alloc"))]
+        validity: Option<()>,
     },
 }
 
-impl ArrayData {
+impl<'a> ArrayData<'a> {
     /// Return the logical length.
     #[must_use]
     pub fn len(&self) -> usize {
@@ -155,16 +92,35 @@ impl ArrayData {
     /// Returns the number of nulls if a validity bitmap exists.
     #[must_use]
     pub fn null_count(&self) -> usize {
-        let len = self.len();
-        match self.validity() {
-            Some(bitmap) => (0..len).filter(|&i| !bitmap.is_valid(i)).count(),
-            None => 0,
+        #[cfg(feature = "alloc")]
+        {
+            let len = self.len();
+            match self.validity() {
+                Some(bitmap) => (0..len).filter(|&i| !bitmap.is_set(i)).count(),
+                None => 0,
+            }
+        }
+        #[cfg(not(feature = "alloc"))]
+        {
+            0
         }
     }
 
     /// Borrow the validity bitmap.
     #[must_use]
-    pub fn validity(&self) -> Option<&ValidityBitmap> {
+    #[cfg(feature = "alloc")]
+    pub fn validity(&self) -> Option<&ArrowBitmap<'a>> {
+        match self {
+            Self::FixedWidth { validity, .. } | Self::VariableWidth { validity, .. } => {
+                validity.as_ref()
+            }
+        }
+    }
+
+    /// Borrow the validity bitmap.
+    #[must_use]
+    #[cfg(not(feature = "alloc"))]
+    pub fn validity(&self) -> Option<&()> {
         match self {
             Self::FixedWidth { validity, .. } | Self::VariableWidth { validity, .. } => {
                 validity.as_ref()
@@ -183,15 +139,15 @@ impl ArrayData {
 ///
 /// This is the canonical array abstraction used by `consus-arrow`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ArrowArray {
+pub struct ArrowArray<'a> {
     /// Logical array data.
-    pub data: ArrayData,
+    pub data: ArrayData<'a>,
 }
 
-impl ArrowArray {
+impl<'a> ArrowArray<'a> {
     /// Create a new array wrapper.
     #[must_use]
-    pub fn new(data: ArrayData) -> Self {
+    pub fn new(data: ArrayData<'a>) -> Self {
         Self { data }
     }
 
@@ -241,11 +197,11 @@ impl ArrowArray {
 
                 #[cfg(feature = "alloc")]
                 {
-                    let sliced = values.get(start..end)?.to_vec();
+                    let sliced = values.as_slice().get(start..end)?;
                     Some(Self::new(ArrayData::FixedWidth {
                         len: length,
                         element_width: *element_width,
-                        values: sliced,
+                        values: ArrowBuffer::owned(sliced.to_vec()), // Simplified fallback: could preserve Cow via borrowed if lifetime allows, but slicing might require new owned wrapper if the original was owned and we return an independent slice. Since ArrowBuffer is an enum, we could actually use `.into_owned()` or clone. Let's just clone. Wait! If `values` is Borrowed, we can return Borrowed.
                         validity: validity.clone(),
                     }))
                 }
@@ -267,19 +223,29 @@ impl ArrowArray {
             } => {
                 #[cfg(feature = "alloc")]
                 {
-                    let start = *offsets.get(offset)?;
-                    let end = *offsets.get(offset + length)?;
-                    let sliced_values = values.get(start..end)?.to_vec();
+                    // For ArrowOffsets, we read little-endian i32 values.
+                    let offset_bytes = offsets.as_slice();
+                    
+                    let get_i32 = |idx: usize| -> Option<usize> {
+                        let start = idx * 4;
+                        let bytes = offset_bytes.get(start..start + 4)?;
+                        Some(i32::from_le_bytes(bytes.try_into().ok()?) as usize)
+                    };
+                    
+                    let start = get_i32(offset)?;
+                    let end = get_i32(offset + length)?;
+                    let sliced_values = values.as_slice().get(start..end)?;
 
-                    let mut sliced_offsets = Vec::with_capacity(length + 1);
+                    let mut sliced_offsets_bytes = Vec::with_capacity((length + 1) * 4);
                     for idx in offset..=offset + length {
-                        sliced_offsets.push(offsets[idx] - start);
+                        let val = get_i32(idx)?;
+                        sliced_offsets_bytes.extend_from_slice(&(i32::try_from(val - start).ok()?).to_le_bytes());
                     }
 
                     Some(Self::new(ArrayData::VariableWidth {
                         len: length,
-                        offsets: sliced_offsets,
-                        values: sliced_values,
+                        offsets: ArrowOffsets::new(ArrowBuffer::owned(sliced_offsets_bytes), length),
+                        values: ArrowBuffer::owned(sliced_values.to_vec()),
                         validity: validity.clone(),
                     }))
                 }
@@ -294,7 +260,7 @@ impl ArrowArray {
     }
 }
 
-impl fmt::Display for ArrowArray {
+impl<'a> fmt::Display for ArrowArray<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.data {
             ArrayData::FixedWidth {
@@ -317,8 +283,8 @@ mod tests {
 
     #[test]
     fn validity_bitmap_reports_length() {
-        let bitmap = ValidityBitmap::all_valid(10);
-        assert_eq!(bitmap.len(), 10);
+        let bitmap = ArrowBitmap::new(ArrowBuffer::owned(vec![0xFF, 0xFF]), 10);
+        assert_eq!(bitmap.len_bits(), 10);
         assert!(!bitmap.is_empty());
     }
 
@@ -328,8 +294,8 @@ mod tests {
         let array = ArrowArray::new(ArrayData::FixedWidth {
             len: 4,
             element_width: 8,
-            values: vec![0; 32],
-            validity: Some(ValidityBitmap::all_valid(4)),
+            values: ArrowBuffer::owned(vec![0; 32]),
+            validity: Some(ArrowBitmap::new(ArrowBuffer::owned(vec![0xFF]), 4)),
         });
 
         #[cfg(feature = "alloc")]
@@ -345,8 +311,8 @@ mod tests {
         #[cfg(feature = "alloc")]
         let array = ArrowArray::new(ArrayData::VariableWidth {
             len: 2,
-            offsets: vec![0, 3, 6],
-            values: b"abcdef".to_vec(),
+            offsets: ArrowOffsets::new(ArrowBuffer::owned(vec![0, 0, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0]), 2), // 0, 3, 6 as i32 LE
+            values: ArrowBuffer::owned(b"abcdef".to_vec()),
             validity: None,
         });
 

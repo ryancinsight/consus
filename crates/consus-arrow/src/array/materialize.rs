@@ -55,6 +55,8 @@ use alloc::vec::Vec;
 use consus_parquet::ColumnValues;
 
 use super::{ArrayData, ArrowArray};
+#[cfg(feature = "alloc")]
+use crate::memory::ArrowBuffer;
 
 /// Convert a slice of [`zerocopy::IntoBytes`] primitives to a `Vec<u8>` via a
 /// single bulk `memcpy`.
@@ -68,9 +70,9 @@ use super::{ArrayData, ArrowArray};
 /// This function is only compiled when both `feature = "zerocopy"` and
 /// `target_endian = "little"` hold.
 #[cfg(all(feature = "alloc", feature = "zerocopy", target_endian = "little"))]
-fn fixed_to_le_bytes_fast<T: zerocopy::IntoBytes + zerocopy::Immutable>(slice: &[T]) -> Vec<u8> {
+fn fixed_to_le_bytes_fast<'a, T: zerocopy::IntoBytes + zerocopy::Immutable>(slice: &'a [T]) -> ArrowBuffer<'a> {
     use zerocopy::IntoBytes;
-    slice.as_bytes().to_vec()
+    ArrowBuffer::Borrowed(slice.as_bytes())
 }
 
 /// Convert decoded Parquet column values into a canonical [`ArrowArray`].
@@ -83,14 +85,14 @@ fn fixed_to_le_bytes_fast<T: zerocopy::IntoBytes + zerocopy::Immutable>(slice: &
 /// [`super::ValidityBitmap`] after conversion.
 #[cfg(feature = "alloc")]
 #[must_use]
-pub fn column_values_to_arrow(values: &ColumnValues) -> ArrowArray {
+pub fn column_values_to_arrow<'a>(values: &'a ColumnValues) -> ArrowArray<'a> {
     match values {
         ColumnValues::Boolean(bools) => {
             let bytes: Vec<u8> = bools.iter().map(|&b| u8::from(b)).collect();
             ArrowArray::new(ArrayData::FixedWidth {
                 len: bools.len(),
                 element_width: 1,
-                values: bytes,
+                values: ArrowBuffer::owned(bytes),
                 validity: None,
             })
         }
@@ -104,7 +106,7 @@ pub fn column_values_to_arrow(values: &ColumnValues) -> ArrowArray {
                 for &v in ints {
                     b.extend_from_slice(&v.to_le_bytes());
                 }
-                b
+                ArrowBuffer::owned(b)
             };
             ArrowArray::new(ArrayData::FixedWidth {
                 len: ints.len(),
@@ -123,7 +125,7 @@ pub fn column_values_to_arrow(values: &ColumnValues) -> ArrowArray {
                 for &v in ints {
                     b.extend_from_slice(&v.to_le_bytes());
                 }
-                b
+                ArrowBuffer::owned(b)
             };
             ArrowArray::new(ArrayData::FixedWidth {
                 len: ints.len(),
@@ -141,7 +143,7 @@ pub fn column_values_to_arrow(values: &ColumnValues) -> ArrowArray {
             ArrowArray::new(ArrayData::FixedWidth {
                 len: raw.len(),
                 element_width: 12,
-                values: bytes,
+                values: ArrowBuffer::owned(bytes),
                 validity: None,
             })
         }
@@ -155,7 +157,7 @@ pub fn column_values_to_arrow(values: &ColumnValues) -> ArrowArray {
                 for &v in floats {
                     b.extend_from_slice(&v.to_le_bytes());
                 }
-                b
+                ArrowBuffer::owned(b)
             };
             ArrowArray::new(ArrayData::FixedWidth {
                 len: floats.len(),
@@ -174,7 +176,7 @@ pub fn column_values_to_arrow(values: &ColumnValues) -> ArrowArray {
                 for &v in doubles {
                     b.extend_from_slice(&v.to_le_bytes());
                 }
-                b
+                ArrowBuffer::owned(b)
             };
             ArrowArray::new(ArrayData::FixedWidth {
                 len: doubles.len(),
@@ -186,17 +188,18 @@ pub fn column_values_to_arrow(values: &ColumnValues) -> ArrowArray {
 
         ColumnValues::ByteArray(bufs) => {
             let total: usize = bufs.iter().map(|b| b.len()).sum();
-            let mut offsets: Vec<usize> = Vec::with_capacity(bufs.len() + 1);
+            let mut offsets_bytes: Vec<u8> = Vec::with_capacity((bufs.len() + 1) * 4);
             let mut payload: Vec<u8> = Vec::with_capacity(total);
-            offsets.push(0);
+            offsets_bytes.extend_from_slice(&0i32.to_le_bytes());
             for buf in bufs {
                 payload.extend_from_slice(buf);
-                offsets.push(payload.len());
+                let current_offset = i32::try_from(payload.len()).expect("size exceeds i32");
+                offsets_bytes.extend_from_slice(&current_offset.to_le_bytes());
             }
             ArrowArray::new(ArrayData::VariableWidth {
                 len: bufs.len(),
-                offsets,
-                values: payload,
+                offsets: crate::memory::ArrowOffsets::new(ArrowBuffer::owned(offsets_bytes), bufs.len()),
+                values: ArrowBuffer::owned(payload),
                 validity: None,
             })
         }
@@ -212,7 +215,7 @@ pub fn column_values_to_arrow(values: &ColumnValues) -> ArrowArray {
             ArrowArray::new(ArrayData::FixedWidth {
                 len: bufs.len(),
                 element_width: *fixed_len,
-                values: bytes,
+                values: ArrowBuffer::owned(bytes),
                 validity: None,
             })
         }
@@ -226,26 +229,26 @@ mod tests {
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    fn fixed_bytes(array: &ArrowArray) -> (&usize, &usize, &Vec<u8>) {
+    fn fixed_bytes<'a>(array: &'a ArrowArray<'a>) -> (&'a usize, &'a usize, &'a [u8]) {
         match &array.data {
             ArrayData::FixedWidth {
                 len,
                 element_width,
                 values,
                 ..
-            } => (len, element_width, values),
+            } => (len, element_width, values.as_slice()),
             _ => panic!("expected FixedWidth, got VariableWidth"),
         }
     }
 
-    fn var_parts(array: &ArrowArray) -> (&usize, &Vec<usize>, &Vec<u8>) {
+    fn var_parts<'a>(array: &'a ArrowArray<'a>) -> (&'a usize, &'a [u8], &'a [u8]) {
         match &array.data {
             ArrayData::VariableWidth {
                 len,
                 offsets,
                 values,
                 ..
-            } => (len, offsets, values),
+            } => (len, offsets.as_slice(), values.as_slice()),
             _ => panic!("expected VariableWidth, got FixedWidth"),
         }
     }
@@ -261,7 +264,7 @@ mod tests {
         let (len, width, bytes) = fixed_bytes(&array);
         assert_eq!(*len, 4);
         assert_eq!(*width, 1);
-        assert_eq!(bytes.as_slice(), &[0u8, 1, 0, 1]);
+        assert_eq!(bytes, &[0u8, 1, 0, 1]);
         assert!(array.is_all_valid());
     }
 
@@ -325,7 +328,7 @@ mod tests {
         let (len, width, bytes) = fixed_bytes(&array);
         assert_eq!(*len, 1);
         assert_eq!(*width, 12);
-        assert_eq!(bytes.as_slice(), raw.as_ref());
+        assert_eq!(bytes, raw.as_ref());
     }
 
     // ── float32 ───────────────────────────────────────────────────────────
@@ -372,9 +375,9 @@ mod tests {
         assert_eq!(array.len(), 2);
         let (len, offsets, payload) = var_parts(&array);
         assert_eq!(*len, 2);
-        // offsets: [0, 2, 5]
-        assert_eq!(offsets.as_slice(), &[0usize, 2, 5]);
-        assert_eq!(payload.as_slice(), &[0x61u8, 0x62, 0x63, 0x64, 0x65]);
+        // offsets: [0, 2, 5] encoded as i32 LE
+        assert_eq!(offsets, &[0u8, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0]);
+        assert_eq!(payload, &[0x61u8, 0x62, 0x63, 0x64, 0x65]);
     }
 
     #[cfg(feature = "alloc")]
@@ -386,7 +389,7 @@ mod tests {
         assert!(array.is_empty());
         let (len, offsets, payload) = var_parts(&array);
         assert_eq!(*len, 0);
-        assert_eq!(offsets.as_slice(), &[0usize]);
+        assert_eq!(offsets, &[0u8, 0, 0, 0]);
         assert!(payload.is_empty());
     }
 
@@ -407,7 +410,7 @@ mod tests {
         assert_eq!(*len, 2);
         assert_eq!(*width, 3);
         assert_eq!(bytes.len(), *len * *width);
-        assert_eq!(bytes.as_slice(), &[0xAAu8, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]);
+        assert_eq!(bytes, &[0xAAu8, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]);
     }
 
     // ── zerocopy agreement tests ──────────────────────────────────────────

@@ -1832,6 +1832,25 @@ impl Hdf5FileBuilder {
         Ok(header_addr)
     }
 
+    /// Add a dataset to the root group, pointing to a predefined data address.
+    ///
+    /// This writes the dataset object header (datatype, dataspace, layout) but
+    /// does **not** write the raw data bytes. Useful for generating layout messages
+    /// pointing to external or virtual regions.
+    pub fn add_virtual_dataset(
+        &mut self,
+        name: &str,
+        dt: &Datatype,
+        shape: &Shape,
+        data_addr: u64,
+        dcpl: &DatasetCreationProps,
+    ) -> Result<u64> {
+        let header_addr =
+            write_dataset_header(&mut self.sink, &mut self.state, dt, shape, data_addr, dcpl)?;
+        self.root_links.push((String::from(name), header_addr));
+        Ok(header_addr)
+    }
+
     /// Add a dataset with attached attributes to the root group.
     ///
     /// `attributes` is a slice of `(name, datatype, shape, raw_data)`.

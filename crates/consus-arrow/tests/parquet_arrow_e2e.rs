@@ -39,28 +39,28 @@ use consus_parquet::{
 
 /// Extract `(len, element_width, values)` from a `FixedWidth` array.
 /// Panics if the array is `VariableWidth`.
-fn fixed_parts(arr: &consus_arrow::ArrowArray) -> (usize, usize, &[u8]) {
+fn fixed_parts<'a>(arr: &'a consus_arrow::ArrowArray<'a>) -> (usize, usize, &'a [u8]) {
     match &arr.data {
         ArrayData::FixedWidth {
             len,
             element_width,
             values,
             ..
-        } => (*len, *element_width, values),
+        } => (*len, *element_width, values.as_slice()),
         _ => panic!("expected FixedWidth, got VariableWidth"),
     }
 }
 
 /// Extract `(len, offsets, values)` from a `VariableWidth` array.
 /// Panics if the array is `FixedWidth`.
-fn var_parts(arr: &consus_arrow::ArrowArray) -> (usize, &[usize], &[u8]) {
+fn var_parts<'a>(arr: &'a consus_arrow::ArrowArray<'a>) -> (usize, &'a [u8], &'a [u8]) {
     match &arr.data {
         ArrayData::VariableWidth {
             len,
             offsets,
             values,
             ..
-        } => (*len, offsets, values),
+        } => (*len, offsets.as_slice(), values.as_slice()),
         _ => panic!("expected VariableWidth, got FixedWidth"),
     }
 }
@@ -265,7 +265,7 @@ fn e2e_byte_array_two_values_pipeline() {
     let (len, offsets, payload) = var_parts(&arr);
 
     assert_eq!(len, 2);
-    assert_eq!(offsets, &[0usize, 5, 10]);
+    assert_eq!(offsets, &[0u8, 0, 0, 0, 5, 0, 0, 0, 10, 0, 0, 0]);
     assert_eq!(payload, b"helloworld");
 }
 

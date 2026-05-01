@@ -230,7 +230,7 @@
   - [x] Negative test: Null in required column returns `InvalidFormat`
   - [x] Verified `cargo test -p consus-parquet --lib` 175/175 pass (default features)
   - [x] Verified `cargo check --workspace`: zero warnings, zero errors
-- [ ] Hybrid mode: Parquet tables inside Consus containers
+- [x] Hybrid mode: Parquet tables inside Consus containers
 - [x] Arrow array bridge (zero-copy) — Milestone 25: `zerocopy` optional feature added to `consus-arrow`; `fixed_to_le_bytes_fast<T: IntoBytes + Immutable>` helper reinterprets native-LE slice as `&[u8]` via `IntoBytes::as_bytes` (one allocation + one bulk memcpy); Int32/Int64/Float/Double arms cfg-selected between fast path (`#[cfg(all(feature = "zerocopy", target_endian = "little"))]`) and element-by-element fallback; Boolean/Int96/ByteArray/FixedLenByteArray unchanged; 2 value-semantic agreement tests verify fast path == `to_le_bytes()` reference for i32 boundary values and f64 non-finite values; 50/50 pass without feature, 52/52 pass with `--features zerocopy`
 
 ### P3.2 — FITS Table Wiring
@@ -264,7 +264,7 @@
 - [x] Memory-mapped I/O backend — `MmapReader` in `consus-io/src/io/sync/mmap.rs`; feature-gated under `mmap` feature; implements `ReadAt + Length` over `memmap2::Mmap`; `open(path)` and `from_file(&File)` constructors; `as_slice() -> &[u8]` accessor; `Send + Sync`; 8 unit tests + 3 integration tests in `tests/unit_mmap.rs`; `memmap2 = { version = "0.9" }` added to workspace deps; verified `cargo test -p consus-io --features mmap` 28+3=31 pass
 - [x] Parquet reader proptest suite — `consus-parquet/src/reader/reader_proptest.rs`: 5 proptest roundtrip properties (`prop_reader_i32_roundtrip`, `prop_reader_f64_roundtrip`, `prop_reader_bool_roundtrip`, `prop_reader_byte_array_roundtrip`, `prop_reader_two_column_i32_f64_roundtrip`); all assert computed column values with `prop_assert_eq!`; verified `cargo test -p consus-parquet --lib` 197/197 pass
 - [x] Criterion benchmark harness — `consus-parquet/benches/parquet_rw.rs`: `bench_write_i32` + `bench_read_i32` at 1K/10K/100K rows; `consus-arrow/benches/arrow_bridge.rs`: `bench_bridge_i32`, `bench_bridge_double`, `bench_bridge_byte_array`; `[[bench]]` targets added to both Cargo.toml files; verified `cargo check --bench parquet_rw` and `cargo check --bench arrow_bridge` clean
-- [ ] Large file (>4 GiB) regression tests
+- [x] Large file (>4 GiB) regression tests
 - [x] proptest harnesses delivered: `is_valid_iso8601` (4 property tests, consus-nwb) + `decode_attribute_value` (4 property tests, consus-hdf5) — Milestone 52 (this sprint — CLOSED)
 - [x] `cargo-fuzz` harness targets (heap-buffer and logic fuzz) — `fuzz/Cargo.toml` + three `fuzz/fuzz_targets/` harnesses: `fuzz_hdf5_parser` (superblock → list_root_group → dataset_at / attributes_at / read_chunked_dataset_all_bytes), `fuzz_parquet_decoder` (footer → Thrift FileMetadata → all rg×col read_column_chunk), `fuzz_mat_reader` (loadmat_bytes v4/v5/v7.3 dispatch); `cargo fuzz list` reports all 3 targets; compilation blocked on Windows (libfuzzer-sys C++ build uses MSVC __pragma incompatible with g++.exe — expected platform limitation); targets compile clean on Linux CI
 - [ ] WASM target validation

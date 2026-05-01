@@ -18,11 +18,23 @@ std = [
     "consus-core/std",
     "consus-io/std",
     "consus-compression/std",
+    "consus-hdf5?/std",
+    "consus-zarr?/std",
+    "consus-netcdf?/std",
+    "consus-parquet?/std",
+    "consus-arrow?/std",
+    "consus-fits?/std",
 ]
 alloc = [
     "consus-core/alloc",
     "consus-io/alloc",
     "consus-compression/alloc",
+    "consus-hdf5?/alloc",
+    "consus-zarr?/alloc",
+    "consus-netcdf?/alloc",
+    "consus-parquet?/alloc",
+    "consus-arrow?/alloc",
+    "consus-fits?/alloc",
 ]
 
 # Format backends

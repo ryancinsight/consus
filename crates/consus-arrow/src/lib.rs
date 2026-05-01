@@ -57,7 +57,7 @@ pub mod schema;
 
 #[cfg(feature = "alloc")]
 pub use array::column_values_to_arrow;
-pub use array::{ArrayData, ArrowArray, ValidityBitmap};
+pub use array::{ArrayData, ArrowArray};
 pub use bridge::{
     ArrowBridge, ArrowBridgeMode, ArrowBridgePlan, ArrowDataTypeHint, ArrowFieldDescriptor,
     ArrowSchemaMapping, ArrowZeroCopyConstraint,
