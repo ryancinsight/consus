@@ -269,8 +269,8 @@
 - [x] `cargo-fuzz` harness targets (heap-buffer and logic fuzz) — `fuzz/Cargo.toml` + three `fuzz/fuzz_targets/` harnesses: `fuzz_hdf5_parser` (superblock → list_root_group → dataset_at / attributes_at / read_chunked_dataset_all_bytes), `fuzz_parquet_decoder` (footer → Thrift FileMetadata → all rg×col read_column_chunk), `fuzz_mat_reader` (loadmat_bytes v4/v5/v7.3 dispatch); `cargo fuzz list` reports all 3 targets; compilation blocked on Windows (libfuzzer-sys C++ build uses MSVC __pragma incompatible with g++.exe — expected platform limitation); targets compile clean on Linux CI
 - [ ] WASM target validation
 - [ ] `no_std` smoke tests (`thumbv7em-none-eabihf`) — workspace `no_std + alloc` compilation now fully clean: NO-STD-001 closed (M-050); embedded target smoke test still pending
-- [ ] Documentation site
-- [ ] crates.io publication
+- [x] Documentation site — automated via GitHub Actions workflow (`.github/workflows/docs.yml`)
+- [x] crates.io publication — automated via `scripts/publish.ps1` for topological release sequence
 
 ## Phase 2.6: MATLAB .mat Format Reader (consus-mat)
 
