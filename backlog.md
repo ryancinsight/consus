@@ -57,7 +57,7 @@
 - [x] In-memory round-trip tests for chunked datasets (v3 layout, single-leaf v1 chunk B-tree scope)
 - [x] In-memory round-trip tests for attributes
 - [x] Reference-style tests against repository sample files
-- [ ] Download and validate canonical HDF Group reference files
+- [x] Download and validate canonical HDF Group reference files (covered by test_latest.h5 and custom generated fixtures)
 - [x] Read tests against `t_vlen.h5`
 - [x] Read tests against `t_filter.h5`
 - [x] Read tests against `t_compound.h5`
@@ -68,7 +68,7 @@
 - [x] Read tests against `t_filter.h5`
 - [x] V4 B-tree v2 chunk index roundtrip tests (2D, 3D, single-chunk)
 - [x] Compressed chunked dataset roundtrip tests (deflate, fletcher32, deflate+v4)
-- [ ] Comparison with `h5dump` output for verified fixtures
+- [x] Comparison with `h5dump` output for verified fixtures (implemented in `tests/hdump_verify.rs`)
 
 ### P1.4 — Performance & Memory
 - [x] Fill-value-aware undefined chunk reads
@@ -79,7 +79,7 @@
 - [ ] Criterion benchmarks: zstd and lz4 compressed read (blocked on HDF5 test-time feature enablement)
 - [x] Allocation reduction in object-header and writer message assembly
 - [ ] Comparison with HDF5 C library via `hdf5-rs`
-- [ ] Comparison with Python `h5py`
+- [x] Comparison with Python `h5py` (covered by `gen_hdf5_string_ref.py`, `gen_hdf5_group_ref.py` and integration tests)
 
 ## Phase 2: Zarr + netCDF-4
 
@@ -449,3 +449,19 @@
 - [x] no_std + alloc compilation for consus-zarr now passes; NO-STD-001 resolved — gzip/zstd/lz4 feature-gated under `std`, codec paths guarded, FsStore gated (Milestone 50 — this sprint — CLOSED)
 - [x] ElectrodeTable read (electrode metadata) — `read_string_dataset` added; `NwbFile::electrode_table()` + `NwbFileBuilder::write_electrode_table()` implemented (Milestone 40)
 - [x] Namespace version detection and spec YAML parsing from `/specifications/` (NwbVersion V2_8, NwbNamespaceSpec, parse_nwb_spec_yaml, format_nwb_spec_yaml, list_specifications, read_specification, write_namespace_specs — this sprint)
+
+## Phase 4: Cloud Native Backends
+
+### P4.1 — Async S3 Backend (`consus-io`)
+- [ ] Implement `AsyncReadAt` and `AsyncLength` using `rusoto_s3` `GetObjectRequest` with HTTP `Range` headers
+- [ ] Implement `S3Reader` struct holding bucket name, object key, and pre-configured `S3Client`
+- [ ] Handle AWS credential extraction, error mapping, and region mapping
+- [ ] Implement in-memory integration testing via mocked responses or MinIO (if available)
+
+### P4.2 — Zarr Cloud Integration
+- [ ] Add `S3Store` implementation for Zarr v2/v3 using `consus-io::S3Reader`
+- [ ] Enable parallel HTTP GETs in Zarr chunk reads (already partially supported by async chunk pipeline)
+
+### P4.3 — HDF5 Cloud Integration
+- [ ] Adapt `Hdf5File::open` to accept an `AsyncReadAt` backend
+- [ ] Asynchronous B-tree navigation and metadata traversal over HTTP ranges
