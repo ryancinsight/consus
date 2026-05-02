@@ -929,11 +929,11 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
 
 #[cfg(feature = "alloc")]
 #[derive(Debug, Clone)]
-struct ChunkIndexEntry {
-    dimension_offsets: Vec<u64>,
-    filter_mask: u32,
-    chunk_size: u32,
-    chunk_address: u64,
+pub(crate) struct ChunkIndexEntry {
+    pub(crate) dimension_offsets: Vec<u64>,
+    pub(crate) filter_mask: u32,
+    pub(crate) chunk_size: u32,
+    pub(crate) chunk_address: u64,
 }
 
 #[cfg(feature = "alloc")]

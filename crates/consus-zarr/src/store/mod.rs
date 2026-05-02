@@ -113,6 +113,14 @@ pub trait Store: Send + Sync {
 
     /// Check whether a key exists in the store.
     fn contains(&self, key: &str) -> consus_core::Result<bool>;
+
+    /// Read the values for multiple keys concurrently if supported.
+    ///
+    /// The default implementation fetches keys sequentially.
+    /// Backends like `S3Store` may override this to fetch chunks in parallel.
+    fn get_many(&self, keys: &[&str]) -> Vec<consus_core::Result<Vec<u8>>> {
+        keys.iter().map(|k| self.get(k)).collect()
+    }
 }
 
 // ---------------------------------------------------------------------------

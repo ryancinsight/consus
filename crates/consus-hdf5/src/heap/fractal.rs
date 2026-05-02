@@ -99,6 +99,9 @@ pub struct FractalHeapHeader {
     /// v2 B-tree address used for huge object storage.
     pub huge_object_btree_address: u64,
 
+    /// Amount of free space in managed blocks.
+    pub free_managed_space: u64,
+
     /// Address of the free-space manager for managed blocks.
     pub free_space_manager_address: u64,
 
@@ -182,6 +185,8 @@ impl FractalHeapHeader {
     pub fn parse<R: ReadAt>(source: &R, address: u64, ctx: &ParseContext) -> Result<Self> {
         let mut buf = [0u8; Self::HEADER_BUF_SIZE];
         source.read_at(address, &mut buf)?;
+        println!("FRACTAL HEAP HEADER BYTES: {:02x?}", &buf[0..64]);
+        println!("FRACTAL HEAP HEADER BYTES 64..128: {:02x?}", &buf[64..128]);
 
         // -- Signature -------------------------------------------------------
         if buf[0..4] != FRACTAL_HEAP_SIGNATURE {
@@ -214,6 +219,9 @@ impl FractalHeapHeader {
 
         let huge_object_btree_address = ctx.read_offset(&buf[pos..]);
         pos += o;
+
+        let free_managed_space = ctx.read_length(&buf[pos..]);
+        pos += s;
 
         let free_space_manager_address = ctx.read_offset(&buf[pos..]);
         pos += o;
@@ -269,6 +277,7 @@ impl FractalHeapHeader {
             flags,
             max_managed_object_size,
             huge_object_btree_address,
+            free_managed_space,
             free_space_manager_address,
             managed_space,
             allocated_managed_space,
@@ -447,23 +456,90 @@ pub fn read_managed_object<R: ReadAt>(
     length: u64,
     ctx: &ParseContext,
 ) -> Result<Vec<u8>> {
-    if header.root_indirect_rows != 0 {
-        return Err(Error::UnsupportedFeature {
-            feature: String::from("fractal heap indirect block traversal"),
-        });
-    }
+    // Determine the direct block address containing the object
+    let mut block_address = header.root_block_address;
+    let mut indirect_rows = header.root_indirect_rows;
 
     let heap_offset_field_bytes = ((header.max_heap_size_bits as usize) + 7) / 8;
+    
+    // Direct block sizes and counts
+    let table_width = header.table_width as usize;
+    let starting_block_size = header.starting_block_size;
+    let max_direct_rows = if starting_block_size > 0 {
+        (header.max_direct_block_size.ilog2() as usize) - (starting_block_size.ilog2() as usize) + 2
+    } else {
+        0
+    };
+
+    let mut current_offset = offset;
+
+    // Traverse indirect blocks if necessary
+    while indirect_rows > 0 {
+        // Read indirect block header (sig: 4, ver: 1, heap_addr: offset_size, block_offset: var)
+        let ib_overhead = 5 + ctx.offset_bytes() + heap_offset_field_bytes;
+        
+        let mut row = 0;
+        let mut col = 0;
+        let mut block_size = starting_block_size;
+        let mut row_offset = 0;
+        
+        // Find which row/col the current_offset falls into
+        loop {
+            let row_size = block_size * table_width as u64;
+            if current_offset < row_offset + row_size {
+                col = ((current_offset - row_offset) / block_size) as usize;
+                break;
+            }
+            row_offset += row_size;
+            row += 1;
+            if row == 0 || row == 1 {
+                // row 0 and 1 have same block size
+                block_size = starting_block_size;
+            } else {
+                block_size *= 2;
+            }
+        }
+        
+        // Read the address from the indirect block
+        let entry_idx = row * table_width + col;
+        let entry_offset = block_address + ib_overhead as u64 + (entry_idx * ctx.offset_bytes()) as u64;
+        
+        let mut addr_buf = vec![0u8; ctx.offset_bytes()];
+        source.read_at(entry_offset, &mut addr_buf)?;
+        let child_address = ctx.read_offset(&addr_buf);
+        if child_address == crate::constants::UNDEFINED_ADDRESS {
+            return Err(Error::InvalidFormat {
+                #[cfg(feature = "alloc")]
+                message: alloc::format!("Fractal heap indirect block points to undefined address"),
+            });
+        }
+        
+        if row < max_direct_rows {
+            // It points to a direct block
+            block_address = child_address;
+            indirect_rows = 0;
+            current_offset = current_offset - (row_offset + col as u64 * block_size);
+        } else {
+            // It points to another indirect block
+            // The number of rows in the child indirect block depends on its row
+            // wait, calculating child rows can be complex, but for small files maybe it's just 1 level?
+            return Err(Error::UnsupportedFeature {
+                feature: alloc::format!("Fractal heap nested indirect block traversal (row > max_direct_rows)"),
+            });
+        }
+    }
 
     // Direct block header: signature(4) + version(1) + heap_addr(O) +
     // block_offset(variable).  Checksum, if present (flags bit 1), is at the
     // END of the block and does not affect the data start position.
     let direct_block_overhead: u64 = (5 + ctx.offset_bytes() + heap_offset_field_bytes) as u64;
 
-    let data_address = header
-        .root_block_address
-        .checked_add(direct_block_overhead)
-        .and_then(|a| a.checked_add(offset))
+    let mut db_header_buf = vec![0u8; direct_block_overhead as usize];
+    source.read_at(block_address, &mut db_header_buf)?;
+    println!("DIRECT BLOCK HEADER at {}: {:02x?}", block_address, db_header_buf);
+
+    let data_address = block_address
+        .checked_add(current_offset)
         .ok_or(Error::Overflow)?;
 
     let len = length as usize;
@@ -619,9 +695,9 @@ mod tests {
         let o = ctx.offset_bytes();
 
         // Pre-compute expected total size (before optional filter info and
-        // checksum): 14 fixed + 9*s + 3*o + 2 + 2*s + 2 + 2 + o + 2
-        // With s=8, o=8: 14 + 72 + 24 + 2 + 16 + 2 + 2 + 8 + 2 = 142
-        let header_size = 14 + 9 * s + 3 * o + 2 + 2 * s + 2 + 2 + o + 2;
+        // checksum): 14 fixed + 10*s + 3*o + 2 + 2*s + 2 + 2 + o + 2
+        // With s=8, o=8: 14 + 80 + 24 + 2 + 16 + 2 + 2 + 8 + 2 = 150
+        let header_size = 14 + 10 * s + 3 * o + 2 + 2 * s + 2 + 2 + o + 2;
         let total = header_size + 4; // + checksum
         let mut data = vec![0u8; total.max(256)];
 
@@ -644,6 +720,10 @@ mod tests {
         // huge_object_btree_address
         data[pos..pos + o].copy_from_slice(&0x1000u64.to_le_bytes()[..o]);
         pos += o;
+
+        // free_managed_space
+        data[pos..pos + s].copy_from_slice(&50u64.to_le_bytes()[..s]);
+        pos += s;
 
         // free_space_manager_address
         data[pos..pos + o].copy_from_slice(&0x2000u64.to_le_bytes()[..o]);
@@ -716,6 +796,7 @@ mod tests {
         assert_eq!(hdr.flags, 0x03);
         assert_eq!(hdr.max_managed_object_size, 1024);
         assert_eq!(hdr.huge_object_btree_address, 0x1000);
+        assert_eq!(hdr.free_managed_space, 50);
         assert_eq!(hdr.free_space_manager_address, 0x2000);
         assert_eq!(hdr.managed_space, 4096);
         assert_eq!(hdr.allocated_managed_space, 2048);

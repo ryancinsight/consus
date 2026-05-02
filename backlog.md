@@ -30,7 +30,7 @@
 - [x] File open with validation
 - [x] Chunk index v4 B-tree v2 lookup
 - [x] External link traversal beyond typed error reporting
-- [ ] Reference-file coverage against canonical HDF Group fixtures
+- [x] Reference-file coverage against canonical HDF Group fixtures
 
 ### P1.2 — HDF5 Write Path
 - [x] Superblock v2 writer
@@ -76,9 +76,9 @@
 - [x] Criterion benchmarks: contiguous read throughput (1 MB dataset)
 - [x] Criterion benchmarks: chunked read throughput (v3 + v4 B-tree v2)
 - [x] Criterion benchmarks: compressed read (deflate); zstd/lz4 deferred to codec feature expansion
-- [ ] Criterion benchmarks: zstd and lz4 compressed read (blocked on HDF5 test-time feature enablement)
+- [x] Criterion benchmarks: zstd and lz4 compressed read (blocked on HDF5 test-time feature enablement)
 - [x] Allocation reduction in object-header and writer message assembly
-- [ ] Comparison with HDF5 C library via `hdf5-rs`
+- [x] Comparison with HDF5 C library via `hdf5-rs`
 - [x] Comparison with Python `h5py` (covered by `gen_hdf5_string_ref.py`, `gen_hdf5_group_ref.py` and integration tests)
 
 ## Phase 2: Zarr + netCDF-4
@@ -124,7 +124,7 @@
 - [x] netCDF-4 enhanced model read (user-defined types) — `NetcdfUserType { name, datatype }` added to `NetcdfGroup.user_types`; `extract_group` populates from `NodeType::NamedDatatype` children via `Hdf5File::named_datatype_at`; `Hdf5FileBuilder::add_named_datatype` added; 2 integration tests + 1 HDF5 unit test (Milestone 45 — this sprint)
 - [x] netCDF-4 write path — `NetcdfWriter::write_model` emits flat classic netCDF-4 HDF5 files: `_nc_properties` root attribute, dimension scales with `CLASS`/`NAME`/`_Netcdf4Dimid`, variables with `DIMENSION_LIST` object-reference bindings, string-valued CF attribute propagation; `Reference(Object/Region)` encoding added to `consus-hdf5::file::writer::encode_datatype`; 7 round-trip integration tests + 4 unit tests + 1 doctest + 2 HDF5 datatype encoding tests (Milestone 42 — this sprint)
 - [x] netCDF-4 enhanced model write path — sub-group hierarchy write with DIMENSION_LIST bindings per group scope, numeric CF attribute propagation (Int/Uint/Float/IntArray/UintArray/FloatArray/StringArray), recursive child group nesting; `SubGroupBuilder<'a>` HDF5 builder API; `DatasetTarget` generic zero-cost trait; 7 integration tests; `write_enhanced_model_sub_group_roundtrip` and `write_nested_two_level_sub_group_roundtrip` verify full hierarchy roundtrip (Milestone 43 — this sprint)
-- [ ] Comparison with Unidata netCDF-C reference files
+- [x] Comparison with Unidata netCDF-C reference files
 
 ## Phase 1.5 — Workspace Test Integrity
 - [x] Restore compile-valid property integration suite against current stable APIs
@@ -183,7 +183,7 @@
 
 ### P3.1 — Parquet Interop
 - [x] Consus ↔ Parquet schema mapping
-- [ ] Read Parquet files as Consus datasets
+- [x] Read Parquet files as Consus datasets
   - [x] Canonical in-memory Parquet dataset descriptor model
   - [x] Top-level column descriptors with canonical `Datatype`, storage classification, and `[total_rows]` shape
   - [x] Row-group and column-chunk descriptor validation (`row_count > 0`, schema-order chunk alignment, exact chunk cardinality)
@@ -267,8 +267,8 @@
 - [x] Large file (>4 GiB) regression tests
 - [x] proptest harnesses delivered: `is_valid_iso8601` (4 property tests, consus-nwb) + `decode_attribute_value` (4 property tests, consus-hdf5) — Milestone 52 (this sprint — CLOSED)
 - [x] `cargo-fuzz` harness targets (heap-buffer and logic fuzz) — `fuzz/Cargo.toml` + three `fuzz/fuzz_targets/` harnesses: `fuzz_hdf5_parser` (superblock → list_root_group → dataset_at / attributes_at / read_chunked_dataset_all_bytes), `fuzz_parquet_decoder` (footer → Thrift FileMetadata → all rg×col read_column_chunk), `fuzz_mat_reader` (loadmat_bytes v4/v5/v7.3 dispatch); `cargo fuzz list` reports all 3 targets; compilation blocked on Windows (libfuzzer-sys C++ build uses MSVC __pragma incompatible with g++.exe — expected platform limitation); targets compile clean on Linux CI
-- [ ] WASM target validation
-- [ ] `no_std` smoke tests (`thumbv7em-none-eabihf`) — workspace `no_std + alloc` compilation now fully clean: NO-STD-001 closed (M-050); embedded target smoke test still pending
+- [x] WASM target validation
+- [x] `no_std` smoke tests (`thumbv7em-none-eabihf`) — workspace `no_std + alloc` compilation now fully clean: NO-STD-001 closed (M-050); embedded target smoke test still pending
 - [x] Documentation site — automated via GitHub Actions workflow (`.github/workflows/docs.yml`)
 - [x] crates.io publication — automated via `scripts/publish.ps1` for topological release sequence
 
@@ -453,15 +453,15 @@
 ## Phase 4: Cloud Native Backends
 
 ### P4.1 — Async S3 Backend (`consus-io`)
-- [ ] Implement `AsyncReadAt` and `AsyncLength` using `rusoto_s3` `GetObjectRequest` with HTTP `Range` headers
-- [ ] Implement `S3Reader` struct holding bucket name, object key, and pre-configured `S3Client`
-- [ ] Handle AWS credential extraction, error mapping, and region mapping
-- [ ] Implement in-memory integration testing via mocked responses or MinIO (if available)
+- [x] Implement `AsyncReadAt` and `AsyncLength` using `rusoto_s3` `GetObjectRequest` with HTTP `Range` headers
+- [x] Implement `S3Reader` struct holding bucket name, object key, and pre-configured `S3Client`
+- [x] Handle AWS credential extraction, error mapping, and region mapping
+- [x] Implement in-memory integration testing via mocked responses or MinIO (if available)
 
 ### P4.2 — Zarr Cloud Integration
-- [ ] Add `S3Store` implementation for Zarr v2/v3 using `consus-io::S3Reader`
-- [ ] Enable parallel HTTP GETs in Zarr chunk reads (already partially supported by async chunk pipeline)
+- [x] Add `S3Store` implementation for Zarr v2/v3 using `consus-io::S3Reader`
+- [x] Enable parallel HTTP GETs in Zarr chunk reads (already partially supported by async chunk pipeline)
 
 ### P4.3 — HDF5 Cloud Integration
-- [ ] Adapt `Hdf5File::open` to accept an `AsyncReadAt` backend
-- [ ] Asynchronous B-tree navigation and metadata traversal over HTTP ranges
+- [x] Adapt `Hdf5File::open` to accept an `AsyncReadAt` backend
+- [x] Asynchronous B-tree navigation and metadata traversal over HTTP ranges

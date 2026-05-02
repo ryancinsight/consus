@@ -69,6 +69,8 @@ use consus_core::Result;
 
 #[cfg(feature = "alloc")]
 use consus_io::ReadAt;
+#[cfg(all(feature = "async-io", feature = "alloc"))]
+use consus_io::AsyncReadAt;
 
 #[cfg(feature = "alloc")]
 use crate::address::ParseContext;
@@ -210,6 +212,59 @@ impl BTreeV2Header {
             total_records,
         })
     }
+
+    /// Parse a B-tree v2 header from an async I/O source.
+    #[cfg(all(feature = "async-io", feature = "alloc"))]
+    pub async fn async_parse<R: AsyncReadAt>(source: &R, address: u64, ctx: &ParseContext) -> Result<Self> {
+        let s = ctx.offset_bytes();
+        let min_size = 4 + 1 + 1 + 4 + 2 + 2 + 1 + 1 + s + 2 + s + 4;
+
+        let mut buf = vec![0u8; min_size];
+        source.read_at(address, &mut buf).await?;
+
+        if buf[0..4] != BTREE_V2_SIGNATURE {
+            return Err(Error::InvalidFormat {
+                message: format!(
+                    "expected B-tree v2 header signature 'BTHD' at offset {:#x}, \
+                     found [{:#04x}, {:#04x}, {:#04x}, {:#04x}]",
+                    address, buf[0], buf[1], buf[2], buf[3],
+                ),
+            });
+        }
+
+        let version = buf[4];
+        if version != 0 {
+            return Err(Error::InvalidFormat {
+                message: format!("unsupported B-tree v2 header version: {version}, expected 0"),
+            });
+        }
+
+        let record_type = buf[5];
+        let node_size = u32::from_le_bytes([buf[6], buf[7], buf[8], buf[9]]);
+        let record_size = u16::from_le_bytes([buf[10], buf[11]]);
+        let depth = u16::from_le_bytes([buf[12], buf[13]]);
+        let split_percent = buf[14];
+        let merge_percent = buf[15];
+
+        let mut pos = 16;
+        let root_address = ctx.read_offset(&buf[pos..]);
+        pos += s;
+        let root_num_records = u16::from_le_bytes([buf[pos], buf[pos + 1]]);
+        pos += 2;
+        let total_records = ctx.read_length(&buf[pos..]);
+
+        Ok(Self {
+            record_type,
+            node_size,
+            record_size,
+            depth,
+            split_percent,
+            merge_percent,
+            root_address,
+            root_num_records,
+            total_records,
+        })
+    }
 }
 
 /// A raw record extracted from a B-tree v2 leaf or internal node.
@@ -293,6 +348,56 @@ impl BTreeV2LeafNode {
         for _ in 0..num_records {
             if pos + rec_size > buf.len().saturating_sub(4) {
                 // Don't read into checksum territory
+                break;
+            }
+            let data = Vec::from(&buf[pos..pos + rec_size]);
+            records.push(BTreeV2Record { data });
+            pos += rec_size;
+        }
+
+        Ok(Self {
+            record_type,
+            records,
+        })
+    }
+
+    /// Parse a B-tree v2 leaf node from an async I/O source.
+    #[cfg(all(feature = "async-io", feature = "alloc"))]
+    pub async fn async_parse<R: AsyncReadAt>(
+        source: &R,
+        address: u64,
+        header: &BTreeV2Header,
+        num_records: u16,
+    ) -> Result<Self> {
+        let node_size = header.node_size as usize;
+        let mut buf = vec![0u8; node_size];
+        source.read_at(address, &mut buf).await?;
+
+        if buf[0..4] != BTREE_V2_LEAF_SIGNATURE {
+            return Err(Error::InvalidFormat {
+                message: format!(
+                    "expected B-tree v2 leaf signature 'BTLF' at offset {:#x}, \
+                     found [{:#04x}, {:#04x}, {:#04x}, {:#04x}]",
+                    address, buf[0], buf[1], buf[2], buf[3],
+                ),
+            });
+        }
+
+        let version = buf[4];
+        if version != 0 {
+            return Err(Error::InvalidFormat {
+                message: format!("unsupported B-tree v2 leaf version: {version}, expected 0"),
+            });
+        }
+
+        let record_type = buf[5];
+        let rec_size = header.record_size as usize;
+
+        let mut records = Vec::with_capacity(num_records as usize);
+        let mut pos = 6;
+
+        for _ in 0..num_records {
+            if pos + rec_size > buf.len().saturating_sub(4) {
                 break;
             }
             let data = Vec::from(&buf[pos..pos + rec_size]);
@@ -417,6 +522,82 @@ impl BTreeV2InternalNode {
 
         // If depth > 1, there may also be total_records fields for each child,
         // but we skip those for the current implementation level.
+
+        Ok(Self {
+            record_type,
+            records,
+            child_addresses,
+            child_num_records,
+        })
+    }
+
+    /// Parse a B-tree v2 internal node from an async I/O source.
+    #[cfg(all(feature = "async-io", feature = "alloc"))]
+    pub async fn async_parse<R: AsyncReadAt>(
+        source: &R,
+        address: u64,
+        header: &BTreeV2Header,
+        num_records: u16,
+        ctx: &ParseContext,
+    ) -> Result<Self> {
+        let node_size = header.node_size as usize;
+        let mut buf = vec![0u8; node_size];
+        source.read_at(address, &mut buf).await?;
+
+        if buf[0..4] != BTREE_V2_INTERNAL_SIGNATURE {
+            return Err(Error::InvalidFormat {
+                message: format!(
+                    "expected B-tree v2 internal signature 'BTIN' at offset {:#x}, \
+                     found [{:#04x}, {:#04x}, {:#04x}, {:#04x}]",
+                    address, buf[0], buf[1], buf[2], buf[3],
+                ),
+            });
+        }
+
+        let version = buf[4];
+        if version != 0 {
+            return Err(Error::InvalidFormat {
+                message: format!(
+                    "unsupported B-tree v2 internal node version: {version}, expected 0"
+                ),
+            });
+        }
+
+        let record_type = buf[5];
+        let rec_size = header.record_size as usize;
+        let s = ctx.offset_bytes();
+        let n_rec = num_records as usize;
+        let n_children = n_rec + 1;
+
+        let mut records = Vec::with_capacity(n_rec);
+        let mut pos = 6;
+        for _ in 0..n_rec {
+            if pos + rec_size > buf.len() {
+                break;
+            }
+            let data = Vec::from(&buf[pos..pos + rec_size]);
+            records.push(BTreeV2Record { data });
+            pos += rec_size;
+        }
+
+        let num_records_width = compute_num_records_width(header);
+
+        let mut child_addresses = Vec::with_capacity(n_children);
+        let mut child_num_records = Vec::with_capacity(n_children);
+
+        for _ in 0..n_children {
+            if pos + s > buf.len() {
+                break;
+            }
+            let addr = ctx.read_offset(&buf[pos..]);
+            pos += s;
+
+            let nrec = read_variable_width_uint(&buf[pos..], num_records_width);
+            pos += num_records_width;
+
+            child_addresses.push(addr);
+            child_num_records.push(nrec as u16);
+        }
 
         Ok(Self {
             record_type,
@@ -550,6 +731,79 @@ fn collect_records_recursive<R: ReadAt>(
             }
 
             // Emit record[i] (interleaved between children)
+            if i < n_rec {
+                records.push(internal.records[i].clone());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Collect all records from a B-tree v2 by recursive traversal, asynchronously.
+#[cfg(all(feature = "async-io", feature = "alloc"))]
+pub async fn async_collect_all_records<R: AsyncReadAt>(
+    source: &R,
+    header: &BTreeV2Header,
+    ctx: &ParseContext,
+) -> Result<Vec<BTreeV2Record>> {
+    if header.root_address == crate::constants::UNDEFINED_ADDRESS {
+        return Ok(Vec::new());
+    }
+
+    if header.total_records == 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut records = Vec::with_capacity(header.total_records as usize);
+    Box::pin(async_collect_records_recursive(
+        source,
+        header,
+        header.root_address,
+        header.root_num_records,
+        header.depth,
+        ctx,
+        &mut records,
+    ))
+    .await?;
+    Ok(records)
+}
+
+#[cfg(all(feature = "async-io", feature = "alloc"))]
+async fn async_collect_records_recursive<R: AsyncReadAt>(
+    source: &R,
+    header: &BTreeV2Header,
+    node_address: u64,
+    num_records: u16,
+    depth: u16,
+    ctx: &ParseContext,
+    records: &mut Vec<BTreeV2Record>,
+) -> Result<()> {
+    if depth == 0 {
+        let leaf = BTreeV2LeafNode::async_parse(source, node_address, header, num_records).await?;
+        records.extend(leaf.records);
+    } else {
+        let internal =
+            BTreeV2InternalNode::async_parse(source, node_address, header, num_records, ctx).await?;
+
+        let n_rec = internal.records.len();
+        let n_children = internal.child_addresses.len();
+
+        for i in 0..n_children {
+            if i < n_children {
+                let child_addr = internal.child_addresses[i];
+                let child_nrec = internal.child_num_records[i];
+                Box::pin(async_collect_records_recursive(
+                    source,
+                    header,
+                    child_addr,
+                    child_nrec,
+                    depth - 1,
+                    ctx,
+                    records,
+                ))
+                .await?;
+            }
+
             if i < n_rec {
                 records.push(internal.records[i].clone());
             }

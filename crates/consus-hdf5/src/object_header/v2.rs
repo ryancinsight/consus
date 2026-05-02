@@ -107,8 +107,8 @@ pub(crate) const MAX_CHUNK_BYTES: usize = 64 * 1024 * 1024;
 /// Maximum continuation hops to prevent infinite loops from circular chains.
 const MAX_CONTINUATION_DEPTH: usize = 256;
 
-/// Base v2 message header size: type(2) + data_size(2) + flags(1).
-const V2_MSG_HEADER_BASE: usize = 5;
+/// Base v2 message header size: type(1) + data_size(2) + flags(1).
+const V2_MSG_HEADER_BASE: usize = 4;
 
 /// Optional creation-order field size.
 const V2_MSG_CREATION_ORDER_LEN: usize = 2;
@@ -375,25 +375,31 @@ fn extract_messages(
     messages: &mut Vec<HeaderMessage>,
     continuations: &mut Vec<(u64, u64, bool)>,
 ) -> Result<()> {
-    let msg_header_len = if track_creation_order {
-        V2_MSG_HEADER_BASE + V2_MSG_CREATION_ORDER_LEN
-    } else {
-        V2_MSG_HEADER_BASE
-    };
-
     let mut pos: usize = 0;
+    
+    while pos + V2_MSG_HEADER_BASE <= data.len() {
+        let msg_type = data[pos] as u16;
+        let data_size = LittleEndian::read_u16(&data[pos + 1..]);
+        let msg_flags = data[pos + 3];
+        
+        let msg_header_len = if track_creation_order && msg_type != MSG_TYPE_NIL {
+            V2_MSG_HEADER_BASE + V2_MSG_CREATION_ORDER_LEN
+        } else {
+            V2_MSG_HEADER_BASE
+        };
+        
+        println!("OHDR_TRACE: pos={} type={} size={} hdr_len={}", pos, msg_type, data_size, msg_header_len);
 
-    while pos + msg_header_len <= data.len() {
-        let msg_type = LittleEndian::read_u16(&data[pos..]);
-        let data_size = LittleEndian::read_u16(&data[pos + 2..]);
-        let msg_flags = data[pos + 4];
-        // Creation-order field (if present) is at data[pos + 5..pos + 7];
-        // we skip it because HeaderMessage does not store it.
+        if pos + msg_header_len > data.len() {
+            println!("OHDR CHUNK DUMP: {:02x?}", data);
+            break;
+        }
 
         pos += msg_header_len;
 
         let payload_end = pos + data_size as usize;
         if payload_end > data.len() {
+            println!("OHDR CHUNK DUMP: {:02x?}", data);
             return Err(Error::InvalidFormat {
                 #[cfg(feature = "alloc")]
                 message: alloc::format!(

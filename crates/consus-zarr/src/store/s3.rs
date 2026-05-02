@@ -284,53 +284,55 @@ fn hex_encode(data: impl AsRef<[u8]>) -> String {
 impl Store for S3Store {
     fn get(&self, key: &str) -> Result<Vec<u8>> {
         let full_key = self.full_key(key);
-        let req = GetObjectRequest {
-            bucket: self.bucket.clone(),
-            key: full_key.clone(),
-            ..Default::default()
-        };
+        let reader = consus_io::io::async_io::s3::S3Reader::with_client(
+            alloc::sync::Arc::new(self.client.clone()),
+            self.bucket.clone(),
+            full_key,
+        );
 
-        let result = self
-            .rt
-            .block_on(self.client.get_object(req))
-            .map_err(|e| match e {
-                RusotoError::Service(GetObjectError::NoSuchKey(_)) => {
-                    consus_core::Error::NotFound {
-                        path: key.to_string(),
-                    }
-                }
-                RusotoError::Service(GetObjectError::InvalidObjectState(_)) => {
-                    // Object is in Glacier — treat as not found for this impl
-                    consus_core::Error::NotFound {
-                        path: key.to_string(),
-                    }
-                }
-                _ => consus_core::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    S3StoreError::Rusoto(Box::new(e)),
-                )),
-            })?;
-
-        let body = result
-            .body
-            .ok_or_else(|| consus_core::Error::InvalidFormat {
-                message: "S3 GetObject returned empty body".to_string(),
-            })?;
-
-        use futures::stream::TryStreamExt;
-        let body_bytes: Vec<bytes::Bytes> = self.rt.block_on(body.try_collect()).map_err(|e| {
-            consus_core::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                S3StoreError::Io(format!("S3 body read: {:?}", e)),
-            ))
-        })?;
-        // Flatten all chunks into a single Vec<u8>
-        let total_len = body_bytes.iter().map(|b| b.len()).sum();
-        let mut result = Vec::with_capacity(total_len);
-        for chunk in body_bytes {
-            result.extend_from_slice(&chunk);
+        use consus_io::{AsyncLength, AsyncReadAt};
+        
+        // 1. Get length via HEAD request
+        let len = self.rt.block_on(reader.len())?;
+        if len == 0 {
+            return Ok(Vec::new());
         }
-        Ok(result)
+
+        // 2. Fetch the data using HTTP Range
+        let mut buf = vec![0u8; len as usize];
+        self.rt.block_on(reader.read_at(0, &mut buf))?;
+
+        Ok(buf)
+    }
+
+    fn get_many(&self, keys: &[&str]) -> Vec<Result<Vec<u8>>> {
+        use consus_io::{AsyncLength, AsyncReadAt};
+        use futures::future::join_all;
+        use alloc::sync::Arc;
+
+        let client = Arc::new(self.client.clone());
+        let bucket = self.bucket.clone();
+
+        self.rt.block_on(async {
+            let futures = keys.iter().map(|&key| {
+                let full_key = self.full_key(key);
+                let reader = consus_io::io::async_io::s3::S3Reader::with_client(
+                    client.clone(),
+                    bucket.clone(),
+                    full_key,
+                );
+                async move {
+                    let len = reader.len().await?;
+                    if len == 0 {
+                        return Ok(Vec::new());
+                    }
+                    let mut buf = vec![0u8; len as usize];
+                    reader.read_at(0, &mut buf).await?;
+                    Ok(buf)
+                }
+            });
+            join_all(futures).await
+        })
     }
 
     fn set(&mut self, key: &str, value: &[u8]) -> Result<()> {
@@ -522,8 +524,8 @@ impl MockS3Store {
     }
 
     /// Configure the mock to return an error on the next `get`.
-    pub fn with_get_error(mut self) -> Self {
-        self.get_error = true;
+    pub fn with_get_error(mut self, v: bool) -> Self {
+        self.get_error = v;
         self
     }
 

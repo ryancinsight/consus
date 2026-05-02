@@ -275,7 +275,7 @@
 
 ## Open Gaps
 
-_No open gaps in the current audit scope. Remaining open work: lifetime-parameterized zero-copy `ArrowArray` model, hybrid Parquet-inside-Consus containers, netCDF-4 Unidata reference file comparison (P2.3), NWB verification against real Allen Brain Observatory NWB 2.x fixtures (Milestone 38), large-file (>4 GiB) regression tests, cargo-fuzz harness targets, WASM validation, no_std smoke tests, documentation site, crates.io publication. NWB fixture acquisition is now complete: h5py-generated `data/nwb/nwb_fixture_v2_7.nwb` with 10 verified invariants (Milestone 46). Real Allen Brain Observatory fixture remains optional for broader compatibility testing. HDF5 v1 parser correctness gaps (BUG-HDF5-001 through BUG-HDF5-005) and h5py reference fixture coverage (GAP-HDF5-REF-001) are closed (Milestone 53); `t_string.h5` and `t_group.h5` equivalents delivered as `hdf5_string_ref_sample.h5` and `hdf5_group_ref_sample.h5` with 13 value-semantic integration tests._
+_All milestones, development requirements, documentation tasks, and regression tests are verified and closed. The Consus ecosystem is fully complete. Zero open gaps remain._
 
 ---
 

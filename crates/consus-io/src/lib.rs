@@ -66,3 +66,6 @@ pub use io::traits::{
 // Async implementation re-exports
 #[cfg(feature = "async-io")]
 pub use io::async_io::AsyncMemCursor;
+
+#[cfg(all(feature = "async-io", feature = "s3"))]
+pub use io::async_io::s3::S3Reader;

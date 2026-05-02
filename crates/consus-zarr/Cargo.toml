@@ -14,7 +14,7 @@ std = ["alloc", "consus-core/std", "consus-io/std", "consus-compression/std", "c
 alloc = ["consus-core/alloc", "consus-io/alloc", "consus-compression/alloc", "serde/alloc", "serde_json/alloc"]
 
 
-s3 = ["std", "rusoto_s3", "rusoto_core", "tokio", "reqwest", "md5", "futures", "bytes"]
+s3 = ["std", "rusoto_s3", "rusoto_core", "tokio", "reqwest", "md5", "futures", "bytes", "consus-io/s3", "consus-io/async-io"]
 
 [dependencies]
 consus-core = { workspace = true }

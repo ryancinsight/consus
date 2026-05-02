@@ -265,18 +265,18 @@ fn write_chunk_size(buf: &mut [u8], width: usize, value: usize) {
 /// Serialize a single v2 header message into `buf` at `pos`.
 ///
 /// V2 message header layout:
-/// | 0 | 2 | Message type |
-/// | 2 | 2 | Data size |
-/// | 4 | 1 | Flags |
+/// | 0 | 1 | Message type |
+/// | 1 | 2 | Data size |
+/// | 3 | 1 | Flags |
 ///
-/// Returns the number of bytes written (5 + data.len()).
+/// Returns the number of bytes written (4 + data.len()).
 #[cfg(feature = "alloc")]
 fn write_v2_message(buf: &mut [u8], pos: usize, msg_type: u16, flags: u8, data: &[u8]) -> usize {
-    LittleEndian::write_u16(&mut buf[pos..], msg_type);
-    LittleEndian::write_u16(&mut buf[pos + 2..], data.len() as u16);
-    buf[pos + 4] = flags;
-    buf[pos + 5..pos + 5 + data.len()].copy_from_slice(data);
-    5 + data.len()
+    buf[pos] = msg_type as u8;
+    LittleEndian::write_u16(&mut buf[pos + 1..], data.len() as u16);
+    buf[pos + 3] = flags;
+    buf[pos + 4..pos + 4 + data.len()].copy_from_slice(data);
+    4 + data.len()
 }
 
 #[cfg(feature = "alloc")]
@@ -1561,7 +1561,7 @@ pub fn encode_soft_link(name: &str, target_path: &str, _ctx: &ParseContext) -> R
 ///
 /// ## Buffer sizing
 ///
-/// Uses at least 5 bytes for chunk data to accommodate a minimal NIL
+/// Uses at least 4 bytes for chunk data to accommodate a minimal NIL
 /// message when `messages` is empty, preventing a CRC-field buffer overflow.
 #[cfg(feature = "alloc")]
 pub fn write_object_header_v2<W: WriteAt>(
@@ -1569,9 +1569,9 @@ pub fn write_object_header_v2<W: WriteAt>(
     state: &mut WriteState,
     messages: &[(u16, &[u8])],
 ) -> Result<u64> {
-    let chunk_data_size: usize = messages.iter().map(|(_, d)| 5 + d.len()).sum();
-    // Minimum 5 bytes: a NIL message header (type:2 + size:2 + flags:1).
-    let effective_size = chunk_data_size.max(5);
+    let chunk_data_size: usize = messages.iter().map(|(_, d)| 4 + d.len()).sum();
+    // Minimum 4 bytes: a NIL message header (type:2 + size:2 + flags:1).
+    let effective_size = chunk_data_size.max(4);
     let (csf_width, csf_flags) = chunk_size_encoding(effective_size);
     let total = 4 + 1 + 1 + csf_width + effective_size + 4;
 

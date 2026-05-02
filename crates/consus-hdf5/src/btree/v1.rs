@@ -32,6 +32,8 @@ use alloc::string::String;
 
 use consus_core::{Error, Result};
 use consus_io::ReadAt;
+#[cfg(feature = "async-io")]
+use consus_io::AsyncReadAt;
 
 use crate::address::ParseContext;
 
@@ -123,6 +125,60 @@ impl BTreeV1Header {
         let s = ctx.offset_bytes();
         let left_sibling = ctx.read_offset(&buf[8..]);
         let right_sibling = ctx.read_offset(&buf[8 + s..]);
+
+        Ok(Self {
+            node_type,
+            level,
+            entries_used,
+            left_sibling,
+            right_sibling,
+        })
+    }
+
+    /// Parse a B-tree v1 node header from an async I/O source at `address`.
+    ///
+    /// Reads exactly [`Self::header_size`] bytes starting at `address`,
+    /// validates the signature and node type, and returns the parsed header.
+    #[cfg(feature = "async-io")]
+    pub async fn async_parse<R: AsyncReadAt>(
+        source: &R,
+        address: u64,
+        ctx: &ParseContext,
+    ) -> Result<Self> {
+        let hdr_size = Self::header_size(ctx);
+        // Maximum possible header size: 8 + 2*8 = 24 bytes.
+        let mut buf = [0u8; 24];
+        let buf_slice = &mut buf[..hdr_size];
+        source.read_at(address, buf_slice).await?;
+
+        // Validate signature.
+        if buf_slice[0..4] != BTREE_V1_SIGNATURE {
+            return Err(Error::InvalidFormat {
+                #[cfg(feature = "alloc")]
+                message: alloc::string::String::from("invalid B-tree v1 signature (expected \"TREE\")"),
+            });
+        }
+
+        // Node type.
+        let node_type = match buf_slice[4] {
+            0 => BTreeV1Type::Group,
+            1 => BTreeV1Type::RawDataChunk,
+            other => {
+                return Err(Error::InvalidFormat {
+                    #[cfg(feature = "alloc")]
+                    message: alloc::format!(
+                        "unknown B-tree v1 node type: {other}, expected 0 (group) or 1 (chunk)"
+                    ),
+                });
+            }
+        };
+
+        let level = buf_slice[5];
+        let entries_used = u16::from_le_bytes([buf_slice[6], buf_slice[7]]);
+
+        let s = ctx.offset_bytes();
+        let left_sibling = ctx.read_offset(&buf_slice[8..]);
+        let right_sibling = ctx.read_offset(&buf_slice[8 + s..]);
 
         Ok(Self {
             node_type,

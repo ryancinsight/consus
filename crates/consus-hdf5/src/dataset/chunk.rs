@@ -150,6 +150,56 @@ pub fn read_chunk_raw<R: consus_io::ReadAt>(
     Ok(data)
 }
 
+/// Read raw chunk data from the file asynchronously, applying the decompression pipeline.
+///
+/// Same semantics as [`read_chunk_raw`], but over an [`AsyncReadAt`] source.
+#[cfg(all(feature = "async-io", feature = "alloc"))]
+pub async fn async_read_chunk_raw<R: consus_io::AsyncReadAt>(
+    source: &R,
+    location: &ChunkLocation,
+    uncompressed_size: usize,
+    filter_ids: &[u16],
+    registry: &dyn consus_compression::CompressionRegistry,
+    fill_value: Option<&[u8]>,
+) -> Result<Vec<u8>> {
+    if location.address == crate::constants::UNDEFINED_ADDRESS {
+        let mut buf = vec![0u8; uncompressed_size];
+        if let Some(fv) = fill_value {
+            if !fv.is_empty() {
+                for chunk in buf.chunks_mut(fv.len()) {
+                    let copy_len = chunk.len().min(fv.len());
+                    chunk[..copy_len].copy_from_slice(&fv[..copy_len]);
+                }
+            }
+        }
+        return Ok(buf);
+    }
+
+    let disk_size = location.size as usize;
+    let mut compressed = vec![0u8; disk_size];
+    source.read_at(location.address, &mut compressed).await?;
+
+    if filter_ids.is_empty() {
+        return Ok(compressed);
+    }
+
+    let mut data = compressed;
+    let n_filters = filter_ids.len();
+
+    for reverse_idx in 0..n_filters {
+        let pipeline_idx = n_filters - 1 - reverse_idx;
+        let filter_id = filter_ids[pipeline_idx];
+
+        if (location.filter_mask >> pipeline_idx) & 1 != 0 {
+            continue;
+        }
+
+        data = apply_reverse_filter(filter_id, data, uncompressed_size, registry)?;
+    }
+
+    Ok(data)
+}
+
 /// Write chunk data to the file, applying the compression pipeline.
 ///
 /// # Arguments

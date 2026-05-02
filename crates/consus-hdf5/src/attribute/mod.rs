@@ -237,7 +237,11 @@ impl Hdf5Attribute {
             });
         }
         let name_bytes = &data[cursor..cursor + name_size];
-        let name = core::str::from_utf8(name_bytes)
+        let end = name_bytes
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(name_bytes.len());
+        let name = core::str::from_utf8(&name_bytes[..end])
             .map_err(|_| Error::InvalidFormat {
                 message: String::from("attribute v3 name is not valid UTF-8"),
             })?

@@ -618,6 +618,11 @@ pub fn read_array<S: Store>(
     let selection_indices = selection_indices(&selection_steps);
     let mut chunk_indices: Vec<u64> = vec![0; meta.shape.len()];
 
+    let mut chunk_indices_list = Vec::new();
+    let mut extents_list = Vec::new();
+    let mut origins_list = Vec::new();
+    let mut keys_list = Vec::new();
+
     loop {
         let chunk_origin: Vec<u64> = chunk_indices
             .iter()
@@ -632,97 +637,11 @@ pub fn read_array<S: Store>(
         }
 
         if chunk_intersects_selection(&chunk_origin, &chunk_extent, &selection_steps) {
-            match read_chunk(store, array_key, &chunk_indices, meta) {
-                Ok(chunk_data) => {
-                    let padded_chunk_elements = if meta.chunks.is_empty() {
-                        1
-                    } else {
-                        meta.chunks.iter().product()
-                    };
-                    let padded_chunk_bytes = padded_chunk_elements * element_size;
-                    let chunk_elements = if chunk_extent.is_empty() {
-                        1
-                    } else {
-                        chunk_extent.iter().product()
-                    };
-                    let expected_chunk_bytes = chunk_elements * element_size;
-                    if chunk_data.len() != expected_chunk_bytes
-                        && chunk_data.len() != padded_chunk_bytes
-                    {
-                        return Err(ChunkError::UnexpectedLength);
-                    }
-
-                    if selection.is_full() {
-                        let index_shape = stored_shape_for_chunk(
-                            chunk_data.len(),
-                            element_size,
-                            &chunk_extent,
-                            &meta.chunks,
-                        );
-                        let chunk_strides = compute_strides(index_shape);
-                        let mut local_position = vec![0usize; chunk_extent.len()];
-
-                        loop {
-                            let mut absolute_linear = 0usize;
-                            for dim in 0..chunk_extent.len() {
-                                let absolute_index =
-                                    chunk_origin[dim] as usize + local_position[dim];
-                                absolute_linear =
-                                    absolute_linear * meta.shape[dim] + absolute_index;
-                            }
-
-                            let mut chunk_linear = 0usize;
-                            for dim in 0..chunk_extent.len() {
-                                chunk_linear += local_position[dim] * chunk_strides[dim];
-                            }
-
-                            let output_byte_start = absolute_linear * element_size;
-                            let chunk_byte_start = chunk_linear * element_size;
-                            let output_byte_end = output_byte_start + element_size;
-                            let chunk_byte_end = chunk_byte_start + element_size;
-
-                            if output_byte_end > output.len() || chunk_byte_end > chunk_data.len() {
-                                return Err(ChunkError::UnexpectedLength);
-                            }
-
-                            output[output_byte_start..output_byte_end]
-                                .copy_from_slice(&chunk_data[chunk_byte_start..chunk_byte_end]);
-
-                            let mut advanced_local = false;
-                            for dim in (0..local_position.len()).rev() {
-                                local_position[dim] += 1;
-                                if local_position[dim] < chunk_extent[dim] {
-                                    advanced_local = true;
-                                    break;
-                                }
-                                local_position[dim] = 0;
-                            }
-
-                            if !advanced_local {
-                                break;
-                            }
-                        }
-                    } else {
-                        let stored = stored_shape_for_chunk(
-                            chunk_data.len(),
-                            element_size,
-                            &chunk_extent,
-                            &meta.chunks,
-                        );
-                        copy_chunk_selection_to_output(
-                            &chunk_data,
-                            &chunk_origin,
-                            &chunk_extent,
-                            stored,
-                            &selection_indices,
-                            &mut output,
-                            element_size,
-                        )?;
-                    }
-                }
-                Err(ChunkError::Uninitialized) => {}
-                Err(e) => return Err(e),
-            }
+            let key = chunk_key_for_array(array_key, &chunk_indices, &meta.chunk_key_encoding);
+            chunk_indices_list.push(chunk_indices.clone());
+            extents_list.push(chunk_extent);
+            origins_list.push(chunk_origin);
+            keys_list.push(key);
         }
 
         let mut advanced = false;
@@ -737,6 +656,128 @@ pub fn read_array<S: Store>(
 
         if !advanced {
             break;
+        }
+    }
+
+    let keys_ref: Vec<&str> = keys_list.iter().map(|s| s.as_str()).collect();
+    let raw_chunks = store.get_many(&keys_ref);
+
+    for (i, raw_result) in raw_chunks.into_iter().enumerate() {
+        let chunk_extent = &extents_list[i];
+        let chunk_origin = &origins_list[i];
+
+        let chunk_data_result = match raw_result {
+            Ok(data) => {
+                if data.is_empty() {
+                    Err(ChunkError::Uninitialized)
+                } else if !meta.codecs.is_empty() {
+                    #[cfg(not(feature = "std"))]
+                    { Err(ChunkError::DecompressFailed) }
+                    #[cfg(feature = "std")]
+                    {
+                        use crate::codec::{CodecPipeline, default_registry};
+                        CodecPipeline::new(meta.codecs.clone())
+                            .decompress(&data, default_registry())
+                            .map_err(|_| ChunkError::DecompressFailed)
+                    }
+                } else {
+                    Ok(data)
+                }
+            }
+            Err(consus_core::Error::NotFound { .. }) => Err(ChunkError::Uninitialized),
+            Err(e) => Err(ChunkError::StoreError(e.to_string())),
+        };
+
+        match chunk_data_result {
+            Ok(chunk_data) => {
+                let padded_chunk_elements = if meta.chunks.is_empty() {
+                    1
+                } else {
+                    meta.chunks.iter().product()
+                };
+                let padded_chunk_bytes = padded_chunk_elements * element_size;
+                let chunk_elements = if chunk_extent.is_empty() {
+                    1
+                } else {
+                    chunk_extent.iter().product()
+                };
+                let expected_chunk_bytes = chunk_elements * element_size;
+                if chunk_data.len() != expected_chunk_bytes
+                    && chunk_data.len() != padded_chunk_bytes
+                {
+                    return Err(ChunkError::UnexpectedLength);
+                }
+
+                if selection.is_full() {
+                    let index_shape = stored_shape_for_chunk(
+                        chunk_data.len(),
+                        element_size,
+                        chunk_extent,
+                        &meta.chunks,
+                    );
+                    let chunk_strides = compute_strides(index_shape);
+                    let mut local_position = vec![0usize; chunk_extent.len()];
+
+                    loop {
+                        let mut absolute_linear = 0usize;
+                        for dim in 0..chunk_extent.len() {
+                            let absolute_index =
+                                chunk_origin[dim] as usize + local_position[dim];
+                            absolute_linear =
+                                absolute_linear * meta.shape[dim] + absolute_index;
+                        }
+
+                        let mut chunk_linear = 0usize;
+                        for dim in 0..chunk_extent.len() {
+                            chunk_linear += local_position[dim] * chunk_strides[dim];
+                        }
+
+                        let output_byte_start = absolute_linear * element_size;
+                        let chunk_byte_start = chunk_linear * element_size;
+                        let output_byte_end = output_byte_start + element_size;
+                        let chunk_byte_end = chunk_byte_start + element_size;
+
+                        if output_byte_end > output.len() || chunk_byte_end > chunk_data.len() {
+                            return Err(ChunkError::UnexpectedLength);
+                        }
+
+                        output[output_byte_start..output_byte_end]
+                            .copy_from_slice(&chunk_data[chunk_byte_start..chunk_byte_end]);
+
+                        let mut advanced_local = false;
+                        for dim in (0..local_position.len()).rev() {
+                            local_position[dim] += 1;
+                            if local_position[dim] < chunk_extent[dim] {
+                                advanced_local = true;
+                                break;
+                            }
+                            local_position[dim] = 0;
+                        }
+
+                        if !advanced_local {
+                            break;
+                        }
+                    }
+                } else {
+                    let stored = stored_shape_for_chunk(
+                        chunk_data.len(),
+                        element_size,
+                        chunk_extent,
+                        &meta.chunks,
+                    );
+                    copy_chunk_selection_to_output(
+                        &chunk_data,
+                        chunk_origin,
+                        chunk_extent,
+                        stored,
+                        &selection_indices,
+                        &mut output,
+                        element_size,
+                    )?;
+                }
+            }
+            Err(ChunkError::Uninitialized) => {}
+            Err(e) => return Err(e),
         }
     }
 

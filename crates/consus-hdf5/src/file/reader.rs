@@ -64,10 +64,21 @@ pub fn read_object_header<R: ReadAt>(
     let mut peek = [0u8; 4];
     source.read_at(address, &mut peek)?;
 
-    if peek == OHDR_SIGNATURE {
+    let result = if peek == OHDR_SIGNATURE {
         crate::object_header::v2::parse(source, address, ctx)
     } else {
         crate::object_header::v1::parse(source, address, ctx)
+    };
+
+    match result {
+        Ok(header) => {
+            println!("OHDR at {} parsed successfully, version {}, {} messages", address, header.version, header.messages.len());
+            Ok(header)
+        }
+        Err(e) => {
+            println!("OHDR at {} failed to parse: {:?}", address, e);
+            Err(e)
+        }
     }
 }
 
@@ -492,6 +503,7 @@ fn collect_dense_attributes<R: ReadAt>(
 
     let heap_id_len = heap_header.heap_id_length as usize;
     let mut attrs = Vec::with_capacity(records.len());
+    println!("DENSE ATTRIBUTES: found {} records in btree {}", records.len(), attr_info.name_btree_address);
 
     for record in &records {
         // Type-8 record: hash(4) + heap_id(heap_id_len).
@@ -590,19 +602,22 @@ pub fn read_fill_value(header: &ObjectHeader) -> Option<Vec<u8>> {
         }
         3 => {
             // Version 3 encoding.
-            if data.len() < 4 {
+            if data.len() < 2 {
                 return None;
             }
             let flags = data[1];
-            let _fill_defined = flags & 0x20 != 0;
-            if data.len() < 5 {
+            let fill_defined = flags & 0x20 != 0;
+            if !fill_defined {
+                return None; // No fill value defined
+            }
+            if data.len() < 6 {
                 return None;
             }
-            let size = LittleEndian::read_u32(&data[4..8]) as usize;
-            if size == 0 || data.len() < 8 + size {
+            let size = LittleEndian::read_u32(&data[2..6]) as usize;
+            if size == 0 || data.len() < 6 + size {
                 return None;
             }
-            Some(Vec::from(&data[8..8 + size]))
+            Some(Vec::from(&data[6..6 + size]))
         }
         _ => None,
     }

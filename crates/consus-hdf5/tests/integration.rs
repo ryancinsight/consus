@@ -15,6 +15,7 @@ use consus_hdf5::file::writer::{
 use consus_hdf5::object_header::{HeaderMessage, ObjectHeader};
 use consus_hdf5::property_list::{DatasetCreationProps, DatasetLayout, GroupCreationProps};
 use consus_io::{MemCursor, WriteAt};
+use consus_compression::{Checksum, Lookup3};
 
 fn u32_le_datatype() -> Datatype {
     Datatype::Integer {
@@ -206,7 +207,7 @@ fn build_v2_object_header(messages: &[(u16, Vec<u8>)]) -> Vec<u8> {
         pos += data.len();
     }
 
-    let checksum = consus_compression::Crc32::compute_slice(&buf[..pos]);
+    let checksum = Lookup3::compute(&buf[..pos]);
     buf[pos..pos + 4].copy_from_slice(&checksum.to_le_bytes());
     buf
 }
