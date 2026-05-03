@@ -31,7 +31,7 @@ pub use materialize::column_values_to_arrow;
 extern crate alloc;
 
 #[cfg(feature = "alloc")]
-use alloc::{vec, vec::Vec};
+use alloc::vec::Vec;
 
 use core::fmt;
 

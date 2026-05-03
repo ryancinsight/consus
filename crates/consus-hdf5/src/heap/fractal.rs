@@ -479,7 +479,7 @@ pub fn read_managed_object<R: ReadAt>(
         let ib_overhead = 5 + ctx.offset_bytes() + heap_offset_field_bytes;
         
         let mut row = 0;
-        let mut col = 0;
+        let mut col;
         let mut block_size = starting_block_size;
         let mut row_offset = 0;
         
