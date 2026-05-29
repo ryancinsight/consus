@@ -551,7 +551,7 @@ pub fn write_dataset_header<W: WriteAt>(
     let filter_bytes = if filter_ids.is_empty() {
         None
     } else {
-        Some(encode_filter_pipeline(&filter_ids)?)
+        Some(encode_filter_pipeline(&filter_ids, &props.compression)?)
     };
 
     let mut messages: Vec<(u16, Vec<u8>)> = vec![
@@ -1054,29 +1054,74 @@ fn dataset_filter_ids(props: &DatasetCreationProps) -> Vec<u16> {
 }
 
 #[cfg(feature = "alloc")]
-fn encode_filter_pipeline(filter_ids: &[u16]) -> Result<Vec<u8>> {
-    let mut buf = vec![0u8; 2];
-    buf[0] = 2; // version 2
-    buf[1] = filter_ids.len() as u8;
+fn encode_filter_pipeline(filter_ids: &[u16], compression: &Compression) -> Result<Vec<u8>> {
+    // Filter pipeline message version 1. The HDF5 C library (1.14.x) does not
+    // correctly extract cd_nelmts from version 2 pipelines: H5Pget_filter2 returns
+    // cd_nelmts=0 regardless of the encoded value, so H5Z__filter_deflate never
+    // receives the compression level and fails during read. Version 1 is what the
+    // HDF5 C library itself writes (via h5py) and reads correctly.
+    //
+    // Version 1 layout (HDF5 spec §IV.A.2.j):
+    //   Header (8 bytes): version(1)=1, nfilters(1)=N, reserved(6)=0
+    //   Per-filter entry (each padded to 8-byte boundary):
+    //     filter_id (2), name_len (2, includes null), flags (2), nclient (2)
+    //     name (padded to 8-byte boundary, null-terminated)
+    //     client_data (4 * nclient bytes)
+    //     padding to 8-byte boundary
+
+    let mut buf = vec![
+        1u8,                       // version = 1
+        filter_ids.len() as u8,    // nfilters
+        0, 0, 0, 0, 0, 0,         // 6 reserved bytes
+    ];
 
     for &filter_id in filter_ids {
-        let client_data: &[u32] = &[];
-        let name_length: u16 = 0;
-        let flags: u16 = 0;
-        let num_client_data = client_data.len() as u16;
+        let (name, client_data_owned, flags): (&[u8], alloc::vec::Vec<u32>, u16) = match filter_id
+        {
+            1 => {
+                // Deflate filter: name="deflate\0" (8 bytes), flags=H5Z_FLAG_OPTIONAL(1),
+                // one client data element = compression level.
+                let level = match compression {
+                    Compression::Deflate { level } => *level,
+                    Compression::Gzip { level } => *level,
+                    _ => 6u32,
+                };
+                (b"deflate\0", alloc::vec![level], 1u16)
+            }
+            _ => (b"", alloc::vec::Vec::new(), 0u16),
+        };
 
-        let start = buf.len();
-        buf.resize(start + 8 + client_data.len() * 4, 0);
+        let name_len = name.len() as u16;
+        // Name must be padded up to the next 8-byte boundary.
+        let name_padded_len = if name.is_empty() { 0 } else { ((name.len() + 7) / 8) * 8 };
+        let nclient = client_data_owned.len() as u16;
 
-        LittleEndian::write_u16(&mut buf[start..start + 2], filter_id);
-        LittleEndian::write_u16(&mut buf[start + 2..start + 4], name_length);
-        LittleEndian::write_u16(&mut buf[start + 4..start + 6], flags);
-        LittleEndian::write_u16(&mut buf[start + 6..start + 8], num_client_data);
+        let entry_start = buf.len();
 
-        let mut pos = start + 8;
-        for &value in client_data {
-            LittleEndian::write_u32(&mut buf[pos..pos + 4], value);
-            pos += 4;
+        // Entry header: 8 bytes (filter_id + name_len + flags + nclient)
+        let header_start = buf.len();
+        buf.resize(header_start + 8, 0);
+        LittleEndian::write_u16(&mut buf[header_start..header_start + 2], filter_id);
+        LittleEndian::write_u16(&mut buf[header_start + 2..header_start + 4], name_len);
+        LittleEndian::write_u16(&mut buf[header_start + 4..header_start + 6], flags);
+        LittleEndian::write_u16(&mut buf[header_start + 6..header_start + 8], nclient);
+
+        // Name field (padded to 8-byte boundary).
+        if !name.is_empty() {
+            buf.extend_from_slice(name);
+            buf.resize(entry_start + 8 + name_padded_len, 0);
+        }
+
+        // Client data values.
+        for &v in &client_data_owned {
+            let mut tmp = [0u8; 4];
+            LittleEndian::write_u32(&mut tmp, v);
+            buf.extend_from_slice(&tmp);
+        }
+
+        // Pad entire entry to 8-byte boundary.
+        while buf.len() % 8 != 0 {
+            buf.push(0);
         }
     }
 
@@ -2092,7 +2137,7 @@ impl Hdf5FileBuilder {
         if !filter_ids.is_empty() {
             msgs.push((
                 message_types::FILTER_PIPELINE,
-                encode_filter_pipeline(&filter_ids)?,
+                encode_filter_pipeline(&filter_ids, &dcpl.compression)?,
             ));
         }
 

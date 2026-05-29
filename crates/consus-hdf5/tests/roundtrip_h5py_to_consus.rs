@@ -27,10 +27,15 @@
 use core::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Mutex;
 
 use consus_core::{ByteOrder as CoreByteOrder, Datatype};
 use consus_hdf5::file::Hdf5File;
 use consus_io::MemCursor;
+
+/// Serializes Python subprocess spawns to prevent concurrent HDF5/zlib DLL
+/// initialization races on Windows when many processes start simultaneously.
+static PYTHON_SPAWN_LOCK: Mutex<()> = Mutex::new(());
 
 // ---------------------------------------------------------------------------
 // Infrastructure helpers (mirrors roundtrip_consus_to_h5py.rs)
@@ -74,6 +79,7 @@ fn generate_fixture(case: &str) -> Option<Vec<u8>> {
     let tmp = tempfile::NamedTempFile::new().ok()?;
     let tmp_path = tmp.path().to_owned();
 
+    let _guard = PYTHON_SPAWN_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let output = Command::new(&python)
         .args([
             script.to_str().unwrap(),
@@ -335,5 +341,188 @@ fn h5py_chunked_1d_f32_deflate_readable_by_consus() {
         .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
         .collect();
     let expected: Vec<f32> = (0..8).map(|i| i as f32).collect();
+    assert_eq!(values, expected, "values mismatch");
+}
+
+// ---------------------------------------------------------------------------
+// Tests: big-endian datasets
+// ---------------------------------------------------------------------------
+
+fn i32_be() -> Datatype {
+    Datatype::Integer {
+        bits: NonZeroUsize::new(32).unwrap(),
+        byte_order: CoreByteOrder::BigEndian,
+        signed: true,
+    }
+}
+
+/// h5py writes a big-endian int32 contiguous dataset (4,) with values
+/// [100,200,300,400].  consus reads the byte-order metadata and raw bytes
+/// correctly.
+///
+/// ## Invariant
+///
+/// consus correctly reads big-endian int32 datasets written by h5py:
+/// the datatype byte-order field is `ByteOrder::BigEndian` and the raw
+/// bytes decode to the expected values via `i32::from_be_bytes`.
+#[test]
+fn h5py_big_endian_i32_readable_by_consus() {
+    let Some(bytes) = generate_fixture("big_endian_i32") else {
+        return;
+    };
+    let hf = open_file(bytes);
+
+    let addr = hf.open_path("/big_endian_i32").expect("open path");
+    let ds = hf.dataset_at(addr).expect("dataset_at");
+
+    assert_eq!(ds.datatype, i32_be(), "dtype mismatch (expected big-endian i32)");
+    assert_eq!(ds.shape.current_dims().as_slice(), &[4usize], "shape mismatch");
+
+    let data_addr = ds.data_address.expect("data_address");
+    let mut buf = vec![0u8; 16];
+    hf.read_contiguous_dataset_bytes(data_addr, 0, &mut buf)
+        .expect("read contiguous");
+    let values: Vec<i32> = buf
+        .chunks_exact(4)
+        .map(|b| i32::from_be_bytes(b.try_into().unwrap()))
+        .collect();
+    assert_eq!(values, vec![100i32, 200, 300, 400], "values mismatch");
+}
+
+// ---------------------------------------------------------------------------
+// Tests: multi-group hierarchy
+// ---------------------------------------------------------------------------
+
+/// h5py writes two groups /grp_a and /grp_b each with one dataset.
+/// consus navigates the group hierarchy via `open_path`.
+///
+/// ## Invariant
+///
+/// consus correctly navigates multi-group HDF5 hierarchies written by h5py:
+/// path resolution reaches the correct datasets in both groups.
+#[test]
+fn h5py_multi_group_readable_by_consus() {
+    let Some(bytes) = generate_fixture("multi_group") else {
+        return;
+    };
+    let hf = open_file(bytes);
+
+    // /grp_a/ds_a: int32 scalar = 10
+    let addr_a = hf.open_path("/grp_a/ds_a").expect("open /grp_a/ds_a");
+    let ds_a = hf.dataset_at(addr_a).expect("dataset_at grp_a/ds_a");
+    // Scalar dataset: dims is empty or [1].
+    assert!(
+        ds_a.shape.current_dims().is_empty() || ds_a.shape.current_dims().as_slice() == [1usize],
+        "unexpected shape for ds_a: {:?}",
+        ds_a.shape.current_dims()
+    );
+    let data_addr_a = ds_a.data_address.expect("ds_a data_address");
+    let mut buf_a = vec![0u8; 4];
+    hf.read_contiguous_dataset_bytes(data_addr_a, 0, &mut buf_a)
+        .expect("read ds_a");
+    let val_a = i32::from_le_bytes(buf_a.try_into().unwrap());
+    assert_eq!(val_a, 10, "grp_a/ds_a value");
+
+    // /grp_b/ds_b: float64 scalar ≈ 3.14
+    let addr_b = hf.open_path("/grp_b/ds_b").expect("open /grp_b/ds_b");
+    let ds_b = hf.dataset_at(addr_b).expect("dataset_at grp_b/ds_b");
+    let data_addr_b = ds_b.data_address.expect("ds_b data_address");
+    let mut buf_b = vec![0u8; 8];
+    hf.read_contiguous_dataset_bytes(data_addr_b, 0, &mut buf_b)
+        .expect("read ds_b");
+    let val_b = f64::from_le_bytes(buf_b.try_into().unwrap());
+    assert!((val_b - 3.14).abs() < 1e-10, "grp_b/ds_b value: {val_b}");
+}
+
+// ---------------------------------------------------------------------------
+// Tests: shuffle + deflate combined filter pipeline
+// ---------------------------------------------------------------------------
+
+/// h5py writes an int32 chunked dataset (16,) with shuffle+deflate filters.
+/// consus decodes the full shuffle→deflate pipeline and recovers all values.
+///
+/// ## Invariant
+///
+/// consus correctly handles HDF5 filter pipelines that combine shuffle
+/// (filter ID 2) followed by deflate (filter ID 1), as produced by h5py.
+#[test]
+fn h5py_shuffle_deflate_i32_readable_by_consus() {
+    let Some(bytes) = generate_fixture("shuffle_deflate_i32") else {
+        return;
+    };
+    let hf = open_file(bytes);
+
+    let addr = hf.open_path("/shuffle_deflate_i32").expect("open path");
+    let ds = hf.dataset_at(addr).expect("dataset_at");
+
+    assert_eq!(ds.datatype, i32_le(), "dtype mismatch");
+    assert_eq!(ds.shape.current_dims().as_slice(), &[16usize], "shape mismatch");
+
+    let raw = hf.read_chunked_dataset_all_bytes(addr).expect("read chunked");
+    let values: Vec<i32> = raw
+        .chunks_exact(4)
+        .map(|b| i32::from_le_bytes(b.try_into().unwrap()))
+        .collect();
+    let expected: Vec<i32> = (0..16).collect();
+    assert_eq!(values, expected, "values mismatch");
+}
+
+// ---------------------------------------------------------------------------
+// Tests: deflate at extreme compression levels
+// ---------------------------------------------------------------------------
+
+/// h5py writes a deflate-compressed int32 dataset using level 1 (minimal
+/// compression).  consus decompresses and reads all values correctly.
+///
+/// ## Invariant
+///
+/// consus correctly decompresses zlib data at deflate level 1.
+#[test]
+fn h5py_deflate_level_1_readable_by_consus() {
+    let Some(bytes) = generate_fixture("deflate_level_1") else {
+        return;
+    };
+    let hf = open_file(bytes);
+
+    let addr = hf.open_path("/deflate_level_1").expect("open path");
+    let ds = hf.dataset_at(addr).expect("dataset_at");
+
+    assert_eq!(ds.datatype, i32_le(), "dtype mismatch");
+    assert_eq!(ds.shape.current_dims().as_slice(), &[8usize], "shape mismatch");
+
+    let raw = hf.read_chunked_dataset_all_bytes(addr).expect("read chunked");
+    let values: Vec<i32> = raw
+        .chunks_exact(4)
+        .map(|b| i32::from_le_bytes(b.try_into().unwrap()))
+        .collect();
+    let expected: Vec<i32> = (0..8).collect();
+    assert_eq!(values, expected, "values mismatch");
+}
+
+/// h5py writes a deflate-compressed int32 dataset using level 9 (maximum
+/// compression).  consus decompresses and reads all values correctly.
+///
+/// ## Invariant
+///
+/// consus correctly decompresses zlib data at deflate level 9.
+#[test]
+fn h5py_deflate_level_9_readable_by_consus() {
+    let Some(bytes) = generate_fixture("deflate_level_9") else {
+        return;
+    };
+    let hf = open_file(bytes);
+
+    let addr = hf.open_path("/deflate_level_9").expect("open path");
+    let ds = hf.dataset_at(addr).expect("dataset_at");
+
+    assert_eq!(ds.datatype, i32_le(), "dtype mismatch");
+    assert_eq!(ds.shape.current_dims().as_slice(), &[8usize], "shape mismatch");
+
+    let raw = hf.read_chunked_dataset_all_bytes(addr).expect("read chunked");
+    let values: Vec<i32> = raw
+        .chunks_exact(4)
+        .map(|b| i32::from_le_bytes(b.try_into().unwrap()))
+        .collect();
+    let expected: Vec<i32> = (0..8).collect();
     assert_eq!(values, expected, "values mismatch");
 }

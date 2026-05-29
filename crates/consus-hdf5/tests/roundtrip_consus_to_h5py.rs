@@ -31,9 +31,17 @@ use core::num::NonZeroUsize;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Mutex;
 
 use consus_core::{ByteOrder as CoreByteOrder, Compression, Datatype, Shape};
 use consus_hdf5::file::writer::{DatasetCreationProps, FileCreationProps, Hdf5FileBuilder};
+
+/// Global lock that serializes Python subprocess spawns within this binary.
+///
+/// On Windows, concurrent HDF5+zlib DLL initialization across many child
+/// processes causes non-deterministic filter read failures.  Serializing at
+/// the Rust level removes this race without affecting test isolation.
+static PYTHON_SPAWN_LOCK: Mutex<()> = Mutex::new(());
 
 // ---------------------------------------------------------------------------
 // Infrastructure helpers
@@ -78,6 +86,7 @@ fn find_python() -> Option<String> {
 fn write_temp(bytes: Vec<u8>) -> tempfile::NamedTempFile {
     let mut tmp = tempfile::NamedTempFile::new().expect("create temp file");
     tmp.write_all(&bytes).expect("write temp file");
+    tmp.flush().expect("flush temp file");
     tmp
 }
 
@@ -103,6 +112,13 @@ fn verify_with_h5py(bytes: Vec<u8>, case: &str) {
     };
 
     let tmp = write_temp(bytes);
+
+    // Serialize Python subprocess spawns to avoid concurrent HDF5/zlib
+    // DLL initialization races on Windows (manifests as deflate filter
+    // failures when many processes start simultaneously).
+    // Recover from poisoning so a single test failure does not cascade.
+    let _guard = PYTHON_SPAWN_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
     let output = Command::new(&python)
         .args([
             script.to_str().unwrap(),
@@ -609,4 +625,132 @@ fn consus_deflate_chunked_2d_i32_readable_by_h5py() {
         .unwrap();
     let bytes = builder.finish().unwrap();
     verify_with_h5py(bytes, "deflate_chunked_2d_i32");
+}
+
+// ---------------------------------------------------------------------------
+// Tests: 3-level nested groups
+// ---------------------------------------------------------------------------
+
+/// Write a 3-level group hierarchy: /lvl_a/lvl_b/ds_deep = int32 scalar 123.
+///
+/// ## Invariant
+///
+/// consus correctly writes and h5py correctly navigates 3-level group nesting.
+#[test]
+fn consus_nested_groups_3level_readable_by_h5py() {
+    let val = 123i32.to_le_bytes();
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    let mut lvl_a = builder.begin_group("lvl_a");
+    let mut lvl_b = lvl_a.begin_sub_group("lvl_b");
+    lvl_b
+        .add_dataset_with_attributes(
+            "ds_deep",
+            &i32_dt(),
+            &Shape::scalar(),
+            &val,
+            &DatasetCreationProps::default(),
+            &[],
+        )
+        .unwrap();
+    lvl_b.finish_with_attributes(&[]).unwrap();
+    lvl_a.finish_with_attributes(&[]).unwrap();
+
+    let bytes = builder.finish().unwrap();
+    verify_with_h5py(bytes, "nested_groups_3level");
+}
+
+// ---------------------------------------------------------------------------
+// Tests: multiple attributes of different scalar types
+// ---------------------------------------------------------------------------
+
+/// Write a scalar int32 dataset with two attributes of different types:
+/// "count" (int32 = 10) and "scale" (float64 = 3.14).
+///
+/// ## Invariant
+///
+/// consus correctly writes datasets with multiple heterogeneous attributes
+/// that h5py reads with the correct dtypes and values.
+#[test]
+fn consus_multi_attrs_dataset_readable_by_h5py() {
+    let ds_raw = 5i32.to_le_bytes();
+    let count_raw = 10i32.to_le_bytes();
+    let scale_raw = 3.14f64.to_le_bytes();
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset_with_attributes(
+            "multi_attr_ds",
+            &i32_dt(),
+            &Shape::scalar(),
+            &ds_raw,
+            &DatasetCreationProps::default(),
+            &[
+                ("count", &i32_dt(), &Shape::scalar(), &count_raw),
+                ("scale", &f64_dt(), &Shape::scalar(), &scale_raw),
+            ],
+        )
+        .unwrap();
+    let bytes = builder.finish().unwrap();
+    verify_with_h5py(bytes, "multi_attrs_dataset");
+}
+
+// ---------------------------------------------------------------------------
+// Tests: 3-D chunked dataset (v4 layout)
+// ---------------------------------------------------------------------------
+
+/// Write a float64 3-D chunked dataset (layout v4), shape (2,3,4), values 0..23.
+///
+/// ## Invariant
+///
+/// v4 chunked layout correctly encodes and h5py reads back 3-D float64 data.
+#[test]
+fn consus_chunked_3d_f64_v4_readable_by_h5py() {
+    let values: Vec<f64> = (0..24).map(|i| i as f64).collect();
+    let raw: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+    let dcpl = DatasetCreationProps {
+        layout: consus_hdf5::property_list::DatasetLayout::Chunked,
+        chunk_dims: Some(vec![1, 3, 4]),
+        layout_version: Some(4),
+        ..DatasetCreationProps::default()
+    };
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset("chunked_3d_f64", &f64_dt(), &Shape::fixed(&[2, 3, 4]), &raw, &dcpl)
+        .unwrap();
+    let bytes = builder.finish().unwrap();
+    verify_with_h5py(bytes, "chunked_3d_f64_v4");
+}
+
+// ---------------------------------------------------------------------------
+// Tests: integer-attributed 1-D float64 dataset
+// ---------------------------------------------------------------------------
+
+/// Write a 1-D float64 dataset with an int32 attribute "idx" = 7.
+///
+/// ## Invariant
+///
+/// consus correctly writes an integer scalar attribute alongside a numeric
+/// dataset; h5py reads the attribute with the correct dtype and value.
+#[test]
+fn consus_int_attr_dataset_readable_by_h5py() {
+    let values = [0.5f64, 1.5, 2.5, 3.5];
+    let raw: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
+    let idx_raw = 7i32.to_le_bytes();
+
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset_with_attributes(
+            "int_attr_ds",
+            &f64_dt(),
+            &Shape::fixed(&[4]),
+            &raw,
+            &DatasetCreationProps::default(),
+            &[("idx", &i32_dt(), &Shape::scalar(), &idx_raw)],
+        )
+        .unwrap();
+    let bytes = builder.finish().unwrap();
+    verify_with_h5py(bytes, "int_attr_dataset");
 }

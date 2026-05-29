@@ -166,6 +166,66 @@ def _verify_deflate_chunked_2d_i32(f: h5py.File) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Extended cases: nested groups, multi-attribute datasets, 3-D chunked
+# ---------------------------------------------------------------------------
+
+def _verify_nested_groups_3level(f: h5py.File) -> None:
+    """Verify 3-level group nesting: /lvl_a/lvl_b/ds_deep = int32 scalar 123."""
+    assert "lvl_a" in f, f"group 'lvl_a' missing; root={list(f.keys())}"
+    lvl_a = f["lvl_a"]
+    assert "lvl_b" in lvl_a, f"group 'lvl_a/lvl_b' missing; lvl_a={list(lvl_a.keys())}"
+    lvl_b = lvl_a["lvl_b"]
+    assert "ds_deep" in lvl_b, f"dataset 'ds_deep' missing; lvl_b={list(lvl_b.keys())}"
+    ds = lvl_b["ds_deep"]
+    assert ds.dtype == np.dtype("int32"), f"dtype: {ds.dtype}"
+    assert ds.shape == (), f"shape: {ds.shape}"
+    assert int(ds[()]) == 123, f"value: {ds[()]}"
+
+
+def _verify_multi_attrs_dataset(f: h5py.File) -> None:
+    """Verify a dataset with multiple attributes of different types."""
+    assert "multi_attr_ds" in f, f"dataset missing; root={list(f.keys())}"
+    ds = f["multi_attr_ds"]
+    assert ds.dtype == np.dtype("int32"), f"dtype: {ds.dtype}"
+    assert ds.shape == (), f"shape: {ds.shape}"
+    assert int(ds[()]) == 5, f"dataset value: {ds[()]}"
+
+    assert "count" in ds.attrs, f"attr 'count' missing; attrs={list(ds.attrs)}"
+    assert "scale" in ds.attrs, f"attr 'scale' missing; attrs={list(ds.attrs)}"
+
+    count_val = int(ds.attrs["count"])
+    assert count_val == 10, f"count attr: {count_val}"
+
+    scale_val = float(ds.attrs["scale"])
+    assert abs(scale_val - 3.14) < 1e-6, f"scale attr: {scale_val}"
+
+
+def _verify_chunked_3d_f64_v4(f: h5py.File) -> None:
+    """Verify a 3-D float64 chunked dataset (v4 layout): (2,3,4) arange(24)."""
+    assert "chunked_3d_f64" in f, f"dataset missing; root={list(f.keys())}"
+    ds = f["chunked_3d_f64"]
+    expected = np.arange(24, dtype=np.float64).reshape(2, 3, 4)
+    assert ds.dtype == np.dtype("float64"), f"dtype: {ds.dtype}"
+    assert ds.shape == (2, 3, 4), f"shape: {ds.shape}"
+    assert np.array_equal(ds[:], expected), f"values mismatch:\n{ds[:]}\nvs\n{expected}"
+
+
+def _verify_int_attr_dataset(f: h5py.File) -> None:
+    """Verify a float64 dataset with an int32 attribute 'idx'=7."""
+    assert "int_attr_ds" in f, f"dataset missing; root={list(f.keys())}"
+    ds = f["int_attr_ds"]
+    assert ds.dtype == np.dtype("float64"), f"dtype: {ds.dtype}"
+    assert ds.shape == (4,), f"shape: {ds.shape}"
+
+    assert "idx" in ds.attrs, f"attr 'idx' missing; attrs={list(ds.attrs)}"
+    idx_val = int(ds.attrs["idx"])
+    assert idx_val == 7, f"idx attr: {idx_val}"
+
+    expected = np.array([0.5, 1.5, 2.5, 3.5], dtype=np.float64)
+    assert np.allclose(ds[:], expected), f"values mismatch: {ds[:]}"
+
+
+# ---------------------------------------------------------------------------
 # Case registry
 # ---------------------------------------------------------------------------
 
@@ -186,6 +246,10 @@ CASES = {
     "chunked_2d_f64_v4":       _verify_chunked_2d_f64_v4,
     "multi_dataset_root":      _verify_multi_dataset_root,
     "deflate_chunked_2d_i32":  _verify_deflate_chunked_2d_i32,
+    "nested_groups_3level":    _verify_nested_groups_3level,
+    "multi_attrs_dataset":     _verify_multi_attrs_dataset,
+    "chunked_3d_f64_v4":       _verify_chunked_3d_f64_v4,
+    "int_attr_dataset":        _verify_int_attr_dataset,
 }
 
 

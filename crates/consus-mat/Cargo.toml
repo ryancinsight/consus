@@ -24,6 +24,7 @@ flate2 = { workspace = true, optional = true }
 [dev-dependencies]
 consus-hdf5 = { workspace = true, features = ["std"] }
 consus-io = { workspace = true, features = ["std"] }
+tempfile = { workspace = true }
 
 [[test]]
 name = "v4_read"
@@ -40,4 +41,9 @@ path = "tests/v5_compressed_read.rs"
 [[test]]
 name = "v73_read"
 path = "tests/v73_read.rs"
+required-features = ["v73"]
+
+[[test]]
+name = "roundtrip_scipy_to_consus"
+path = "tests/roundtrip_scipy_to_consus.rs"
 required-features = ["v73"]
