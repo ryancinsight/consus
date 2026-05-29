@@ -7,7 +7,8 @@
 //!
 //! Wire format (encoding ID 3): each run has a 7-bit LSB-first varint header.
 //! header bit 0 == 0: RLE run. header>>1 repetitions of one LE value.
-//! header bit 0 == 1: bit-packed. (header>>1)+1 groups of 8 values.
+// header bit 0 == 1: bit-packed. header>>1 groups of 8 values.
+//   (header = num_groups<<1|1 per the Parquet format spec)
 //! Value i occupies bits [i*bit_width..(i+1)*bit_width-1] (LSB first).
 
 use alloc::string::String;
@@ -85,8 +86,9 @@ pub fn decode_levels(bytes: &[u8], bit_width: u8, count: usize) -> Result<Vec<i3
                 out.push(val as i32);
             }
         } else {
-            // Bit-packed run: (header >> 1) + 1 groups of 8 values.
-            let num_groups = ((header >> 1) as usize) + 1;
+            // Bit-packed run: header>>1 groups of 8 values.
+            // Parquet spec: header = (num_groups << 1) | 1, so num_groups = header >> 1.
+            let num_groups = (header >> 1) as usize;
             let group_bytes = bit_width as usize;
             let mut group_out = [0i32; 8];
             for _ in 0..num_groups {
@@ -297,18 +299,18 @@ mod tests {
         assert_eq!(levels, alloc::vec![3, 3]);
     }
 
-    /// Header: 0x01. Group byte: 0x4D=0b01001101 -> [1,0,1,1,0,0,1,0] LSB-first.
+    /// Header: (1<<1)|1=0x03 (1 group of 8). Group byte: 0x4D=0b01001101 -> [1,0,1,1,0,0,1,0] LSB-first.
     #[test]
     fn decode_levels_bit_packed_bit_width_1_eight_values() {
-        let bytes = [0x01_u8, 0x4D];
+        let bytes = [0x03_u8, 0x4D];
         let levels = decode_levels(&bytes, 1, 8).unwrap();
         assert_eq!(levels, alloc::vec![1, 0, 1, 1, 0, 0, 1, 0]);
     }
 
-    /// Header: 0x01. Group: [0xE4, 0xE4]. 0xE4=0b11100100 -> [0,1,2,3] per 2-bit field.
+    /// Header: (1<<1)|1=0x03 (1 group of 8). Group: [0xE4, 0xE4]. 0xE4=0b11100100 -> [0,1,2,3] per 2-bit field.
     #[test]
     fn decode_levels_bit_packed_bit_width_2_eight_values() {
-        let bytes = [0x01_u8, 0xE4, 0xE4];
+        let bytes = [0x03_u8, 0xE4, 0xE4];
         let levels = decode_levels(&bytes, 2, 8).unwrap();
         assert_eq!(levels, alloc::vec![0, 1, 2, 3, 0, 1, 2, 3]);
     }
@@ -316,7 +318,7 @@ mod tests {
     /// Same bytes as above, count=4: first 4 values only.
     #[test]
     fn decode_levels_bit_packed_partial_count() {
-        let bytes = [0x01_u8, 0xE4, 0xE4];
+        let bytes = [0x03_u8, 0xE4, 0xE4];
         let levels = decode_levels(&bytes, 2, 4).unwrap();
         assert_eq!(levels, alloc::vec![0, 1, 2, 3]);
     }

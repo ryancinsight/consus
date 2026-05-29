@@ -290,10 +290,10 @@ pub(super) fn write_variable<W: DatasetTarget>(
     dim_addrs: &BTreeMap<String, u64>,
 ) -> Result<u64> {
     let shape = var.shape.clone().unwrap_or_else(Shape::scalar);
-    let raw_data: Vec<u8> = match var.datatype.element_size() {
+    let raw_data: Vec<u8> = var.data.clone().unwrap_or_else(|| match var.datatype.element_size() {
         Some(elem_size) => vec![0u8; elem_size * shape.num_elements()],
         None => Vec::new(),
-    };
+    });
 
     let rank = var.dimensions.len();
     let mut attr_list: Vec<(String, Datatype, Shape, Vec<u8>)> = Vec::new();

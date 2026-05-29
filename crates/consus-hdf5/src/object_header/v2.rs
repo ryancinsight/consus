@@ -362,6 +362,13 @@ fn parse_ochk_chunk<R: ReadAt>(
 /// base header of [`V2_MSG_HEADER_BASE`] bytes, optionally followed by a
 /// 2-byte creation-order field (when `track_creation_order` is true).
 ///
+/// Per the HDF5 specification, the creation-order field is present for
+/// **all** message types, including NIL (padding) messages, whenever the
+/// object header's creation-order-tracked flag (bit 2) is set. Excluding NIL
+/// messages from the creation-order accounting causes a 2-byte misalignment
+/// that produces spurious overflow errors when a group stores its link
+/// messages after a continuation message in the same OHDR chunk.
+///
 /// - **NIL messages** (type 0x0000) are padding and are skipped.
 /// - **Continuation messages** (type 0x0010) are decoded and their
 ///   `(address, length, track_creation_order)` tuples appended to
@@ -376,13 +383,15 @@ fn extract_messages(
     continuations: &mut Vec<(u64, u64, bool)>,
 ) -> Result<()> {
     let mut pos: usize = 0;
-    
+
     while pos + V2_MSG_HEADER_BASE <= data.len() {
         let msg_type = data[pos] as u16;
         let data_size = LittleEndian::read_u16(&data[pos + 1..]);
         let msg_flags = data[pos + 3];
 
-        let msg_header_len = if track_creation_order && msg_type != MSG_TYPE_NIL {
+        // The creation-order field is present for ALL message types when
+        // creation-order tracking is enabled, including NIL padding messages.
+        let msg_header_len = if track_creation_order {
             V2_MSG_HEADER_BASE + V2_MSG_CREATION_ORDER_LEN
         } else {
             V2_MSG_HEADER_BASE

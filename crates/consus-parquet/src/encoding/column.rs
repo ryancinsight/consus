@@ -344,12 +344,12 @@ mod tests {
             if *x == alloc::vec![alloc::vec![0x66u8,0x6F,0x6F], alloc::vec![0x62,0x61,0x72]]));
     }
 
-    // indices [1,2,0,1] -> [20,30,10,20]; bit_width=2, 1 group header=0x01
+    // indices [1,2,0,1] -> [20,30,10,20]; bit_width=2, 1 group header=0x03 (=(1<<1)|1)
     // byte0: v0=1(pos0=1,pos1=0) v1=2(pos2=0,pos3=1) v2=0(0) v3=1(pos6=1) = 1+8+64=73=0x49
     #[test]
     fn decode_column_rle_dict_i32_bit_packed() {
         let dict = ColumnValues::Int32(alloc::vec![10, 20, 30]);
-        let b = [0x02u8, 0x01, 0x49, 0x00];
+        let b = [0x02u8, 0x03, 0x49, 0x00];
         let v = decode_column_values(&b, 4, 8, ParquetPhysicalType::Int32, Some(&dict)).unwrap();
         assert_eq!(v.len(), 4);
         assert!(matches!(&v, ColumnValues::Int32(x) if *x == alloc::vec![20,30,10,20]));
@@ -358,7 +358,7 @@ mod tests {
     #[test]
     fn decode_column_plain_dict_i32_same_as_rle() {
         let dict = ColumnValues::Int32(alloc::vec![10, 20, 30]);
-        let b = [0x02u8, 0x01, 0x49, 0x00];
+        let b = [0x02u8, 0x03, 0x49, 0x00];
         let v = decode_column_values(&b, 4, 2, ParquetPhysicalType::Int32, Some(&dict)).unwrap();
         assert!(matches!(&v, ColumnValues::Int32(x) if *x == alloc::vec![20,30,10,20]));
     }
@@ -381,7 +381,7 @@ mod tests {
             alloc::vec![0x62, 0x61, 0x72],
             alloc::vec![0x62, 0x61, 0x7A],
         ]);
-        let b = [0x02u8, 0x01, 0x18, 0x00];
+        let b = [0x02u8, 0x03, 0x18, 0x00];
         let v =
             decode_column_values(&b, 3, 8, ParquetPhysicalType::ByteArray, Some(&dict)).unwrap();
         assert_eq!(v.len(), 3);

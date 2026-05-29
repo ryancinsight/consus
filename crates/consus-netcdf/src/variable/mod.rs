@@ -62,6 +62,12 @@ pub struct NetcdfVariable {
     pub unlimited: bool,
     /// HDF5 object header address for backend data retrieval.
     pub object_header_address: Option<u64>,
+    /// Optional raw data payload (little-endian element bytes).
+    ///
+    /// When set, `NetcdfWriter::write_model` emits this payload instead of
+    /// a zero-filled buffer.  The length must equal
+    /// `element_size * shape.num_elements()`.
+    pub data: Option<Vec<u8>>,
 }
 
 #[cfg(feature = "alloc")]
@@ -80,6 +86,7 @@ impl NetcdfVariable {
             coordinate_variable: false,
             unlimited: false,
             object_header_address: None,
+            data: None,
         }
     }
 
@@ -108,6 +115,17 @@ impl NetcdfVariable {
     #[must_use]
     pub fn with_attributes(mut self, attrs: Vec<(String, AttributeValue)>) -> Self {
         self.attributes = attrs;
+        self
+    }
+
+    /// Attach a raw data payload (little-endian element bytes).
+    ///
+    /// When set, `NetcdfWriter::write_model` emits this payload verbatim
+    /// instead of a zero-filled buffer.  The caller must ensure the byte
+    /// length equals `element_size * shape.num_elements()`.
+    #[must_use]
+    pub fn with_data(mut self, data: Vec<u8>) -> Self {
+        self.data = Some(data);
         self
     }
 

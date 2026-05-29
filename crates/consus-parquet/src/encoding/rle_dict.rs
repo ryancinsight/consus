@@ -56,15 +56,15 @@ mod tests {
     /// Analytically derived: bit_width=2, 4 values [1, 2, 0, 3]
     ///
     /// Encode [1,2,0,3] as one bit-packed group (num_groups=1):
-    ///   header = ((1-1) << 1) | 1 = 0x01
+    ///   header = (1 << 1) | 1 = 0x03  (Parquet spec: header = num_groups<<1|1)
     ///   group byte 0 (bit_width=2):
     ///     v[0]=1 bits[0,1]=01, v[1]=2 bits[2,3]=10,
     ///     v[2]=0 bits[4,5]=00, v[3]=3 bits[6,7]=11 => 0b11_00_10_01 = 0xC9
     ///   group byte 1: remaining 4 values are 0 => 0x00
-    /// Full bytes: [bit_width=2, header=0x01, 0xC9, 0x00]
+    /// Full bytes: [bit_width=2, header=0x03, 0xC9, 0x00]
     #[test]
     fn decode_rle_dict_indices_bit_packed_four_values() {
-        let bytes = [0x02u8, 0x01, 0xC9, 0x00];
+        let bytes = [0x02u8, 0x03, 0xC9, 0x00];
         let indices = decode_rle_dict_indices(&bytes, 4).unwrap();
         assert_eq!(indices, vec![1, 2, 0, 3]);
     }

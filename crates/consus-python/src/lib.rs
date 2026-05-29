@@ -1,36 +1,62 @@
-// PyO3 0.22 macro-generated code triggers `unsafe_op_in_unsafe_fn` under
-// Rust edition 2024.  The unsafe is inside proc-macro expansion we do not
-// control; suppress the lint for this cdylib crate only.
-#![allow(unsafe_op_in_unsafe_fn)]
+//! `consus` — Python bindings for the Consus scientific storage library.
+//!
+//! Exposes HDF5, Zarr v2, Parquet, netCDF-4, and MATLAB .mat read/write via PyO3.
+
+extern crate alloc;
+
+mod error;
+mod hdf5;
+mod mat;
+mod netcdf;
+mod parquet;
+mod zarr;
+
+use hdf5::{PyDatasetInfo, PyFileBuilder, PyHdf5File};
+use mat::{PyMatFile, PyMatVariable, loadmat_bytes};
+use netcdf::{PyNetcdfFile, PyNetcdfWriter};
+use parquet::{PyParquetBuilder, PyParquetFile};
+use zarr::PyZarrArray;
 
 use pyo3::prelude::*;
 
-mod dtype;
-mod error;
-mod file;
-
-use file::{reader::from_bytes, PyDatasetInfo, PyFileBuilder, PyHdf5File};
-
-/// Open an HDF5 file from bytes.
+/// Consus scientific storage library — Python interface.
 ///
-/// Parameters
-/// ----------
-/// data : bytes
-///     Raw HDF5 file content.
-///
-/// Returns
-/// -------
-/// Hdf5File
-#[pyfunction]
-fn open(data: &[u8]) -> PyResult<PyHdf5File> {
-    from_bytes(data)
-}
-
+/// Provides in-memory read/write for HDF5, Zarr v2, Apache Parquet,
+/// netCDF-4, and MATLAB .mat files.
 #[pymodule]
 fn consus(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // HDF5
     m.add_class::<PyHdf5File>()?;
-    m.add_class::<PyDatasetInfo>()?;
     m.add_class::<PyFileBuilder>()?;
-    m.add_function(wrap_pyfunction!(open, m)?)?;
+    m.add_class::<PyDatasetInfo>()?;
+
+    // Zarr
+    m.add_class::<PyZarrArray>()?;
+
+    // Parquet
+    m.add_class::<PyParquetFile>()?;
+    m.add_class::<PyParquetBuilder>()?;
+
+    // netCDF-4
+    m.add_class::<PyNetcdfFile>()?;
+    m.add_class::<PyNetcdfWriter>()?;
+
+    // MATLAB .mat
+    m.add_class::<PyMatFile>()?;
+    m.add_class::<PyMatVariable>()?;
+    m.add_function(wrap_pyfunction!(loadmat_bytes, m)?)?;
+
+    // Convenience aliases matching the existing public API.
+    m.add("Hdf5File", m.getattr("PyHdf5File")?)?;
+    m.add("FileBuilder", m.getattr("PyFileBuilder")?)?;
+    m.add("DatasetInfo", m.getattr("PyDatasetInfo")?)?;
+    m.add("ZarrArray", m.getattr("PyZarrArray")?)?;
+    m.add("ParquetFile", m.getattr("PyParquetFile")?)?;
+    m.add("ParquetBuilder", m.getattr("PyParquetBuilder")?)?;
+    m.add("NetcdfFile", m.getattr("PyNetcdfFile")?)?;
+    m.add("NetcdfWriter", m.getattr("PyNetcdfWriter")?)?;
+    m.add("MatFile", m.getattr("PyMatFile")?)?;
+    m.add("MatVariable", m.getattr("PyMatVariable")?)?;
+
     Ok(())
 }

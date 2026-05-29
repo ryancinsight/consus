@@ -184,7 +184,7 @@ fn decoder_dictionary_page_then_rle_dict_data_page() {
     //   DPH: num_values=4 zigzag(8)=0x08  encoding=RLE_DICT(8) zigzag(16)=0x10
     //   def_enc=0  rep_enc=0  DPH stop  PH stop
     //
-    // RLE_DICT bytes: bit_width=2 | 1 bit-packed group | indices[1,2,0,1]→0x49
+    // RLE_DICT bytes: bit_width=2 | 1 bit-packed group header=0x03 (=(1<<1)|1) | indices[1,2,0,1]→0x49
     //   → dict[1,2,0,1] = [20,30,10,20]
     let chunk: &[u8] = &[
         // Dict page header
@@ -194,7 +194,7 @@ fn decoder_dictionary_page_then_rle_dict_data_page() {
         // Data page header
         0x15, 0x00, 0x15, 0x08, 0x15, 0x08, 0x2C, 0x15, 0x08, 0x15, 0x10, 0x15, 0x00, 0x15, 0x00,
         0x00, 0x00, // RLE_DICT data
-        0x02, 0x01, 0x49, 0x00,
+        0x02, 0x03, 0x49, 0x00,
     ];
     let mut dec = ColumnPageDecoder::new(
         ParquetPhysicalType::Int32,

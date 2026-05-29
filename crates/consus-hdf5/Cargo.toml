@@ -16,6 +16,7 @@ async-io = ["alloc", "consus-io/async-io"]
 parallel-io = ["alloc", "dep:rayon"]
 # Compression codec features — forwarded to consus-compression.
 # Required to activate the corresponding codec in the DefaultCodecRegistry.
+deflate = ["consus-compression/deflate"]
 zstd = ["consus-compression/zstd"]
 lz4  = ["consus-compression/lz4"]
 

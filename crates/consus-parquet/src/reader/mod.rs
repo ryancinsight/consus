@@ -173,6 +173,8 @@ impl<'a> ParquetReader<'a> {
 
         // Dictionary page offset is always before data pages when present; use it
         // as the chunk start so the dictionary page is included in the decoded range.
+        // `total_compressed_size` is measured from `dictionary_page_offset` (when
+        // present) and includes the entire column chunk (dict page + all data pages).
         let start_offset = chunk_meta
             .dictionary_page_offset
             .unwrap_or(chunk_meta.data_page_offset) as usize;
