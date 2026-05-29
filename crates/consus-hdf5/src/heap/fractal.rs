@@ -50,8 +50,8 @@
 //! | 4      | 1                              | Version (0)               |
 //! | 5      | O                              | Heap header address       |
 //! | 5+O    | ⌈max_heap_size_bits / 8⌉       | Block offset within heap  |
+//! | …      | 4 (if FRHP flags bit 1 set)    | Checksum (before data)    |
 //! | …      | variable                       | Object data               |
-//! | …      | 4 (if flags bit 1 set)         | Checksum                  |
 //!
 //! ### Heap ID Encoding
 //!
@@ -147,6 +147,12 @@ pub struct FractalHeapHeader {
     /// Current number of rows in the root indirect block.  When 0 the
     /// root block is a direct block.
     pub root_indirect_rows: u16,
+
+    /// Initial ("starting") number of rows in the root indirect block.
+    /// Rows 0..starting_rows all have block size equal to `starting_block_size`;
+    /// row `starting_rows + k` has size `starting_block_size << (k + 1)`.
+    /// The value 0 in the file is treated as 1 per the HDF5 spec.
+    pub starting_rows: u16,
 }
 
 // ---------------------------------------------------------------------------
@@ -260,7 +266,8 @@ impl FractalHeapHeader {
         let max_heap_size_bits = u16::from_le_bytes([buf[pos], buf[pos + 1]]);
         pos += 2;
 
-        let _starting_rows = u16::from_le_bytes([buf[pos], buf[pos + 1]]);
+        let raw_starting_rows = u16::from_le_bytes([buf[pos], buf[pos + 1]]);
+        let starting_rows = if raw_starting_rows == 0 { 1 } else { raw_starting_rows };
         pos += 2;
 
         let root_block_address = ctx.read_offset(&buf[pos..]);
@@ -290,6 +297,7 @@ impl FractalHeapHeader {
             max_heap_size_bits,
             root_block_address,
             root_indirect_rows,
+            starting_rows,
         })
     }
 }
@@ -421,30 +429,33 @@ pub fn decode_heap_id(id_bytes: &[u8], header: &FractalHeapHeader) -> Result<Fra
 
 /// Read a managed object from a fractal heap.
 ///
-/// Given a managed-object `offset` and `length` (as decoded from a
-/// [`FractalHeapId::Managed`] variant), compute the absolute file address
-/// within the root direct block and read the data.
+/// Locates and reads the object at the given `offset` and `length` (decoded
+/// from a [`FractalHeapId::Managed`]).  Handles both the simple case where
+/// the root block is a direct block (`root_indirect_rows == 0`) and the
+/// general case where the root block is an indirect block.
 ///
-/// # Current Limitations
+/// # Indirect block traversal
 ///
-/// This implementation handles only the case where the root block is a
-/// **direct block** (`header.root_indirect_rows == 0`).  Indirect-block
-/// traversal (needed for larger heaps) returns
-/// [`Error::UnsupportedFeature`].
+/// When `root_indirect_rows > 0` the root block is a fractal heap indirect
+/// block (`"FHIB"`).  Each row of the table covers a range of heap addresses;
+/// rows 0..max_direct_block_rows contain direct-block children and rows
+/// `max_direct_block_rows..nrows` contain indirect-block children.  The
+/// function recursively descends until it locates the direct block that
+/// contains `offset`, then reads the data from it.
 ///
 /// # Direct Block Overhead
 ///
 /// ```text
 /// overhead = 5 (sig + ver)
-///          + offset_size          (heap header address)
+///          + offset_size               (heap header address)
 ///          + ⌈max_heap_size_bits / 8⌉  (block offset field)
+///          + 4 (if FRHP flags bit 1)   (per-block checksum, stored before data)
 /// ```
-///
-/// The object data begins at `root_block_address + overhead + managed_offset`.
 ///
 /// # Errors
 ///
-/// - [`Error::UnsupportedFeature`] if the root is an indirect block.
+/// - [`Error::InvalidFormat`] if a block has an invalid signature.
+/// - [`Error::Overflow`] on address arithmetic overflow.
 /// - Propagates I/O errors from `source.read_at`.
 #[cfg(feature = "alloc")]
 pub fn read_managed_object<R: ReadAt>(
@@ -454,36 +465,185 @@ pub fn read_managed_object<R: ReadAt>(
     length: u64,
     ctx: &ParseContext,
 ) -> Result<Vec<u8>> {
-    // Determine the direct block address containing the object
-    let block_address = header.root_block_address;
-    let indirect_rows = header.root_indirect_rows;
+    if header.root_indirect_rows == 0 {
+        // Root is a direct block.
+        // managed_off (offset) encodes the absolute byte position from block
+        // start, so no overhead term is needed here.
+        let data_address = header
+            .root_block_address
+            .checked_add(offset)
+            .ok_or(Error::Overflow)?;
+        let mut buf = vec![0u8; length as usize];
+        source.read_at(data_address, &mut buf)?;
+        return Ok(buf);
+    }
 
-    if indirect_rows > 0 {
-        return Err(Error::UnsupportedFeature {
-            #[cfg(feature = "alloc")]
-            feature: alloc::format!("fractal heap indirect block traversal"),
+    // Root is an indirect block: traverse the table to find the containing
+    // direct block.
+    find_in_indirect_block(
+        source,
+        header,
+        header.root_block_address,
+        header.root_indirect_rows,
+        0, // base heap offset for the root indirect block
+        offset,
+        length,
+        ctx,
+    )
+}
+
+/// Recursively traverse a fractal heap indirect block to locate and read a
+/// managed object.
+///
+/// - `iblock_addr` — file address of the `"FHIB"` indirect block.
+/// - `nrows` — number of rows in this indirect block.
+/// - `base_offset` — the heap address where this indirect block's table starts.
+/// - `target` — managed heap offset of the object to read.
+/// - `length` — object byte length.
+#[cfg(feature = "alloc")]
+fn find_in_indirect_block<R: ReadAt>(
+    source: &R,
+    header: &FractalHeapHeader,
+    iblock_addr: u64,
+    nrows: u16,
+    base_offset: u64,
+    target: u64,
+    length: u64,
+    ctx: &ParseContext,
+) -> Result<Vec<u8>> {
+    let o = ctx.offset_bytes();
+    let heap_offset_field_bytes = ((header.max_heap_size_bits as usize) + 7) / 8;
+    // Indirect block overhead: sig(4) + ver(1) + heap_header_addr(O) + block_offset(variable)
+    let iblock_overhead = 4 + 1 + o + heap_offset_field_bytes;
+    let width = header.table_width as usize;
+    let nrows_u = nrows as usize;
+    let max_dblock_rows = max_direct_block_rows(header);
+
+    // Per-child entry size in the indirect block:
+    // direct-block rows: O bytes address + optional filter info
+    // indirect-block rows: O bytes address only
+    let filter_extra = if header.io_filter_size > 0 { ctx.length_bytes() + 4 } else { 0 };
+    let n_direct_children = (nrows_u.min(max_dblock_rows)) * width;
+    let n_indirect_children = nrows_u.saturating_sub(max_dblock_rows) * width;
+    let buf_size = iblock_overhead
+        + n_direct_children * (o + filter_extra)
+        + n_indirect_children * o
+        + 4; // checksum
+
+    let mut ibuf = vec![0u8; buf_size];
+    source.read_at(iblock_addr, &mut ibuf)?;
+
+    if ibuf[0..4] != *b"FHIB" {
+        return Err(Error::InvalidFormat {
+            message: alloc::format!("invalid indirect block signature at {iblock_addr:#x}"),
         });
     }
 
-    let heap_offset_field_bytes = ((header.max_heap_size_bits as usize) + 7) / 8;
+    let mut pos = iblock_overhead;
+    let mut heap_off = base_offset;
 
-    let current_offset = offset;
+    for row in 0..nrows_u {
+        let bsize = row_block_size(row, header);
 
-    // Direct block header: signature(4) + version(1) + heap_addr(O) +
-    // block_offset(variable).  Checksum, if present (flags bit 1), is at the
-    // END of the block and does not affect the data start position.
-    let direct_block_overhead: u64 = (5 + ctx.offset_bytes() + heap_offset_field_bytes) as u64;
+        for _col in 0..width {
+            let child_addr = ctx.read_offset(&ibuf[pos..]);
+            pos += o;
 
-    let data_address = block_address
-        .checked_add(direct_block_overhead)
-        .ok_or(Error::Overflow)?
-        .checked_add(current_offset)
-        .ok_or(Error::Overflow)?;
+            if row < max_dblock_rows {
+                // Direct block child.
+                if header.io_filter_size > 0 {
+                    pos += ctx.length_bytes() + 4; // skip filtered_size + filter_mask
+                }
 
-    let len = length as usize;
-    let mut buf = vec![0u8; len];
-    source.read_at(data_address, &mut buf)?;
-    Ok(buf)
+                let child_end = heap_off.saturating_add(bsize);
+                if target >= heap_off && target < child_end {
+                    let local_offset = target - heap_off;
+                    // managed_off (target) encodes the absolute byte offset
+                    // from block start — no overhead term in the address.
+                    let data_addr = child_addr
+                        .checked_add(local_offset)
+                        .ok_or(Error::Overflow)?;
+                    let mut out = vec![0u8; length as usize];
+                    source.read_at(data_addr, &mut out)?;
+                    return Ok(out);
+                }
+                heap_off = child_end;
+            } else {
+                // Indirect block child: compute its total heap coverage and
+                // recurse if the target falls within it.
+                let child_nrows = indirect_child_nrows(row, header);
+                let child_coverage = indirect_block_coverage(child_nrows, header);
+                let child_end = heap_off.saturating_add(child_coverage);
+                if target >= heap_off && target < child_end {
+                    return find_in_indirect_block(
+                        source,
+                        header,
+                        child_addr,
+                        child_nrows,
+                        heap_off,
+                        target,
+                        length,
+                        ctx,
+                    );
+                }
+                heap_off = child_end;
+            }
+        }
+    }
+
+    Err(Error::InvalidFormat {
+        message: alloc::format!(
+            "managed offset {target} not found in indirect block at {iblock_addr:#x} (nrows={nrows})"
+        ),
+    })
+}
+
+/// Block size (in bytes) for row `row` of the fractal heap doubling table.
+///
+/// Rows `0..starting_rows` all have `starting_block_size`; row
+/// `starting_rows + k` has `starting_block_size << (k + 1)`.
+#[cfg(feature = "alloc")]
+fn row_block_size(row: usize, header: &FractalHeapHeader) -> u64 {
+    let start = header.starting_rows as usize;
+    if row < start {
+        header.starting_block_size
+    } else {
+        // Saturating shift: if shift ≥ 64 the result is 0, but that would
+        // be an invalid heap configuration.
+        let shift = row - start;
+        if shift >= 64 { u64::MAX } else { header.starting_block_size.wrapping_shl(shift as u32) }
+    }
+}
+
+/// Maximum number of direct-block rows in any indirect block.
+///
+/// `max_dblock_rows = log₂(max_direct_block_size) − log₂(starting_block_size) + starting_rows + 1`
+#[cfg(feature = "alloc")]
+fn max_direct_block_rows(header: &FractalHeapHeader) -> usize {
+    if header.starting_block_size == 0 || header.max_direct_block_size == 0 {
+        return 1;
+    }
+    let log2_max = (u64::BITS - 1 - header.max_direct_block_size.leading_zeros()) as usize;
+    let log2_start = (u64::BITS - 1 - header.starting_block_size.leading_zeros()) as usize;
+    (log2_max.saturating_sub(log2_start)) + header.starting_rows as usize + 1
+}
+
+/// Number of rows in a child indirect block at parent row `parent_row`.
+///
+/// Child indirect blocks that appear at rows ≥ `max_dblock_rows` of the
+/// parent each have `max_dblock_rows` rows.
+#[cfg(feature = "alloc")]
+fn indirect_child_nrows(_parent_row: usize, header: &FractalHeapHeader) -> u16 {
+    max_direct_block_rows(header) as u16
+}
+
+/// Total heap-address-space coverage of an indirect block with `nrows` rows.
+///
+/// Sums `table_width * row_block_size(r)` for each row `r`.
+#[cfg(feature = "alloc")]
+fn indirect_block_coverage(nrows: u16, header: &FractalHeapHeader) -> u64 {
+    let width = header.table_width as u64;
+    (0..nrows as usize).map(|r| width * row_block_size(r, header)).sum()
 }
 
 // ---------------------------------------------------------------------------
@@ -782,6 +942,7 @@ mod tests {
             tiny_object_size: 0,
             tiny_object_count: 0,
             table_width: 4,
+            starting_rows: 1,
             starting_block_size: 512,
             max_direct_block_size: 65536,
             max_heap_size_bits: 16,
@@ -822,6 +983,7 @@ mod tests {
             tiny_object_size: 0,
             tiny_object_count: 0,
             table_width: 4,
+            starting_rows: 1,
             starting_block_size: 256,
             max_direct_block_size: 4096,
             max_heap_size_bits: 8,
@@ -858,6 +1020,7 @@ mod tests {
             tiny_object_size: 0,
             tiny_object_count: 0,
             table_width: 4,
+            starting_rows: 1,
             starting_block_size: 256,
             max_direct_block_size: 4096,
             max_heap_size_bits: 16,
@@ -897,6 +1060,7 @@ mod tests {
             tiny_object_size: 0,
             tiny_object_count: 0,
             table_width: 4,
+            starting_rows: 1,
             starting_block_size: 256,
             max_direct_block_size: 65536,
             max_heap_size_bits: 16,
@@ -916,13 +1080,16 @@ mod tests {
         // heap header address (8 bytes, irrelevant for this test)
         // block offset (2 bytes, 0)
 
-        // Write a known payload at managed offset 10, length 5.
+        // Write a known payload. Under correct HDF5 semantics managed_off
+        // encodes the absolute byte offset from block start, so the object at
+        // data-area byte +10 lives at block byte (overhead + 10).
         let payload = b"HELLO";
         let data_start = overhead + 10;
         image[data_start..data_start + 5].copy_from_slice(payload);
 
         let reader = consus_io::SliceReader::new(&image);
-        let result = read_managed_object(&reader, &header, 10, 5, &ctx).unwrap();
+        // managed_off = block_heap_off + block_byte_pos = 0 + data_start
+        let result = read_managed_object(&reader, &header, data_start as u64, 5, &ctx).unwrap();
         assert_eq!(result, b"HELLO");
     }
 
@@ -945,19 +1112,21 @@ mod tests {
             tiny_object_size: 0,
             tiny_object_count: 0,
             table_width: 4,
+            starting_rows: 1,
             starting_block_size: 256,
             max_direct_block_size: 65536,
             max_heap_size_bits: 16,
-            root_block_address: 0x1000,
+            root_block_address: 0,
             root_indirect_rows: 2, // indirect
         };
 
+        // Buffer of zeros: FHIB signature check will fail with InvalidFormat.
         let data = vec![0u8; 4096];
         let reader = consus_io::SliceReader::new(&data);
         let err = read_managed_object(&reader, &header, 0, 10, &ctx).unwrap_err();
         assert!(
-            matches!(err, Error::UnsupportedFeature { .. }),
-            "expected UnsupportedFeature, got: {err:?}"
+            matches!(err, Error::InvalidFormat { .. }),
+            "expected InvalidFormat, got: {err:?}"
         );
     }
 
