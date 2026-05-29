@@ -1,0 +1,26 @@
+[package]
+name = "consus-hdmf"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Hierarchical Data Modeling Framework (HDMF) DynamicTable read/write for Consus"
+
+[features]
+default = ["std"]
+std    = ["alloc", "consus-core/std", "consus-hdf5/std", "consus-io/std"]
+alloc  = ["consus-core/alloc", "consus-io/alloc", "consus-hdf5/alloc"]
+
+[dependencies]
+consus-core = { workspace = true }
+consus-hdf5 = { workspace = true }
+consus-io   = { workspace = true }
+
+[dev-dependencies]
+consus-hdf5 = { workspace = true, features = ["std"] }
+consus-io   = { workspace = true, features = ["std"] }

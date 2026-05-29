@@ -18,5 +18,6 @@ consus-mat = { workspace = true, features = ["std", "compress", "v73"] }
 consus-netcdf = { workspace = true, features = ["std"] }
 consus-zarr = { workspace = true, features = ["std"] }
 consus-parquet = { workspace = true, features = ["std", "snappy"] }
+consus-hdmf = { workspace = true, features = ["std"] }
 pyo3 = { workspace = true, features = ["extension-module"] }
 serde_json = { workspace = true }

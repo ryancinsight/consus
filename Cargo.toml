@@ -14,6 +14,7 @@ members = [
     "tests",
     "crates/consus-mat",
     "crates/consus-nwb",
+    "crates/consus-hdmf",
     "crates/consus-python",
 ]
 
@@ -33,6 +34,7 @@ description = "Pure-Rust, no_std-compatible, memory-safe hierarchical and array-
 # Internal crates
 consus-mat = { path = "crates/consus-mat", version = "0.1.0", default-features = false }
 consus-nwb = { path = "crates/consus-nwb", version = "0.1.0", default-features = false }
+consus-hdmf = { path = "crates/consus-hdmf", version = "0.1.0", default-features = false }
 consus-core = { path = "crates/consus-core", version = "0.1.0", default-features = false }
 consus-hdf5 = { path = "crates/consus-hdf5", version = "0.1.0", default-features = false }
 consus-fits = { path = "crates/consus-fits", version = "0.1.0", default-features = false }

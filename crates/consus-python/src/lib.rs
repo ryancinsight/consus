@@ -6,12 +6,14 @@ extern crate alloc;
 
 mod error;
 mod hdf5;
+mod hdmf;
 mod mat;
 mod netcdf;
 mod parquet;
 mod zarr;
 
 use hdf5::{PyDatasetInfo, PyFileBuilder, PyHdf5File};
+use hdmf::{PyDynamicTable, PyHdmfFileBuilder, read_dynamic_table_bytes};
 use mat::{PyMatFile, PyMatVariable, loadmat_bytes};
 use netcdf::{PyNetcdfFile, PyNetcdfWriter};
 use parquet::{PyParquetBuilder, PyParquetFile};
@@ -45,6 +47,11 @@ fn consus(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyMatFile>()?;
     m.add_class::<PyMatVariable>()?;
     m.add_function(wrap_pyfunction!(loadmat_bytes, m)?)?;
+
+    // HDMF DynamicTable
+    m.add_class::<PyDynamicTable>()?;
+    m.add_class::<PyHdmfFileBuilder>()?;
+    m.add_function(wrap_pyfunction!(read_dynamic_table_bytes, m)?)?;
 
     // Convenience aliases matching the existing public API.
     m.add("Hdf5File", m.getattr("PyHdf5File")?)?;
