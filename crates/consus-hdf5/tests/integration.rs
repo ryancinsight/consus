@@ -171,7 +171,7 @@ fn make_external_link_message(name: &str, file_path: &str, object_path: &str) ->
 }
 
 fn build_v2_object_header(messages: &[(u16, Vec<u8>)]) -> Vec<u8> {
-    let chunk_data_size: usize = messages.iter().map(|(_, data)| 5 + data.len()).sum();
+    let chunk_data_size: usize = messages.iter().map(|(_, data)| 4 + data.len()).sum();
     let (chunk_size_width, flags) = if chunk_data_size < 256 {
         (1usize, 0u8)
     } else if chunk_data_size < 65_536 {
@@ -199,10 +199,10 @@ fn build_v2_object_header(messages: &[(u16, Vec<u8>)]) -> Vec<u8> {
     pos += chunk_size_width;
 
     for (message_type, data) in messages {
-        LittleEndian::write_u16(&mut buf[pos..pos + 2], *message_type);
-        LittleEndian::write_u16(&mut buf[pos + 2..pos + 4], data.len() as u16);
-        buf[pos + 4] = 0;
-        pos += 5;
+        buf[pos] = *message_type as u8;
+        LittleEndian::write_u16(&mut buf[pos + 1..pos + 3], data.len() as u16);
+        buf[pos + 3] = 0;
+        pos += 4;
         buf[pos..pos + data.len()].copy_from_slice(data);
         pos += data.len();
     }

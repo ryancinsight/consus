@@ -4,17 +4,26 @@
 //!
 //! ## HDF5 Mapping
 //!
-//! HDF5 filter ID 1 (deflate). Compression levels 0-9.
+//! HDF5 filter ID 1 (deflate). HDF5 stores deflate-compressed chunks in
+//! **zlib format** (RFC 1950): a 2-byte zlib header, raw DEFLATE-compressed
+//! payload, and a 4-byte Adler-32 checksum. This is what h5py/libhdf5
+//! produces and expects. Raw DEFLATE (no header/trailer) is NOT compatible.
+//!
+//! Compression levels 0–9 map directly to `flate2::Compression` levels.
 
 use alloc::vec::Vec;
 
-use flate2::read::{DeflateDecoder, DeflateEncoder};
+use flate2::read::{ZlibDecoder, ZlibEncoder};
 use std::io::Read;
 
 use super::traits::{Codec, CompressionLevel};
 use consus_core::{Error, Result};
 
-/// Deflate codec.
+/// Deflate codec using zlib framing (RFC 1950).
+///
+/// Stores data in zlib format: `0x78 <level_byte> <deflate_payload> <adler32>`.
+/// This matches the HDF5 filter ID 1 on-disk representation used by
+/// the HDF5 C library, h5py, and all compliant HDF5 tools.
 #[derive(Debug, Default)]
 pub struct DeflateCodec;
 
@@ -30,23 +39,23 @@ impl Codec for DeflateCodec {
     fn compress(&self, input: &[u8], level: CompressionLevel) -> Result<Vec<u8>> {
         let clamped = level.0.clamp(0, 9) as u32;
         let compression = flate2::Compression::new(clamped);
-        let mut encoder = DeflateEncoder::new(input, compression);
+        let mut encoder = ZlibEncoder::new(input, compression);
         let mut output = Vec::new();
         encoder
             .read_to_end(&mut output)
             .map_err(|e| Error::CompressionError {
-                message: alloc::format!("deflate compress failed: {e}"),
+                message: alloc::format!("deflate (zlib) compress failed: {e}"),
             })?;
         Ok(output)
     }
 
     fn decompress(&self, input: &[u8], expected_size: usize) -> Result<Vec<u8>> {
-        let mut decoder = DeflateDecoder::new(input);
+        let mut decoder = ZlibDecoder::new(input);
         let mut output = Vec::with_capacity(expected_size);
         decoder
             .read_to_end(&mut output)
             .map_err(|e| Error::CompressionError {
-                message: alloc::format!("deflate decompress failed: {e}"),
+                message: alloc::format!("deflate (zlib) decompress failed: {e}"),
             })?;
         Ok(output)
     }

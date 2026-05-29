@@ -70,16 +70,7 @@ pub fn read_object_header<R: ReadAt>(
         crate::object_header::v1::parse(source, address, ctx)
     };
 
-    match result {
-        Ok(header) => {
-            println!("OHDR at {} parsed successfully, version {}, {} messages", address, header.version, header.messages.len());
-            Ok(header)
-        }
-        Err(e) => {
-            println!("OHDR at {} failed to parse: {:?}", address, e);
-            Err(e)
-        }
-    }
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -187,8 +178,15 @@ pub fn read_dataset_metadata(
         };
 
     // --- Chunk shape ---
+    // For v4 chunked layouts the parsed dims include the element-size as a
+    // trailing dimension; trim to the spatial rank before constructing ChunkShape.
+    let spatial_rank = shape.rank();
     let chunk_shape = layout_info.chunk_dims.as_ref().and_then(|dims| {
-        let dims_usize: Vec<usize> = dims.iter().map(|&d| d as usize).collect();
+        let dims_usize: Vec<usize> = dims
+            .iter()
+            .take(spatial_rank.max(1))
+            .map(|&d| d as usize)
+            .collect();
         consus_core::ChunkShape::new(&dims_usize)
     });
 
@@ -503,8 +501,6 @@ fn collect_dense_attributes<R: ReadAt>(
 
     let heap_id_len = heap_header.heap_id_length as usize;
     let mut attrs = Vec::with_capacity(records.len());
-    println!("DENSE ATTRIBUTES: found {} records in btree {}", records.len(), attr_info.name_btree_address);
-
     for record in &records {
         // Type-8 record: hash(4) + heap_id(heap_id_len).
         if record.data.len() < HEAP_ID_OFFSET + heap_id_len {

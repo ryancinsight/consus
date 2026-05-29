@@ -346,12 +346,10 @@ where
 
         let mut entries = Vec::with_capacity(header.entries_used as usize);
         use byteorder::{ByteOrder, LittleEndian};
-        let mut pos = key_size;
+        // Per HDF5 spec §IV.A.2.b: node layout is key[i] before addr[i].
+        let mut pos = 0;
 
         for _ in 0..header.entries_used as usize {
-            let chunk_address = self.ctx.read_offset(&data[pos..pos + s]);
-            pos += s;
-
             let chunk_size = LittleEndian::read_u32(&data[pos..pos + 4]);
             pos += 4;
             let filter_mask = LittleEndian::read_u32(&data[pos..pos + 4]);
@@ -363,6 +361,9 @@ where
             }
             pos += 8;
 
+            let chunk_address = self.ctx.read_offset(&data[pos..pos + s]);
+            pos += s;
+
             entries.push(ChunkIndexEntry {
                 dimension_offsets,
                 filter_mask,
@@ -370,7 +371,7 @@ where
                 chunk_address,
             });
         }
-
+        // key[N] sentinel left unread.
         Ok(entries)
     }
 

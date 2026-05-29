@@ -1,0 +1,18 @@
+[package]
+name = "consus-python"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "PyO3 Python bindings for consus"
+
+[lib]
+name = "consus"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { workspace = true, features = ["extension-module"] }
+consus-hdf5 = { workspace = true, features = ["std"] }
+consus-core = { workspace = true, features = ["std"] }
+consus-io = { workspace = true, features = ["std"] }

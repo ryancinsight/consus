@@ -14,6 +14,7 @@ members = [
     "tests",
     "crates/consus-mat",
     "crates/consus-nwb",
+    "crates/consus-python",
 ]
 
 [workspace.package]
@@ -41,6 +42,7 @@ consus-parquet = { path = "crates/consus-parquet", version = "0.1.0", default-fe
 consus-arrow = { path = "crates/consus-arrow", version = "0.1.0", default-features = false }
 consus-compression = { path = "crates/consus-compression", version = "0.1.0", default-features = false }
 consus-io = { path = "crates/consus-io", version = "0.1.0", default-features = false }
+pyo3 = { version = "0.22" }
 
 # External dependencies
 thiserror = { version = "2", default-features = false }

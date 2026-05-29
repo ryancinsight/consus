@@ -389,7 +389,9 @@ impl DataLayout {
         let encoded_size_width = data[4] as usize;
 
         let dims_offset = 5;
-        let index_type_offset = dims_offset + 4 * ndims;
+        // Bytes per dimension: the spec uses 1-4; legacy test data uses 0 to mean 4.
+        let bytes_per_dim = if encoded_size_width == 0 { 4 } else { encoded_size_width };
+        let index_type_offset = dims_offset + bytes_per_dim * ndims;
 
         if data.len() < index_type_offset + 1 {
             return Err(Error::InvalidFormat {
@@ -399,8 +401,12 @@ impl DataLayout {
 
         let mut chunk_dims = Vec::with_capacity(ndims);
         for i in 0..ndims {
-            let off = dims_offset + i * 4;
-            chunk_dims.push(LittleEndian::read_u32(&data[off..off + 4]));
+            let off = dims_offset + i * bytes_per_dim;
+            let mut val = 0u32;
+            for b in 0..bytes_per_dim {
+                val |= (data[off + b] as u32) << (b * 8);
+            }
+            chunk_dims.push(val);
         }
 
         let indexing_type = data[index_type_offset];
@@ -436,8 +442,15 @@ impl DataLayout {
             chunk_index_type::IMPLICIT => {
                 // Implicit: no additional index data.
             }
-            chunk_index_type::FIXED_ARRAY
-            | chunk_index_type::EXTENSIBLE_ARRAY
+            chunk_index_type::FIXED_ARRAY => {
+                // Fixed Array: one creation-parameter byte precedes the FAHD address.
+                let s = ctx.offset_bytes();
+                let addr_start = index_data_offset + 1; // skip the parameter byte
+                if data.len() >= addr_start + s {
+                    index_address = Some(ctx.read_offset(&data[addr_start..]));
+                }
+            }
+            chunk_index_type::EXTENSIBLE_ARRAY
             | chunk_index_type::BTREE_V2 => {
                 // These indexing types store an address to their header structure.
                 let s = ctx.offset_bytes();

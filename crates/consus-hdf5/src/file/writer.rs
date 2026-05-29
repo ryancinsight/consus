@@ -436,10 +436,30 @@ pub fn write_v1_group_header<W: WriteAt>(
 }
 
 // ---------------------------------------------------------------------------
-// Group header
-// ---------------------------------------------------------------------------
+/// Encode a Link Info message (type 0x0002) for compact link storage.
+///
+/// Layout (no creation-order tracking, both addresses UNDEF):
+/// | version(1) | flags(1) | heap_addr(s) | btree_addr(s) |  total = 2 + 2*s bytes
+///
+/// Both addresses are set to 0xFF…FF (UNDEF) indicating compact storage
+/// (links are stored directly as LINK messages in the object header).
+#[cfg(feature = "alloc")]
+fn encode_link_info(offset_bytes: usize) -> Vec<u8> {
+    let mut buf = vec![0xFFu8; 2 + offset_bytes * 2];
+    buf[0] = 0; // version = 0
+    buf[1] = 0; // flags = 0 (no creation order tracking)
+    buf
+}
 
-/// Write a minimal v2 object header for a group.
+/// Encode a Group Info message (type 0x000A) with default thresholds.
+///
+/// Layout: | version(1) | flags(1) |  total = 2 bytes
+#[cfg(feature = "alloc")]
+fn encode_group_info() -> Vec<u8> {
+    vec![0u8; 2] // version=0, flags=0 (default compact/dense thresholds)
+}
+
+
 ///
 /// The header is allocated with padding space (NIL messages) to allow
 /// future in-place addition of link messages.
@@ -473,7 +493,7 @@ pub fn write_group_header<W: WriteAt>(
     pos += csf_width;
 
     // Fill chunk with a single NIL message spanning all available space.
-    let nil_data_len = chunk_data_size.saturating_sub(5); // 5-byte message header
+    let nil_data_len = chunk_data_size.saturating_sub(4); // 4-byte message header
     let written = write_v2_message(&mut buf, pos, 0x0000, 0, &vec![0u8; nil_data_len]);
     pos += written;
 
@@ -603,24 +623,37 @@ pub fn encode_datatype(dt: &Datatype) -> Result<Vec<u8>> {
             let size = bits.get() / 8;
             let mut buf = vec![0u8; 20]; // header(8) + properties(12)
             buf[0] = 0x11; // class=1 (float), version=1
-            let flags = if *byte_order == consus_core::ByteOrder::BigEndian {
-                0x01u8
+            // Class bit field byte 0 (buf[1]):
+            //   bit 0:   byte order (0=LE, 1=BE)
+            //   bits 4-5: mantissa normalization (2 = implicit leading 1 bit, per IEEE 754)
+            // Class bit field byte 1 (buf[2]): sign bit position within element.
+            let be_flag: u8 = if *byte_order == consus_core::ByteOrder::BigEndian {
+                0x01
             } else {
                 0x00
             };
-            buf[1] = flags;
+            // mantissa norm = 2 (implicit, 0x20) combined with byte-order flag.
+            buf[1] = 0x20 | be_flag;
+            // Sign bit location = most significant bit of the element (size*8 - 1).
+            buf[2] = (size * 8 - 1) as u8;
             LittleEndian::write_u32(&mut buf[4..8], size as u32);
 
-            // IEEE 754 properties: bit_offset(2) + bit_precision(2) +
-            //   exp_location(1) + exp_size(1) + mant_location(1) + mant_size(1) + exp_bias(4)
+            // IEEE 754 properties:
+            //   buf[8..10]:  bit offset of element lsb in storage (always 0)
+            //   buf[10..12]: bit precision (total bits = size * 8)
+            //   buf[12]:     exponent position (lsb of exponent field)
+            //   buf[13]:     exponent size (number of exponent bits)
+            //   buf[14]:     mantissa position (lsb of mantissa field, always 0)
+            //   buf[15]:     mantissa size (number of mantissa bits)
+            //   buf[16..20]: exponent bias
             match size {
                 4 => {
                     // f32: exponent at bit 23, 8 bits; mantissa at bit 0, 23 bits; bias 127
                     LittleEndian::write_u16(&mut buf[8..10], 0); // bit offset
                     LittleEndian::write_u16(&mut buf[10..12], 32); // bit precision
-                    buf[12] = 23; // exponent location
+                    buf[12] = 23; // exponent position
                     buf[13] = 8; // exponent size
-                    buf[14] = 0; // mantissa location
+                    buf[14] = 0; // mantissa position
                     buf[15] = 23; // mantissa size
                     LittleEndian::write_u32(&mut buf[16..20], 127); // exponent bias
                 }
@@ -814,14 +847,26 @@ pub fn encode_layout_with_chunk_index(
                         "chunked layout requires chunk_dims in DatasetCreationProps",
                     ),
                 })?;
-            // V4 layout with B-tree v2 index
+            // V4 layout (FARRAY for unfiltered, BT2 for filtered)
             if props.layout_version == Some(4) {
-                let btree_address = chunk_index_address.ok_or_else(|| Error::InvalidFormat {
+                let index_address = chunk_index_address.ok_or_else(|| Error::InvalidFormat {
                     message: String::from(
                         "v4 chunked layout requires a materialized chunk index address",
                     ),
                 })?;
-                return encode_layout_v4_chunked(chunk_dims, btree_address, ctx);
+                let element_size = chunk_element_size.ok_or_else(|| Error::InvalidFormat {
+                    message: String::from(
+                        "v4 chunked layout requires a resolved element size",
+                    ),
+                })?;
+                let has_filters = !dataset_filter_ids(props).is_empty();
+                return encode_layout_v4_chunked(
+                    chunk_dims,
+                    element_size,
+                    index_address,
+                    has_filters,
+                    ctx,
+                );
             }
             let element_size = chunk_element_size.ok_or_else(|| Error::InvalidFormat {
                 message: String::from(
@@ -857,48 +902,90 @@ pub fn encode_layout_with_chunk_index(
 
 /// Encode a v4 chunked layout message with B-tree v2 index reference.
 ///
-/// ## V4 Layout Message Format (HDF5 spec IV.A.2.l)
+/// ## V4 Layout Message Format (HDF5 spec §IV.A.2.l)
 ///
 /// | Field | Size | Value |
 /// |-------|------|-------|
 /// | Version | 1 | 4 |
 /// | Layout class | 1 | 2 (chunked) |
-/// | Flags | 1 | 0 (B-tree v2 indexed) |
-/// | Dimensionality | 1 | rank |
-/// | Encoded size width | 1 | length_size |
-/// | Chunk dimensions | rank x 4 | u32 LE each |
-/// | Chunk index type | 1 | 5 (B-tree v2) |
+/// | Flags | 1 | 0 |
+/// | Dimensionality | 1 | rank + 1 (extra element-size dimension) |
+/// | Encoded dim size | 1 | min bytes to hold max dim value (1–4) |
+/// | Chunk dimensions | (rank+1) × enc_size | spatial dims ++ element_size |
+/// | Chunk index type | 1 | 4 (B-tree v2, H5D_CHUNK_IDX_BT2) |
 /// | Index address | offset_size | B-tree v2 header address |
 ///
-/// Total size = 6 + rank * 4 + offset_size
+/// Total size = 6 + (rank+1) * enc_size + offset_size
 #[cfg(feature = "alloc")]
 fn encode_layout_v4_chunked(
     chunk_dims: &[usize],
-    btree_address: u64,
+    element_size: u32,
+    index_address: u64,
+    has_filters: bool,
     ctx: &ParseContext,
 ) -> Result<Vec<u8>> {
     let s = ctx.offset_bytes();
-    let l = ctx.length_bytes();
-    let rank = chunk_dims.len();
-    let total = 6 + rank * 4 + s;
+    // ndims = rank + 1: spatial dimensions plus the trailing element-size dimension.
+    let ndims = chunk_dims.len() + 1;
+    // Encoded dim size: minimum bytes to represent the largest dimension value.
+    let max_val = chunk_dims
+        .iter()
+        .copied()
+        .max()
+        .unwrap_or(0)
+        .max(element_size as usize);
+    let enc_size: usize = if max_val < 256 {
+        1
+    } else if max_val < 65_536 {
+        2
+    } else if max_val < 16_777_216 {
+        3
+    } else {
+        4
+    };
+    // For FARRAY (no filters): 5 header + ndims*enc + idx_type(1) + param(1) + addr
+    // For BT2 (filtered): 5 header + ndims*enc + idx_type(1) + addr
+    let total = if has_filters {
+        6 + ndims * enc_size + s
+    } else {
+        7 + ndims * enc_size + s
+    };
     let mut buf = vec![0u8; total];
 
     buf[0] = 4; // version 4
     buf[1] = 2; // layout class = chunked
-    buf[2] = 0; // flags = 0 (no special single-chunk encoding)
-    buf[3] = rank as u8; // dimensionality
-    buf[4] = l as u8; // encoded size width = length_size
+    buf[2] = 0; // flags = 0
+    buf[3] = ndims as u8;
+    buf[4] = enc_size as u8;
 
     let mut pos = 5;
+    // Spatial chunk dimensions.
     for &d in chunk_dims {
-        LittleEndian::write_u32(&mut buf[pos..], d as u32);
-        pos += 4;
+        let bytes = (d as u64).to_le_bytes();
+        buf[pos..pos + enc_size].copy_from_slice(&bytes[..enc_size]);
+        pos += enc_size;
     }
+    // Trailing dimension = element size in bytes.
+    let bytes = (element_size as u64).to_le_bytes();
+    buf[pos..pos + enc_size].copy_from_slice(&bytes[..enc_size]);
+    pos += enc_size;
 
-    buf[pos] = 5; // chunk index type = B-tree v2
-    pos += 1;
-
-    write_offset(&mut buf[pos..], s, btree_address);
+    if has_filters {
+        // Index type 5 (H5D_CHUNK_IDX_BT2): B-tree v2, used for filtered datasets.
+        buf[pos] = 5; // chunk index type = BT2
+        pos += 1;
+        write_offset(&mut buf[pos..], s, index_address);
+    } else {
+        // Index type 3 (H5D_CHUNK_IDX_FARRAY): Fixed Array chunk index, used by
+        // libhdf5 for fixed-dimension datasets without filters.  The layout stores
+        // one parameter byte (H5D_FARRAY_MAX_NELMTS_BITS = 10, hard-coded by
+        // libhdf5) followed by the address of the Fixed Array header (FAHD).
+        buf[pos] = 3; // chunk index type = FARRAY
+        pos += 1;
+        buf[pos] = 10; // H5D_FARRAY_MAX_NELMTS_BITS — hardcoded FA creation param
+        pos += 1;
+        write_offset(&mut buf[pos..], s, index_address); // FAHD address
+    }
 
     Ok(buf)
 }
@@ -1099,12 +1186,22 @@ fn write_chunk_btree_v1<W: WriteAt>(
     state: &mut WriteState,
     chunk_dims: &[usize],
     entries: &[ChunkIndexEntry],
+    dataset_dims: &[usize],
+    element_size: usize,
 ) -> Result<u64> {
     let s = state.ctx.offset_bytes();
     let ndims = chunk_dims.len() + 1;
     let key_size = 4 + 4 + 8 * ndims;
     let header_size = 8 + 2 * s;
-    let node_size = header_size + key_size + entries.len() * (s + key_size);
+
+    // HDF5 B-tree v1 nodes have a fixed capacity of 2*K entries where
+    // K = btree_ik (32 by default, matching HDF5_BTREE_IK_DEF).
+    // libhdf5 reads exactly (header + (2K+1)*key_size + 2K*s) bytes from the
+    // node address, regardless of entries_used.  Writing a smaller buffer
+    // causes an addr-overflow EOF error when the library reads the node.
+    const BTREE_IK: usize = 32;
+    let max_entries = 2 * BTREE_IK; // 64
+    let node_size = header_size + (max_entries + 1) * key_size + max_entries * s;
 
     let addr = state.allocate_aligned(node_size as u64);
     let mut buf = vec![0u8; node_size];
@@ -1116,26 +1213,19 @@ fn write_chunk_btree_v1<W: WriteAt>(
     write_offset(&mut buf[8..8 + s], s, UNDEFINED_ADDRESS);
     write_offset(&mut buf[8 + s..8 + 2 * s], s, UNDEFINED_ADDRESS);
 
+    // Per HDF5 spec §IV.A.2.b: node layout is
+    //   key[0] | addr[0] | key[1] | addr[1] | ... | key[N-1] | addr[N-1] | key[N]
+    // where key[i] describes the chunk at addr[i], and key[N] is the sentinel.
     let mut pos = header_size;
 
-    let first = entries.first().ok_or_else(|| Error::InvalidFormat {
-        message: String::from("chunked dataset requires at least one chunk index entry"),
-    })?;
-    LittleEndian::write_u32(&mut buf[pos..pos + 4], first.chunk_size);
-    pos += 4;
-    LittleEndian::write_u32(&mut buf[pos..pos + 4], first.filter_mask);
-    pos += 4;
-    for &offset in &first.chunk_offsets {
-        LittleEndian::write_u64(&mut buf[pos..pos + 8], offset);
-        pos += 8;
+    if entries.is_empty() {
+        return Err(Error::InvalidFormat {
+            message: String::from("chunked dataset requires at least one chunk index entry"),
+        });
     }
-    LittleEndian::write_u64(&mut buf[pos..pos + 8], 0);
-    pos += 8;
 
     for entry in entries {
-        write_offset(&mut buf[pos..pos + s], s, entry.chunk_address);
-        pos += s;
-
+        // Write key[i]: chunk_size, filter_mask, element offsets, extra-zero dim.
         LittleEndian::write_u32(&mut buf[pos..pos + 4], entry.chunk_size);
         pos += 4;
         LittleEndian::write_u32(&mut buf[pos..pos + 4], entry.filter_mask);
@@ -1146,7 +1236,24 @@ fn write_chunk_btree_v1<W: WriteAt>(
         }
         LittleEndian::write_u64(&mut buf[pos..pos + 8], 0);
         pos += 8;
+
+        // Write addr[i].
+        write_offset(&mut buf[pos..pos + s], s, entry.chunk_address);
+        pos += s;
     }
+
+    // Write key[N]: sentinel key.
+    // chunk_size = 0, filter_mask = 0 (buf already zero-initialised).
+    // offset[i] = dataset_dims[i] (the upper bound of the dataset in each dim).
+    // extra_dim = element_size (the size in bytes of one element).
+    pos += 4; // chunk_size = 0
+    pos += 4; // filter_mask = 0
+    for &dim in dataset_dims {
+        LittleEndian::write_u64(&mut buf[pos..pos + 8], dim as u64);
+        pos += 8;
+    }
+    LittleEndian::write_u64(&mut buf[pos..pos + 8], element_size as u64);
+    // Remaining bytes in the full node stay zero (unused capacity slots).
 
     sink.write_at(addr, &buf)?;
     Ok(addr)
@@ -1225,14 +1332,12 @@ fn write_chunk_btree_v2<W: WriteAt>(
             pos += 4;
         }
 
-        // Scaled offsets: chunk_offset[i] / chunk_dim[i] per dimension
+        // Scaled offsets: chunk grid coordinates per dimension.
+        // chunk_offsets are element offsets: coord * chunk_dim.
+        // scaled = coord = element_offset / chunk_dim.
         for (i, &offset) in entry.chunk_offsets.iter().enumerate() {
-            let dim = if i < chunk_dims.len() {
-                chunk_dims[i]
-            } else {
-                1
-            };
-            let scaled = if dim > 0 { offset / (dim as u64) } else { 0 };
+            let dim = if i < chunk_dims.len() { chunk_dims[i] } else { 1 };
+            let scaled = if dim > 0 { offset / dim as u64 } else { 0 };
             LittleEndian::write_u64(&mut leaf_buf[pos..], scaled);
             pos += 8;
         }
@@ -1278,6 +1383,65 @@ fn write_chunk_btree_v2<W: WriteAt>(
 
     sink.write_at(header_addr, &hdr_buf)?;
     Ok(header_addr)
+}
+
+// ---------------------------------------------------------------------------
+/// Write a Fixed Array (FARRAY) chunk index for a v4 layout.
+///
+/// Used for fixed-dimension datasets without filters.  Writes a Fixed Array
+/// Header (FAHD) immediately followed by a Fixed Array Data Block (FADB)
+/// containing each chunk's file address in chunk-coordinate order.
+///
+/// Returns the FAHD address (stored in the v4 layout message).
+#[cfg(feature = "alloc")]
+fn write_chunk_farray<W: WriteAt>(
+    sink: &mut W,
+    state: &mut WriteState,
+    entries: &[ChunkIndexEntry],
+) -> Result<u64> {
+    let s = state.ctx.offset_bytes();
+    let nelmts = entries.len() as u64;
+    let entry_size: usize = s; // one file-address per chunk (no filters)
+
+    // FAHD: sig(4)+ver(1)+cid(1)+entry_size(1)+max_nelmts_bits(1)+
+    //       nelmts(8)+fadb_addr(8)+checksum(4) = 28 bytes.
+    // FADB: sig(4)+ver(1)+cid(1)+hdr_addr(8)+nelmts*entry_size+checksum(4).
+    let fahd_size: usize = 28;
+    let fadb_size: usize = 18 + entries.len() * entry_size;
+    let combined = fahd_size + fadb_size;
+
+    let fahd_addr = state.allocate_aligned(combined as u64);
+    let fadb_addr = fahd_addr + fahd_size as u64;
+
+    let mut buf = vec![0u8; combined];
+
+    // -- FAHD --
+    buf[0..4].copy_from_slice(b"FAHD");
+    // buf[4] = 0; // version = 0
+    // buf[5] = 0; // client ID = 0 (as observed in HDF5-generated files)
+    buf[6] = entry_size as u8;    // element/record size (= offset_size for no-filter)
+    buf[7] = 10;                  // max_nelmts_bits = H5D_FARRAY_MAX_NELMTS_BITS
+    LittleEndian::write_u64(&mut buf[8..16], nelmts);
+    write_offset(&mut buf[16..], s, fadb_addr);
+    let fahd_cksum = consus_compression::Lookup3::compute(&buf[..24]);
+    LittleEndian::write_u32(&mut buf[24..28], fahd_cksum);
+
+    // -- FADB --
+    let fd = fahd_size;
+    buf[fd..fd + 4].copy_from_slice(b"FADB");
+    // buf[fd+4] = 0; // version = 0
+    // buf[fd+5] = 0; // client ID = 0
+    write_offset(&mut buf[fd + 6..], s, fahd_addr);
+    let mut pos = fd + 14;
+    for entry in entries {
+        write_offset(&mut buf[pos..], s, entry.chunk_address);
+        pos += s;
+    }
+    let fadb_cksum = consus_compression::Lookup3::compute(&buf[fd..pos]);
+    LittleEndian::write_u32(&mut buf[pos..pos + 4], fadb_cksum);
+
+    sink.write_at(fahd_addr, &buf)?;
+    Ok(fahd_addr)
 }
 
 #[cfg(feature = "alloc")]
@@ -1390,8 +1554,8 @@ fn write_chunked_data_with_element_size<W: WriteAt>(
                 .iter()
                 .zip(chunk_dims.iter())
                 .map(|(&coord, &dim)| {
-                    u64::try_from(coord.checked_mul(dim).ok_or(Error::Overflow)?)
-                        .map_err(|_| Error::Overflow)
+                    let elem_offset = coord.checked_mul(dim).ok_or(Error::Overflow)?;
+                    u64::try_from(elem_offset).map_err(|_| Error::Overflow)
                 })
                 .collect::<Result<Vec<u64>>>()?;
 
@@ -1409,10 +1573,14 @@ fn write_chunked_data_with_element_size<W: WriteAt>(
     }
 
     let has_filters = !filter_ids.is_empty();
-    if props.layout_version == Some(4) {
+    if props.layout_version == Some(4) && !has_filters {
+        // Fixed Array (FARRAY) indexing for fixed-dimension datasets without
+        // filters.  Write FAHD + FADB and return the FAHD address.
+        write_chunk_farray(sink, state, &entries)
+    } else if props.layout_version == Some(4) {
         write_chunk_btree_v2(sink, state, chunk_dims, &entries, has_filters)
     } else {
-        write_chunk_btree_v1(sink, state, chunk_dims, &entries)
+        write_chunk_btree_v1(sink, state, chunk_dims, &entries, &dataset_dims, element_size)
     }
 }
 
@@ -1570,7 +1738,7 @@ pub fn write_object_header_v2<W: WriteAt>(
     messages: &[(u16, &[u8])],
 ) -> Result<u64> {
     let chunk_data_size: usize = messages.iter().map(|(_, d)| 4 + d.len()).sum();
-    // Minimum 4 bytes: a NIL message header (type:2 + size:2 + flags:1).
+    // Minimum 4 bytes: a NIL message header (type:1 + size:2 + flags:1).
     let effective_size = chunk_data_size.max(4);
     let (csf_width, csf_flags) = chunk_size_encoding(effective_size);
     let total = 4 + 1 + 1 + csf_width + effective_size + 4;
@@ -1610,15 +1778,17 @@ pub fn write_object_header_v2<W: WriteAt>(
 ///
 /// ### Version 3 Layout
 ///
+/// Per HDF5 spec §IV.A.2.m: the Name Size field includes the null terminator.
+///
 /// | Offset | Size | Field |
 /// |--------|------|-------|
 /// | 0 | 1 | Version (3) |
 /// | 1 | 1 | Flags (0) |
-/// | 2 | 2 | Name size (byte count, no null terminator) |
+/// | 2 | 2 | Name size (byte count INCLUDING null terminator) |
 /// | 4 | 2 | Datatype size |
 /// | 6 | 2 | Dataspace size |
 /// | 8 | 1 | Encoding (0=ASCII, 1=UTF-8) |
-/// | 9 | N | Name bytes |
+/// | 9 | N+1 | Name bytes (null-terminated) |
 /// | var | var | Datatype |
 /// | var | var | Dataspace |
 /// | var | var | Raw data |
@@ -1640,19 +1810,22 @@ pub fn encode_attribute(
         0
     };
 
-    let total = 9 + name_bytes.len() + dt_bytes.len() + ds_bytes.len() + raw_data.len();
+    // Per HDF5 spec §IV.A.2.m v3: Name Size includes the null terminator.
+    let name_size = name_bytes.len() + 1;
+    let total = 9 + name_size + dt_bytes.len() + ds_bytes.len() + raw_data.len();
 
     let mut buf = vec![0u8; total];
     buf[0] = 3; // version
     buf[1] = 0; // flags
-    LittleEndian::write_u16(&mut buf[2..4], name_bytes.len() as u16);
+    LittleEndian::write_u16(&mut buf[2..4], name_size as u16);
     LittleEndian::write_u16(&mut buf[4..6], dt_bytes.len() as u16);
     LittleEndian::write_u16(&mut buf[6..8], ds_bytes.len() as u16);
     buf[8] = encoding;
 
     let mut pos = 9;
     buf[pos..pos + name_bytes.len()].copy_from_slice(name_bytes);
-    pos += name_bytes.len();
+    // buf[pos + name_bytes.len()] = 0; // null terminator (already 0 from vec![0u8; total])
+    pos += name_size; // advance past name + null
     buf[pos..pos + dt_bytes.len()].copy_from_slice(&dt_bytes);
     pos += dt_bytes.len();
     buf[pos..pos + ds_bytes.len()].copy_from_slice(&ds_bytes);
@@ -1723,8 +1896,11 @@ fn write_group_node(
         child_links.push((String::from(sub.name), addr));
     }
 
-    // Step 3: build group object header messages (links + group attributes).
-    let mut group_msgs: Vec<(u16, Vec<u8>)> = Vec::new();
+    // Step 3: build group object header messages (LINK_INFO + GROUP_INFO + links + group attributes).
+    let mut group_msgs: Vec<(u16, Vec<u8>)> = vec![
+        (message_types::LINK_INFO, encode_link_info(ctx.offset_bytes())),
+        (message_types::GROUP_INFO, encode_group_info()),
+    ];
 
     for (child_name, child_addr) in &child_links {
         group_msgs.push((
@@ -1997,16 +2173,19 @@ impl Hdf5FileBuilder {
     pub fn finish(mut self) -> Result<Vec<u8>> {
         let ctx = self.state.ctx;
 
-        // Collect all root group messages.
-        let mut msgs: Vec<(u16, Vec<u8>)> = Vec::new();
+        // Root group messages: LINK_INFO + GROUP_INFO first, then links and attributes.
+        let mut msgs: Vec<(u16, Vec<u8>)> = vec![
+            (message_types::LINK_INFO, encode_link_info(ctx.offset_bytes())),
+            (message_types::GROUP_INFO, encode_group_info()),
+        ];
 
         for (name, addr) in &self.root_links {
             let link_bytes = encode_hard_link(name, *addr, &ctx)?;
-            msgs.push((0x0006, link_bytes));
+            msgs.push((message_types::LINK, link_bytes));
         }
 
         for attr_bytes in &self.root_attr_bytes {
-            msgs.push((0x000C, attr_bytes.clone()));
+            msgs.push((message_types::ATTRIBUTE, attr_bytes.clone()));
         }
 
         let msg_refs: Vec<(u16, &[u8])> = msgs.iter().map(|(t, d)| (*t, d.as_slice())).collect();
@@ -2198,7 +2377,12 @@ impl<'a> SubGroupBuilder<'a> {
         group_attrs: &[(&str, &Datatype, &Shape, &[u8])],
     ) -> Result<()> {
         let ctx = self.state.ctx;
-        let mut msgs: Vec<(u16, Vec<u8>)> = Vec::new();
+        // LINK_INFO and GROUP_INFO must precede LINK messages so libhdf5
+        // recognises this object header as a group.
+        let mut msgs: Vec<(u16, Vec<u8>)> = vec![
+            (message_types::LINK_INFO, encode_link_info(ctx.offset_bytes())),
+            (message_types::GROUP_INFO, encode_group_info()),
+        ];
 
         for (child_name, child_addr) in &self.child_links {
             msgs.push((
@@ -2354,8 +2538,10 @@ mod tests {
         let bytes = encode_datatype(&dt).unwrap();
         assert_eq!(bytes.len(), 20);
         assert_eq!(bytes[0] & 0x0F, 1); // class 1 (float)
+        assert_eq!(bytes[1], 0x20); // mantissa norm=2 (implicit), LE
+        assert_eq!(bytes[2], 63); // sign bit at position 63
         assert_eq!(LittleEndian::read_u32(&bytes[4..8]), 8); // 8 bytes
-        assert_eq!(bytes[12], 52); // exponent location
+        assert_eq!(bytes[12], 52); // exponent position
         assert_eq!(bytes[13], 11); // exponent size
         assert_eq!(LittleEndian::read_u32(&bytes[16..20]), 1023); // bias
     }
@@ -2685,8 +2871,10 @@ mod tests {
         let raw = 99u32.to_le_bytes();
         let bytes = encode_attribute("count", &dt, &shape, &raw).unwrap();
         assert_eq!(bytes[0], 3); // version 3
-        assert_eq!(LittleEndian::read_u16(&bytes[2..4]), 5); // "count".len()
+        // name_size includes null terminator per HDF5 spec §IV.A.2.m v3.
+        assert_eq!(LittleEndian::read_u16(&bytes[2..4]), 6); // "count".len() + 1 (null)
         assert_eq!(&bytes[9..14], b"count");
+        assert_eq!(bytes[14], 0); // null terminator
         assert_eq!(LittleEndian::read_u32(&bytes[bytes.len() - 4..]), 99);
     }
 
@@ -2902,7 +3090,12 @@ mod tests {
             chunk_address: 0x2000,
         }];
 
-        let addr = write_chunk_btree_v1(&mut cursor, &mut state, &[2, 2], &entries).unwrap();
+        // chunk_dims=[2,2] → ndims=3, key_size=32, K=32, max_entries=64
+        // node_size = header(24) + 65*32 + 64*8 = 24 + 2080 + 512 = 2616
+        let expected_node_size: usize = 24 + 65 * 32 + 64 * 8;
+        let addr =
+            write_chunk_btree_v1(&mut cursor, &mut state, &[2, 2], &entries, &[4, 4], 4)
+                .unwrap();
         let bytes = cursor.as_bytes();
         assert_eq!(&bytes[addr as usize..addr as usize + 4], b"TREE");
         assert_eq!(bytes[addr as usize + 4], 1);
@@ -2910,6 +3103,12 @@ mod tests {
         assert_eq!(
             LittleEndian::read_u16(&bytes[addr as usize + 6..addr as usize + 8]),
             1
+        );
+        // Verify full fixed-size node is written.
+        assert_eq!(
+            cursor.as_bytes().len() - addr as usize,
+            expected_node_size,
+            "B-tree node must be the full K=32 fixed size"
         );
     }
 

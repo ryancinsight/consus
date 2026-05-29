@@ -381,17 +381,14 @@ fn extract_messages(
         let msg_type = data[pos] as u16;
         let data_size = LittleEndian::read_u16(&data[pos + 1..]);
         let msg_flags = data[pos + 3];
-        
+
         let msg_header_len = if track_creation_order && msg_type != MSG_TYPE_NIL {
             V2_MSG_HEADER_BASE + V2_MSG_CREATION_ORDER_LEN
         } else {
             V2_MSG_HEADER_BASE
         };
-        
-        println!("OHDR_TRACE: pos={} type={} size={} hdr_len={}", pos, msg_type, data_size, msg_header_len);
 
         if pos + msg_header_len > data.len() {
-            println!("OHDR CHUNK DUMP: {:02x?}", data);
             break;
         }
 
@@ -399,7 +396,6 @@ fn extract_messages(
 
         let payload_end = pos + data_size as usize;
         if payload_end > data.len() {
-            println!("OHDR CHUNK DUMP: {:02x?}", data);
             return Err(Error::InvalidFormat {
                 #[cfg(feature = "alloc")]
                 message: alloc::format!(
@@ -634,12 +630,12 @@ mod tests {
 
     #[test]
     fn msg_header_len_without_creation_order() {
-        // type(2) + size(2) + flags(1) = 5
-        assert_eq!(V2_MSG_HEADER_BASE, 5);
+        // type(1) + size(2) + flags(1) = 4
+        assert_eq!(V2_MSG_HEADER_BASE, 4);
     }
 
     #[test]
     fn msg_header_len_with_creation_order() {
-        assert_eq!(V2_MSG_HEADER_BASE + V2_MSG_CREATION_ORDER_LEN, 7);
+        assert_eq!(V2_MSG_HEADER_BASE + V2_MSG_CREATION_ORDER_LEN, 6);
     }
 }

@@ -180,7 +180,14 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
         let chunk_dims_u32 = layout.chunk_dims.ok_or_else(|| Error::InvalidFormat {
             message: String::from("chunked dataset missing chunk dimensions"),
         })?;
-        let chunk_dims: Vec<usize> = chunk_dims_u32.iter().map(|&d| d as usize).collect();
+        let dataset_dims = dataset.shape.current_dims();
+        // Trim chunk_dims to the spatial rank (v4 layout may carry a trailing
+        // element-size dimension that must be excluded from spatial operations).
+        let chunk_dims: Vec<usize> = chunk_dims_u32
+            .iter()
+            .take(dataset_dims.len().max(1))
+            .map(|&d| d as usize)
+            .collect();
 
         let element_size =
             dataset
@@ -189,7 +196,6 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                 .ok_or_else(|| Error::UnsupportedFeature {
                     feature: String::from("chunked full read requires fixed-size element datatype"),
                 })?;
-        let dataset_dims = dataset.shape.current_dims();
         let total_bytes = dataset
             .shape
             .num_elements()
@@ -306,6 +312,23 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
 
                     return Ok(out);
                 }
+            }
+            (4, _, Some(indexing_type), Some(index_address))
+                if indexing_type == crate::dataset::layout::chunk_index_type::FIXED_ARRAY =>
+            {
+                let entries =
+                    self.read_v4_chunk_farray_entries(index_address, &dataset_dims, &chunk_dims)?;
+                self.read_v4_chunk_entries(
+                    &entries,
+                    &dataset_dims,
+                    &chunk_dims,
+                    element_size,
+                    &filter_ids,
+                    fill_value.as_deref(),
+                    &registry,
+                    &mut out,
+                )?;
+                Ok(out)
             }
             (4, _, Some(indexing_type), Some(index_address))
                 if indexing_type == crate::dataset::layout::chunk_index_type::BTREE_V2 =>
@@ -538,12 +561,12 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
             .read_at(btree_address + header_size as u64, &mut data)?;
 
         let mut entries = Vec::with_capacity(header.entries_used as usize);
-        let mut pos = key_size;
+        // Per HDF5 spec §IV.A.2.b (B-tree v1 raw-data chunk leaf node):
+        // The node layout is key[0] | addr[0] | key[1] | addr[1] | ... | key[N-1] | addr[N-1] | key[N]
+        // where key[i] describes the chunk at addr[i].  Read key first, then address.
+        let mut pos = 0;
 
         for _ in 0..header.entries_used as usize {
-            let chunk_address = self.ctx.read_offset(&data[pos..pos + s]);
-            pos += s;
-
             let chunk_size = LittleEndian::read_u32(&data[pos..pos + 4]);
             pos += 4;
             let filter_mask = LittleEndian::read_u32(&data[pos..pos + 4]);
@@ -553,12 +576,79 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                 dimension_offsets.push(LittleEndian::read_u64(&data[pos..pos + 8]));
                 pos += 8;
             }
-            pos += 8;
+            pos += 8; // skip the extra +1 terminator dimension
+
+            let chunk_address = self.ctx.read_offset(&data[pos..pos + s]);
+            pos += s;
 
             entries.push(ChunkIndexEntry {
                 dimension_offsets,
                 filter_mask,
                 chunk_size,
+                chunk_address,
+            });
+        }
+        // key[N] (sentinel) is not read; pos lands at its start within `data`.
+
+        Ok(entries)
+    }
+
+    #[cfg(feature = "alloc")]
+    fn read_v4_chunk_farray_entries(
+        &self,
+        index_address: u64,
+        dataset_dims: &[usize],
+        chunk_dims: &[usize],
+    ) -> Result<Vec<ChunkIndexEntry>> {
+        // Read FAHD (Fixed Array Header Descriptor, 28 bytes).
+        let mut fahd = [0u8; 28];
+        self.source.read_at(index_address, &mut fahd)?;
+        if &fahd[0..4] != b"FAHD" {
+            return Err(Error::InvalidFormat {
+                message: String::from("invalid Fixed Array header signature (expected FAHD)"),
+            });
+        }
+        let entry_size = fahd[6] as usize; // bytes per chunk record (= offset_size for no-filter)
+        let nelmts = LittleEndian::read_u64(&fahd[8..16]) as usize;
+        let fadb_addr = self.ctx.read_offset(&fahd[16..]);
+
+        // Read FADB (Fixed Array Data Block).
+        // Layout: sig(4) + ver(1) + cid(1) + hdr_addr(8) + nelmts*entry_size + checksum(4)
+        let content_size = 14 + nelmts * entry_size;
+        let fadb_size = content_size + 4; // include checksum
+        let mut fadb = vec![0u8; fadb_size];
+        self.source.read_at(fadb_addr, &mut fadb)?;
+        if &fadb[0..4] != b"FADB" {
+            return Err(Error::InvalidFormat {
+                message: String::from("invalid Fixed Array data block signature (expected FADB)"),
+            });
+        }
+
+        // Chunk grid dimensions (number of chunks per spatial axis).
+        let grid_dims: Vec<usize> = dataset_dims
+            .iter()
+            .zip(chunk_dims.iter())
+            .map(|(&ds, &cs)| ds.div_ceil(cs))
+            .collect();
+
+        // Entries are stored in row-major (C) order: decompose linear index i
+        // into grid coordinates using row-major decomposition.
+        let mut entries = Vec::with_capacity(nelmts);
+        for i in 0..nelmts {
+            let off = 14 + i * entry_size;
+            let chunk_address = self.ctx.read_offset(&fadb[off..]);
+
+            let mut coord = vec![0u64; grid_dims.len()];
+            let mut remaining = i;
+            for d in (0..grid_dims.len()).rev() {
+                coord[d] = (remaining % grid_dims[d]) as u64;
+                remaining /= grid_dims[d];
+            }
+
+            entries.push(ChunkIndexEntry {
+                dimension_offsets: coord,
+                filter_mask: 0,
+                chunk_size: 0, // no per-chunk size stored for non-filtered FARRAY
                 chunk_address,
             });
         }
@@ -823,6 +913,12 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
         Ok(coord)
     }
 
+    /// Decode B-tree v1 chunk dimension offsets into chunk grid coordinates.
+    ///
+    /// HDF5 spec §IV.A.2.b: dimension offsets in B-tree v1 chunk keys are
+    /// **byte** offsets (first element position × element size) for each
+    /// dimension. Divide by `chunk_dims[d] * element_size` to obtain the
+    /// zero-based chunk grid index.
     #[cfg(feature = "alloc")]
     fn decode_chunk_coord(
         &self,
@@ -849,7 +945,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
             if offset % chunk_dim != 0 {
                 return Err(Error::InvalidFormat {
                     message: String::from(
-                        "chunk logical offset is not aligned to chunk dimensions",
+                        "chunk element offset is not aligned to chunk dimension",
                     ),
                 });
             }
