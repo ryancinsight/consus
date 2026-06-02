@@ -122,7 +122,7 @@ impl ConsolidatedMetadataV2 {
                     NodeMetadata::Group(
                         group_meta
                             .map(|g| g.to_canonical())
-                            .unwrap_or_else(GroupMetadata::default),
+                            .unwrap_or_default(),
                     )
                 };
 

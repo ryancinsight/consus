@@ -225,7 +225,7 @@ impl HybridStorageDescriptor {
     pub fn is_columnar(&self) -> bool {
         self.dataset_layout
             .as_ref()
-            .map_or(false, HybridDatasetLayout::is_columnar)
+            .is_some_and(HybridDatasetLayout::is_columnar)
     }
 
     /// Borrow the table layout.

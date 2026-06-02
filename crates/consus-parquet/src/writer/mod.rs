@@ -769,7 +769,7 @@ fn encode_rle_hybrid(levels: &[i32], bit_width: u8) -> Vec<u8> {
     if bit_width == 0 || levels.is_empty() {
         return Vec::new();
     }
-    let value_bytes = (bit_width as usize + 7) / 8;
+    let value_bytes = (bit_width as usize).div_ceil(8);
     let mut out: Vec<u8> = Vec::new();
     let mut i = 0usize;
     while i < levels.len() {

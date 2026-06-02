@@ -181,7 +181,7 @@ impl<'a> NwbFile<'a> {
         let name = String::from(
             path.split('/')
                 .filter(|s| !s.is_empty())
-                .last()
+                .next_back()
                 .unwrap_or(path),
         );
 

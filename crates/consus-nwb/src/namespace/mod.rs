@@ -438,11 +438,10 @@ fn apply_spec_key(ns: &mut NwbNamespaceSpec, key: &str, value: &str) {
     match key {
         "name" => ns.name = String::from(value),
         "version" => ns.version = String::from(value),
-        "doc_url" => {
-            if !value.is_empty() {
+        "doc_url"
+            if !value.is_empty() => {
                 ns.doc_url = Some(String::from(value));
             }
-        }
         _ => {}
     }
 }

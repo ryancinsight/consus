@@ -95,7 +95,7 @@ pub fn decode_binary_column(row: &[u8], column: &FitsTableColumn) -> Result<Fits
         BinaryFormatCode::Char => {
             // All `repeat` chars form one string; trailing spaces stripped.
             let raw = core::str::from_utf8(cell).unwrap_or("");
-            let s = raw.trim_end_matches(|c: char| c == ' ').to_owned();
+            let s = raw.trim_end_matches(' ').to_owned();
             return Ok(FitsColumnValue::Chars(s));
         }
         _ => {}

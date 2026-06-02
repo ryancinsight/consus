@@ -281,7 +281,7 @@ pub fn parse_matrix(
             }
             let data: Vec<(String, Vec<MatArray>)> = field_names
                 .iter()
-                .zip(field_data.into_iter())
+                .zip(field_data)
                 .map(|(n, v)| (n.clone(), v))
                 .collect();
             MatArray::Struct(MatStructArray::new(shape, data)?)

@@ -122,7 +122,7 @@ pub fn parse_binary_format(tform: &str) -> Result<(usize, BinaryFormatCode)> {
     if trimmed.is_empty() {
         return Err(Error::InvalidFormat {
             #[cfg(feature = "alloc")]
-            message: alloc::format!("empty TFORM string"),
+            message: "empty TFORM string".to_string(),
         });
     }
 

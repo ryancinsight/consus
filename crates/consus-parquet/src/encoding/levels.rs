@@ -68,7 +68,7 @@ pub fn decode_levels(bytes: &[u8], bit_width: u8, count: usize) -> Result<Vec<i3
         if header & 1 == 0 {
             // RLE run: run_length copies of a single LE value.
             let run_len = (header >> 1) as usize;
-            let value_bytes = (bit_width as usize + 7) / 8;
+            let value_bytes = (bit_width as usize).div_ceil(8);
             if pos + value_bytes > bytes.len() {
                 return Err(Error::BufferTooSmall {
                     required: pos + value_bytes,
@@ -129,7 +129,7 @@ pub fn decode_bit_packed_raw(bytes: &[u8], bit_width: u8, count: usize) -> Resul
         return Ok(alloc::vec![0i32; count]);
     }
 
-    let required = (count * bit_width as usize + 7) / 8;
+    let required = (count * bit_width as usize).div_ceil(8);
     if bytes.len() < required {
         return Err(Error::BufferTooSmall {
             required,

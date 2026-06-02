@@ -103,7 +103,7 @@ fn decode_levels_v1(
         ENCODING_BIT_PACKED => {
             // Raw bit-packed, no length prefix.
             // Byte count = ceil(count * bit_width / 8).
-            let required_bytes = (count * bit_width as usize + 7) / 8;
+            let required_bytes = (count * bit_width as usize).div_ceil(8);
             if *pos + required_bytes > bytes.len() {
                 return Err(Error::BufferTooSmall {
                     required: *pos + required_bytes,

@@ -2,6 +2,12 @@
 //!
 //! Exposes HDF5, Zarr v2, Parquet, netCDF-4, and MATLAB .mat read/write via PyO3.
 
+// PyO3's `#[pymethods]`/`#[pyfunction]` macros expand to a `PyErr` error-path
+// conversion that clippy ≥1.95 flags as `useless_conversion`. The lint fires on
+// macro-generated code (the diagnostic span maps to the fn signature, where there
+// is no editable `.into()`), so it is suppressed crate-wide rather than per-site.
+#![allow(clippy::useless_conversion)]
+
 extern crate alloc;
 
 mod error;

@@ -171,8 +171,8 @@ impl NetcdfVariable {
             });
         }
 
-        if self.coordinate_variable {
-            if self.dimensions.len() != 1 || self.dimensions[0] != self.name {
+        if self.coordinate_variable
+            && (self.dimensions.len() != 1 || self.dimensions[0] != self.name) {
                 return Err(Error::InvalidFormat {
                     #[cfg(feature = "alloc")]
                     message: String::from(
@@ -180,7 +180,6 @@ impl NetcdfVariable {
                     ),
                 });
             }
-        }
 
         if let Some(shape) = &self.shape {
             if shape.rank() != self.dimensions.len() {

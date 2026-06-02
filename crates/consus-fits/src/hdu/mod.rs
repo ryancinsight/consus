@@ -487,7 +487,7 @@ fn validate_sequence(hdus: &[FitsHdu]) -> Result<()> {
 }
 
 #[cfg(feature = "alloc")]
-fn parse_xtension<'a>(header: &'a FitsHeader) -> Result<Option<&'a str>> {
+fn parse_xtension(header: &FitsHeader) -> Result<Option<&str>> {
     let Some(card) = header.get_standard("XTENSION") else {
         return Ok(None);
     };

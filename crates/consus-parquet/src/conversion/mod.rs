@@ -51,8 +51,10 @@ pub struct ArrowFieldRepr {
 
 /// Parquet-to-Arrow conversion mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default)]
 pub enum ParquetConversionMode {
     /// Preserve exact Parquet semantics.
+    #[default]
     Exact,
     /// Allow type widening for better Arrow compatibility.
     AllowWidening,
@@ -60,11 +62,6 @@ pub enum ParquetConversionMode {
     BestEffort,
 }
 
-impl Default for ParquetConversionMode {
-    fn default() -> Self {
-        Self::Exact
-    }
-}
 
 /// Result of Parquet-to-Arrow schema compatibility analysis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

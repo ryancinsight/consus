@@ -212,7 +212,7 @@ impl ComputePlan {
     #[must_use]
     pub fn is_zero_copy(&self) -> bool {
         matches!(self.kernel.mode, ComputeMode::ZeroCopy)
-            && self.cast.as_ref().map_or(true, |cast| cast.permits_cast())
+            && self.cast.as_ref().is_none_or(|cast| cast.permits_cast())
     }
 }
 
