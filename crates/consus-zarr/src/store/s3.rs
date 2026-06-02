@@ -63,7 +63,7 @@ use consus_core::Result;
 use rusoto_core::{Region, RusotoError};
 #[cfg(feature = "s3")]
 use rusoto_s3::{
-    DeleteObjectRequest, GetObjectError, GetObjectRequest, HeadObjectError, HeadObjectRequest,
+    DeleteObjectRequest, GetObjectError, HeadObjectError, HeadObjectRequest,
     ListObjectsV2Request, PutObjectRequest, S3, S3Client,
 };
 
@@ -258,7 +258,7 @@ impl S3Store {
     fn md5_hex(data: &[u8]) -> String {
         // md5::compute returns md5::Digest which is GenericArray<u8, 16>
         // Convert to hex via the Digest trait's output.
-        use md5::Digest;
+        
         let hash = md5::compute(data);
         let mut hex = alloc::string::String::with_capacity(32);
         for byte in hash.iter() {
@@ -355,8 +355,7 @@ impl Store for S3Store {
         };
 
         self.rt.block_on(self.client.put_object(req)).map_err(|e| {
-            consus_core::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            consus_core::Error::Io(std::io::Error::other(
                 S3StoreError::Rusoto(Box::new(e)),
             ))
         })?;
@@ -371,8 +370,7 @@ impl Store for S3Store {
             self.rt
                 .block_on(self.client.head_object(head))
                 .map_err(|e| {
-                    consus_core::Error::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    consus_core::Error::Io(std::io::Error::other(
                         S3StoreError::Rusoto(Box::new(e)),
                     ))
                 })?;
@@ -392,8 +390,7 @@ impl Store for S3Store {
         self.rt
             .block_on(self.client.delete_object(req))
             .map_err(|e| {
-                consus_core::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                consus_core::Error::Io(std::io::Error::other(
                     S3StoreError::Rusoto(Box::new(e)),
                 ))
             })?;
@@ -418,8 +415,7 @@ impl Store for S3Store {
                 .rt
                 .block_on(self.client.list_objects_v2(req))
                 .map_err(|e| {
-                    consus_core::Error::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    consus_core::Error::Io(std::io::Error::other(
                         S3StoreError::Rusoto(Box::new(e)),
                     ))
                 })?;
@@ -463,8 +459,7 @@ impl Store for S3Store {
         match self.rt.block_on(self.client.head_object(req)) {
             Ok(_) => Ok(true),
             Err(RusotoError::Service(HeadObjectError::NoSuchKey(_))) => Ok(false),
-            Err(e) => Err(consus_core::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Err(e) => Err(consus_core::Error::Io(std::io::Error::other(
                 S3StoreError::Rusoto(Box::new(e)),
             ))),
         }

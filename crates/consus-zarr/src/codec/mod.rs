@@ -180,13 +180,13 @@ impl CodecPipeline {
                     .and_then(|c| c.compress(data, CompressionLevel(level)))
             }
             "zstd" => {
-                let level = codec.zstd_level().unwrap_or(3) as i32;
+                let level = codec.zstd_level().unwrap_or(3);
                 registry
                     .get_by_name(&codec.name)
                     .and_then(|c| c.compress(data, CompressionLevel(level)))
             }
             "lz4" => {
-                let level = codec.lz4_level().unwrap_or(0) as i32;
+                let level = codec.lz4_level().unwrap_or(0);
                 registry
                     .get_by_name(&codec.name)
                     .and_then(|c| c.compress(data, CompressionLevel(level)))

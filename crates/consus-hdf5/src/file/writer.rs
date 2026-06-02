@@ -1093,7 +1093,7 @@ fn encode_filter_pipeline(filter_ids: &[u16], compression: &Compression) -> Resu
 
         let name_len = name.len() as u16;
         // Name must be padded up to the next 8-byte boundary.
-        let name_padded_len = if name.is_empty() { 0 } else { ((name.len() + 7) / 8) * 8 };
+        let name_padded_len = if name.is_empty() { 0 } else { name.len().div_ceil(8) * 8 };
         let nclient = client_data_owned.len() as u16;
 
         let entry_start = buf.len();

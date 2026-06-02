@@ -632,7 +632,7 @@ fn compute_num_records_width(header: &BTreeV2Header) -> usize {
         return 1;
     }
     let bits_needed = u32::BITS - (max_leaf_records as u32).leading_zeros();
-    let bytes_needed = (bits_needed as usize + 7) / 8;
+    let bytes_needed = (bits_needed as usize).div_ceil(8);
     bytes_needed.max(1)
 }
 

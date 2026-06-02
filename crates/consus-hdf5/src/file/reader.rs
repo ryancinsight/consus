@@ -64,13 +64,13 @@ pub fn read_object_header<R: ReadAt>(
     let mut peek = [0u8; 4];
     source.read_at(address, &mut peek)?;
 
-    let result = if peek == OHDR_SIGNATURE {
+    
+
+    if peek == OHDR_SIGNATURE {
         crate::object_header::v2::parse(source, address, ctx)
     } else {
         crate::object_header::v1::parse(source, address, ctx)
-    };
-
-    result
+    }
 }
 
 // ---------------------------------------------------------------------------

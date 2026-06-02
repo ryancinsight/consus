@@ -249,7 +249,7 @@ pub(crate) fn scan_v1_continuations(
         }
 
         // Advance past data, then align to 8-byte boundary.
-        pos = pos + data_size;
+        pos += data_size;
         pos = (pos + 7) & !7;
     }
 

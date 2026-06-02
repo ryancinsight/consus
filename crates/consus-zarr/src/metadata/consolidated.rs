@@ -122,7 +122,7 @@ impl ConsolidatedMetadataV2 {
                     NodeMetadata::Group(
                         group_meta
                             .map(|g| g.to_canonical())
-                            .unwrap_or_else(|| GroupMetadata::default()),
+                            .unwrap_or_else(GroupMetadata::default),
                     )
                 };
 
@@ -203,11 +203,7 @@ impl ConsolidatedMetadataV3 {
                     .and_then(|zj| {
                         if let Some(arr) = zj.to_array_canonical() {
                             Some(NodeMetadata::Array(arr))
-                        } else if let Some(grp) = zj.to_group_canonical() {
-                            Some(NodeMetadata::Group(grp))
-                        } else {
-                            None
-                        }
+                        } else { zj.to_group_canonical().map(NodeMetadata::Group) }
                     })
                     .unwrap_or_else(|| NodeMetadata::Group(GroupMetadata::default()));
 

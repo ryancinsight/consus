@@ -310,7 +310,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                         )?;
                     }
 
-                    return Ok(out);
+                    Ok(out)
                 }
             }
             (4, _, Some(indexing_type), Some(index_address))

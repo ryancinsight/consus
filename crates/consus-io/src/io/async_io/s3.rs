@@ -69,15 +69,13 @@ impl AsyncReadAt for S3Reader {
                     path: self.key.clone(),
                 }
             }
-            _ => Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            _ => Error::Io(std::io::Error::other(
                 format!("S3 get_object failed: {}", e),
             )),
         })?;
 
         let stream = response.body.ok_or_else(|| {
-            Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Error::Io(std::io::Error::other(
                 "S3 get_object response body is empty",
             ))
         })?;
@@ -89,8 +87,7 @@ impl AsyncReadAt for S3Reader {
         let mut read_bytes = 0;
         while read_bytes < buf.len() {
             let n = reader.read(&mut buf[read_bytes..]).await.map_err(|e| {
-                Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                Error::Io(std::io::Error::other(
                     format!("S3 stream read failed: {}", e),
                 ))
             })?;
@@ -122,15 +119,13 @@ impl AsyncLength for S3Reader {
                     path: self.key.clone(),
                 }
             }
-            _ => Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            _ => Error::Io(std::io::Error::other(
                 format!("S3 head_object failed: {}", e),
             )),
         })?;
 
         response.content_length.map(|l| l as u64).ok_or_else(|| {
-            Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Error::Io(std::io::Error::other(
                 "S3 head_object response missing content_length",
             ))
         })

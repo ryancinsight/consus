@@ -95,8 +95,10 @@ pub enum ZarrVersion {
 /// or special values like `NaN`, `Infinity`, `-Infinity`.
 #[cfg(feature = "alloc")]
 #[derive(Debug, Clone, PartialEq)]
+#[derive(Default)]
 pub enum FillValue {
     /// The default fill value (zero for numeric types, empty string for string types).
+    #[default]
     Default,
     /// Null / missing value.
     Null,
@@ -115,11 +117,6 @@ pub enum FillValue {
 }
 
 #[cfg(feature = "alloc")]
-impl Default for FillValue {
-    fn default() -> Self {
-        Self::Default
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Array metadata (format-agnostic)

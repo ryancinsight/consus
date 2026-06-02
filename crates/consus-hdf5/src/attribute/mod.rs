@@ -294,7 +294,7 @@ impl Hdf5Attribute {
             .position(|&b| b == 0)
             .unwrap_or(name_bytes.len());
         core::str::from_utf8(&name_bytes[..end])
-            .map(|s| String::from(s))
+            .map(String::from)
             .map_err(|_| Error::InvalidFormat {
                 message: String::from("attribute name is not valid UTF-8"),
             })

@@ -380,7 +380,7 @@ pub fn decode_heap_id(id_bytes: &[u8], header: &FractalHeapHeader) -> Result<Fra
     match id_type {
         // -- Managed ---------------------------------------------------------
         0 => {
-            let offset_bytes = ((header.max_heap_size_bits as usize) + 7) / 8;
+            let offset_bytes = (header.max_heap_size_bits as usize).div_ceil(8);
             let min_len = 1 + offset_bytes;
             if id_bytes.len() < min_len {
                 return Err(Error::InvalidFormat {
@@ -512,7 +512,7 @@ fn find_in_indirect_block<R: ReadAt>(
     ctx: &ParseContext,
 ) -> Result<Vec<u8>> {
     let o = ctx.offset_bytes();
-    let heap_offset_field_bytes = ((header.max_heap_size_bits as usize) + 7) / 8;
+    let heap_offset_field_bytes = (header.max_heap_size_bits as usize).div_ceil(8);
     // Indirect block overhead: sig(4) + ver(1) + heap_header_addr(O) + block_offset(variable)
     let iblock_overhead = 4 + 1 + o + heap_offset_field_bytes;
     let width = header.table_width as usize;

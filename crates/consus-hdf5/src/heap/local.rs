@@ -188,7 +188,7 @@ impl LocalHeap {
             })?;
 
         core::str::from_utf8(&buf[..end])
-            .map(|s| String::from(s))
+            .map(String::from)
             .map_err(|_| Error::InvalidFormat {
                 message: alloc::format!("local heap name at offset {} is not valid UTF-8", offset,),
             })
