@@ -72,4 +72,4 @@ pub use io::async_io::s3::S3Reader;
 
 // Native S3 backend (ADR-015): moirai HTTP/1.1 + SigV4, no tokio.
 #[cfg(feature = "s3-moirai")]
-pub use io::async_io::s3_moirai::{S3Config, S3MoiraiReader};
+pub use io::async_io::s3_moirai::{S3Client, S3Config, S3MoiraiReader};

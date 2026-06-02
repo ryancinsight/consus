@@ -61,8 +61,11 @@ fn spawn_mock_s3(object: Vec<u8>) -> u16 {
                     let method = head.split_whitespace().next().unwrap_or("").to_string();
 
                     let resp = if method == "HEAD" {
-                        format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", object.len())
-                            .into_bytes()
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",
+                            object.len()
+                        )
+                        .into_bytes()
                     } else if let Some((s, e)) = parse_range(&head) {
                         let e = e.min(object.len().saturating_sub(1));
                         let slice = &object[s..=e];
@@ -150,7 +153,11 @@ fn rusoto_and_moirai_read_byte_identical() {
         moirai_buf, rusoto_buf,
         "moirai and rusoto must read byte-identical ranges"
     );
-    assert_eq!(moirai_len, object.len() as u64, "moirai len must equal object size");
+    assert_eq!(
+        moirai_len,
+        object.len() as u64,
+        "moirai len must equal object size"
+    );
     assert_eq!(moirai_len, rusoto_len, "moirai and rusoto len must agree");
 }
 
@@ -187,14 +194,19 @@ fn moirai_s3_real_endpoint() {
 
     // HEAD: length matches the uploaded object.
     let len = rt.block_on(reader.len()).expect("real HEAD");
-    assert_eq!(len as usize, object_len, "HEAD length must match uploaded object");
+    assert_eq!(
+        len as usize, object_len,
+        "HEAD length must match uploaded object"
+    );
 
     // Ranged GET: exact requested length, and re-reading the same range is
     // deterministic (real round-trips against the live server).
     let (pos, n) = (17u64, (object_len / 2).max(1));
     let mut a = vec![0u8; n];
     let mut b = vec![0u8; n];
-    rt.block_on(reader.read_at(pos, &mut a)).expect("real GET #1");
-    rt.block_on(reader.read_at(pos, &mut b)).expect("real GET #2");
+    rt.block_on(reader.read_at(pos, &mut a))
+        .expect("real GET #1");
+    rt.block_on(reader.read_at(pos, &mut b))
+        .expect("real GET #2");
     assert_eq!(a, b, "repeated ranged reads must be byte-identical");
 }
