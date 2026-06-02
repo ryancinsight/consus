@@ -745,9 +745,7 @@ impl NwbFileBuilder {
         let mut loc_raw: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(n * loc_max);
         for s in &locs {
             loc_raw.extend_from_slice(s.as_bytes());
-            for _ in s.len()..loc_max {
-                loc_raw.push(0u8);
-            }
+            loc_raw.resize(loc_raw.len() + (loc_max - s.len()), 0u8);
         }
         let loc_dt = Datatype::FixedString {
             length: loc_max,
@@ -760,9 +758,7 @@ impl NwbFileBuilder {
         let mut grp_raw: alloc::vec::Vec<u8> = alloc::vec::Vec::with_capacity(n * grp_max);
         for s in &grps {
             grp_raw.extend_from_slice(s.as_bytes());
-            for _ in s.len()..grp_max {
-                grp_raw.push(0u8);
-            }
+            grp_raw.resize(grp_raw.len() + (grp_max - s.len()), 0u8);
         }
         let grp_dt = Datatype::FixedString {
             length: grp_max,

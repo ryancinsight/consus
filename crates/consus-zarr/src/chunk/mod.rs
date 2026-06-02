@@ -847,9 +847,7 @@ pub fn write_array_selection<S: Store>(
 
             let mut chunk_data = match read_chunk(store, array_key, &chunk_indices, meta) {
                 Ok(existing) => {
-                    if existing.len() == chunk_bytes {
-                        existing
-                    } else if existing.len() == padded_chunk_bytes {
+                    if existing.len() == chunk_bytes || existing.len() == padded_chunk_bytes {
                         existing
                     } else {
                         return Err(ChunkError::UnexpectedLength);

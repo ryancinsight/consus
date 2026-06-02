@@ -269,16 +269,6 @@ impl S3Store {
     }
 }
 
-/// Encode a byte slice as a lowercase hex string.
-fn hex_encode(data: impl AsRef<[u8]>) -> String {
-    data.as_ref()
-        .iter()
-        .fold(alloc::string::String::new(), |mut s, &b| {
-            use alloc::format;
-            s.push_str(&format!("{:02x}", b));
-            s
-        })
-}
 
 #[cfg(feature = "s3")]
 impl Store for S3Store {
