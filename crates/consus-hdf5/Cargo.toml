@@ -12,7 +12,9 @@ description = "Pure-Rust HDF5 format implementation for the Consus scientific st
 default = ["std"]
 std = ["alloc", "consus-core/std", "consus-io/std", "consus-compression/std"]
 alloc = ["consus-core/alloc", "consus-io/alloc", "consus-compression/alloc"]
-async-io = ["alloc", "consus-io/async-io"]
+# Tokio-free: the async HDF5 parsers are generic over consus-io's AsyncReadAt,
+# which lives in the tokio-free `async-traits` surface (not `async-io`).
+async-io = ["alloc", "consus-io/async-traits"]
 parallel-io = ["alloc", "dep:moirai"]
 # Compression codec features — forwarded to consus-compression.
 # Required to activate the corresponding codec in the DefaultCodecRegistry.
