@@ -57,15 +57,19 @@ pub use io::sync::slice::SliceReader;
 #[cfg(feature = "alloc")]
 pub use io::sync::stream::StreamReader;
 
-// Async trait re-exports
-#[cfg(feature = "async-io")]
+// Async trait re-exports (tokio-free)
+#[cfg(feature = "async-traits")]
 pub use io::traits::{
     AsyncLength, AsyncRandomAccess, AsyncReadAt, AsyncSeekable, AsyncTruncate, AsyncWriteAt,
 };
 
 // Async implementation re-exports
-#[cfg(feature = "async-io")]
+#[cfg(feature = "async-traits")]
 pub use io::async_io::AsyncMemCursor;
 
 #[cfg(all(feature = "async-io", feature = "s3"))]
 pub use io::async_io::s3::S3Reader;
+
+// Native S3 backend (ADR-015): moirai HTTP/1.1 + SigV4, no tokio.
+#[cfg(feature = "s3-moirai")]
+pub use io::async_io::s3_moirai::{S3Config, S3MoiraiReader};

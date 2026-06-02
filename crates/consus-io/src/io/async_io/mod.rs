@@ -17,3 +17,8 @@ pub use cursor::AsyncMemCursor;
 pub mod s3;
 #[cfg(feature = "s3")]
 pub use s3::S3Reader;
+
+#[cfg(feature = "s3-moirai")]
+pub mod s3_moirai;
+#[cfg(feature = "s3-moirai")]
+pub use s3_moirai::{S3Config, S3MoiraiReader};

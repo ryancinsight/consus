@@ -36,7 +36,7 @@ pub mod read;
 pub mod seek;
 pub mod write;
 
-#[cfg(feature = "async-io")]
+#[cfg(feature = "async-traits")]
 pub mod async_traits;
 
 // ── Sync trait re-exports ──────────────────────────────────────────
@@ -49,7 +49,7 @@ pub use write::WriteAt;
 
 // ── Async trait re-exports ─────────────────────────────────────────
 
-#[cfg(feature = "async-io")]
+#[cfg(feature = "async-traits")]
 pub use async_traits::{
     AsyncLength, AsyncRandomAccess, AsyncReadAt, AsyncSeekable, AsyncTruncate, AsyncWriteAt,
 };

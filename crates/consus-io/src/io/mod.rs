@@ -13,5 +13,5 @@ pub mod traits;
 
 pub mod sync;
 
-#[cfg(feature = "async-io")]
+#[cfg(feature = "async-traits")]
 pub mod async_io;

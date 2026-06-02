@@ -7,7 +7,7 @@
 use super::super::traits::{AsyncLength, AsyncReadAt};
 use consus_core::{Error, Result};
 use rusoto_core::Region;
-use rusoto_s3::{GetObjectRequest, HeadObjectRequest, S3Client, S3};
+use rusoto_s3::{GetObjectRequest, HeadObjectRequest, S3, S3Client};
 use std::sync::Arc;
 
 /// An asynchronous byte source reading directly from AWS S3 via HTTP Range requests.
@@ -34,7 +34,11 @@ impl S3Reader {
     }
 
     /// Create a new `S3Reader` sharing an existing `S3Client`.
-    pub fn with_client(client: Arc<S3Client>, bucket: impl Into<String>, key: impl Into<String>) -> Self {
+    pub fn with_client(
+        client: Arc<S3Client>,
+        bucket: impl Into<String>,
+        key: impl Into<String>,
+    ) -> Self {
         Self {
             client,
             bucket: bucket.into(),
@@ -59,33 +63,43 @@ impl AsyncReadAt for S3Reader {
             ..Default::default()
         };
 
-        let response = self
-            .client
-            .get_object(req)
-            .await
-            .map_err(|e| match e {
-                rusoto_core::RusotoError::Service(rusoto_s3::GetObjectError::NoSuchKey(_)) => {
-                    Error::NotFound { path: self.key.clone() }
+        let response = self.client.get_object(req).await.map_err(|e| match e {
+            rusoto_core::RusotoError::Service(rusoto_s3::GetObjectError::NoSuchKey(_)) => {
+                Error::NotFound {
+                    path: self.key.clone(),
                 }
-                _ => Error::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("S3 get_object failed: {}", e))),
-            })?;
+            }
+            _ => Error::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("S3 get_object failed: {}", e),
+            )),
+        })?;
 
         let stream = response.body.ok_or_else(|| {
-            Error::Io(std::io::Error::new(std::io::ErrorKind::Other, "S3 get_object response body is empty"))
+            Error::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "S3 get_object response body is empty",
+            ))
         })?;
 
         // Read all chunks from the stream
         use tokio::io::AsyncReadExt;
         let mut reader = stream.into_async_read();
-        
+
         let mut read_bytes = 0;
         while read_bytes < buf.len() {
             let n = reader.read(&mut buf[read_bytes..]).await.map_err(|e| {
-                Error::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("S3 stream read failed: {}", e)))
+                Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("S3 stream read failed: {}", e),
+                ))
             })?;
-            
+
             if n == 0 {
-                return Err(Error::BufferTooSmall { required: buf.len(), provided: read_bytes });
+                return Err(Error::BufferTooSmall {
+                    required: buf.len(),
+                    provided: read_bytes,
+                });
             }
             read_bytes += n;
         }
@@ -102,20 +116,23 @@ impl AsyncLength for S3Reader {
             ..Default::default()
         };
 
-        let response = self
-            .client
-            .head_object(req)
-            .await
-            .map_err(|e| match e {
-                rusoto_core::RusotoError::Service(rusoto_s3::HeadObjectError::NoSuchKey(_)) => {
-                    Error::NotFound { path: self.key.clone() }
+        let response = self.client.head_object(req).await.map_err(|e| match e {
+            rusoto_core::RusotoError::Service(rusoto_s3::HeadObjectError::NoSuchKey(_)) => {
+                Error::NotFound {
+                    path: self.key.clone(),
                 }
-                _ => Error::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("S3 head_object failed: {}", e))),
-            })?;
+            }
+            _ => Error::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("S3 head_object failed: {}", e),
+            )),
+        })?;
 
         response.content_length.map(|l| l as u64).ok_or_else(|| {
-            Error::Io(std::io::Error::new(std::io::ErrorKind::Other, "S3 head_object response missing content_length"))
+            Error::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "S3 head_object response missing content_length",
+            ))
         })
     }
 }
-

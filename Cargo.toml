@@ -72,6 +72,12 @@ futures-core = { version = "0.3", default-features = false }
 # `parallel` feature provides the data-parallel API).
 moirai = { git = "https://github.com/ryancinsight/Moirai.git", default-features = false, features = ["parallel"] }
 
+# Native S3 transport (ADR-015 s3-moirai backend): moirai HTTP/1.1 client +
+# SigV4 signing (RustCrypto, no AWS SDK). Replaces rusoto/reqwest, no tokio.
+moirai-http = { git = "https://github.com/ryancinsight/Moirai.git", package = "moirai-http", default-features = false }
+hmac = { version = "0.12", default-features = false }
+sha2 = { version = "0.10", default-features = false }
+
 # Testing
 proptest = { version = "1" }
 criterion = { version = "0.5" }

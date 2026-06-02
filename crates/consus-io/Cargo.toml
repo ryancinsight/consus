@@ -12,9 +12,15 @@ description = "Sync and async I/O abstractions for the Consus scientific storage
 default = ["std"]
 std = ["consus-core/std"]
 alloc = ["consus-core/alloc"]
-async-io = ["dep:tokio", "dep:futures-core", "std", "alloc"]
+# Tokio-free async trait surface (AsyncReadAt/AsyncLength/... + AsyncMemCursor).
+async-traits = ["std", "alloc"]
+# Async traits + a tokio runtime (required by the legacy rusoto S3 backend).
+async-io = ["async-traits", "dep:tokio", "dep:futures-core"]
 mmap = ["dep:memmap2", "std"]
+# Legacy S3 backend (rusoto/reqwest on the tokio runtime).
 s3 = ["dep:rusoto_core", "dep:rusoto_s3", "dep:reqwest", "async-io"]
+# Native S3 backend (ADR-015): moirai HTTP/1.1 + SigV4, no tokio / no AWS SDK.
+s3-moirai = ["async-traits", "dep:moirai-http", "dep:hmac", "dep:sha2"]
 
 [dependencies]
 consus-core = { workspace = true }
@@ -24,11 +30,16 @@ memmap2 = { workspace = true, optional = true }
 rusoto_core = { workspace = true, optional = true }
 rusoto_s3 = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
+moirai-http = { workspace = true, optional = true }
+hmac = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
 tokio = { version = "1", features = ["macros", "rt"] }
 tempfile = { workspace = true }
+# Drives s3-moirai async tests on the Moirai runtime (no tokio).
+moirai = { git = "https://github.com/ryancinsight/Moirai.git", default-features = false, features = ["async"] }
 
 [[test]]
 name = "property_io"
