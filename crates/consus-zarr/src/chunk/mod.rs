@@ -672,7 +672,9 @@ pub fn read_array<S: Store>(
                     Err(ChunkError::Uninitialized)
                 } else if !meta.codecs.is_empty() {
                     #[cfg(not(feature = "std"))]
-                    { Err(ChunkError::DecompressFailed) }
+                    {
+                        Err(ChunkError::DecompressFailed)
+                    }
                     #[cfg(feature = "std")]
                     {
                         use crate::codec::{CodecPipeline, default_registry};
@@ -721,10 +723,8 @@ pub fn read_array<S: Store>(
                     loop {
                         let mut absolute_linear = 0usize;
                         for dim in 0..chunk_extent.len() {
-                            let absolute_index =
-                                chunk_origin[dim] as usize + local_position[dim];
-                            absolute_linear =
-                                absolute_linear * meta.shape[dim] + absolute_index;
+                            let absolute_index = chunk_origin[dim] as usize + local_position[dim];
+                            absolute_linear = absolute_linear * meta.shape[dim] + absolute_index;
                         }
 
                         let mut chunk_linear = 0usize;

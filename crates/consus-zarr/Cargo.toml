@@ -15,10 +15,14 @@ alloc = ["consus-core/alloc", "consus-io/alloc", "consus-compression/alloc", "se
 
 
 s3 = ["std", "rusoto_s3", "rusoto_core", "tokio", "reqwest", "md5", "futures", "bytes", "consus-io/s3", "consus-io/async-io"]
+# Native S3 store (ADR-015): moirai HTTP/1.1 + SigV4, no tokio / no AWS SDK.
+s3-moirai = ["std", "consus-io/s3-moirai", "dep:moirai"]
 
 [dependencies]
 consus-core = { workspace = true }
 consus-io = { workspace = true }
+# Native S3 store driver (block_on for the sync Store trait); async for the reactor.
+moirai = { workspace = true, features = ["async"], optional = true }
 consus-compression = { workspace = true }
 # JSON parsing/serialization for Zarr metadata.
 serde = { workspace = true }

@@ -58,6 +58,28 @@ impl S3Client {
         }
     }
 
+    /// Construct a client with a fresh internal HTTP client (Mozilla roots for
+    /// HTTPS). Convenience for callers that don't share a connection pool.
+    #[must_use]
+    pub fn with_endpoint(
+        endpoint: String,
+        region: String,
+        access_key: String,
+        secret_key: String,
+        session_token: Option<String>,
+        bucket: String,
+    ) -> Self {
+        Self::new(
+            Arc::new(HttpClient::new()),
+            endpoint,
+            region,
+            access_key,
+            secret_key,
+            session_token,
+            bucket,
+        )
+    }
+
     fn host_header(&self) -> String {
         let (secure, authority) = if let Some(r) = self.endpoint.strip_prefix("https://") {
             (true, r.trim_end_matches('/'))
@@ -88,6 +110,7 @@ impl S3Client {
 
     /// Sign and send one request. `extra` are additional headers to sign (e.g.
     /// `range`). Returns the parsed response.
+    #[allow(clippy::too_many_arguments)]
     async fn send(
         &self,
         method: &str,

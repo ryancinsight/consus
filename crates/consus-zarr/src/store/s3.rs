@@ -291,7 +291,7 @@ impl Store for S3Store {
         );
 
         use consus_io::{AsyncLength, AsyncReadAt};
-        
+
         // 1. Get length via HEAD request
         let len = self.rt.block_on(reader.len())?;
         if len == 0 {
@@ -306,9 +306,9 @@ impl Store for S3Store {
     }
 
     fn get_many(&self, keys: &[&str]) -> Vec<Result<Vec<u8>>> {
+        use alloc::sync::Arc;
         use consus_io::{AsyncLength, AsyncReadAt};
         use futures::future::join_all;
-        use alloc::sync::Arc;
 
         let client = Arc::new(self.client.clone());
         let bucket = self.bucket.clone();

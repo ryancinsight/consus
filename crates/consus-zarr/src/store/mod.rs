@@ -54,6 +54,9 @@ mod memory;
 #[cfg(feature = "s3")]
 mod s3;
 
+#[cfg(feature = "s3-moirai")]
+mod s3_moirai;
+
 // Re-export store backends at the crate root.
 #[cfg(feature = "std")]
 pub use filesystem::FsStore;
@@ -61,6 +64,8 @@ pub use filesystem::FsStore;
 pub use memory::InMemoryStore;
 #[cfg(feature = "s3")]
 pub use s3::S3Store;
+#[cfg(feature = "s3-moirai")]
+pub use s3_moirai::S3MoiraiStore;
 
 // ---------------------------------------------------------------------------
 // Store trait
