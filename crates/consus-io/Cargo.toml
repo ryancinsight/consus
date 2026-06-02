@@ -36,10 +36,18 @@ sha2 = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
-tokio = { version = "1", features = ["macros", "rt"] }
+# Full runtime so the rusoto↔moirai S3 differential test can drive rusoto (hyper).
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "net", "time", "io-util"] }
 tempfile = { workspace = true }
 # Drives s3-moirai async tests on the Moirai runtime (no tokio).
 moirai = { git = "https://github.com/ryancinsight/Moirai.git", default-features = false, features = ["async"] }
+# For the rusoto↔moirai differential test (build a custom-endpoint Region).
+rusoto_core = { workspace = true }
+
+[[test]]
+name = "s3_rusoto_moirai_differential"
+path = "tests/s3_rusoto_moirai_differential.rs"
+required-features = ["s3", "s3-moirai"]
 
 [[test]]
 name = "property_io"
