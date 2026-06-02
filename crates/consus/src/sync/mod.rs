@@ -11,7 +11,7 @@ use consus_core::{Datatype, Error, Result, Selection, Shape};
 use consus_io::{Length, ReadAt, WriteAt};
 
 #[cfg(feature = "std")]
-use rayon::prelude::*;
+use moirai::ParallelSlice;
 
 #[cfg(feature = "std")]
 use std::sync::Arc;
@@ -327,19 +327,18 @@ pub fn par_read_ranges<R>(reader: Arc<R>, ranges: &[IoRange]) -> Result<Vec<Vec<
 where
     R: ReadAt + Send + Sync + 'static,
 {
-    let indexed: Vec<(usize, IoRange)> = ranges.iter().copied().enumerate().collect();
-
-    let mut results: Vec<(usize, Vec<u8>)> = indexed
-        .into_par_iter()
-        .map(|(index, range)| {
+    // Order-preserving parallel map; `map_collect` keeps input order, so no
+    // index/sort bookkeeping is needed.
+    let results: Vec<Vec<u8>> = ranges
+        .par()
+        .map_collect(|range| {
             let mut buffer = vec![0u8; range.len];
             reader.read_at(range.offset, &mut buffer)?;
-            Ok::<(usize, Vec<u8>), Error>((index, buffer))
+            Ok::<Vec<u8>, Error>(buffer)
         })
+        .into_iter()
         .collect::<Result<Vec<_>>>()?;
-
-    results.sort_by_key(|(index, _)| *index);
-    Ok(results.into_iter().map(|(_, bytes)| bytes).collect())
+    Ok(results)
 }
 
 #[cfg(not(feature = "std"))]

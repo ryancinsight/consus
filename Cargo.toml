@@ -68,8 +68,9 @@ lz4_flex = { version = "0.11", default-features = false }
 tokio = { version = "1", default-features = false, features = ["io-util", "fs"] }
 futures-core = { version = "0.3", default-features = false }
 
-# Parallelism (optional)
-rayon = { version = "1" }
+# Parallelism: moirai (default-features off avoids its global allocator; the
+# `parallel` feature provides the data-parallel API).
+moirai = { git = "https://github.com/ryancinsight/Moirai.git", default-features = false, features = ["parallel"] }
 
 # Testing
 proptest = { version = "1" }

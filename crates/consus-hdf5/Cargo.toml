@@ -13,7 +13,7 @@ default = ["std"]
 std = ["alloc", "consus-core/std", "consus-io/std", "consus-compression/std"]
 alloc = ["consus-core/alloc", "consus-io/alloc", "consus-compression/alloc"]
 async-io = ["alloc", "consus-io/async-io"]
-parallel-io = ["alloc", "dep:rayon"]
+parallel-io = ["alloc", "dep:moirai"]
 # Compression codec features — forwarded to consus-compression.
 # Required to activate the corresponding codec in the DefaultCodecRegistry.
 deflate = ["consus-compression/deflate"]
@@ -25,7 +25,7 @@ consus-core = { workspace = true }
 consus-io = { workspace = true }
 consus-compression = { workspace = true }
 byteorder = { workspace = true }
-rayon = { workspace = true, optional = true }
+moirai = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

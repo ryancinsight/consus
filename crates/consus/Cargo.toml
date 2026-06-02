@@ -63,7 +63,7 @@ consus-netcdf = { workspace = true, optional = true }
 consus-parquet = { workspace = true, optional = true }
 consus-arrow = { workspace = true, optional = true }
 consus-fits = { workspace = true, optional = true }
-rayon = { workspace = true }
+moirai = { workspace = true }
 
 [package.metadata.docs.rs]
 all-features = true

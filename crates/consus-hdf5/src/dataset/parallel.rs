@@ -135,10 +135,10 @@ pub fn execute_parallel<R: ReadAt + Sync>(
     registry: &dyn consus_compression::CompressionRegistry,
     fill_value: Option<&[u8]>,
 ) -> Result<Vec<ChunkResult>> {
-    use rayon::prelude::*;
+    use moirai::ParallelSlice;
     tasks
-        .into_par_iter()
-        .map(|task| {
+        .par()
+        .map_collect(|task| {
             let data = read_chunk_raw(
                 source,
                 &task.location,
@@ -148,10 +148,11 @@ pub fn execute_parallel<R: ReadAt + Sync>(
                 fill_value,
             )?;
             Ok(ChunkResult {
-                chunk_coord: task.chunk_coord,
-                actual_chunk_dims: task.actual_chunk_dims,
+                chunk_coord: task.chunk_coord.clone(),
+                actual_chunk_dims: task.actual_chunk_dims.clone(),
                 data,
             })
         })
+        .into_iter()
         .collect()
 }
