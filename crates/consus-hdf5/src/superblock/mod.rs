@@ -66,7 +66,9 @@ impl Superblock {
             message: alloc::string::String::from("no HDF5 superblock found at expected offsets"),
         });
         #[cfg(not(feature = "alloc"))]
-        return Err(Error::InvalidFormat { message: alloc::string::String::from("invalid superblock format") });
+        return Err(Error::InvalidFormat {
+            message: alloc::string::String::from("invalid superblock format"),
+        });
     }
 
     /// Parse superblock at a known offset.
@@ -86,7 +88,9 @@ impl Superblock {
                     message: alloc::format!("unsupported superblock version: {version}"),
                 });
                 #[cfg(not(feature = "alloc"))]
-                return Err(Error::InvalidFormat { message: alloc::string::String::from("invalid superblock version") });
+                return Err(Error::InvalidFormat {
+                    message: alloc::string::String::from("invalid superblock version"),
+                });
             }
         }
     }

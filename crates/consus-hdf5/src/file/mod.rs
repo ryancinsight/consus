@@ -846,45 +846,50 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
             return Ok(());
         }
 
-        for entry in entries {
-            let chunk_coord =
-                Self::decode_v4_scaled_offsets(entry.dimension_offsets.as_slice(), &grid_dims)?;
-            let actual_chunk_dims =
-                crate::dataset::chunk::edge_chunk_dims(&chunk_coord, chunk_dims, dataset_dims);
-            let chunk_elements = actual_chunk_dims.iter().product::<usize>();
-            let uncompressed_size = chunk_elements
-                .checked_mul(element_size)
-                .ok_or(Error::Overflow)?;
+        // Serial fallback when parallel-io is disabled (mutually exclusive with the
+        // parallel block above, which returns).
+        #[cfg(not(all(feature = "parallel-io", feature = "alloc")))]
+        {
+            for entry in entries {
+                let chunk_coord =
+                    Self::decode_v4_scaled_offsets(entry.dimension_offsets.as_slice(), &grid_dims)?;
+                let actual_chunk_dims =
+                    crate::dataset::chunk::edge_chunk_dims(&chunk_coord, chunk_dims, dataset_dims);
+                let chunk_elements = actual_chunk_dims.iter().product::<usize>();
+                let uncompressed_size = chunk_elements
+                    .checked_mul(element_size)
+                    .ok_or(Error::Overflow)?;
 
-            let chunk = crate::dataset::chunk::read_chunk_raw(
-                &self.source,
-                &crate::dataset::chunk::ChunkLocation {
-                    address: entry.chunk_address,
-                    size: if entry.chunk_size == 0 {
-                        uncompressed_size as u64
-                    } else {
-                        entry.chunk_size as u64
+                let chunk = crate::dataset::chunk::read_chunk_raw(
+                    &self.source,
+                    &crate::dataset::chunk::ChunkLocation {
+                        address: entry.chunk_address,
+                        size: if entry.chunk_size == 0 {
+                            uncompressed_size as u64
+                        } else {
+                            entry.chunk_size as u64
+                        },
+                        filter_mask: entry.filter_mask,
                     },
-                    filter_mask: entry.filter_mask,
-                },
-                uncompressed_size,
-                filter_ids,
-                registry,
-                fill_value,
-            )?;
+                    uncompressed_size,
+                    filter_ids,
+                    registry,
+                    fill_value,
+                )?;
 
-            self.copy_chunk_into_dataset(
-                &chunk,
-                out,
-                dataset_dims,
-                chunk_dims,
-                &chunk_coord,
-                &actual_chunk_dims,
-                element_size,
-            )?;
+                self.copy_chunk_into_dataset(
+                    &chunk,
+                    out,
+                    dataset_dims,
+                    chunk_dims,
+                    &chunk_coord,
+                    &actual_chunk_dims,
+                    element_size,
+                )?;
+            }
+
+            Ok(())
         }
-
-        Ok(())
     }
 
     /// Decode v4 B-tree v2 scaled offsets into chunk grid coordinates.
@@ -944,9 +949,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
             let offset = usize::try_from(dimension_offsets[dim]).map_err(|_| Error::Overflow)?;
             if offset % chunk_dim != 0 {
                 return Err(Error::InvalidFormat {
-                    message: String::from(
-                        "chunk element offset is not aligned to chunk dimension",
-                    ),
+                    message: String::from("chunk element offset is not aligned to chunk dimension"),
                 });
             }
 

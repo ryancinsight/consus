@@ -30,9 +30,9 @@
 
 pub mod chunk;
 #[cfg(feature = "alloc")]
-pub(crate) mod parallel;
-#[cfg(feature = "alloc")]
 pub mod layout;
+#[cfg(feature = "alloc")]
+pub(crate) mod parallel;
 #[cfg(feature = "alloc")]
 pub mod selection;
 

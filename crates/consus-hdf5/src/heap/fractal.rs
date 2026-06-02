@@ -267,7 +267,11 @@ impl FractalHeapHeader {
         pos += 2;
 
         let raw_starting_rows = u16::from_le_bytes([buf[pos], buf[pos + 1]]);
-        let starting_rows = if raw_starting_rows == 0 { 1 } else { raw_starting_rows };
+        let starting_rows = if raw_starting_rows == 0 {
+            1
+        } else {
+            raw_starting_rows
+        };
         pos += 2;
 
         let root_block_address = ctx.read_offset(&buf[pos..]);
@@ -522,13 +526,15 @@ fn find_in_indirect_block<R: ReadAt>(
     // Per-child entry size in the indirect block:
     // direct-block rows: O bytes address + optional filter info
     // indirect-block rows: O bytes address only
-    let filter_extra = if header.io_filter_size > 0 { ctx.length_bytes() + 4 } else { 0 };
+    let filter_extra = if header.io_filter_size > 0 {
+        ctx.length_bytes() + 4
+    } else {
+        0
+    };
     let n_direct_children = (nrows_u.min(max_dblock_rows)) * width;
     let n_indirect_children = nrows_u.saturating_sub(max_dblock_rows) * width;
-    let buf_size = iblock_overhead
-        + n_direct_children * (o + filter_extra)
-        + n_indirect_children * o
-        + 4; // checksum
+    let buf_size =
+        iblock_overhead + n_direct_children * (o + filter_extra) + n_indirect_children * o + 4; // checksum
 
     let mut ibuf = vec![0u8; buf_size];
     source.read_at(iblock_addr, &mut ibuf)?;
@@ -611,7 +617,11 @@ fn row_block_size(row: usize, header: &FractalHeapHeader) -> u64 {
         // Saturating shift: if shift ≥ 64 the result is 0, but that would
         // be an invalid heap configuration.
         let shift = row - start;
-        if shift >= 64 { u64::MAX } else { header.starting_block_size.wrapping_shl(shift as u32) }
+        if shift >= 64 {
+            u64::MAX
+        } else {
+            header.starting_block_size.wrapping_shl(shift as u32)
+        }
     }
 }
 
@@ -643,7 +653,9 @@ fn indirect_child_nrows(_parent_row: usize, header: &FractalHeapHeader) -> u16 {
 #[cfg(feature = "alloc")]
 fn indirect_block_coverage(nrows: u16, header: &FractalHeapHeader) -> u64 {
     let width = header.table_width as u64;
-    (0..nrows as usize).map(|r| width * row_block_size(r, header)).sum()
+    (0..nrows as usize)
+        .map(|r| width * row_block_size(r, header))
+        .sum()
 }
 
 // ---------------------------------------------------------------------------

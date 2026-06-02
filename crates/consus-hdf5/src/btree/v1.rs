@@ -31,9 +31,9 @@
 use alloc::string::String;
 
 use consus_core::{Error, Result};
-use consus_io::ReadAt;
 #[cfg(feature = "async-io")]
 use consus_io::AsyncReadAt;
+use consus_io::ReadAt;
 
 use crate::address::ParseContext;
 
@@ -155,7 +155,9 @@ impl BTreeV1Header {
         if buf_slice[0..4] != BTREE_V1_SIGNATURE {
             return Err(Error::InvalidFormat {
                 #[cfg(feature = "alloc")]
-                message: alloc::string::String::from("invalid B-tree v1 signature (expected \"TREE\")"),
+                message: alloc::string::String::from(
+                    "invalid B-tree v1 signature (expected \"TREE\")",
+                ),
             });
         }
 

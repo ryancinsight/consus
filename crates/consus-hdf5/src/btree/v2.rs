@@ -67,10 +67,10 @@ use alloc::{format, vec::Vec};
 use consus_core::Error;
 use consus_core::Result;
 
-#[cfg(feature = "alloc")]
-use consus_io::ReadAt;
 #[cfg(all(feature = "async-io", feature = "alloc"))]
 use consus_io::AsyncReadAt;
+#[cfg(feature = "alloc")]
+use consus_io::ReadAt;
 
 #[cfg(feature = "alloc")]
 use crate::address::ParseContext;
@@ -215,7 +215,11 @@ impl BTreeV2Header {
 
     /// Parse a B-tree v2 header from an async I/O source.
     #[cfg(all(feature = "async-io", feature = "alloc"))]
-    pub async fn async_parse<R: AsyncReadAt>(source: &R, address: u64, ctx: &ParseContext) -> Result<Self> {
+    pub async fn async_parse<R: AsyncReadAt>(
+        source: &R,
+        address: u64,
+        ctx: &ParseContext,
+    ) -> Result<Self> {
         let s = ctx.offset_bytes();
         let min_size = 4 + 1 + 1 + 4 + 2 + 2 + 1 + 1 + s + 2 + s + 4;
 
@@ -783,7 +787,8 @@ async fn async_collect_records_recursive<R: AsyncReadAt>(
         records.extend(leaf.records);
     } else {
         let internal =
-            BTreeV2InternalNode::async_parse(source, node_address, header, num_records, ctx).await?;
+            BTreeV2InternalNode::async_parse(source, node_address, header, num_records, ctx)
+                .await?;
 
         let n_rec = internal.records.len();
         let n_children = internal.child_addresses.len();

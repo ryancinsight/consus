@@ -571,10 +571,7 @@ fn h5py_group_nested_i32() {
 
     let raw = read_dataset_raw_bytes(&file, addr, 4);
     let value = i32::from_le_bytes(raw[..4].try_into().unwrap());
-    assert_eq!(
-        value, 77,
-        "/grp/nested_i32 value must be 77; got {value}"
-    );
+    assert_eq!(value, 77, "/grp/nested_i32 value must be 77; got {value}");
 }
 
 /// Navigate into `/grp` and read `/grp/nested_f64` — float64 1-D shape=(3,).
@@ -596,11 +593,7 @@ fn h5py_group_nested_f64() {
     let dataset = file.dataset_at(addr).expect("dataset metadata");
 
     let dims = dataset.shape.current_dims();
-    assert_eq!(
-        dims.as_slice(),
-        &[3],
-        "/grp/nested_f64 must have shape [3]"
-    );
+    assert_eq!(dims.as_slice(), &[3], "/grp/nested_f64 must have shape [3]");
 
     let raw = read_dataset_raw_bytes(&file, addr, 3 * 8);
     let values: Vec<f64> = raw

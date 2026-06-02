@@ -390,7 +390,11 @@ impl DataLayout {
 
         let dims_offset = 5;
         // Bytes per dimension: the spec uses 1-4; legacy test data uses 0 to mean 4.
-        let bytes_per_dim = if encoded_size_width == 0 { 4 } else { encoded_size_width };
+        let bytes_per_dim = if encoded_size_width == 0 {
+            4
+        } else {
+            encoded_size_width
+        };
         let index_type_offset = dims_offset + bytes_per_dim * ndims;
 
         if data.len() < index_type_offset + 1 {
@@ -450,8 +454,7 @@ impl DataLayout {
                     index_address = Some(ctx.read_offset(&data[addr_start..]));
                 }
             }
-            chunk_index_type::EXTENSIBLE_ARRAY
-            | chunk_index_type::BTREE_V2 => {
+            chunk_index_type::EXTENSIBLE_ARRAY | chunk_index_type::BTREE_V2 => {
                 // These indexing types store an address to their header structure.
                 let s = ctx.offset_bytes();
                 if data.len() >= index_data_offset + s {
@@ -638,9 +641,13 @@ mod tests {
         /// Consumers are responsible for rejecting virtual layouts when unsupported.
         fn parse_virtual_layout_returns_virtual_storage() {
             let data = [3u8, 3]; // version=3, class=3 (virtual)
-            let layout = DataLayout::parse(&data, &ctx8())
-                .expect("virtual layout must parse without error");
-            assert_eq!(layout.layout, StorageLayout::Virtual, "layout class must be Virtual");
+            let layout =
+                DataLayout::parse(&data, &ctx8()).expect("virtual layout must parse without error");
+            assert_eq!(
+                layout.layout,
+                StorageLayout::Virtual,
+                "layout class must be Virtual"
+            );
             assert_eq!(layout.version, 3, "layout version must be 3");
         }
 

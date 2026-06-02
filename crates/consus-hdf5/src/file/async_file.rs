@@ -28,9 +28,9 @@ use crate::superblock::Superblock;
 
 use super::async_reader;
 use super::reader;
+use crate::btree::btree_v2_record_type;
 use crate::btree::v1::{BTreeV1Header, BTreeV1Type};
 use crate::btree::v2::{BTreeV2Header, async_collect_all_records};
-use crate::btree::btree_v2_record_type;
 use crate::file::ChunkIndexEntry;
 use consus_core::Error;
 
@@ -127,20 +127,22 @@ where
         &self,
         object_header_address: u64,
     ) -> Result<crate::dataset::Hdf5Dataset> {
-        let header = async_reader::async_read_object_header(
-            &self.source,
-            object_header_address,
-            &self.ctx,
-        )
-        .await?;
+        let header =
+            async_reader::async_read_object_header(&self.source, object_header_address, &self.ctx)
+                .await?;
         let mut dataset = reader::read_dataset_metadata(&header, &self.ctx)?;
         dataset.object_header_address = object_header_address;
         Ok(dataset)
     }
 
     /// Read all bytes from a chunked dataset.
-    pub async fn read_chunked_dataset_all_bytes(&self, object_header_address: u64) -> Result<Vec<u8>> {
-        let header = async_reader::async_read_object_header(&self.source, object_header_address, &self.ctx).await?;
+    pub async fn read_chunked_dataset_all_bytes(
+        &self,
+        object_header_address: u64,
+    ) -> Result<Vec<u8>> {
+        let header =
+            async_reader::async_read_object_header(&self.source, object_header_address, &self.ctx)
+                .await?;
         let dataset = reader::read_dataset_metadata(&header, &self.ctx)?;
 
         if dataset.layout != crate::dataset::StorageLayout::Chunked {
@@ -149,10 +151,13 @@ where
             });
         }
 
-        let layout_msg = reader::find_message(&header, crate::object_header::message_types::DATA_LAYOUT)
-            .ok_or_else(|| Error::InvalidFormat {
-                message: alloc::string::String::from("dataset object header missing layout message"),
-            })?;
+        let layout_msg =
+            reader::find_message(&header, crate::object_header::message_types::DATA_LAYOUT)
+                .ok_or_else(|| Error::InvalidFormat {
+                    message: alloc::string::String::from(
+                        "dataset object header missing layout message",
+                    ),
+                })?;
         let layout = crate::dataset::layout::DataLayout::parse(&layout_msg.data, &self.ctx)?;
 
         let chunk_dims_u32 = layout.chunk_dims.ok_or_else(|| Error::InvalidFormat {
@@ -160,9 +165,15 @@ where
         })?;
         let chunk_dims: Vec<usize> = chunk_dims_u32.iter().map(|&d| d as usize).collect();
 
-        let element_size = dataset.datatype.element_size().ok_or_else(|| Error::UnsupportedFeature {
-            feature: alloc::string::String::from("chunked full read requires fixed-size element datatype"),
-        })?;
+        let element_size =
+            dataset
+                .datatype
+                .element_size()
+                .ok_or_else(|| Error::UnsupportedFeature {
+                    feature: alloc::string::String::from(
+                        "chunked full read requires fixed-size element datatype",
+                    ),
+                })?;
         let dataset_dims = dataset.shape.current_dims();
         let total_bytes = dataset
             .shape
@@ -183,9 +194,13 @@ where
         ) {
             (3, Some(chunk_btree_address), _, _) => {
                 if dataset_dims.is_empty() {
-                    let entries = self.async_read_v1_chunk_btree_leaf_entries(chunk_btree_address, 0).await?;
+                    let entries = self
+                        .async_read_v1_chunk_btree_leaf_entries(chunk_btree_address, 0)
+                        .await?;
                     let entry = entries.first().ok_or_else(|| Error::InvalidFormat {
-                        message: alloc::string::String::from("scalar chunked dataset has no chunk entries"),
+                        message: alloc::string::String::from(
+                            "scalar chunked dataset has no chunk entries",
+                        ),
                     })?;
                     let chunk = crate::dataset::chunk::async_read_chunk_raw(
                         &self.source,
@@ -198,14 +213,18 @@ where
                         &filter_ids,
                         &registry,
                         fill_value.as_deref(),
-                    ).await?;
+                    )
+                    .await?;
                     out.copy_from_slice(&chunk[..element_size]);
                     return Ok(out);
                 }
 
-                let entries = self.async_read_v1_chunk_btree_leaf_entries(chunk_btree_address, chunk_dims.len()).await?;
+                let entries = self
+                    .async_read_v1_chunk_btree_leaf_entries(chunk_btree_address, chunk_dims.len())
+                    .await?;
                 for entry in entries {
-                    let chunk_uncompressed_size = chunk_dims.iter().product::<usize>() * element_size;
+                    let chunk_uncompressed_size =
+                        chunk_dims.iter().product::<usize>() * element_size;
                     let chunk = crate::dataset::chunk::async_read_chunk_raw(
                         &self.source,
                         &crate::dataset::chunk::ChunkLocation {
@@ -217,11 +236,16 @@ where
                         &filter_ids,
                         &registry,
                         fill_value.as_deref(),
-                    ).await?;
+                    )
+                    .await?;
 
-                    let chunk_coords: Vec<usize> = entry.dimension_offsets.iter().map(|&o| o as usize).collect();
+                    let chunk_coords: Vec<usize> = entry
+                        .dimension_offsets
+                        .iter()
+                        .map(|&o| o as usize)
+                        .collect();
 
-                    // Same layout copy logic as sync. 
+                    // Same layout copy logic as sync.
                     // This could be optimized later.
                     let mut chunk_pos = 0;
                     let mut dataset_pos = vec![0usize; dataset_dims.len()];
@@ -232,7 +256,10 @@ where
                             ds_coords[i] += o;
                         }
 
-                        let valid = ds_coords.iter().zip(dataset_dims.iter()).all(|(&c, &d)| c < d);
+                        let valid = ds_coords
+                            .iter()
+                            .zip(dataset_dims.iter())
+                            .all(|(&c, &d)| c < d);
                         if valid {
                             let mut linear_idx = 0usize;
                             for (&coord, &dim) in ds_coords.iter().zip(dataset_dims.iter()) {
@@ -260,8 +287,10 @@ where
                         feature: alloc::format!("v4 chunk index type {index_type:?}"),
                     });
                 }
-                
-                let entries = self.async_read_v4_chunk_btree_entries(index_address).await?;
+
+                let entries = self
+                    .async_read_v4_chunk_btree_entries(index_address)
+                    .await?;
                 let chunk_uncompressed_size = chunk_dims.iter().product::<usize>() * element_size;
 
                 for entry in entries {
@@ -276,9 +305,14 @@ where
                         &filter_ids,
                         &registry,
                         fill_value.as_deref(),
-                    ).await?;
+                    )
+                    .await?;
 
-                    let chunk_coords: Vec<usize> = entry.dimension_offsets.iter().map(|&o| o as usize).collect();
+                    let chunk_coords: Vec<usize> = entry
+                        .dimension_offsets
+                        .iter()
+                        .map(|&o| o as usize)
+                        .collect();
                     let mut chunk_pos = 0;
                     let mut dataset_pos = vec![0usize; dataset_dims.len()];
 
@@ -288,7 +322,10 @@ where
                             ds_coords[i] += o;
                         }
 
-                        let valid = ds_coords.iter().zip(dataset_dims.iter()).all(|(&c, &d)| c < d);
+                        let valid = ds_coords
+                            .iter()
+                            .zip(dataset_dims.iter())
+                            .all(|(&c, &d)| c < d);
                         if valid {
                             let mut linear_idx = 0usize;
                             for (&coord, &dim) in ds_coords.iter().zip(dataset_dims.iter()) {
@@ -312,7 +349,9 @@ where
             }
             _ => {
                 return Err(Error::UnsupportedFeature {
-                    feature: alloc::string::String::from("unsupported chunked layout version or missing B-tree address"),
+                    feature: alloc::string::String::from(
+                        "unsupported chunked layout version or missing B-tree address",
+                    ),
                 });
             }
         }
@@ -328,12 +367,16 @@ where
         let header = BTreeV1Header::async_parse(&self.source, btree_address, &self.ctx).await?;
         if header.node_type != BTreeV1Type::RawDataChunk {
             return Err(Error::InvalidFormat {
-                message: alloc::string::String::from("chunk index B-tree is not a raw-data chunk tree"),
+                message: alloc::string::String::from(
+                    "chunk index B-tree is not a raw-data chunk tree",
+                ),
             });
         }
         if header.level != 0 {
             return Err(Error::UnsupportedFeature {
-                feature: alloc::string::String::from("chunked full read currently supports only leaf chunk B-trees"),
+                feature: alloc::string::String::from(
+                    "chunked full read currently supports only leaf chunk B-trees",
+                ),
             });
         }
 
@@ -342,7 +385,9 @@ where
         let header_size = 8 + 2 * s;
         let data_size = key_size + header.entries_used as usize * (s + key_size);
         let mut data = vec![0u8; data_size];
-        self.source.read_at(btree_address + header_size as u64, &mut data).await?;
+        self.source
+            .read_at(btree_address + header_size as u64, &mut data)
+            .await?;
 
         let mut entries = Vec::with_capacity(header.entries_used as usize);
         use byteorder::{ByteOrder, LittleEndian};
@@ -375,13 +420,18 @@ where
         Ok(entries)
     }
 
-    async fn async_read_v4_chunk_btree_entries(&self, index_address: u64) -> Result<Vec<ChunkIndexEntry>> {
+    async fn async_read_v4_chunk_btree_entries(
+        &self,
+        index_address: u64,
+    ) -> Result<Vec<ChunkIndexEntry>> {
         let header = BTreeV2Header::async_parse(&self.source, index_address, &self.ctx).await?;
         if header.record_type != btree_v2_record_type::CHUNK_V4_NON_FILTERED
             && header.record_type != btree_v2_record_type::CHUNK_V4_FILTERED
         {
             return Err(Error::InvalidFormat {
-                message: alloc::string::String::from("v4 chunk index is not a chunked-data B-tree v2 tree"),
+                message: alloc::string::String::from(
+                    "v4 chunk index is not a chunked-data B-tree v2 tree",
+                ),
             });
         }
 
@@ -402,8 +452,11 @@ where
             } else {
                 None
             }
-        }.ok_or_else(|| Error::InvalidFormat {
-            message: alloc::string::String::from("unable to determine v4 chunk rank from record size"),
+        }
+        .ok_or_else(|| Error::InvalidFormat {
+            message: alloc::string::String::from(
+                "unable to determine v4 chunk rank from record size",
+            ),
         })?;
 
         let mut entries = Vec::with_capacity(records.len());
@@ -415,7 +468,7 @@ where
             let mut pos = 4; // Skip dimensional chunk size (size of chunk in elements scaled)
 
             let is_filtered = header.record_type == btree_v2_record_type::CHUNK_V4_FILTERED;
-            
+
             // Scaled dimensional coordinates
             for _ in 0..rank {
                 if pos + 8 > data.len() {
@@ -451,7 +504,8 @@ where
             };
 
             let chunk_address = if pos + self.ctx.offset_bytes() <= data.len() {
-                self.ctx.read_offset(&data[pos..pos + self.ctx.offset_bytes()])
+                self.ctx
+                    .read_offset(&data[pos..pos + self.ctx.offset_bytes()])
             } else {
                 crate::constants::UNDEFINED_ADDRESS
             };

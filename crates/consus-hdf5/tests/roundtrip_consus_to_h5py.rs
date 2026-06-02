@@ -63,11 +63,7 @@ fn verifier_script() -> PathBuf {
 /// Returns `None` when no suitable interpreter is found, causing tests to
 /// skip rather than fail.
 fn find_python() -> Option<String> {
-    let candidates = [
-        r"D:\miniforge3\python.exe",
-        "python3",
-        "python",
-    ];
+    let candidates = [r"D:\miniforge3\python.exe", "python3", "python"];
     for candidate in &candidates {
         let available = Command::new(candidate)
             .args(["-c", "import h5py"])
@@ -301,7 +297,13 @@ fn consus_chunked_1d_i32_v1_readable_by_h5py() {
 
     let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
     builder
-        .add_dataset("chunked_1d_i32", &i32_dt(), &Shape::fixed(&[12]), &raw, &dcpl)
+        .add_dataset(
+            "chunked_1d_i32",
+            &i32_dt(),
+            &Shape::fixed(&[12]),
+            &raw,
+            &dcpl,
+        )
         .unwrap();
     let bytes = builder.finish().unwrap();
     verify_with_h5py(bytes, "chunked_1d_i32_v1");
@@ -327,7 +329,13 @@ fn consus_chunked_2d_f64_v1_readable_by_h5py() {
 
     let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
     builder
-        .add_dataset("chunked_2d_f64", &f64_dt(), &Shape::fixed(&[4, 6]), &raw, &dcpl)
+        .add_dataset(
+            "chunked_2d_f64",
+            &f64_dt(),
+            &Shape::fixed(&[4, 6]),
+            &raw,
+            &dcpl,
+        )
         .unwrap();
     let bytes = builder.finish().unwrap();
     verify_with_h5py(bytes, "chunked_2d_f64_v1");
@@ -358,7 +366,13 @@ fn consus_chunked_1d_i32_v4_readable_by_h5py() {
 
     let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
     builder
-        .add_dataset("chunked_1d_i32_v4", &i32_dt(), &Shape::fixed(&[8]), &raw, &dcpl)
+        .add_dataset(
+            "chunked_1d_i32_v4",
+            &i32_dt(),
+            &Shape::fixed(&[8]),
+            &raw,
+            &dcpl,
+        )
         .unwrap();
     let bytes = builder.finish().unwrap();
     verify_with_h5py(bytes, "chunked_1d_i32_v4");
@@ -389,7 +403,13 @@ fn consus_deflate_chunked_1d_i32_readable_by_h5py() {
 
     let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
     builder
-        .add_dataset("deflate_1d_i32", &i32_dt(), &Shape::fixed(&[8]), &raw, &dcpl)
+        .add_dataset(
+            "deflate_1d_i32",
+            &i32_dt(),
+            &Shape::fixed(&[8]),
+            &raw,
+            &dcpl,
+        )
         .unwrap();
     let bytes = builder.finish().unwrap();
     verify_with_h5py(bytes, "deflate_chunked_1d_i32");
@@ -554,7 +574,13 @@ fn consus_chunked_2d_f64_v4_readable_by_h5py() {
 
     let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
     builder
-        .add_dataset("chunked_2d_f64_v4", &f64_dt(), &Shape::fixed(&[4, 6]), &raw, &dcpl)
+        .add_dataset(
+            "chunked_2d_f64_v4",
+            &f64_dt(),
+            &Shape::fixed(&[4, 6]),
+            &raw,
+            &dcpl,
+        )
         .unwrap();
     let bytes = builder.finish().unwrap();
     verify_with_h5py(bytes, "chunked_2d_f64_v4");
@@ -621,7 +647,13 @@ fn consus_deflate_chunked_2d_i32_readable_by_h5py() {
 
     let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
     builder
-        .add_dataset("deflate_2d_i32", &i32_dt(), &Shape::fixed(&[3, 8]), &raw, &dcpl)
+        .add_dataset(
+            "deflate_2d_i32",
+            &i32_dt(),
+            &Shape::fixed(&[3, 8]),
+            &raw,
+            &dcpl,
+        )
         .unwrap();
     let bytes = builder.finish().unwrap();
     verify_with_h5py(bytes, "deflate_chunked_2d_i32");
@@ -718,7 +750,13 @@ fn consus_chunked_3d_f64_v4_readable_by_h5py() {
 
     let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
     builder
-        .add_dataset("chunked_3d_f64", &f64_dt(), &Shape::fixed(&[2, 3, 4]), &raw, &dcpl)
+        .add_dataset(
+            "chunked_3d_f64",
+            &f64_dt(),
+            &Shape::fixed(&[2, 3, 4]),
+            &raw,
+            &dcpl,
+        )
         .unwrap();
     let bytes = builder.finish().unwrap();
     verify_with_h5py(bytes, "chunked_3d_f64_v4");

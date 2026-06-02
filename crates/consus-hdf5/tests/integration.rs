@@ -3,6 +3,7 @@
 use core::num::NonZeroUsize;
 
 use byteorder::{ByteOrder, LittleEndian};
+use consus_compression::{Checksum, Lookup3};
 use consus_core::{ByteOrder as CoreByteOrder, Datatype, LinkType, Shape};
 use consus_hdf5::attribute::Hdf5Attribute;
 use consus_hdf5::dataset::StorageLayout;
@@ -15,7 +16,6 @@ use consus_hdf5::file::writer::{
 use consus_hdf5::object_header::{HeaderMessage, ObjectHeader};
 use consus_hdf5::property_list::{DatasetCreationProps, DatasetLayout, GroupCreationProps};
 use consus_io::{MemCursor, WriteAt};
-use consus_compression::{Checksum, Lookup3};
 
 fn u32_le_datatype() -> Datatype {
     Datatype::Integer {
@@ -648,7 +648,6 @@ fn open_path_resolves_soft_link() {
         ),
     }
 }
-
 
 #[test]
 fn v4_btree_v2_non_filtered_roundtrip() {

@@ -31,7 +31,13 @@ fn build_scalar_hdf5() -> Vec<u8> {
     let raw = 42i32.to_le_bytes();
     let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
     builder
-        .add_dataset("scalar_value", &dt, &shape, &raw, &DatasetCreationProps::default())
+        .add_dataset(
+            "scalar_value",
+            &dt,
+            &shape,
+            &raw,
+            &DatasetCreationProps::default(),
+        )
         .expect("add dataset");
     builder.finish().expect("finish")
 }
@@ -71,7 +77,10 @@ async fn async_superblock_eof_address_nonzero() {
     let bytes = build_scalar_hdf5();
     let cursor = AsyncMemCursor::from_bytes(bytes);
     let file = AsyncHdf5File::open(cursor).await.expect("must open");
-    assert!(file.superblock().eof_address > 0, "eof_address must be non-zero");
+    assert!(
+        file.superblock().eof_address > 0,
+        "eof_address must be non-zero"
+    );
 }
 
 #[tokio::test]
@@ -101,7 +110,11 @@ async fn async_read_bytes_returns_hdf5_magic() {
     let cursor = AsyncMemCursor::from_bytes(bytes);
     let file = AsyncHdf5File::open(cursor).await.expect("must open");
     let magic = file.read_bytes(0, 8).await.expect("read_bytes");
-    assert_eq!(magic.as_slice(), b"\x89HDF\r\n\x1a\n", "first 8 bytes must be HDF5 magic");
+    assert_eq!(
+        magic.as_slice(),
+        b"\x89HDF\r\n\x1a\n",
+        "first 8 bytes must be HDF5 magic"
+    );
 }
 
 #[tokio::test]
@@ -111,9 +124,16 @@ async fn async_dataset_at_scalar_returns_correct_metadata() {
     let cursor = AsyncMemCursor::from_bytes(bytes);
     let file = AsyncHdf5File::open(cursor).await.expect("must open");
     let dataset = file.dataset_at(ds_addr).await.expect("dataset_at");
-    assert_eq!(dataset.object_header_address, ds_addr, "object_header_address must match");
+    assert_eq!(
+        dataset.object_header_address, ds_addr,
+        "object_header_address must match"
+    );
     assert!(dataset.shape.is_scalar(), "shape must be scalar");
-    assert_eq!(dataset.layout, StorageLayout::Contiguous, "must use contiguous layout");
+    assert_eq!(
+        dataset.layout,
+        StorageLayout::Contiguous,
+        "must use contiguous layout"
+    );
 }
 
 #[tokio::test]
@@ -125,18 +145,33 @@ async fn async_dataset_at_matches_sync_path() {
     let sync_dataset = sync_file.dataset_at(ds_addr).expect("sync dataset_at");
     let async_cursor = AsyncMemCursor::from_bytes(bytes);
     let async_file = AsyncHdf5File::open(async_cursor).await.expect("async open");
-    let async_dataset = async_file.dataset_at(ds_addr).await.expect("async dataset_at");
-    assert_eq!(async_dataset.object_header_address, sync_dataset.object_header_address);
+    let async_dataset = async_file
+        .dataset_at(ds_addr)
+        .await
+        .expect("async dataset_at");
+    assert_eq!(
+        async_dataset.object_header_address,
+        sync_dataset.object_header_address
+    );
     assert_eq!(async_dataset.layout, sync_dataset.layout);
-    assert_eq!(async_dataset.shape.is_scalar(), sync_dataset.shape.is_scalar());
-    assert_eq!(async_dataset.shape.num_elements(), sync_dataset.shape.num_elements());
+    assert_eq!(
+        async_dataset.shape.is_scalar(),
+        sync_dataset.shape.is_scalar()
+    );
+    assert_eq!(
+        async_dataset.shape.num_elements(),
+        sync_dataset.shape.num_elements()
+    );
 }
 
 #[tokio::test]
 async fn async_open_rejects_non_hdf5() {
     let cursor = AsyncMemCursor::from_bytes(vec![0u8; 4096]);
     let result = AsyncHdf5File::open(cursor).await;
-    assert!(result.is_err(), "must reject a buffer containing no HDF5 superblock");
+    assert!(
+        result.is_err(),
+        "must reject a buffer containing no HDF5 superblock"
+    );
 }
 
 #[tokio::test]

@@ -271,8 +271,7 @@ pub fn resolve_vl_references<R: ReadAt>(
         let base = i * ref_size;
         let chunk = &raw_data[base..base + ref_size];
 
-        let sequence_length =
-            u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+        let sequence_length = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
         let heap_collection_address = ctx.read_offset(&chunk[4..]);
         let idx_base = 4 + offset_bytes;
         let object_index = u32::from_le_bytes([

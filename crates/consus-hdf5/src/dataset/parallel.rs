@@ -44,7 +44,7 @@ use consus_core::Result;
 use consus_io::ReadAt;
 
 #[cfg(feature = "alloc")]
-use crate::dataset::chunk::{read_chunk_raw, ChunkLocation};
+use crate::dataset::chunk::{ChunkLocation, read_chunk_raw};
 
 /// Fully describes the I/O and decompression work for one chunk.
 ///
@@ -77,13 +77,13 @@ pub struct ChunkResult {
 
 /// Read and decompress all tasks serially, in input order.
 ///
-/// Available unconditionally (regardless of the `parallel-io` feature). Used as
-/// the serial fallback and for single-chunk special cases.
+/// The serial fallback used when the `parallel-io` feature is disabled (the
+/// mutually exclusive `execute_parallel` path is compiled when it is enabled).
 ///
 /// # Errors
 ///
 /// Propagates the first I/O or decompression error encountered.
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", not(feature = "parallel-io")))]
 pub fn execute_serial<R: ReadAt>(
     source: &R,
     tasks: Vec<ChunkTask>,

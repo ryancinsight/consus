@@ -1,6 +1,6 @@
 use consus_core::{Datatype, Shape};
-use consus_hdf5::file::writer::{DatasetCreationProps, FileCreationProps, Hdf5FileBuilder};
 use consus_hdf5::file::Hdf5File;
+use consus_hdf5::file::writer::{DatasetCreationProps, FileCreationProps, Hdf5FileBuilder};
 use consus_io::{Length, ReadAt};
 
 /// A virtual file that simulates a file > 4 GiB in size without allocating memory.
@@ -63,7 +63,13 @@ fn test_large_file_address_resolution() {
     let shift: u64 = 5 * 1024 * 1024 * 1024; // 5 GiB
 
     builder
-        .add_virtual_dataset("test_data", &dt, &shape, shift, &DatasetCreationProps::default())
+        .add_virtual_dataset(
+            "test_data",
+            &dt,
+            &shape,
+            shift,
+            &DatasetCreationProps::default(),
+        )
         .expect("add dataset");
 
     let original_bytes = builder.finish().expect("finish builder");
@@ -81,7 +87,11 @@ fn test_large_file_address_resolution() {
     let addr = file.open_path("/test_data").expect("path exists");
     let dataset = file.dataset_at(addr).expect("dataset exists");
 
-    assert_eq!(dataset.data_address.unwrap(), shift, "address must be 5 GiB");
+    assert_eq!(
+        dataset.data_address.unwrap(),
+        shift,
+        "address must be 5 GiB"
+    );
 
     let mut out = vec![0u8; 12];
     file.read_contiguous_dataset_bytes(dataset.data_address.unwrap(), 0, &mut out)

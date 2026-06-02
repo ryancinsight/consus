@@ -125,7 +125,6 @@ fn f64_le() -> Datatype {
     }
 }
 
-
 fn f32_le() -> Datatype {
     Datatype::Float {
         bits: NonZeroUsize::new(32).unwrap(),
@@ -163,9 +162,15 @@ fn h5py_deflate_1d_i32_readable_by_consus() {
     let ds = hf.dataset_at(addr).expect("dataset_at");
 
     assert_eq!(ds.datatype, i32_le(), "dtype mismatch");
-    assert_eq!(ds.shape.current_dims().as_slice(), &[8usize], "shape mismatch");
+    assert_eq!(
+        ds.shape.current_dims().as_slice(),
+        &[8usize],
+        "shape mismatch"
+    );
 
-    let raw = hf.read_chunked_dataset_all_bytes(addr).expect("read chunked");
+    let raw = hf
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read chunked");
     let values: Vec<i32> = raw
         .chunks_exact(4)
         .map(|b| i32::from_le_bytes(b.try_into().unwrap()))
@@ -192,9 +197,15 @@ fn h5py_deflate_2d_f64_readable_by_consus() {
     let ds = hf.dataset_at(addr).expect("dataset_at");
 
     assert_eq!(ds.datatype, f64_le(), "dtype mismatch");
-    assert_eq!(ds.shape.current_dims().as_slice(), &[4usize, 6], "shape mismatch");
+    assert_eq!(
+        ds.shape.current_dims().as_slice(),
+        &[4usize, 6],
+        "shape mismatch"
+    );
 
-    let raw = hf.read_chunked_dataset_all_bytes(addr).expect("read chunked");
+    let raw = hf
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read chunked");
     let values: Vec<f64> = raw
         .chunks_exact(8)
         .map(|b| f64::from_le_bytes(b.try_into().unwrap()))
@@ -221,9 +232,15 @@ fn h5py_deflate_3d_i32_readable_by_consus() {
     let ds = hf.dataset_at(addr).expect("dataset_at");
 
     assert_eq!(ds.datatype, i32_le(), "dtype mismatch");
-    assert_eq!(ds.shape.current_dims().as_slice(), &[2usize, 3, 4], "shape mismatch");
+    assert_eq!(
+        ds.shape.current_dims().as_slice(),
+        &[2usize, 3, 4],
+        "shape mismatch"
+    );
 
-    let raw = hf.read_chunked_dataset_all_bytes(addr).expect("read chunked");
+    let raw = hf
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read chunked");
     let values: Vec<i32> = raw
         .chunks_exact(4)
         .map(|b| i32::from_le_bytes(b.try_into().unwrap()))
@@ -248,7 +265,11 @@ fn h5py_contiguous_u8_readable_by_consus() {
     let ds = hf.dataset_at(addr).expect("dataset_at");
 
     // uint8 byte-order is not applicable (single byte); skip dtype assertion.
-    assert_eq!(ds.shape.current_dims().as_slice(), &[5usize], "shape mismatch");
+    assert_eq!(
+        ds.shape.current_dims().as_slice(),
+        &[5usize],
+        "shape mismatch"
+    );
 
     let data_addr = ds.data_address.expect("data_address");
     let mut buf = vec![0u8; 5];
@@ -273,7 +294,11 @@ fn h5py_contiguous_f32_readable_by_consus() {
     let ds = hf.dataset_at(addr).expect("dataset_at");
 
     assert_eq!(ds.datatype, f32_le(), "dtype mismatch");
-    assert_eq!(ds.shape.current_dims().as_slice(), &[4usize], "shape mismatch");
+    assert_eq!(
+        ds.shape.current_dims().as_slice(),
+        &[4usize],
+        "shape mismatch"
+    );
 
     let data_addr = ds.data_address.expect("data_address");
     let mut buf = vec![0u8; 16];
@@ -302,7 +327,11 @@ fn h5py_contiguous_i16_readable_by_consus() {
     let ds = hf.dataset_at(addr).expect("dataset_at");
 
     assert_eq!(ds.datatype, i16_le(), "dtype mismatch");
-    assert_eq!(ds.shape.current_dims().as_slice(), &[4usize], "shape mismatch");
+    assert_eq!(
+        ds.shape.current_dims().as_slice(),
+        &[4usize],
+        "shape mismatch"
+    );
 
     let data_addr = ds.data_address.expect("data_address");
     let mut buf = vec![0u8; 8];
@@ -333,9 +362,15 @@ fn h5py_chunked_1d_f32_deflate_readable_by_consus() {
     let ds = hf.dataset_at(addr).expect("dataset_at");
 
     assert_eq!(ds.datatype, f32_le(), "dtype mismatch");
-    assert_eq!(ds.shape.current_dims().as_slice(), &[8usize], "shape mismatch");
+    assert_eq!(
+        ds.shape.current_dims().as_slice(),
+        &[8usize],
+        "shape mismatch"
+    );
 
-    let raw = hf.read_chunked_dataset_all_bytes(addr).expect("read chunked");
+    let raw = hf
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read chunked");
     let values: Vec<f32> = raw
         .chunks_exact(4)
         .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
@@ -375,8 +410,16 @@ fn h5py_big_endian_i32_readable_by_consus() {
     let addr = hf.open_path("/big_endian_i32").expect("open path");
     let ds = hf.dataset_at(addr).expect("dataset_at");
 
-    assert_eq!(ds.datatype, i32_be(), "dtype mismatch (expected big-endian i32)");
-    assert_eq!(ds.shape.current_dims().as_slice(), &[4usize], "shape mismatch");
+    assert_eq!(
+        ds.datatype,
+        i32_be(),
+        "dtype mismatch (expected big-endian i32)"
+    );
+    assert_eq!(
+        ds.shape.current_dims().as_slice(),
+        &[4usize],
+        "shape mismatch"
+    );
 
     let data_addr = ds.data_address.expect("data_address");
     let mut buf = vec![0u8; 16];
@@ -456,9 +499,15 @@ fn h5py_shuffle_deflate_i32_readable_by_consus() {
     let ds = hf.dataset_at(addr).expect("dataset_at");
 
     assert_eq!(ds.datatype, i32_le(), "dtype mismatch");
-    assert_eq!(ds.shape.current_dims().as_slice(), &[16usize], "shape mismatch");
+    assert_eq!(
+        ds.shape.current_dims().as_slice(),
+        &[16usize],
+        "shape mismatch"
+    );
 
-    let raw = hf.read_chunked_dataset_all_bytes(addr).expect("read chunked");
+    let raw = hf
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read chunked");
     let values: Vec<i32> = raw
         .chunks_exact(4)
         .map(|b| i32::from_le_bytes(b.try_into().unwrap()))
@@ -488,9 +537,15 @@ fn h5py_deflate_level_1_readable_by_consus() {
     let ds = hf.dataset_at(addr).expect("dataset_at");
 
     assert_eq!(ds.datatype, i32_le(), "dtype mismatch");
-    assert_eq!(ds.shape.current_dims().as_slice(), &[8usize], "shape mismatch");
+    assert_eq!(
+        ds.shape.current_dims().as_slice(),
+        &[8usize],
+        "shape mismatch"
+    );
 
-    let raw = hf.read_chunked_dataset_all_bytes(addr).expect("read chunked");
+    let raw = hf
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read chunked");
     let values: Vec<i32> = raw
         .chunks_exact(4)
         .map(|b| i32::from_le_bytes(b.try_into().unwrap()))
@@ -516,9 +571,15 @@ fn h5py_deflate_level_9_readable_by_consus() {
     let ds = hf.dataset_at(addr).expect("dataset_at");
 
     assert_eq!(ds.datatype, i32_le(), "dtype mismatch");
-    assert_eq!(ds.shape.current_dims().as_slice(), &[8usize], "shape mismatch");
+    assert_eq!(
+        ds.shape.current_dims().as_slice(),
+        &[8usize],
+        "shape mismatch"
+    );
 
-    let raw = hf.read_chunked_dataset_all_bytes(addr).expect("read chunked");
+    let raw = hf
+        .read_chunked_dataset_all_bytes(addr)
+        .expect("read chunked");
     let values: Vec<i32> = raw
         .chunks_exact(4)
         .map(|b| i32::from_le_bytes(b.try_into().unwrap()))

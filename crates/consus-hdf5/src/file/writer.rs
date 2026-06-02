@@ -459,7 +459,6 @@ fn encode_group_info() -> Vec<u8> {
     vec![0u8; 2] // version=0, flags=0 (default compact/dense thresholds)
 }
 
-
 ///
 /// The header is allocated with padding space (NIL messages) to allow
 /// future in-place addition of link messages.
@@ -855,9 +854,7 @@ pub fn encode_layout_with_chunk_index(
                     ),
                 })?;
                 let element_size = chunk_element_size.ok_or_else(|| Error::InvalidFormat {
-                    message: String::from(
-                        "v4 chunked layout requires a resolved element size",
-                    ),
+                    message: String::from("v4 chunked layout requires a resolved element size"),
                 })?;
                 let has_filters = !dataset_filter_ids(props).is_empty();
                 return encode_layout_v4_chunked(
@@ -1070,14 +1067,18 @@ fn encode_filter_pipeline(filter_ids: &[u16], compression: &Compression) -> Resu
     //     padding to 8-byte boundary
 
     let mut buf = vec![
-        1u8,                       // version = 1
-        filter_ids.len() as u8,    // nfilters
-        0, 0, 0, 0, 0, 0,         // 6 reserved bytes
+        1u8,                    // version = 1
+        filter_ids.len() as u8, // nfilters
+        0,
+        0,
+        0,
+        0,
+        0,
+        0, // 6 reserved bytes
     ];
 
     for &filter_id in filter_ids {
-        let (name, client_data_owned, flags): (&[u8], alloc::vec::Vec<u32>, u16) = match filter_id
-        {
+        let (name, client_data_owned, flags): (&[u8], alloc::vec::Vec<u32>, u16) = match filter_id {
             1 => {
                 // Deflate filter: name="deflate\0" (8 bytes), flags=H5Z_FLAG_OPTIONAL(1),
                 // one client data element = compression level.
@@ -1093,7 +1094,11 @@ fn encode_filter_pipeline(filter_ids: &[u16], compression: &Compression) -> Resu
 
         let name_len = name.len() as u16;
         // Name must be padded up to the next 8-byte boundary.
-        let name_padded_len = if name.is_empty() { 0 } else { name.len().div_ceil(8) * 8 };
+        let name_padded_len = if name.is_empty() {
+            0
+        } else {
+            name.len().div_ceil(8) * 8
+        };
         let nclient = client_data_owned.len() as u16;
 
         let entry_start = buf.len();
@@ -1381,7 +1386,11 @@ fn write_chunk_btree_v2<W: WriteAt>(
         // chunk_offsets are element offsets: coord * chunk_dim.
         // scaled = coord = element_offset / chunk_dim.
         for (i, &offset) in entry.chunk_offsets.iter().enumerate() {
-            let dim = if i < chunk_dims.len() { chunk_dims[i] } else { 1 };
+            let dim = if i < chunk_dims.len() {
+                chunk_dims[i]
+            } else {
+                1
+            };
             let scaled = if dim > 0 { offset / dim as u64 } else { 0 };
             LittleEndian::write_u64(&mut leaf_buf[pos..], scaled);
             pos += 8;
@@ -1464,8 +1473,8 @@ fn write_chunk_farray<W: WriteAt>(
     buf[0..4].copy_from_slice(b"FAHD");
     // buf[4] = 0; // version = 0
     // buf[5] = 0; // client ID = 0 (as observed in HDF5-generated files)
-    buf[6] = entry_size as u8;    // element/record size (= offset_size for no-filter)
-    buf[7] = 10;                  // max_nelmts_bits = H5D_FARRAY_MAX_NELMTS_BITS
+    buf[6] = entry_size as u8; // element/record size (= offset_size for no-filter)
+    buf[7] = 10; // max_nelmts_bits = H5D_FARRAY_MAX_NELMTS_BITS
     LittleEndian::write_u64(&mut buf[8..16], nelmts);
     write_offset(&mut buf[16..], s, fadb_addr);
     let fahd_cksum = consus_compression::Lookup3::compute(&buf[..24]);
@@ -1625,7 +1634,14 @@ fn write_chunked_data_with_element_size<W: WriteAt>(
     } else if props.layout_version == Some(4) {
         write_chunk_btree_v2(sink, state, chunk_dims, &entries, has_filters)
     } else {
-        write_chunk_btree_v1(sink, state, chunk_dims, &entries, &dataset_dims, element_size)
+        write_chunk_btree_v1(
+            sink,
+            state,
+            chunk_dims,
+            &entries,
+            &dataset_dims,
+            element_size,
+        )
     }
 }
 
@@ -1943,7 +1959,10 @@ fn write_group_node(
 
     // Step 3: build group object header messages (LINK_INFO + GROUP_INFO + links + group attributes).
     let mut group_msgs: Vec<(u16, Vec<u8>)> = vec![
-        (message_types::LINK_INFO, encode_link_info(ctx.offset_bytes())),
+        (
+            message_types::LINK_INFO,
+            encode_link_info(ctx.offset_bytes()),
+        ),
         (message_types::GROUP_INFO, encode_group_info()),
     ];
 
@@ -2220,7 +2239,10 @@ impl Hdf5FileBuilder {
 
         // Root group messages: LINK_INFO + GROUP_INFO first, then links and attributes.
         let mut msgs: Vec<(u16, Vec<u8>)> = vec![
-            (message_types::LINK_INFO, encode_link_info(ctx.offset_bytes())),
+            (
+                message_types::LINK_INFO,
+                encode_link_info(ctx.offset_bytes()),
+            ),
             (message_types::GROUP_INFO, encode_group_info()),
         ];
 
@@ -2425,7 +2447,10 @@ impl<'a> SubGroupBuilder<'a> {
         // LINK_INFO and GROUP_INFO must precede LINK messages so libhdf5
         // recognises this object header as a group.
         let mut msgs: Vec<(u16, Vec<u8>)> = vec![
-            (message_types::LINK_INFO, encode_link_info(ctx.offset_bytes())),
+            (
+                message_types::LINK_INFO,
+                encode_link_info(ctx.offset_bytes()),
+            ),
             (message_types::GROUP_INFO, encode_group_info()),
         ];
 
@@ -3139,8 +3164,7 @@ mod tests {
         // node_size = header(24) + 65*32 + 64*8 = 24 + 2080 + 512 = 2616
         let expected_node_size: usize = 24 + 65 * 32 + 64 * 8;
         let addr =
-            write_chunk_btree_v1(&mut cursor, &mut state, &[2, 2], &entries, &[4, 4], 4)
-                .unwrap();
+            write_chunk_btree_v1(&mut cursor, &mut state, &[2, 2], &entries, &[4, 4], 4).unwrap();
         let bytes = cursor.as_bytes();
         assert_eq!(&bytes[addr as usize..addr as usize + 4], b"TREE");
         assert_eq!(bytes[addr as usize + 4], 1);
