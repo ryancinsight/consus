@@ -153,3 +153,48 @@ fn rusoto_and_moirai_read_byte_identical() {
     assert_eq!(moirai_len, object.len() as u64, "moirai len must equal object size");
     assert_eq!(moirai_len, rusoto_len, "moirai and rusoto len must agree");
 }
+
+/// Real-endpoint gate (CI with MinIO/S3): exercises the native moirai S3 reader
+/// against a live S3-compatible server using path-style addressing + SigV4.
+/// Skips when `S3_TEST_ENDPOINT` is unset (i.e. local runs without a server).
+///
+/// CI sets `S3_TEST_ENDPOINT`, `S3_TEST_BUCKET`, `S3_TEST_KEY`,
+/// `S3_TEST_OBJECT_LEN`, and `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, having
+/// uploaded an object of `S3_TEST_OBJECT_LEN` bytes.
+#[test]
+fn moirai_s3_real_endpoint() {
+    let Ok(endpoint) = std::env::var("S3_TEST_ENDPOINT") else {
+        eprintln!("S3_TEST_ENDPOINT unset — skipping real-endpoint moirai S3 test");
+        return;
+    };
+    let bucket = std::env::var("S3_TEST_BUCKET").unwrap_or_else(|_| "consus-test".to_string());
+    let key = std::env::var("S3_TEST_KEY").unwrap_or_else(|_| "object.bin".to_string());
+    let object_len: usize = std::env::var("S3_TEST_OBJECT_LEN")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(4096);
+
+    let reader = S3MoiraiReader::new(S3Config {
+        endpoint,
+        region: std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
+        access_key: std::env::var("AWS_ACCESS_KEY_ID").expect("AWS_ACCESS_KEY_ID"),
+        secret_key: std::env::var("AWS_SECRET_ACCESS_KEY").expect("AWS_SECRET_ACCESS_KEY"),
+        session_token: std::env::var("AWS_SESSION_TOKEN").ok(),
+        bucket,
+        key,
+    });
+    let rt = moirai::global();
+
+    // HEAD: length matches the uploaded object.
+    let len = rt.block_on(reader.len()).expect("real HEAD");
+    assert_eq!(len as usize, object_len, "HEAD length must match uploaded object");
+
+    // Ranged GET: exact requested length, and re-reading the same range is
+    // deterministic (real round-trips against the live server).
+    let (pos, n) = (17u64, (object_len / 2).max(1));
+    let mut a = vec![0u8; n];
+    let mut b = vec![0u8; n];
+    rt.block_on(reader.read_at(pos, &mut a)).expect("real GET #1");
+    rt.block_on(reader.read_at(pos, &mut b)).expect("real GET #2");
+    assert_eq!(a, b, "repeated ranged reads must be byte-identical");
+}
