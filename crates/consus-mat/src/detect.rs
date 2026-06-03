@@ -1,4 +1,4 @@
-﻿//! MATLAB .mat file version detection.
+//! MATLAB .mat file version detection.
 //!
 //! ## Algorithm
 //!
@@ -39,9 +39,7 @@ pub fn detect_version(header_bytes: &[u8]) -> Option<MatVersion> {
         let endian = [header_bytes[126], header_bytes[127]];
         // LE file: version = 0x0100 in LE = [0x00, 0x01], endian indicator = "IM"
         // BE file: version = 0x0100 in BE = [0x01, 0x00], endian indicator = "MI"
-        if (ver == [0x00, 0x01] && endian == *b"IM")
-            || (ver == [0x01, 0x00] && endian == *b"MI")
-        {
+        if (ver == [0x00, 0x01] && endian == *b"IM") || (ver == [0x01, 0x00] && endian == *b"MI") {
             return Some(MatVersion::V5);
         }
     }

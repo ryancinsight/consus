@@ -843,11 +843,11 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                 )?;
             }
 
-            return Ok(());
+            Ok(())
         }
 
         // Serial fallback when parallel-io is disabled (mutually exclusive with the
-        // parallel block above, which returns).
+        // parallel block above).
         #[cfg(not(all(feature = "parallel-io", feature = "alloc")))]
         {
             for entry in entries {

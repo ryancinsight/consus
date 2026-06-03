@@ -172,14 +172,15 @@ impl NetcdfVariable {
         }
 
         if self.coordinate_variable
-            && (self.dimensions.len() != 1 || self.dimensions[0] != self.name) {
-                return Err(Error::InvalidFormat {
-                    #[cfg(feature = "alloc")]
-                    message: String::from(
-                        "coordinate variables must be rank-1 and match their dimension name",
-                    ),
-                });
-            }
+            && (self.dimensions.len() != 1 || self.dimensions[0] != self.name)
+        {
+            return Err(Error::InvalidFormat {
+                #[cfg(feature = "alloc")]
+                message: String::from(
+                    "coordinate variables must be rank-1 and match their dimension name",
+                ),
+            });
+        }
 
         if let Some(shape) = &self.shape {
             if shape.rank() != self.dimensions.len() {

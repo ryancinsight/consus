@@ -1,7 +1,10 @@
 [package]
 name = "consus-python"
 version.workspace = true
-edition.workspace = true
+# Pinned to 2021 (not the workspace's 2024): PyO3 0.22's `#[pymethods]`/
+# `#[pyfunction]` macro expansion is not compatible with edition 2024's
+# deny-by-default `unsafe_op_in_unsafe_fn` (yields E0133). Revisit on a PyO3 upgrade.
+edition = "2021"
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true

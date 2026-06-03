@@ -305,12 +305,12 @@ impl PyParquetBuilder {
         let mut row_count: Option<usize> = None;
 
         for (name, pt) in &self.fields {
-            let py_col = columns.get_item(name)?.ok_or_else(|| {
-                PyValueError::new_err(format!("missing column: {name}"))
-            })?;
-            let py_list: &Bound<'_, PyList> = py_col.downcast().map_err(|_| {
-                PyTypeError::new_err(format!("column '{name}' must be a list"))
-            })?;
+            let py_col = columns
+                .get_item(name)?
+                .ok_or_else(|| PyValueError::new_err(format!("missing column: {name}")))?;
+            let py_list: &Bound<'_, PyList> = py_col
+                .downcast()
+                .map_err(|_| PyTypeError::new_err(format!("column '{name}' must be a list")))?;
             let n = py_list.len();
             if let Some(expected) = row_count {
                 if n != expected {
@@ -325,21 +325,11 @@ impl PyParquetBuilder {
             let mut cells = Vec::with_capacity(n);
             for item in py_list.iter() {
                 let cell = match pt {
-                    ParquetPhysicalType::Boolean => {
-                        OwnedCell::Boolean(item.extract::<bool>()?)
-                    }
-                    ParquetPhysicalType::Int32 => {
-                        OwnedCell::Int32(item.extract::<i32>()?)
-                    }
-                    ParquetPhysicalType::Int64 => {
-                        OwnedCell::Int64(item.extract::<i64>()?)
-                    }
-                    ParquetPhysicalType::Float => {
-                        OwnedCell::Float(item.extract::<f32>()?)
-                    }
-                    ParquetPhysicalType::Double => {
-                        OwnedCell::Double(item.extract::<f64>()?)
-                    }
+                    ParquetPhysicalType::Boolean => OwnedCell::Boolean(item.extract::<bool>()?),
+                    ParquetPhysicalType::Int32 => OwnedCell::Int32(item.extract::<i32>()?),
+                    ParquetPhysicalType::Int64 => OwnedCell::Int64(item.extract::<i64>()?),
+                    ParquetPhysicalType::Float => OwnedCell::Float(item.extract::<f32>()?),
+                    ParquetPhysicalType::Double => OwnedCell::Double(item.extract::<f64>()?),
                     ParquetPhysicalType::ByteArray => {
                         let b: &[u8] = item.extract()?;
                         OwnedCell::ByteArray(b.to_vec())
@@ -370,8 +360,7 @@ impl PyParquetBuilder {
                     .map_err(from_consus)
             })
             .collect::<PyResult<Vec<_>>>()?;
-        let row_group =
-            RowGroupDescriptor::new(row_count, chunks).map_err(from_consus)?;
+        let row_group = RowGroupDescriptor::new(row_count, chunks).map_err(from_consus)?;
         let dataset =
             ParquetDatasetDescriptor::new(schema, vec![row_group]).map_err(from_consus)?;
 

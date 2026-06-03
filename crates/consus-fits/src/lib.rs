@@ -35,6 +35,9 @@
 //! - The crate remains `no_std`-compatible outside `alloc`-gated functionality.
 
 #![cfg_attr(not(feature = "std"), no_std)]
+// FITS table/header readers take many column/layout parameters; wide signatures
+// are inherent to the format. Reviewed policy (see consus-hdf5 for rationale).
+#![allow(clippy::too_many_arguments)]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -86,5 +89,7 @@ pub use header::{
     value::{ComplexValue, HeaderValue, IntegerValue, RealValue},
 };
 pub use image::FitsImageDescriptor;
-pub use table::{FitsAsciiTableDescriptor, FitsBinaryTableDescriptor, FitsColumnValue, FitsTableColumn};
+pub use table::{
+    FitsAsciiTableDescriptor, FitsBinaryTableDescriptor, FitsColumnValue, FitsTableColumn,
+};
 pub use types::{BinaryFormatCode, Bitpix, HduType, tform_to_datatype};

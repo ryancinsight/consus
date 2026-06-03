@@ -50,8 +50,7 @@ pub struct ArrowFieldRepr {
 }
 
 /// Parquet-to-Arrow conversion mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ParquetConversionMode {
     /// Preserve exact Parquet semantics.
     #[default]
@@ -61,7 +60,6 @@ pub enum ParquetConversionMode {
     /// Use best-effort mapping when exact conversion is impossible.
     BestEffort,
 }
-
 
 /// Result of Parquet-to-Arrow schema compatibility analysis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

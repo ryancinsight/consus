@@ -453,18 +453,20 @@ fn arrow_parquet_schema_interop() {
     use consus_parquet::{FieldDescriptor, LogicalType, ParquetPhysicalType, SchemaDescriptor};
 
     // Create Arrow schema
-    let arrow_schema = ArrowSchema::new(vec![ArrowFieldBuilder::new(
-        ArrowFieldId::new(1),
-        String::from("temperature"),
-        ArrowFieldKind::Float,
-        Datatype::Float {
-            bits: core::num::NonZeroUsize::new(64).expect("non-zero"),
-            byte_order: ByteOrder::LittleEndian,
-        },
-    )
-    .nullable(false)
-    .build()
-    .expect("field must build")]);
+    let arrow_schema = ArrowSchema::new(vec![
+        ArrowFieldBuilder::new(
+            ArrowFieldId::new(1),
+            String::from("temperature"),
+            ArrowFieldKind::Float,
+            Datatype::Float {
+                bits: core::num::NonZeroUsize::new(64).expect("non-zero"),
+                byte_order: ByteOrder::LittleEndian,
+            },
+        )
+        .nullable(false)
+        .build()
+        .expect("field must build"),
+    ]);
 
     // Convert to Core
     let core_pairs = consus_arrow::conversion::arrow_schema_to_core_pairs(&arrow_schema);

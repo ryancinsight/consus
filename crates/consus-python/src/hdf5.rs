@@ -6,8 +6,8 @@ use core::num::NonZeroUsize;
 
 use consus_core::{ByteOrder, Compression, Datatype, Shape};
 use consus_hdf5::dataset::StorageLayout;
-use consus_hdf5::file::Hdf5File;
 use consus_hdf5::file::writer::{DatasetCreationProps, FileCreationProps, Hdf5FileBuilder};
+use consus_hdf5::file::Hdf5File;
 use consus_hdf5::property_list::DatasetLayout;
 use consus_io::MemCursor;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -40,13 +40,25 @@ pub struct PyDatasetInfo {
 fn dtype_str(dt: &Datatype) -> String {
     match dt {
         Datatype::Boolean => "bool".into(),
-        Datatype::Integer { bits, byte_order, signed } => {
-            let order = if *byte_order == ByteOrder::LittleEndian { "<" } else { ">" };
+        Datatype::Integer {
+            bits,
+            byte_order,
+            signed,
+        } => {
+            let order = if *byte_order == ByteOrder::LittleEndian {
+                "<"
+            } else {
+                ">"
+            };
             let sign = if *signed { "i" } else { "u" };
             format!("{order}{sign}{}", bits.get() / 8)
         }
         Datatype::Float { bits, byte_order } => {
-            let order = if *byte_order == ByteOrder::LittleEndian { "<" } else { ">" };
+            let order = if *byte_order == ByteOrder::LittleEndian {
+                "<"
+            } else {
+                ">"
+            };
             format!("{order}f{}", bits.get() / 8)
         }
         Datatype::FixedString { length, .. } => format!("S{length}"),
@@ -81,7 +93,9 @@ impl PyHdf5File {
     /// Construct from raw HDF5 bytes.
     #[staticmethod]
     fn open_path(data: &[u8]) -> PyResult<Self> {
-        Ok(Self { data: data.to_vec() })
+        Ok(Self {
+            data: data.to_vec(),
+        })
     }
 
     /// List direct children of the root group. Returns a list of names.
@@ -126,9 +140,9 @@ impl PyHdf5File {
         let address = file.open_path(path).map_err(from_consus)?;
         let ds = file.dataset_at(address).map_err(from_consus)?;
         let bytes = match ds.layout {
-            StorageLayout::Chunked => {
-                file.read_chunked_dataset_all_bytes(address).map_err(from_consus)?
-            }
+            StorageLayout::Chunked => file
+                .read_chunked_dataset_all_bytes(address)
+                .map_err(from_consus)?,
             StorageLayout::Contiguous | StorageLayout::Compact => {
                 let elem_size = ds.datatype.element_size().ok_or_else(|| {
                     PyRuntimeError::new_err(
@@ -174,10 +188,10 @@ impl PyHdf5File {
 
 fn parse_dtype(dtype: &str) -> PyResult<Datatype> {
     let s = dtype.trim();
-    let (order, rest) = if s.starts_with('<') {
-        (ByteOrder::LittleEndian, &s[1..])
-    } else if s.starts_with('>') {
-        (ByteOrder::BigEndian, &s[1..])
+    let (order, rest) = if let Some(rest) = s.strip_prefix('<') {
+        (ByteOrder::LittleEndian, rest)
+    } else if let Some(rest) = s.strip_prefix('>') {
+        (ByteOrder::BigEndian, rest)
     } else {
         (ByteOrder::LittleEndian, s)
     };
@@ -307,10 +321,13 @@ impl PyFileBuilder {
             "contiguous" => DatasetLayout::Contiguous,
             "chunked" => DatasetLayout::Chunked,
             "compact" => DatasetLayout::Compact,
-            _ => return Err(PyValueError::new_err(format!("unsupported layout: {layout}"))),
+            _ => {
+                return Err(PyValueError::new_err(format!(
+                    "unsupported layout: {layout}"
+                )))
+            }
         };
-        let chunk_dims_usize =
-            chunk_dims.map(|v| v.into_iter().map(|d| d as usize).collect());
+        let chunk_dims_usize = chunk_dims.map(|v| v.into_iter().map(|d| d as usize).collect());
         let dcpl = DatasetCreationProps {
             layout: dl,
             chunk_dims: chunk_dims_usize,
@@ -320,9 +337,7 @@ impl PyFileBuilder {
         };
         self.builder
             .as_mut()
-            .ok_or_else(|| {
-                PyRuntimeError::new_err("FileBuilder already consumed by finish()")
-            })?
+            .ok_or_else(|| PyRuntimeError::new_err("FileBuilder already consumed by finish()"))?
             .add_dataset(name, &dt, &sh, data, &dcpl)
             .map_err(from_consus)?;
         Ok(())
@@ -330,9 +345,10 @@ impl PyFileBuilder {
 
     /// Finalize the HDF5 file and return the raw bytes.
     fn finish(&mut self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
-        let builder = self.builder.take().ok_or_else(|| {
-            PyRuntimeError::new_err("FileBuilder already consumed by finish()")
-        })?;
+        let builder = self
+            .builder
+            .take()
+            .ok_or_else(|| PyRuntimeError::new_err("FileBuilder already consumed by finish()"))?;
         let bytes = builder.finish().map_err(from_consus)?;
         Ok(PyBytes::new_bound(py, &bytes).unbind())
     }

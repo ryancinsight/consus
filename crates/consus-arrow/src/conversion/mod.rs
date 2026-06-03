@@ -34,8 +34,7 @@ use crate::field::{ArrowField, ArrowFieldId, ArrowFieldKind, ArrowFieldSemantics
 use crate::schema::ArrowSchema;
 
 /// Conversion mode controlling how strictly types must match.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ConversionMode {
     /// Reject any conversion that may lose information.
     #[default]
@@ -47,7 +46,6 @@ pub enum ConversionMode {
     /// Convert to the closest representable type.
     BestEffort,
 }
-
 
 /// Result of a datatype conversion analysis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,7 +127,7 @@ pub fn arrow_datatype_to_core(datatype: &ArrowDataType) -> Datatype {
                 .saturating_add(scale.unsigned_abs())
                 .saturating_add(2); // Sign and decimal point
             Datatype::FixedString {
-                length: length,
+                length,
                 encoding: consus_core::StringEncoding::Ascii,
             }
         }
@@ -302,13 +300,12 @@ pub fn core_datatype_to_arrow_hint(datatype: &Datatype) -> ArrowDataType {
             use consus_core::CompoundField;
             let arrow_fields: Vec<ArrowField> = fields
                 .iter()
-                
                 .map(
                     |CompoundField {
-                            name,
-                            datatype,
-                            offset,
-                        }| {
+                         name,
+                         datatype,
+                         offset,
+                     }| {
                         let kind = crate::field::kind_from_datatype(datatype);
                         ArrowField {
                             id: ArrowFieldId::new(*offset as u32),

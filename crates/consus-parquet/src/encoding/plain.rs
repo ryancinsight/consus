@@ -288,7 +288,9 @@ mod tests {
         let result = decode_plain_boolean(&[0x4Du8, 0x01], 10).unwrap();
         assert_eq!(
             result,
-            alloc::vec![true, false, true, true, false, false, true, false, true, false]
+            alloc::vec![
+                true, false, true, true, false, false, true, false, true, false
+            ]
         );
     }
 
@@ -362,7 +364,9 @@ mod tests {
         let result = decode_plain_i96(&bytes, 1).unwrap();
         assert_eq!(
             result,
-            alloc::vec![[0x00u8, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B]]
+            alloc::vec![[
+                0x00u8, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B
+            ]]
         );
     }
 

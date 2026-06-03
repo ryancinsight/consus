@@ -11,7 +11,9 @@
 //! documented reader contract but is not directly fixture-authorable here.
 
 use consus_core::{ByteOrder, Datatype, Shape, StringEncoding};
-use consus_hdf5::file::writer::{ChildDatasetSpec, DatasetCreationProps, FileCreationProps, Hdf5FileBuilder};
+use consus_hdf5::file::writer::{
+    ChildDatasetSpec, DatasetCreationProps, FileCreationProps, Hdf5FileBuilder,
+};
 use consus_hdf5::property_list::DatasetLayout;
 use consus_mat::{MatArray, MatError, MatNumericClass, MatVersion, loadmat_bytes};
 use core::num::NonZeroUsize;
@@ -377,7 +379,10 @@ fn build_hdf5_struct_array(fields: &[(&str, f64)]) -> Vec<u8> {
     let scalar_shape = Shape::scalar();
     let (class_dt, class_shape, class_data) = fixed_ascii_attr("struct");
 
-    let raws: Vec<Vec<u8>> = fields.iter().map(|(_, v)| v.to_le_bytes().to_vec()).collect();
+    let raws: Vec<Vec<u8>> = fields
+        .iter()
+        .map(|(_, v)| v.to_le_bytes().to_vec())
+        .collect();
 
     let specs: Vec<ChildDatasetSpec<'_>> = fields
         .iter()
@@ -424,8 +429,14 @@ fn v73_cell_array_roundtrip() {
                     MatArray::Numeric(na) => {
                         assert_eq!(na.class, MatNumericClass::Double);
                         let v = f64::from_le_bytes([
-                            na.real_data[0], na.real_data[1], na.real_data[2], na.real_data[3],
-                            na.real_data[4], na.real_data[5], na.real_data[6], na.real_data[7],
+                            na.real_data[0],
+                            na.real_data[1],
+                            na.real_data[2],
+                            na.real_data[3],
+                            na.real_data[4],
+                            na.real_data[5],
+                            na.real_data[6],
+                            na.real_data[7],
                         ]);
                         assert_eq!(v, *expected);
                     }
@@ -459,8 +470,14 @@ fn v73_struct_array_roundtrip() {
             let read_f64 = |arr: &MatArray| -> f64 {
                 if let MatArray::Numeric(na) = arr {
                     f64::from_le_bytes([
-                        na.real_data[0], na.real_data[1], na.real_data[2], na.real_data[3],
-                        na.real_data[4], na.real_data[5], na.real_data[6], na.real_data[7],
+                        na.real_data[0],
+                        na.real_data[1],
+                        na.real_data[2],
+                        na.real_data[3],
+                        na.real_data[4],
+                        na.real_data[5],
+                        na.real_data[6],
+                        na.real_data[7],
                     ])
                 } else {
                     panic!("expected Numeric field element, got {:?}", arr)

@@ -215,6 +215,12 @@ pub struct ParquetWriter {
     page_row_limit: Option<usize>,
 }
 
+impl Default for ParquetWriter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ParquetWriter {
     /// Construct a writer with uncompressed pages.
     #[must_use]

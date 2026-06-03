@@ -1,9 +1,6 @@
 //! MATLAB `.mat` Python bindings: `MatFile`, `MatVariable`.
 
-use consus_mat::{
-    MatArray, MatNumericClass,
-    loadmat_bytes as consus_loadmat_bytes,
-};
+use consus_mat::{loadmat_bytes as consus_loadmat_bytes, MatArray, MatNumericClass};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 

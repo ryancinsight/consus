@@ -160,14 +160,38 @@ mod tests {
 
     #[test]
     fn from_parquet_type_i32_all_known_discriminants() {
-        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(0), Some(ParquetPhysicalType::Boolean));
-        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(1), Some(ParquetPhysicalType::Int32));
-        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(2), Some(ParquetPhysicalType::Int64));
-        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(3), Some(ParquetPhysicalType::Int96));
-        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(4), Some(ParquetPhysicalType::Float));
-        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(5), Some(ParquetPhysicalType::Double));
-        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(6), Some(ParquetPhysicalType::ByteArray));
-        assert_eq!(ParquetPhysicalType::from_parquet_type_i32(7), Some(ParquetPhysicalType::FixedLenByteArray(0)));
+        assert_eq!(
+            ParquetPhysicalType::from_parquet_type_i32(0),
+            Some(ParquetPhysicalType::Boolean)
+        );
+        assert_eq!(
+            ParquetPhysicalType::from_parquet_type_i32(1),
+            Some(ParquetPhysicalType::Int32)
+        );
+        assert_eq!(
+            ParquetPhysicalType::from_parquet_type_i32(2),
+            Some(ParquetPhysicalType::Int64)
+        );
+        assert_eq!(
+            ParquetPhysicalType::from_parquet_type_i32(3),
+            Some(ParquetPhysicalType::Int96)
+        );
+        assert_eq!(
+            ParquetPhysicalType::from_parquet_type_i32(4),
+            Some(ParquetPhysicalType::Float)
+        );
+        assert_eq!(
+            ParquetPhysicalType::from_parquet_type_i32(5),
+            Some(ParquetPhysicalType::Double)
+        );
+        assert_eq!(
+            ParquetPhysicalType::from_parquet_type_i32(6),
+            Some(ParquetPhysicalType::ByteArray)
+        );
+        assert_eq!(
+            ParquetPhysicalType::from_parquet_type_i32(7),
+            Some(ParquetPhysicalType::FixedLenByteArray(0))
+        );
         assert_eq!(ParquetPhysicalType::from_parquet_type_i32(99), None);
     }
 

@@ -30,7 +30,7 @@ pub use cell::MatCellArray;
 pub use character::MatCharArray;
 #[cfg(feature = "alloc")]
 pub use logical::MatLogicalArray;
-pub use numeric::{MatNumericClass, MatNumericArray};
+pub use numeric::{MatNumericArray, MatNumericClass};
 #[cfg(feature = "alloc")]
 pub use sparse::MatSparseArray;
 #[cfg(feature = "alloc")]

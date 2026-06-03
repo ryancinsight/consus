@@ -87,9 +87,9 @@ pub mod fits {
 
 pub mod builders;
 pub mod highlevel;
-pub mod sync;
 #[cfg(all(feature = "hdf5", feature = "parquet"))]
 pub mod hybrid;
+pub mod sync;
 
 #[cfg(feature = "async-io")]
 pub mod r#async;

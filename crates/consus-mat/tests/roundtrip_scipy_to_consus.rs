@@ -36,9 +36,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
 
-use consus_mat::{
-    MatArray, MatNumericClass, MatVersion, loadmat_bytes,
-};
+use consus_mat::{MatArray, MatNumericClass, MatVersion, loadmat_bytes};
 
 /// Serializes Python subprocess spawns to prevent concurrent HDF5/zlib DLL
 /// initialization races on Windows when many processes start simultaneously.
@@ -284,7 +282,11 @@ fn scipy_v5_logical_array_parsed_by_consus_mat() {
         panic!("expected MatArray::Logical, got {arr:?}");
     };
     assert_eq!(la.shape, vec![1usize, 4], "shape mismatch");
-    assert_eq!(la.data, vec![true, false, true, false], "logical data mismatch");
+    assert_eq!(
+        la.data,
+        vec![true, false, true, false],
+        "logical data mismatch"
+    );
 }
 
 /// scipy.io.savemat writes a MATLAB struct `st` with fields a=1.0, b=2.0.
@@ -322,8 +324,14 @@ fn scipy_v5_struct_simple_parsed_by_consus_mat() {
 
     // Fields 'a' and 'b' must be present (order may vary).
     let field_names: Vec<&str> = sa.data.iter().map(|(n, _)| n.as_str()).collect();
-    assert!(field_names.contains(&"a"), "field 'a' missing; fields={field_names:?}");
-    assert!(field_names.contains(&"b"), "field 'b' missing; fields={field_names:?}");
+    assert!(
+        field_names.contains(&"a"),
+        "field 'a' missing; fields={field_names:?}"
+    );
+    assert!(
+        field_names.contains(&"b"),
+        "field 'b' missing; fields={field_names:?}"
+    );
 
     // Field 'a' must decode to 1.0.
     let a_field = sa
@@ -428,7 +436,11 @@ fn h5py_mat_v73_routes_through_consus_hdf5() {
     let mat = loadmat_bytes(&bytes).expect("loadmat_bytes failed");
 
     // The routing must have selected V73 (not V5 or V4).
-    assert_eq!(mat.version, MatVersion::V73, "expected MatVersion::V73 routing");
+    assert_eq!(
+        mat.version,
+        MatVersion::V73,
+        "expected MatVersion::V73 routing"
+    );
     assert_eq!(mat.variables.len(), 1, "expected 1 variable");
 
     let (name, arr) = &mat.variables[0];

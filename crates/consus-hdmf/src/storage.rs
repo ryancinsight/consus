@@ -85,9 +85,7 @@ fn read_dataset_raw<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Result<V
             // fixed-size global-heap reference:  sequence_length (4 bytes, LE) +
             // heap_collection_address (offset_size bytes) + object_index (4 bytes).
             let element_size = match &ds.datatype {
-                Datatype::VariableString { .. } => {
-                    4 + file.context().offset_bytes() + 4
-                }
+                Datatype::VariableString { .. } => 4 + file.context().offset_bytes() + 4,
                 other => other.element_size().unwrap_or(0),
             };
             let n_bytes = ds.shape.num_elements() * element_size;
@@ -139,20 +137,44 @@ fn decode_as_f64(raw: &[u8], dtype: &Datatype) -> Result<Vec<f64>> {
                 v32 as f64
             })
             .collect()),
-        Datatype::Integer { bits, signed, byte_order } => {
+        Datatype::Integer {
+            bits,
+            signed,
+            byte_order,
+        } => {
             let bo = *byte_order;
             Ok(match (bits.get(), *signed) {
                 (8, false) => raw.iter().map(|&v| v as f64).collect(),
                 (8, true) => raw.iter().map(|&v| (v as i8) as f64).collect(),
-                (16, false) => raw.chunks_exact(2).map(|c| read_u16(c, bo) as f64).collect(),
-                (16, true) => raw.chunks_exact(2).map(|c| read_i16(c, bo) as f64).collect(),
-                (32, false) => raw.chunks_exact(4).map(|c| read_u32(c, bo) as f64).collect(),
-                (32, true) => raw.chunks_exact(4).map(|c| read_i32(c, bo) as f64).collect(),
-                (64, false) => raw.chunks_exact(8).map(|c| read_u64_bo(c, bo) as f64).collect(),
-                (64, true) => raw.chunks_exact(8).map(|c| read_i64_bo(c, bo) as f64).collect(),
-                (b, _) => return Err(Error::UnsupportedFeature {
-                    feature: format!("HDMF: {b}-bit integer to f64 not supported"),
-                }),
+                (16, false) => raw
+                    .chunks_exact(2)
+                    .map(|c| read_u16(c, bo) as f64)
+                    .collect(),
+                (16, true) => raw
+                    .chunks_exact(2)
+                    .map(|c| read_i16(c, bo) as f64)
+                    .collect(),
+                (32, false) => raw
+                    .chunks_exact(4)
+                    .map(|c| read_u32(c, bo) as f64)
+                    .collect(),
+                (32, true) => raw
+                    .chunks_exact(4)
+                    .map(|c| read_i32(c, bo) as f64)
+                    .collect(),
+                (64, false) => raw
+                    .chunks_exact(8)
+                    .map(|c| read_u64_bo(c, bo) as f64)
+                    .collect(),
+                (64, true) => raw
+                    .chunks_exact(8)
+                    .map(|c| read_i64_bo(c, bo) as f64)
+                    .collect(),
+                (b, _) => {
+                    return Err(Error::UnsupportedFeature {
+                        feature: format!("HDMF: {b}-bit integer to f64 not supported"),
+                    });
+                }
             })
         }
         other => Err(Error::UnsupportedFeature {
@@ -164,20 +186,41 @@ fn decode_as_f64(raw: &[u8], dtype: &Datatype) -> Result<Vec<f64>> {
 #[cfg(feature = "alloc")]
 fn decode_as_i64(raw: &[u8], dtype: &Datatype) -> Result<Vec<i64>> {
     match dtype {
-        Datatype::Integer { bits, signed, byte_order } => {
+        Datatype::Integer {
+            bits,
+            signed,
+            byte_order,
+        } => {
             let bo = *byte_order;
             Ok(match (bits.get(), *signed) {
                 (8, false) => raw.iter().map(|&v| v as i64).collect(),
                 (8, true) => raw.iter().map(|&v| (v as i8) as i64).collect(),
-                (16, false) => raw.chunks_exact(2).map(|c| read_u16(c, bo) as i64).collect(),
-                (16, true) => raw.chunks_exact(2).map(|c| read_i16(c, bo) as i64).collect(),
-                (32, false) => raw.chunks_exact(4).map(|c| read_u32(c, bo) as i64).collect(),
-                (32, true) => raw.chunks_exact(4).map(|c| read_i32(c, bo) as i64).collect(),
-                (64, false) => raw.chunks_exact(8).map(|c| read_u64_bo(c, bo) as i64).collect(),
+                (16, false) => raw
+                    .chunks_exact(2)
+                    .map(|c| read_u16(c, bo) as i64)
+                    .collect(),
+                (16, true) => raw
+                    .chunks_exact(2)
+                    .map(|c| read_i16(c, bo) as i64)
+                    .collect(),
+                (32, false) => raw
+                    .chunks_exact(4)
+                    .map(|c| read_u32(c, bo) as i64)
+                    .collect(),
+                (32, true) => raw
+                    .chunks_exact(4)
+                    .map(|c| read_i32(c, bo) as i64)
+                    .collect(),
+                (64, false) => raw
+                    .chunks_exact(8)
+                    .map(|c| read_u64_bo(c, bo) as i64)
+                    .collect(),
                 (64, true) => raw.chunks_exact(8).map(|c| read_i64_bo(c, bo)).collect(),
-                (b, _) => return Err(Error::UnsupportedFeature {
-                    feature: format!("HDMF: {b}-bit integer to i64 not supported"),
-                }),
+                (b, _) => {
+                    return Err(Error::UnsupportedFeature {
+                        feature: format!("HDMF: {b}-bit integer to i64 not supported"),
+                    });
+                }
             })
         }
         other => Err(Error::UnsupportedFeature {
@@ -189,20 +232,41 @@ fn decode_as_i64(raw: &[u8], dtype: &Datatype) -> Result<Vec<i64>> {
 #[cfg(feature = "alloc")]
 fn decode_as_u64(raw: &[u8], dtype: &Datatype) -> Result<Vec<u64>> {
     match dtype {
-        Datatype::Integer { bits, signed, byte_order } => {
+        Datatype::Integer {
+            bits,
+            signed,
+            byte_order,
+        } => {
             let bo = *byte_order;
             Ok(match (bits.get(), *signed) {
                 (8, false) => raw.iter().map(|&v| v as u64).collect(),
                 (8, true) => raw.iter().map(|&v| (v as i8) as u64).collect(),
-                (16, false) => raw.chunks_exact(2).map(|c| read_u16(c, bo) as u64).collect(),
-                (16, true) => raw.chunks_exact(2).map(|c| read_i16(c, bo) as u64).collect(),
-                (32, false) => raw.chunks_exact(4).map(|c| read_u32(c, bo) as u64).collect(),
-                (32, true) => raw.chunks_exact(4).map(|c| read_i32(c, bo) as u64).collect(),
+                (16, false) => raw
+                    .chunks_exact(2)
+                    .map(|c| read_u16(c, bo) as u64)
+                    .collect(),
+                (16, true) => raw
+                    .chunks_exact(2)
+                    .map(|c| read_i16(c, bo) as u64)
+                    .collect(),
+                (32, false) => raw
+                    .chunks_exact(4)
+                    .map(|c| read_u32(c, bo) as u64)
+                    .collect(),
+                (32, true) => raw
+                    .chunks_exact(4)
+                    .map(|c| read_i32(c, bo) as u64)
+                    .collect(),
                 (64, false) => raw.chunks_exact(8).map(|c| read_u64_bo(c, bo)).collect(),
-                (64, true) => raw.chunks_exact(8).map(|c| read_i64_bo(c, bo) as u64).collect(),
-                (b, _) => return Err(Error::UnsupportedFeature {
-                    feature: format!("HDMF: {b}-bit integer to u64 not supported"),
-                }),
+                (64, true) => raw
+                    .chunks_exact(8)
+                    .map(|c| read_i64_bo(c, bo) as u64)
+                    .collect(),
+                (b, _) => {
+                    return Err(Error::UnsupportedFeature {
+                        feature: format!("HDMF: {b}-bit integer to u64 not supported"),
+                    });
+                }
             })
         }
         other => Err(Error::UnsupportedFeature {
@@ -329,19 +393,19 @@ pub fn read_string_attr_any<R: ReadAt + Sync>(
                         file.context(),
                     )?;
                     let raw = byte_vecs.into_iter().next().unwrap_or_default();
-                    return core::str::from_utf8(&raw)
-                        .map(String::from)
-                        .map_err(|e| Error::InvalidFormat {
+                    return core::str::from_utf8(&raw).map(String::from).map_err(|e| {
+                        Error::InvalidFormat {
                             message: format!(
                                 "HDMF: VL string attribute '{}' contains invalid UTF-8: {}",
                                 name, e
                             ),
-                        });
+                        }
+                    });
                 }
                 Ok(_) => {
                     return Err(Error::InvalidFormat {
                         message: format!("HDMF: attribute '{}' is not a string", name),
-                    })
+                    });
                 }
                 Err(e) => return Err(e),
             }
@@ -423,7 +487,7 @@ pub fn read_string_array_attr_any<R: ReadAt + Sync>(
                 Ok(_) => {
                     return Err(Error::InvalidFormat {
                         message: format!("HDMF: attribute '{}' is not a string array", name),
-                    })
+                    });
                 }
                 Err(e) => return Err(e),
             }
@@ -476,10 +540,7 @@ pub fn read_bool_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Res
 
 /// Read a string dataset as `Vec<String>`.
 #[cfg(feature = "alloc")]
-pub fn read_string_dataset<R: ReadAt + Sync>(
-    file: &Hdf5File<R>,
-    addr: u64,
-) -> Result<Vec<String>> {
+pub fn read_string_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Result<Vec<String>> {
     let ds = file.dataset_at(addr)?;
     let dtype = ds.datatype.clone();
     let raw = read_dataset_raw(file, addr)?;
@@ -495,19 +556,14 @@ pub fn read_string_dataset<R: ReadAt + Sync>(
 /// 4. `Boolean` → [`ColumnData::Bool`]
 /// 5. `FixedString` / `VariableString` → [`ColumnData::Str`]
 #[cfg(feature = "alloc")]
-pub fn detect_column_data<R: ReadAt + Sync>(
-    file: &Hdf5File<R>,
-    addr: u64,
-) -> Result<ColumnData> {
+pub fn detect_column_data<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Result<ColumnData> {
     let ds = file.dataset_at(addr)?;
     let dtype = ds.datatype.clone();
     let raw = read_dataset_raw(file, addr)?;
 
     match &dtype {
         Datatype::Float { .. } => Ok(ColumnData::F64(decode_as_f64(&raw, &dtype)?)),
-        Datatype::Integer { signed: true, .. } => {
-            Ok(ColumnData::I64(decode_as_i64(&raw, &dtype)?))
-        }
+        Datatype::Integer { signed: true, .. } => Ok(ColumnData::I64(decode_as_i64(&raw, &dtype)?)),
         Datatype::Integer { signed: false, .. } => {
             Ok(ColumnData::U64(decode_as_u64(&raw, &dtype)?))
         }

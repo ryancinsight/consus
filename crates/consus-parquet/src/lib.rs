@@ -1,4 +1,13 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+// Parquet writers take many schema/encoding parameters; wide signatures are
+// inherent to the format. Doc-list formatting lints flag rendering-neutral
+// whitespace. Reviewed policy (see consus-hdf5 for rationale).
+#![allow(
+    clippy::too_many_arguments,
+    clippy::doc_lazy_continuation,
+    clippy::doc_overindented_list_items,
+    clippy::collapsible_match
+)]
 //! # consus-parquet
 //!
 //! Apache Parquet interoperability layer for the Consus storage library.

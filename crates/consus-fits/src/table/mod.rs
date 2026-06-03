@@ -581,7 +581,11 @@ impl FitsTableData {
     /// Returns a `Vec<FitsColumnValue>` with one entry per column, in column order.
     /// Dispatches to the binary or ASCII decoder based on the table kind.
     #[cfg(feature = "alloc")]
-    pub fn decode_row<R: ReadAt>(&self, reader: &R, row_index: usize) -> Result<alloc::vec::Vec<decode::FitsColumnValue>> {
+    pub fn decode_row<R: ReadAt>(
+        &self,
+        reader: &R,
+        row_index: usize,
+    ) -> Result<alloc::vec::Vec<decode::FitsColumnValue>> {
         let row_len = self.descriptor.row_len();
         let mut row_buf = alloc::vec![0u8; row_len];
         self.read_row(reader, row_index, &mut row_buf)?;
@@ -604,7 +608,11 @@ impl FitsTableData {
     /// Returns a `Vec<FitsColumnValue>` with one entry per row.
     /// `col_index` is 0-based.
     #[cfg(feature = "alloc")]
-    pub fn decode_column<R: ReadAt>(&self, reader: &R, col_index: usize) -> Result<alloc::vec::Vec<decode::FitsColumnValue>> {
+    pub fn decode_column<R: ReadAt>(
+        &self,
+        reader: &R,
+        col_index: usize,
+    ) -> Result<alloc::vec::Vec<decode::FitsColumnValue>> {
         let columns = self.descriptor.columns();
         if col_index >= columns.len() {
             return Err(Error::SelectionOutOfBounds);
@@ -648,7 +656,9 @@ fn parse_table_core(header: &FitsHeader, binary: bool) -> Result<FitsTableDescri
         let mut offset = 0usize;
         for col in &mut columns {
             col.set_col_offset(offset);
-            offset = offset.checked_add(col.byte_width()).ok_or(Error::Overflow)?;
+            offset = offset
+                .checked_add(col.byte_width())
+                .ok_or(Error::Overflow)?;
         }
     } else {
         // ASCII tables: use TBCOLn (1-based) if present, fall back to prefix sums.
@@ -661,7 +671,9 @@ fn parse_table_core(header: &FitsHeader, binary: bool) -> Result<FitsTableDescri
                 _ => prefix_offset,
             };
             col.set_col_offset(col_offset);
-            prefix_offset = prefix_offset.checked_add(col.byte_width()).ok_or(Error::Overflow)?;
+            prefix_offset = prefix_offset
+                .checked_add(col.byte_width())
+                .ok_or(Error::Overflow)?;
         }
     }
     Ok(FitsTableDescriptorCore::new(
@@ -1354,5 +1366,4 @@ mod tests {
         let err = table.decode_column(&reader, 99).unwrap_err();
         assert!(matches!(err, Error::SelectionOutOfBounds));
     }
-
 }

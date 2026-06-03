@@ -70,7 +70,9 @@ use crate::memory::ArrowBuffer;
 /// This function is only compiled when both `feature = "zerocopy"` and
 /// `target_endian = "little"` hold.
 #[cfg(all(feature = "alloc", feature = "zerocopy", target_endian = "little"))]
-fn fixed_to_le_bytes_fast<'a, T: zerocopy::IntoBytes + zerocopy::Immutable>(slice: &'a [T]) -> ArrowBuffer<'a> {
+fn fixed_to_le_bytes_fast<'a, T: zerocopy::IntoBytes + zerocopy::Immutable>(
+    slice: &'a [T],
+) -> ArrowBuffer<'a> {
     use zerocopy::IntoBytes;
     ArrowBuffer::Borrowed(slice.as_bytes())
 }
@@ -198,7 +200,10 @@ pub fn column_values_to_arrow<'a>(values: &'a ColumnValues) -> ArrowArray<'a> {
             }
             ArrowArray::new(ArrayData::VariableWidth {
                 len: bufs.len(),
-                offsets: crate::memory::ArrowOffsets::new(ArrowBuffer::owned(offsets_bytes), bufs.len()),
+                offsets: crate::memory::ArrowOffsets::new(
+                    ArrowBuffer::owned(offsets_bytes),
+                    bufs.len(),
+                ),
                 values: ArrowBuffer::owned(payload),
                 validity: None,
             })

@@ -141,14 +141,26 @@ pub fn split_data_page_v1<'a>(
         Vec::new()
     } else {
         let bit_width = level_bit_width(max_rep_level);
-        decode_levels_v1(bytes, &mut pos, bit_width, count, header.repetition_level_encoding)?
+        decode_levels_v1(
+            bytes,
+            &mut pos,
+            bit_width,
+            count,
+            header.repetition_level_encoding,
+        )?
     };
 
     let def_levels = if max_def_level == 0 {
         Vec::new()
     } else {
         let bit_width = level_bit_width(max_def_level);
-        decode_levels_v1(bytes, &mut pos, bit_width, count, header.definition_level_encoding)?
+        decode_levels_v1(
+            bytes,
+            &mut pos,
+            bit_width,
+            count,
+            header.definition_level_encoding,
+        )?
     };
 
     Ok(PagePayload {
@@ -223,7 +235,12 @@ mod tests {
     use super::*;
     use crate::wire::page::{DataPageHeader, DataPageHeaderV2};
 
-    fn make_data_page_header(num_values: i32, encoding: i32, def_enc: i32, rep_enc: i32) -> DataPageHeader {
+    fn make_data_page_header(
+        num_values: i32,
+        encoding: i32,
+        def_enc: i32,
+        rep_enc: i32,
+    ) -> DataPageHeader {
         DataPageHeader {
             num_values,
             encoding,
@@ -232,11 +249,7 @@ mod tests {
         }
     }
 
-    fn make_data_page_header_v2(
-        num_values: i32,
-        rep_len: i32,
-        def_len: i32,
-    ) -> DataPageHeaderV2 {
+    fn make_data_page_header_v2(num_values: i32, rep_len: i32, def_len: i32) -> DataPageHeaderV2 {
         DataPageHeaderV2 {
             num_values,
             num_nulls: 0,
@@ -255,11 +268,11 @@ mod tests {
     #[test]
     fn split_v1_required_column_no_levels() {
         let values: &[u8] = &[
-            0x01, 0x00, 0x00, 0x00,  // 1
-            0x02, 0x00, 0x00, 0x00,  // 2
-            0x03, 0x00, 0x00, 0x00,  // 3
-            0x04, 0x00, 0x00, 0x00,  // 4
-            0x05, 0x00, 0x00, 0x00,  // 5
+            0x01, 0x00, 0x00, 0x00, // 1
+            0x02, 0x00, 0x00, 0x00, // 2
+            0x03, 0x00, 0x00, 0x00, // 3
+            0x04, 0x00, 0x00, 0x00, // 4
+            0x05, 0x00, 0x00, 0x00, // 5
         ];
         let header = make_data_page_header(5, 0, 0, 0);
         let payload = split_data_page_v1(values, &header, 0, 0).unwrap();
@@ -284,16 +297,14 @@ mod tests {
     #[test]
     fn split_v1_optional_column_rle_def_levels() {
         let def_section: &[u8] = &[
-            0x08, 0x00, 0x00, 0x00,  // length = 8
-            0x02, 0x01,              // RLE: 1x value=1
-            0x02, 0x00,              // RLE: 1x value=0
-            0x04, 0x01,              // RLE: 2x value=1
-            0x02, 0x00,              // RLE: 1x value=0
+            0x08, 0x00, 0x00, 0x00, // length = 8
+            0x02, 0x01, // RLE: 1x value=1
+            0x02, 0x00, // RLE: 1x value=0
+            0x04, 0x01, // RLE: 2x value=1
+            0x02, 0x00, // RLE: 1x value=0
         ];
         let value_bytes: &[u8] = &[
-            0x01, 0x00, 0x00, 0x00,
-            0x02, 0x00, 0x00, 0x00,
-            0x03, 0x00, 0x00, 0x00,
+            0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
         ];
         let mut payload_bytes = Vec::from(def_section);
         payload_bytes.extend_from_slice(value_bytes);
@@ -312,9 +323,7 @@ mod tests {
     #[test]
     fn split_v2_required_column_zero_level_lengths() {
         let values: &[u8] = &[
-            0x01, 0x00, 0x00, 0x00,
-            0x02, 0x00, 0x00, 0x00,
-            0x03, 0x00, 0x00, 0x00,
+            0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
         ];
         let header = make_data_page_header_v2(3, 0, 0);
         let payload = split_data_page_v2(values, &header, 0, 0).unwrap();

@@ -393,8 +393,14 @@ fn v5_multiple_variables_roundtrip() {
     let read_scalar = |arr: &MatArray| -> f64 {
         if let MatArray::Numeric(na) = arr {
             f64::from_le_bytes([
-                na.real_data[0], na.real_data[1], na.real_data[2], na.real_data[3],
-                na.real_data[4], na.real_data[5], na.real_data[6], na.real_data[7],
+                na.real_data[0],
+                na.real_data[1],
+                na.real_data[2],
+                na.real_data[3],
+                na.real_data[4],
+                na.real_data[5],
+                na.real_data[6],
+                na.real_data[7],
             ])
         } else {
             panic!("expected Numeric")
@@ -420,8 +426,10 @@ fn loadmat_from_reader_parses_test_fixture() {
     if let MatArray::Numeric(na) = &mat.variables[0].1 {
         assert_eq!(na.class, MatNumericClass::Double);
         assert_eq!(na.shape, vec![1, 3]);
-        let vals: Vec<f64> = na.real_data.chunks_exact(8)
-            .map(|b| f64::from_le_bytes([b[0],b[1],b[2],b[3],b[4],b[5],b[6],b[7]]))
+        let vals: Vec<f64> = na
+            .real_data
+            .chunks_exact(8)
+            .map(|b| f64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]))
             .collect();
         assert_eq!(vals, vec![1.0, 2.0, 3.0]);
     } else {

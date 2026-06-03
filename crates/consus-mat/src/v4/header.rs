@@ -46,9 +46,9 @@ impl V4Header {
     /// name field on success.
     pub fn parse(data: &[u8], pos: &mut usize, big_endian: bool) -> Result<Self, MatError> {
         if *pos + 20 > data.len() {
-            return Err(MatError::InvalidFormat(
-                String::from("MAT v4 header truncated"),
-            ));
+            return Err(MatError::InvalidFormat(String::from(
+                "MAT v4 header truncated",
+            )));
         }
 
         let read_u32 = |b: &[u8]| -> u32 {
@@ -60,15 +60,15 @@ impl V4Header {
         };
 
         let type_code = read_u32(&data[*pos..*pos + 4]);
-        let mrows    = read_u32(&data[*pos + 4..*pos + 8]) as usize;
-        let ncols    = read_u32(&data[*pos + 8..*pos + 12]) as usize;
-        let imagf    = read_u32(&data[*pos + 12..*pos + 16]) != 0;
-        let namlen   = read_u32(&data[*pos + 16..*pos + 20]) as usize;
+        let mrows = read_u32(&data[*pos + 4..*pos + 8]) as usize;
+        let ncols = read_u32(&data[*pos + 8..*pos + 12]) as usize;
+        let imagf = read_u32(&data[*pos + 12..*pos + 16]) != 0;
+        let namlen = read_u32(&data[*pos + 16..*pos + 20]) as usize;
         *pos += 20;
 
-        let machine    = type_code / 1000;
-        let remainder  = type_code % 1000;
-        let precision  = ((remainder / 10) % 10) as u8;
+        let machine = type_code / 1000;
+        let remainder = type_code % 1000;
+        let precision = ((remainder / 10) % 10) as u8;
         let matrix_type = (remainder % 10) as u8;
 
         if matches!(machine, 2..=4) {
@@ -87,22 +87,19 @@ impl V4Header {
             _ => {
                 return Err(MatError::UnsupportedFeature(alloc::format!(
                     "MAT v4 precision code {precision}"
-                )))
+                )));
             }
         };
 
         if *pos + namlen > data.len() {
-            return Err(MatError::InvalidFormat(
-                String::from("MAT v4 variable name truncated"),
-            ));
+            return Err(MatError::InvalidFormat(String::from(
+                "MAT v4 variable name truncated",
+            )));
         }
 
         let name_bytes = &data[*pos..*pos + namlen];
         *pos += namlen;
-        let nul_end = name_bytes
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(namlen);
+        let nul_end = name_bytes.iter().position(|&b| b == 0).unwrap_or(namlen);
         let name = String::from_utf8_lossy(&name_bytes[..nul_end]).into_owned();
 
         Ok(V4Header {

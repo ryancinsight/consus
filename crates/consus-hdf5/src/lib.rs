@@ -49,6 +49,20 @@
 //! - Version 3: adds file space management
 
 #![cfg_attr(not(feature = "std"), no_std)]
+// HDF5 is a binary format whose readers/writers take many layout parameters
+// (dimensions, strides, offsets, element sizes, …); wide signatures, complex
+// nested return types, and explicit `for i in 0..rank` loops over parallel
+// dimension arrays are inherent to format/codec code. Doc-list formatting lints
+// flag rendering-neutral whitespace. These are disabled by reviewed policy;
+// consolidating signatures into parameter structs is tracked in the backlog.
+#![allow(
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    clippy::needless_range_loop,
+    clippy::doc_lazy_continuation,
+    clippy::doc_overindented_list_items,
+    clippy::empty_line_after_doc_comments
+)]
 
 #[cfg(feature = "alloc")]
 #[macro_use]

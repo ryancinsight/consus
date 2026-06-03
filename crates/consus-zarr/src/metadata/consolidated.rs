@@ -119,11 +119,7 @@ impl ConsolidatedMetadataV2 {
                     let group_meta: Option<super::v2::GroupMetadataV2> =
                         serde_json::from_value(entry.data.clone()).ok();
 
-                    NodeMetadata::Group(
-                        group_meta
-                            .map(|g| g.to_canonical())
-                            .unwrap_or_default(),
-                    )
+                    NodeMetadata::Group(group_meta.map(|g| g.to_canonical()).unwrap_or_default())
                 };
 
                 ConsolidatedEntry {
@@ -203,7 +199,9 @@ impl ConsolidatedMetadataV3 {
                     .and_then(|zj| {
                         if let Some(arr) = zj.to_array_canonical() {
                             Some(NodeMetadata::Array(arr))
-                        } else { zj.to_group_canonical().map(NodeMetadata::Group) }
+                        } else {
+                            zj.to_group_canonical().map(NodeMetadata::Group)
+                        }
                     })
                     .unwrap_or_else(|| NodeMetadata::Group(GroupMetadata::default()));
 

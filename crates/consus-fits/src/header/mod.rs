@@ -49,11 +49,11 @@ pub mod value;
 
 pub use card::{FITS_CARD_LEN, FitsCard};
 pub use keyword::{
-    classify_mandatory_primary_keyword, classify_reserved_keyword, is_mandatory_primary_keyword,
-    is_reserved_keyword, is_valid_hierarchical_segment, mandatory_primary_keywords,
-    FitsKeyword, KeywordError, MandatoryPrimaryKeyword, ReservedKeywordClass, BITPIX_KEYWORD,
-    COMMENT_KEYWORD, CONTINUE_KEYWORD, END_KEYWORD, HIERARCH_KEYWORD, HISTORY_KEYWORD,
-    NAXIS_KEYWORD, SIMPLE_KEYWORD, STANDARD_KEYWORD_WIDTH,
+    BITPIX_KEYWORD, COMMENT_KEYWORD, CONTINUE_KEYWORD, END_KEYWORD, FitsKeyword, HIERARCH_KEYWORD,
+    HISTORY_KEYWORD, KeywordError, MandatoryPrimaryKeyword, NAXIS_KEYWORD, ReservedKeywordClass,
+    SIMPLE_KEYWORD, STANDARD_KEYWORD_WIDTH, classify_mandatory_primary_keyword,
+    classify_reserved_keyword, is_mandatory_primary_keyword, is_reserved_keyword,
+    is_valid_hierarchical_segment, mandatory_primary_keywords,
 };
-pub use parser::{parse_header_bytes, parse_header_cards, FitsHeader};
+pub use parser::{FitsHeader, parse_header_bytes, parse_header_cards};
 pub use value::{ComplexValue, HeaderValue, IntegerValue, RealValue};

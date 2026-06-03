@@ -29,7 +29,11 @@ fn encode_string_attr(s: &str) -> (Datatype, Shape, Vec<u8>) {
         length: bytes.len().max(1),
         encoding: StringEncoding::Utf8,
     };
-    (dt, Shape::scalar(), if bytes.is_empty() { vec![0] } else { bytes })
+    (
+        dt,
+        Shape::scalar(),
+        if bytes.is_empty() { vec![0] } else { bytes },
+    )
 }
 
 /// Helper struct for managing multiple encoded attributes.
@@ -41,7 +45,9 @@ struct AttributeStorage {
 #[cfg(all(feature = "alloc", feature = "hdf5", feature = "parquet"))]
 impl AttributeStorage {
     fn new() -> Self {
-        Self { buffers: Vec::new() }
+        Self {
+            buffers: Vec::new(),
+        }
     }
 
     fn push(&mut self, name: &str, value: &str) {
@@ -68,17 +74,16 @@ pub fn write_embedded_parquet(
     descriptor: &HybridStorageDescriptor,
     dataset_name: &str,
 ) -> consus_core::Result<u64> {
-
     let mut attrs = AttributeStorage::new();
     attrs.push("consus_hybrid_mode", "Embedded");
-    
+
     if let Some(ref layout) = descriptor.table_layout {
         attrs.push("consus_hybrid_table_name", &layout.table_name);
         attrs.push("consus_hybrid_payload_path", &layout.payload_path);
         attrs.push("consus_hybrid_relation", &format!("{:?}", layout.relation));
         attrs.push("consus_hybrid_encoding", &format!("{:?}", layout.encoding));
     }
-    
+
     if let Some(ref part) = descriptor.partitioning {
         if part.is_partitioned() {
             attrs.push("consus_hybrid_partition_keys", &part.keys.join(","));
@@ -95,7 +100,7 @@ pub fn write_embedded_parquet(
     let dcpl = DatasetCreationProps::default();
 
     let attr_refs = attrs.as_refs();
-    
+
     builder.add_dataset_with_attributes(
         dataset_name,
         &dt,
@@ -116,13 +121,13 @@ pub fn read_embedded_parquet<R: consus_io::ReadAt + Sync>(
 ) -> consus_core::Result<(Vec<u8>, HybridStorageDescriptor)> {
     use consus_core::{AttributeValue, Error};
     use consus_parquet::{
-        HybridPartitioning, HybridTableLayout, HybridStorageEncoding,
-        HybridTableRelation, HybridMode,
+        HybridMode, HybridPartitioning, HybridStorageEncoding, HybridTableLayout,
+        HybridTableRelation,
     };
 
     let addr = file.open_path(path)?;
     let dataset = file.dataset_at(addr)?;
-    
+
     if dataset.shape.rank() != 1 {
         return Err(Error::InvalidFormat {
             message: String::from("Embedded Parquet dataset must be a 1D byte array"),
@@ -133,10 +138,12 @@ pub fn read_embedded_parquet<R: consus_io::ReadAt + Sync>(
     file.read_contiguous_dataset_bytes(dataset.data_address.unwrap_or(0), 0, &mut payload)?;
 
     let attrs = file.attributes_at(addr)?;
-    
-    let mut descriptor = HybridStorageDescriptor::default();
-    descriptor.mode = HybridMode::Embedded;
-    
+
+    let mut descriptor = HybridStorageDescriptor {
+        mode: HybridMode::Embedded,
+        ..Default::default()
+    };
+
     let mut table_name = String::new();
     let mut payload_path = String::new();
     let mut relation = HybridTableRelation::Primary;
@@ -160,21 +167,36 @@ pub fn read_embedded_parquet<R: consus_io::ReadAt + Sync>(
                 }
                 "consus_hybrid_relation" => {
                     has_layout = true;
-                    if val == "MaterializedView" { relation = HybridTableRelation::MaterializedView; }
-                    else if val == "Cache" { relation = HybridTableRelation::Cache; }
-                    else if val == "Partition" { relation = HybridTableRelation::Partition; }
+                    if val == "MaterializedView" {
+                        relation = HybridTableRelation::MaterializedView;
+                    } else if val == "Cache" {
+                        relation = HybridTableRelation::Cache;
+                    } else if val == "Partition" {
+                        relation = HybridTableRelation::Partition;
+                    }
                 }
                 "consus_hybrid_encoding" => {
                     has_layout = true;
-                    if val == "RowGroupSegmentedParquet" { encoding = HybridStorageEncoding::RowGroupSegmentedParquet; }
-                    else if val == "ArrowIntermediate" { encoding = HybridStorageEncoding::ArrowIntermediate; }
+                    if val == "RowGroupSegmentedParquet" {
+                        encoding = HybridStorageEncoding::RowGroupSegmentedParquet;
+                    } else if val == "ArrowIntermediate" {
+                        encoding = HybridStorageEncoding::ArrowIntermediate;
+                    }
                 }
                 "consus_hybrid_partition_keys" => {
-                    part_keys = val.split(',').filter(|s| !s.is_empty()).map(String::from).collect();
+                    part_keys = val
+                        .split(',')
+                        .filter(|s| !s.is_empty())
+                        .map(String::from)
+                        .collect();
                     has_part = true;
                 }
                 "consus_hybrid_partition_paths" => {
-                    part_paths = val.split(',').filter(|s| !s.is_empty()).map(String::from).collect();
+                    part_paths = val
+                        .split(',')
+                        .filter(|s| !s.is_empty())
+                        .map(String::from)
+                        .collect();
                     has_part = true;
                 }
                 _ => {}
@@ -183,10 +205,18 @@ pub fn read_embedded_parquet<R: consus_io::ReadAt + Sync>(
     }
 
     if has_layout {
-        descriptor.table_layout = Some(HybridTableLayout::new(table_name, payload_path, relation, encoding));
+        descriptor.table_layout = Some(HybridTableLayout::new(
+            table_name,
+            payload_path,
+            relation,
+            encoding,
+        ));
     }
     if has_part {
-        descriptor.partitioning = Some(HybridPartitioning { keys: part_keys, paths: part_paths });
+        descriptor.partitioning = Some(HybridPartitioning {
+            keys: part_keys,
+            paths: part_paths,
+        });
     }
 
     Ok((payload, descriptor))

@@ -112,6 +112,13 @@
 //! ```
 
 #![cfg_attr(not(feature = "std"), no_std)]
+// Subjective idiom/whitespace lints (rendering-neutral docs; filter_map that
+// reads clearer than map over JSON value conversions); reviewed-policy allow.
+#![allow(
+    clippy::empty_line_after_doc_comments,
+    clippy::empty_line_after_outer_attr,
+    clippy::unnecessary_filter_map
+)]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;

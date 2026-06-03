@@ -49,18 +49,13 @@ pub fn read_v4_variable(
         return Ok(None);
     }
     if *pos + 20 > data.len() {
-        return Err(MatError::InvalidFormat(
-            String::from("MAT v4 record truncated at header"),
-        ));
+        return Err(MatError::InvalidFormat(String::from(
+            "MAT v4 record truncated at header",
+        )));
     }
 
     // Peek at the type code to determine byte order before full header parse.
-    let type_le = u32::from_le_bytes([
-        data[*pos],
-        data[*pos + 1],
-        data[*pos + 2],
-        data[*pos + 3],
-    ]);
+    let type_le = u32::from_le_bytes([data[*pos], data[*pos + 1], data[*pos + 2], data[*pos + 3]]);
     let big_endian = (type_le / 1000) == 1; // M=1 → Sun/IEEE BE
 
     let hdr = V4Header::parse(data, pos, big_endian)?;
@@ -113,9 +108,7 @@ pub fn read_v4_variable(
             let chars: String = real_data
                 .chunks_exact(8)
                 .map(|b| {
-                    let val = f64::from_le_bytes([
-                        b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
-                    ]);
+                    let val = f64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]);
                     char::from_u32(val as u32).unwrap_or('\u{FFFD}')
                 })
                 .collect();
@@ -125,15 +118,15 @@ pub fn read_v4_variable(
             })
         }
         2 => {
-            return Err(MatError::UnsupportedFeature(
-                String::from("MAT v4 sparse matrices are not supported"),
-            ));
+            return Err(MatError::UnsupportedFeature(String::from(
+                "MAT v4 sparse matrices are not supported",
+            )));
         }
         _ => {
             return Err(MatError::InvalidFormat(alloc::format!(
                 "unknown MAT v4 matrix type {}",
                 hdr.matrix_type
-            )))
+            )));
         }
     };
 

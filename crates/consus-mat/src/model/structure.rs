@@ -37,10 +37,7 @@ impl MatStructArray {
     ///
     /// Field names are derived from the keys of `data`. There is no separate
     /// `fields` parameter; the `data` vector is the single source of truth.
-    pub fn new(
-        shape: Vec<usize>,
-        data: Vec<(String, Vec<MatArray>)>,
-    ) -> Result<Self, MatError> {
+    pub fn new(shape: Vec<usize>, data: Vec<(String, Vec<MatArray>)>) -> Result<Self, MatError> {
         let expected_len = if shape.is_empty() {
             1
         } else {
@@ -123,7 +120,8 @@ mod tests {
                 ("x".to_string(), vec![scalar_numeric(1.0)]),
                 ("y".to_string(), vec![scalar_numeric(2.0)]),
             ],
-        ).unwrap()
+        )
+        .unwrap()
     }
 
     #[test]
@@ -140,8 +138,14 @@ mod tests {
         assert_eq!(vals.len(), 1);
         if let MatArray::Numeric(na) = &vals[0] {
             let v = f64::from_le_bytes([
-                na.real_data[0], na.real_data[1], na.real_data[2], na.real_data[3],
-                na.real_data[4], na.real_data[5], na.real_data[6], na.real_data[7],
+                na.real_data[0],
+                na.real_data[1],
+                na.real_data[2],
+                na.real_data[3],
+                na.real_data[4],
+                na.real_data[5],
+                na.real_data[6],
+                na.real_data[7],
             ]);
             assert_eq!(v, 1.0);
         } else {
@@ -185,9 +189,7 @@ mod tests {
     fn new_field_element_count_mismatch_returns_error() {
         let err = MatStructArray::new(
             vec![1, 2],
-            vec![
-                ("x".to_string(), vec![scalar_numeric(1.0)]),
-            ],
+            vec![("x".to_string(), vec![scalar_numeric(1.0)])],
         );
         assert!(err.is_err());
     }

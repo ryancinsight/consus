@@ -94,8 +94,7 @@ pub enum ZarrVersion {
 /// Zarr fill values are JSON-serializable and may be primitive scalars
 /// or special values like `NaN`, `Infinity`, `-Infinity`.
 #[cfg(feature = "alloc")]
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum FillValue {
     /// The default fill value (zero for numeric types, empty string for string types).
     #[default]
@@ -117,7 +116,6 @@ pub enum FillValue {
 }
 
 #[cfg(feature = "alloc")]
-
 // ---------------------------------------------------------------------------
 // Array metadata (format-agnostic)
 // ---------------------------------------------------------------------------

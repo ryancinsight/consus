@@ -162,12 +162,14 @@ mod tests {
 
     fn valid_sparse() -> MatSparseArray {
         MatSparseArray::new(
-            3, 3,
+            3,
+            3,
             vec![0i32, 2i32],
             vec![0i32, 1i32, 1i32, 2i32],
             [5.0f64.to_le_bytes(), 7.0f64.to_le_bytes()].concat(),
             None,
-        ).unwrap()
+        )
+        .unwrap()
     }
 
     #[test]
@@ -184,44 +186,80 @@ mod tests {
     #[test]
     fn is_complex_true_when_imag_present() {
         let imag = [0.0f64.to_le_bytes(), 1.0f64.to_le_bytes()].concat();
-        let sa = MatSparseArray::new(3, 3, vec![0, 2], vec![0, 1, 1, 2],
+        let sa = MatSparseArray::new(
+            3,
+            3,
+            vec![0, 2],
+            vec![0, 1, 1, 2],
             [5.0f64.to_le_bytes(), 7.0f64.to_le_bytes()].concat(),
-            Some(imag)).unwrap();
+            Some(imag),
+        )
+        .unwrap();
         assert!(sa.is_complex());
     }
 
     #[test]
     fn validate_jc_wrong_length_returns_error() {
-        let err = MatSparseArray::new(3, 3, vec![0, 2], vec![0, 1, 2],
-            [5.0f64.to_le_bytes(), 7.0f64.to_le_bytes()].concat(), None);
+        let err = MatSparseArray::new(
+            3,
+            3,
+            vec![0, 2],
+            vec![0, 1, 2],
+            [5.0f64.to_le_bytes(), 7.0f64.to_le_bytes()].concat(),
+            None,
+        );
         assert!(err.is_err());
     }
 
     #[test]
     fn validate_ir_wrong_length_returns_error() {
-        let err = MatSparseArray::new(3, 3, vec![0, 1, 2], vec![0, 1, 1, 2],
-            [5.0f64.to_le_bytes(), 7.0f64.to_le_bytes()].concat(), None);
+        let err = MatSparseArray::new(
+            3,
+            3,
+            vec![0, 1, 2],
+            vec![0, 1, 1, 2],
+            [5.0f64.to_le_bytes(), 7.0f64.to_le_bytes()].concat(),
+            None,
+        );
         assert!(err.is_err());
     }
 
     #[test]
     fn validate_real_data_wrong_length_returns_error() {
-        let err = MatSparseArray::new(3, 3, vec![0, 2], vec![0, 1, 1, 2],
-            5.0f64.to_le_bytes().to_vec(), None);
+        let err = MatSparseArray::new(
+            3,
+            3,
+            vec![0, 2],
+            vec![0, 1, 1, 2],
+            5.0f64.to_le_bytes().to_vec(),
+            None,
+        );
         assert!(err.is_err());
     }
 
     #[test]
     fn validate_row_index_out_of_bounds_returns_error() {
-        let err = MatSparseArray::new(3, 3, vec![0, 5], vec![0, 1, 1, 2],
-            [5.0f64.to_le_bytes(), 7.0f64.to_le_bytes()].concat(), None);
+        let err = MatSparseArray::new(
+            3,
+            3,
+            vec![0, 5],
+            vec![0, 1, 1, 2],
+            [5.0f64.to_le_bytes(), 7.0f64.to_le_bytes()].concat(),
+            None,
+        );
         assert!(err.is_err());
     }
 
     #[test]
     fn validate_non_monotone_jc_returns_error() {
-        let err = MatSparseArray::new(3, 3, vec![0, 2], vec![0, 2, 1, 2],
-            [5.0f64.to_le_bytes(), 7.0f64.to_le_bytes()].concat(), None);
+        let err = MatSparseArray::new(
+            3,
+            3,
+            vec![0, 2],
+            vec![0, 2, 1, 2],
+            [5.0f64.to_le_bytes(), 7.0f64.to_le_bytes()].concat(),
+            None,
+        );
         assert!(err.is_err());
     }
 }

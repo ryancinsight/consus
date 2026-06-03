@@ -29,8 +29,8 @@ use alloc::{format, string::String, vec, vec::Vec};
 use core::num::NonZeroUsize;
 
 use consus_core::{ByteOrder, Datatype, Result, Shape, StringEncoding};
-use consus_hdf5::file::writer::Hdf5FileBuilder;
 use consus_hdf5::file::Hdf5File;
+use consus_hdf5::file::writer::Hdf5FileBuilder;
 use consus_hdf5::property_list::{DatasetCreationProps, FileCreationProps};
 use consus_io::SliceReader;
 
@@ -58,10 +58,7 @@ const TYPE_ELEMENT_IDENTIFIERS: &str = "ElementIdentifiers";
 ///
 /// Format: `{counter:08x}-0000-4000-8000-{counter:012x}`
 fn make_object_id(counter: u32) -> String {
-    format!(
-        "{:08x}-0000-4000-8000-{:012x}",
-        counter, counter
-    )
+    format!("{:08x}-0000-4000-8000-{:012x}", counter, counter)
 }
 
 // ---------------------------------------------------------------------------
@@ -178,8 +175,7 @@ impl<'a> HdmfFile<'a> {
         let root_addr = self.hdf5.superblock().root_group_address;
         let attrs = self.hdf5.attributes_at(root_addr)?;
 
-        let data_type = read_string_attr_any(&attrs, "data_type", &self.hdf5)
-            .unwrap_or_default();
+        let data_type = read_string_attr_any(&attrs, "data_type", &self.hdf5).unwrap_or_default();
         if data_type != TYPE_DYNAMIC_TABLE {
             return Err(consus_core::Error::InvalidFormat {
                 message: format!(
@@ -189,10 +185,10 @@ impl<'a> HdmfFile<'a> {
             });
         }
 
-        let description = read_string_attr_any(&attrs, "description", &self.hdf5)
-            .unwrap_or_default();
-        let colnames = read_string_array_attr_any(&attrs, "colnames", &self.hdf5)
-            .unwrap_or_default();
+        let description =
+            read_string_attr_any(&attrs, "description", &self.hdf5).unwrap_or_default();
+        let colnames =
+            read_string_array_attr_any(&attrs, "colnames", &self.hdf5).unwrap_or_default();
 
         // Row IDs
         let id: Vec<i64> = match self.hdf5.open_path("id") {
@@ -215,8 +211,8 @@ impl<'a> HdmfFile<'a> {
             let index: Option<Vec<u64>> = match self.hdf5.open_path(&index_path) {
                 Ok(idx_addr) => {
                     let idx_attrs = self.hdf5.attributes_at(idx_addr)?;
-                    let idx_dt =
-                        read_string_attr_any(&idx_attrs, "data_type", &self.hdf5).unwrap_or_default();
+                    let idx_dt = read_string_attr_any(&idx_attrs, "data_type", &self.hdf5)
+                        .unwrap_or_default();
                     if idx_dt == TYPE_VECTOR_INDEX {
                         Some(read_u64_dataset(&self.hdf5, idx_addr)?)
                     } else {
@@ -304,7 +300,8 @@ impl HdmfFileBuilder {
         description: impl Into<String>,
         data: ColumnData,
     ) -> Self {
-        self.columns.push((name.into(), description.into(), data, None));
+        self.columns
+            .push((name.into(), description.into(), data, None));
         self
     }
 
@@ -319,7 +316,8 @@ impl HdmfFileBuilder {
         data: ColumnData,
         index: Vec<u64>,
     ) -> Self {
-        self.columns.push((name.into(), description.into(), data, Some(index)));
+        self.columns
+            .push((name.into(), description.into(), data, Some(index)));
         self
     }
 
@@ -399,8 +397,7 @@ impl HdmfFileBuilder {
                 let idx_raw: Vec<u8> = index.iter().flat_map(|v| v.to_le_bytes()).collect();
                 let idx_shape = Shape::fixed(&[index.len()]);
 
-                let idx_desc_str =
-                    format!("Index for VectorData '{}'", col_name);
+                let idx_desc_str = format!("Index for VectorData '{}'", col_name);
                 let (vi_dt, vi_raw) = fixed_string_bytes(TYPE_VECTOR_INDEX);
                 let (vi_ns_dt, vi_ns_raw) = fixed_string_bytes(HDMF_COMMON_NS);
                 let (vi_desc_dt, vi_desc_raw) = fixed_string_bytes(&idx_desc_str);

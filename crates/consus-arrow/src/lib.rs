@@ -1,4 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+// Doc-comment whitespace lint (rendering-neutral); reviewed-policy allow.
+#![allow(clippy::empty_line_after_doc_comments)]
 
 //! # consus-arrow
 //!

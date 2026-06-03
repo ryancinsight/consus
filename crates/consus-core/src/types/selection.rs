@@ -160,11 +160,7 @@ pub struct PointSelection {
 impl PointSelection {
     /// Number of selected points.
     pub fn num_points(&self) -> usize {
-        if self.rank == 0 {
-            0
-        } else {
-            self.coords.len() / self.rank
-        }
+        self.coords.len().checked_div(self.rank).unwrap_or(0)
     }
 
     /// Whether this point selection is valid for the given shape.

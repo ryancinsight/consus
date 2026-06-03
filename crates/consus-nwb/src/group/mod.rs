@@ -132,8 +132,8 @@ pub fn list_typed_group_children<R: ReadAt + Sync>(
 mod tests {
     use super::*;
     use consus_core::{ByteOrder, Datatype, Shape, StringEncoding};
-    use consus_hdf5::file::Hdf5File;
     use consus_hdf5::file::writer::{DatasetCreationProps, FileCreationProps, Hdf5FileBuilder};
+    use consus_hdf5::file::Hdf5File;
     use consus_io::SliceReader;
     use core::num::NonZeroUsize;
 

@@ -47,18 +47,19 @@ mod imp {
     /// `MATLAB_dims` is a uint32 or uint64 1-D array encoding the MATLAB array
     /// dimensions in MATLAB (column-major) order. For a scalar struct the
     /// attribute is absent; callers fall back to `[1, 1]`.
-    fn matlab_dims_attr(
-        attrs: &[consus_hdf5::attribute::Hdf5Attribute],
-    ) -> Option<Vec<usize>> {
+    fn matlab_dims_attr(attrs: &[consus_hdf5::attribute::Hdf5Attribute]) -> Option<Vec<usize>> {
         attrs
             .iter()
             .find(|a| a.name == "MATLAB_dims")
             .and_then(|a| a.decode_value().ok())
             .and_then(|v| match v {
                 AttributeValue::UintArray(dims) => {
-                    let result: Vec<usize> =
-                        dims.into_iter().map(|d| d as usize).collect();
-                    if result.is_empty() { None } else { Some(result) }
+                    let result: Vec<usize> = dims.into_iter().map(|d| d as usize).collect();
+                    if result.is_empty() {
+                        None
+                    } else {
+                        Some(result)
+                    }
                 }
                 AttributeValue::Uint(d) => Some(vec![d as usize]),
                 _ => None,
@@ -85,11 +86,10 @@ mod imp {
                 let imag_data = na.imag_data;
                 (0..numel)
                     .map(|i| {
-                        let real =
-                            real_data[i * elem_bytes..(i + 1) * elem_bytes].to_vec();
-                        let imag = imag_data.as_ref().map(|id| {
-                            id[i * elem_bytes..(i + 1) * elem_bytes].to_vec()
-                        });
+                        let real = real_data[i * elem_bytes..(i + 1) * elem_bytes].to_vec();
+                        let imag = imag_data
+                            .as_ref()
+                            .map(|id| id[i * elem_bytes..(i + 1) * elem_bytes].to_vec());
                         MatArray::Numeric(MatNumericArray {
                             class,
                             shape: vec![1],

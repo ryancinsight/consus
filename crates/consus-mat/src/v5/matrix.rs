@@ -1,4 +1,6 @@
 //! miMATRIX element parser for MAT v5.
+// Explicit `for f in 0..nfields` loops index parallel field arrays; reviewed-policy allow.
+#![allow(clippy::needless_range_loop)]
 #[cfg(feature = "alloc")]
 use alloc::{string::String, vec, vec::Vec};
 
@@ -238,7 +240,7 @@ pub fn parse_matrix(
             }) as usize;
             let (_fnt, fn_b): (MiType, Vec<u8>) =
                 read_subelement_bytes(payload, &mut pos, big_endian)?;
-            let nfields = if fnl > 0 { fn_b.len() / fnl } else { 0 };
+            let nfields = fn_b.len().checked_div(fnl).unwrap_or(0);
             let mut field_names: Vec<String> = Vec::with_capacity(nfields);
             for i in 0..nfields {
                 let s = i * fnl;

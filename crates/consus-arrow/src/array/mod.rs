@@ -225,13 +225,13 @@ impl<'a> ArrowArray<'a> {
                 {
                     // For ArrowOffsets, we read little-endian i32 values.
                     let offset_bytes = offsets.as_slice();
-                    
+
                     let get_i32 = |idx: usize| -> Option<usize> {
                         let start = idx * 4;
                         let bytes = offset_bytes.get(start..start + 4)?;
                         Some(i32::from_le_bytes(bytes.try_into().ok()?) as usize)
                     };
-                    
+
                     let start = get_i32(offset)?;
                     let end = get_i32(offset + length)?;
                     let sliced_values = values.as_slice().get(start..end)?;
@@ -239,12 +239,16 @@ impl<'a> ArrowArray<'a> {
                     let mut sliced_offsets_bytes = Vec::with_capacity((length + 1) * 4);
                     for idx in offset..=offset + length {
                         let val = get_i32(idx)?;
-                        sliced_offsets_bytes.extend_from_slice(&(i32::try_from(val - start).ok()?).to_le_bytes());
+                        sliced_offsets_bytes
+                            .extend_from_slice(&(i32::try_from(val - start).ok()?).to_le_bytes());
                     }
 
                     Some(Self::new(ArrayData::VariableWidth {
                         len: length,
-                        offsets: ArrowOffsets::new(ArrowBuffer::owned(sliced_offsets_bytes), length),
+                        offsets: ArrowOffsets::new(
+                            ArrowBuffer::owned(sliced_offsets_bytes),
+                            length,
+                        ),
                         values: ArrowBuffer::owned(sliced_values.to_vec()),
                         validity: validity.clone(),
                     }))
@@ -311,7 +315,10 @@ mod tests {
         #[cfg(feature = "alloc")]
         let array = ArrowArray::new(ArrayData::VariableWidth {
             len: 2,
-            offsets: ArrowOffsets::new(ArrowBuffer::owned(vec![0, 0, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0]), 2), // 0, 3, 6 as i32 LE
+            offsets: ArrowOffsets::new(
+                ArrowBuffer::owned(vec![0, 0, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0]),
+                2,
+            ), // 0, 3, 6 as i32 LE
             values: ArrowBuffer::owned(b"abcdef".to_vec()),
             validity: None,
         });

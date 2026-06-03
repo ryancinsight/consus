@@ -16,8 +16,8 @@ use consus_core::{ByteOrder, Datatype, Shape};
 use consus_hdf5::file::Hdf5File;
 use consus_io::MemCursor;
 use consus_netcdf::{
-    NetcdfDimension, NetcdfGroup, NetcdfModel, NetcdfVariable, NetcdfWriter, read_model,
-    read_variable_bytes,
+    read_model, read_variable_bytes, NetcdfDimension, NetcdfGroup, NetcdfModel, NetcdfVariable,
+    NetcdfWriter,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -92,14 +92,38 @@ fn dtype_tag(dt: &Datatype) -> &'static str {
     match dt {
         Datatype::Float { bits, .. } if bits.get() == 32 => "f32",
         Datatype::Float { bits, .. } if bits.get() == 64 => "f64",
-        Datatype::Integer { bits, signed: true, .. } if bits.get() == 8 => "i8",
-        Datatype::Integer { bits, signed: false, .. } if bits.get() == 8 => "u8",
-        Datatype::Integer { bits, signed: true, .. } if bits.get() == 16 => "i16",
-        Datatype::Integer { bits, signed: false, .. } if bits.get() == 16 => "u16",
-        Datatype::Integer { bits, signed: true, .. } if bits.get() == 32 => "i32",
-        Datatype::Integer { bits, signed: false, .. } if bits.get() == 32 => "u32",
-        Datatype::Integer { bits, signed: true, .. } if bits.get() == 64 => "i64",
-        Datatype::Integer { bits, signed: false, .. } if bits.get() == 64 => "u64",
+        Datatype::Integer {
+            bits, signed: true, ..
+        } if bits.get() == 8 => "i8",
+        Datatype::Integer {
+            bits,
+            signed: false,
+            ..
+        } if bits.get() == 8 => "u8",
+        Datatype::Integer {
+            bits, signed: true, ..
+        } if bits.get() == 16 => "i16",
+        Datatype::Integer {
+            bits,
+            signed: false,
+            ..
+        } if bits.get() == 16 => "u16",
+        Datatype::Integer {
+            bits, signed: true, ..
+        } if bits.get() == 32 => "i32",
+        Datatype::Integer {
+            bits,
+            signed: false,
+            ..
+        } if bits.get() == 32 => "u32",
+        Datatype::Integer {
+            bits, signed: true, ..
+        } if bits.get() == 64 => "i64",
+        Datatype::Integer {
+            bits,
+            signed: false,
+            ..
+        } if bits.get() == 64 => "u64",
         Datatype::FixedString { .. } => "str",
         _ => "opaque",
     }
@@ -149,14 +173,26 @@ fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject
                 };
                 list.append(v)?;
             }
-            Datatype::Integer { bits, signed: true, byte_order } if bits.get() == 8 => {
+            Datatype::Integer {
+                bits,
+                signed: true,
+                byte_order,
+            } if bits.get() == 8 => {
                 let v = s[0] as i8;
                 list.append(v)?;
             }
-            Datatype::Integer { bits, signed: false, .. } if bits.get() == 8 => {
+            Datatype::Integer {
+                bits,
+                signed: false,
+                ..
+            } if bits.get() == 8 => {
                 list.append(s[0])?;
             }
-            Datatype::Integer { bits, signed: true, byte_order } if bits.get() == 16 => {
+            Datatype::Integer {
+                bits,
+                signed: true,
+                byte_order,
+            } if bits.get() == 16 => {
                 let arr: [u8; 2] = s.try_into().unwrap();
                 let v = match byte_order {
                     ByteOrder::LittleEndian => i16::from_le_bytes(arr),
@@ -164,7 +200,11 @@ fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject
                 };
                 list.append(v)?;
             }
-            Datatype::Integer { bits, signed: false, byte_order } if bits.get() == 16 => {
+            Datatype::Integer {
+                bits,
+                signed: false,
+                byte_order,
+            } if bits.get() == 16 => {
                 let arr: [u8; 2] = s.try_into().unwrap();
                 let v = match byte_order {
                     ByteOrder::LittleEndian => u16::from_le_bytes(arr),
@@ -172,7 +212,11 @@ fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject
                 };
                 list.append(v)?;
             }
-            Datatype::Integer { bits, signed: true, byte_order } if bits.get() == 32 => {
+            Datatype::Integer {
+                bits,
+                signed: true,
+                byte_order,
+            } if bits.get() == 32 => {
                 let arr: [u8; 4] = s.try_into().unwrap();
                 let v = match byte_order {
                     ByteOrder::LittleEndian => i32::from_le_bytes(arr),
@@ -180,7 +224,11 @@ fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject
                 };
                 list.append(v)?;
             }
-            Datatype::Integer { bits, signed: false, byte_order } if bits.get() == 32 => {
+            Datatype::Integer {
+                bits,
+                signed: false,
+                byte_order,
+            } if bits.get() == 32 => {
                 let arr: [u8; 4] = s.try_into().unwrap();
                 let v = match byte_order {
                     ByteOrder::LittleEndian => u32::from_le_bytes(arr),
@@ -188,7 +236,11 @@ fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject
                 };
                 list.append(v)?;
             }
-            Datatype::Integer { bits, signed: true, byte_order } if bits.get() == 64 => {
+            Datatype::Integer {
+                bits,
+                signed: true,
+                byte_order,
+            } if bits.get() == 64 => {
                 let arr: [u8; 8] = s.try_into().unwrap();
                 let v = match byte_order {
                     ByteOrder::LittleEndian => i64::from_le_bytes(arr),
@@ -196,7 +248,11 @@ fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject
                 };
                 list.append(v)?;
             }
-            Datatype::Integer { bits, signed: false, byte_order } if bits.get() == 64 => {
+            Datatype::Integer {
+                bits,
+                signed: false,
+                byte_order,
+            } if bits.get() == 64 => {
                 let arr: [u8; 8] = s.try_into().unwrap();
                 let v = match byte_order {
                     ByteOrder::LittleEndian => u64::from_le_bytes(arr),
@@ -228,35 +284,59 @@ fn encode_bytes(data: &Bound<'_, PyList>, dt: &Datatype) -> PyResult<Vec<u8>> {
                 let v: f64 = item.extract()?;
                 bytes.extend_from_slice(&v.to_le_bytes());
             }
-            Datatype::Integer { bits, signed: true, .. } if bits.get() == 8 => {
+            Datatype::Integer {
+                bits, signed: true, ..
+            } if bits.get() == 8 => {
                 let v: i8 = item.extract()?;
                 bytes.extend_from_slice(&v.to_le_bytes());
             }
-            Datatype::Integer { bits, signed: false, .. } if bits.get() == 8 => {
+            Datatype::Integer {
+                bits,
+                signed: false,
+                ..
+            } if bits.get() == 8 => {
                 let v: u8 = item.extract()?;
                 bytes.extend_from_slice(&v.to_le_bytes());
             }
-            Datatype::Integer { bits, signed: true, .. } if bits.get() == 16 => {
+            Datatype::Integer {
+                bits, signed: true, ..
+            } if bits.get() == 16 => {
                 let v: i16 = item.extract()?;
                 bytes.extend_from_slice(&v.to_le_bytes());
             }
-            Datatype::Integer { bits, signed: false, .. } if bits.get() == 16 => {
+            Datatype::Integer {
+                bits,
+                signed: false,
+                ..
+            } if bits.get() == 16 => {
                 let v: u16 = item.extract()?;
                 bytes.extend_from_slice(&v.to_le_bytes());
             }
-            Datatype::Integer { bits, signed: true, .. } if bits.get() == 32 => {
+            Datatype::Integer {
+                bits, signed: true, ..
+            } if bits.get() == 32 => {
                 let v: i32 = item.extract()?;
                 bytes.extend_from_slice(&v.to_le_bytes());
             }
-            Datatype::Integer { bits, signed: false, .. } if bits.get() == 32 => {
+            Datatype::Integer {
+                bits,
+                signed: false,
+                ..
+            } if bits.get() == 32 => {
                 let v: u32 = item.extract()?;
                 bytes.extend_from_slice(&v.to_le_bytes());
             }
-            Datatype::Integer { bits, signed: true, .. } if bits.get() == 64 => {
+            Datatype::Integer {
+                bits, signed: true, ..
+            } if bits.get() == 64 => {
                 let v: i64 = item.extract()?;
                 bytes.extend_from_slice(&v.to_le_bytes());
             }
-            Datatype::Integer { bits, signed: false, .. } if bits.get() == 64 => {
+            Datatype::Integer {
+                bits,
+                signed: false,
+                ..
+            } if bits.get() == 64 => {
                 let v: u64 = item.extract()?;
                 bytes.extend_from_slice(&v.to_le_bytes());
             }
@@ -299,19 +379,31 @@ impl PyNetcdfFile {
         // Validate the bytes open as a valid HDF5 file before storing.
         let cursor = MemCursor::from_bytes(data.to_vec());
         Hdf5File::open(cursor).map_err(from_consus)?;
-        Ok(Self { data: data.to_vec() })
+        Ok(Self {
+            data: data.to_vec(),
+        })
     }
 
     /// Names of all root-group variables (non-dimension-scale datasets).
     pub fn variable_names(&self) -> PyResult<Vec<String>> {
         let model = self.open_model()?;
-        Ok(model.root.variables.iter().map(|v| v.name.clone()).collect())
+        Ok(model
+            .root
+            .variables
+            .iter()
+            .map(|v| v.name.clone())
+            .collect())
     }
 
     /// Names of all root-group dimensions.
     pub fn dimension_names(&self) -> PyResult<Vec<String>> {
         let model = self.open_model()?;
-        Ok(model.root.dimensions.iter().map(|d| d.name.clone()).collect())
+        Ok(model
+            .root
+            .dimensions
+            .iter()
+            .map(|d| d.name.clone())
+            .collect())
     }
 
     /// Dict-like list of `(name, size)` pairs for root-group dimensions.
@@ -410,9 +502,7 @@ fn attrs_to_py<'py>(
                 let list = PyList::new_bound(py, arr.iter());
                 list.into_any().unbind()
             }
-            AttributeValue::Bytes(b) => {
-                PyBytes::new_bound(py, b).into_any().unbind()
-            }
+            AttributeValue::Bytes(b) => PyBytes::new_bound(py, b).into_any().unbind(),
         };
         out.push((k.clone(), obj));
     }

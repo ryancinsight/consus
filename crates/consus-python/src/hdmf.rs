@@ -140,10 +140,7 @@ impl PyDynamicTable {
     }
 }
 
-fn find_col<'t>(
-    table: &'t DynamicTable,
-    name: &str,
-) -> PyResult<&'t consus_hdmf::table::Column> {
+fn find_col<'t>(table: &'t DynamicTable, name: &str) -> PyResult<&'t consus_hdmf::table::Column> {
     table
         .columns
         .iter()

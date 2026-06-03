@@ -98,19 +98,19 @@ fn decode_data_page_header(r: &mut ThriftReader<'_>) -> Result<DataPageHeader> {
     let mut last = 0i16;
     loop {
         match r.read_field_header(&mut last)? {
-            None            => break,
-            Some((1, 0x05)) => nv  = Some(r.read_i32()?),
+            None => break,
+            Some((1, 0x05)) => nv = Some(r.read_i32()?),
             Some((2, 0x05)) => enc = Some(r.read_i32()?),
             Some((3, 0x05)) => def = Some(r.read_i32()?),
             Some((4, 0x05)) => rep = Some(r.read_i32()?),
-            Some((_, tc))   => r.skip(tc)?,
+            Some((_, tc)) => r.skip(tc)?,
         }
     }
     Ok(DataPageHeader {
-        num_values:                nv.ok_or_else(|| Error::InvalidFormat {
+        num_values: nv.ok_or_else(|| Error::InvalidFormat {
             message: String::from("DataPageHeader: field 1 (num_values) missing"),
         })?,
-        encoding:                 enc.ok_or_else(|| Error::InvalidFormat {
+        encoding: enc.ok_or_else(|| Error::InvalidFormat {
             message: String::from("DataPageHeader: field 2 (encoding) missing"),
         })?,
         definition_level_encoding: def.ok_or_else(|| Error::InvalidFormat {
@@ -127,19 +127,19 @@ fn decode_dictionary_page_header(r: &mut ThriftReader<'_>) -> Result<DictionaryP
     let mut last = 0i16;
     loop {
         match r.read_field_header(&mut last)? {
-            None            => break,
-            Some((1, 0x05)) => nv  = Some(r.read_i32()?),
+            None => break,
+            Some((1, 0x05)) => nv = Some(r.read_i32()?),
             Some((2, 0x05)) => enc = Some(r.read_i32()?),
             Some((3, 0x01)) => is_sorted = Some(true),
             Some((3, 0x02)) => is_sorted = Some(false),
-            Some((_, tc))   => r.skip(tc)?,
+            Some((_, tc)) => r.skip(tc)?,
         }
     }
     Ok(DictionaryPageHeader {
         num_values: nv.ok_or_else(|| Error::InvalidFormat {
             message: String::from("DictionaryPageHeader: field 1 (num_values) missing"),
         })?,
-        encoding:   enc.ok_or_else(|| Error::InvalidFormat {
+        encoding: enc.ok_or_else(|| Error::InvalidFormat {
             message: String::from("DictionaryPageHeader: field 2 (encoding) missing"),
         })?,
         is_sorted,
@@ -152,36 +152,40 @@ fn decode_data_page_header_v2(r: &mut ThriftReader<'_>) -> Result<DataPageHeader
     let mut last = 0i16;
     loop {
         match r.read_field_header(&mut last)? {
-            None            => break,
-            Some((1, 0x05)) => nv    = Some(r.read_i32()?),
+            None => break,
+            Some((1, 0x05)) => nv = Some(r.read_i32()?),
             Some((2, 0x05)) => nnull = Some(r.read_i32()?),
-            Some((3, 0x05)) => nr    = Some(r.read_i32()?),
-            Some((4, 0x05)) => enc   = Some(r.read_i32()?),
-            Some((5, 0x05)) => dbl   = Some(r.read_i32()?),
-            Some((6, 0x05)) => rbl   = Some(r.read_i32()?),
-            Some((7, 0x01)) => isc   = Some(true),
-            Some((7, 0x02)) => isc   = Some(false),
-            Some((_, tc))   => r.skip(tc)?,
+            Some((3, 0x05)) => nr = Some(r.read_i32()?),
+            Some((4, 0x05)) => enc = Some(r.read_i32()?),
+            Some((5, 0x05)) => dbl = Some(r.read_i32()?),
+            Some((6, 0x05)) => rbl = Some(r.read_i32()?),
+            Some((7, 0x01)) => isc = Some(true),
+            Some((7, 0x02)) => isc = Some(false),
+            Some((_, tc)) => r.skip(tc)?,
         }
     }
     Ok(DataPageHeaderV2 {
-        num_values:                    nv.ok_or_else(|| Error::InvalidFormat {
+        num_values: nv.ok_or_else(|| Error::InvalidFormat {
             message: String::from("DataPageHeaderV2: field 1 (num_values) missing"),
         })?,
-        num_nulls:                     nnull.ok_or_else(|| Error::InvalidFormat {
+        num_nulls: nnull.ok_or_else(|| Error::InvalidFormat {
             message: String::from("DataPageHeaderV2: field 2 (num_nulls) missing"),
         })?,
-        num_rows:                      nr.ok_or_else(|| Error::InvalidFormat {
+        num_rows: nr.ok_or_else(|| Error::InvalidFormat {
             message: String::from("DataPageHeaderV2: field 3 (num_rows) missing"),
         })?,
-        encoding:                      enc.ok_or_else(|| Error::InvalidFormat {
+        encoding: enc.ok_or_else(|| Error::InvalidFormat {
             message: String::from("DataPageHeaderV2: field 4 (encoding) missing"),
         })?,
         definition_levels_byte_length: dbl.ok_or_else(|| Error::InvalidFormat {
-            message: String::from("DataPageHeaderV2: field 5 (definition_levels_byte_length) missing"),
+            message: String::from(
+                "DataPageHeaderV2: field 5 (definition_levels_byte_length) missing",
+            ),
         })?,
         repetition_levels_byte_length: rbl.ok_or_else(|| Error::InvalidFormat {
-            message: String::from("DataPageHeaderV2: field 6 (repetition_levels_byte_length) missing"),
+            message: String::from(
+                "DataPageHeaderV2: field 6 (repetition_levels_byte_length) missing",
+            ),
         })?,
         is_compressed: isc,
     })
@@ -200,13 +204,13 @@ fn decode_page_header_inner(r: &mut ThriftReader<'_>) -> Result<PageHeader> {
                     message: String::from("parquet: unknown PageType discriminant"),
                 })?);
             }
-            Some((2, 0x05)) => usz  = Some(r.read_i32()?),
-            Some((3, 0x05)) => csz  = Some(r.read_i32()?),
-            Some((4, 0x05)) => crc  = Some(r.read_i32()?),
-            Some((5, 0x0C)) => dph  = Some(decode_data_page_header(r)?),
+            Some((2, 0x05)) => usz = Some(r.read_i32()?),
+            Some((3, 0x05)) => csz = Some(r.read_i32()?),
+            Some((4, 0x05)) => crc = Some(r.read_i32()?),
+            Some((5, 0x0C)) => dph = Some(decode_data_page_header(r)?),
             Some((7, 0x0C)) => dicph = Some(decode_dictionary_page_header(r)?),
             Some((8, 0x0C)) => v2ph = Some(decode_data_page_header_v2(r)?),
-            Some((_, tc))   => r.skip(tc)?,
+            Some((_, tc)) => r.skip(tc)?,
         }
     }
     Ok(PageHeader {
@@ -220,9 +224,9 @@ fn decode_page_header_inner(r: &mut ThriftReader<'_>) -> Result<PageHeader> {
             message: String::from("parquet: PageHeader missing compressed_page_size"),
         })?,
         crc,
-        data_page_header:       dph,
+        data_page_header: dph,
         dictionary_page_header: dicph,
-        data_page_header_v2:    v2ph,
+        data_page_header_v2: v2ph,
     })
 }
 
@@ -247,16 +251,16 @@ mod tests {
         //   Field 1..4 of DataPageHeader, then stop 0x00
         // PageHeader stop: 0x00
         let bytes = [
-            0x15u8, 0x00,  // field 1: type_=0
-            0x15, 0x50,    // field 2: uncompressed=40
-            0x15, 0x50,    // field 3: compressed=40
-            0x2C,          // field 5: STRUCT (delta=2 from 3)
-            0x15, 0x0A,    // DPH field 1: num_values=5
-            0x15, 0x00,    // DPH field 2: encoding=0
-            0x15, 0x00,    // DPH field 3: def_level=0
-            0x15, 0x00,    // DPH field 4: rep_level=0
-            0x00,          // DPH stop
-            0x00,          // PageHeader stop
+            0x15u8, 0x00, // field 1: type_=0
+            0x15, 0x50, // field 2: uncompressed=40
+            0x15, 0x50, // field 3: compressed=40
+            0x2C, // field 5: STRUCT (delta=2 from 3)
+            0x15, 0x0A, // DPH field 1: num_values=5
+            0x15, 0x00, // DPH field 2: encoding=0
+            0x15, 0x00, // DPH field 3: def_level=0
+            0x15, 0x00, // DPH field 4: rep_level=0
+            0x00, // DPH stop
+            0x00, // PageHeader stop
         ];
         let (header, consumed) = decode_page_header(&bytes).unwrap();
         assert_eq!(header.type_, PageType::DataPage);
@@ -295,12 +299,12 @@ mod tests {
         // num_values=10, num_nulls=0, num_rows=10, encoding=0, def_byte_len=20, rep_byte_len=0
         let bytes = [
             0x15u8, 0x14, // field 1: num_values=10, zigzag(20)=10
-            0x15, 0x00,   // field 2: num_nulls=0
-            0x15, 0x14,   // field 3: num_rows=10
-            0x15, 0x00,   // field 4: encoding=0
-            0x15, 0x28,   // field 5: def_byte_len=20, zigzag(40)=20
-            0x15, 0x00,   // field 6: rep_byte_len=0
-            0x00,         // stop
+            0x15, 0x00, // field 2: num_nulls=0
+            0x15, 0x14, // field 3: num_rows=10
+            0x15, 0x00, // field 4: encoding=0
+            0x15, 0x28, // field 5: def_byte_len=20, zigzag(40)=20
+            0x15, 0x00, // field 6: rep_byte_len=0
+            0x00, // stop
         ];
         let mut r = super::super::thrift::ThriftReader::new(&bytes);
         let v2 = decode_data_page_header_v2(&mut r).unwrap();

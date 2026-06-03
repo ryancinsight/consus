@@ -178,12 +178,7 @@ impl<'a> NwbFile<'a> {
             (None, None)
         };
 
-        let name = String::from(
-            path.split('/')
-                .filter(|s| !s.is_empty())
-                .next_back()
-                .unwrap_or(path),
-        );
+        let name = String::from(path.split('/').rfind(|s| !s.is_empty()).unwrap_or(path));
 
         Ok(TimeSeries::from_parts(
             name,

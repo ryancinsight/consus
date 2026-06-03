@@ -72,18 +72,16 @@ fn var_parts<'a>(arr: &'a consus_arrow::ArrowArray<'a>) -> (usize, &'a [u8], &'a
 /// Schema: one required field with `FieldId(1)` named "col" of the given
 /// physical type. One row group covering all `row_count` rows.
 fn single_column_dataset(pt: ParquetPhysicalType, row_count: usize) -> ParquetDatasetDescriptor {
-    let schema = SchemaDescriptor::new(vec![FieldDescriptor::required(
-        FieldId::new(1),
-        "col",
-        pt,
-    )]);
+    let schema = SchemaDescriptor::new(vec![FieldDescriptor::required(FieldId::new(1), "col", pt)]);
     ParquetDatasetDescriptor::new(
         schema,
-        vec![RowGroupDescriptor::new(
-            row_count,
-            vec![ColumnChunkDescriptor::new(FieldId::new(1), row_count, 1).unwrap()],
-        )
-        .unwrap()],
+        vec![
+            RowGroupDescriptor::new(
+                row_count,
+                vec![ColumnChunkDescriptor::new(FieldId::new(1), row_count, 1).unwrap()],
+            )
+            .unwrap(),
+        ],
     )
     .unwrap()
 }
@@ -360,14 +358,16 @@ fn e2e_two_column_int32_double_pipeline() {
     ]);
     let dataset = ParquetDatasetDescriptor::new(
         schema,
-        vec![RowGroupDescriptor::new(
-            2,
-            vec![
-                ColumnChunkDescriptor::new(FieldId::new(1), 2, 1).unwrap(),
-                ColumnChunkDescriptor::new(FieldId::new(2), 2, 1).unwrap(),
-            ],
-        )
-        .unwrap()],
+        vec![
+            RowGroupDescriptor::new(
+                2,
+                vec![
+                    ColumnChunkDescriptor::new(FieldId::new(1), 2, 1).unwrap(),
+                    ColumnChunkDescriptor::new(FieldId::new(2), 2, 1).unwrap(),
+                ],
+            )
+            .unwrap(),
+        ],
     )
     .unwrap();
 

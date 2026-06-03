@@ -63,8 +63,8 @@ use consus_core::Result;
 use rusoto_core::{Region, RusotoError};
 #[cfg(feature = "s3")]
 use rusoto_s3::{
-    DeleteObjectRequest, GetObjectError, HeadObjectError, HeadObjectRequest,
-    ListObjectsV2Request, PutObjectRequest, S3, S3Client,
+    DeleteObjectRequest, GetObjectError, HeadObjectError, HeadObjectRequest, ListObjectsV2Request,
+    PutObjectRequest, S3, S3Client,
 };
 
 #[cfg(feature = "alloc")]
@@ -131,6 +131,9 @@ impl Clone for S3Store {
 /// Errors specific to S3 store operations.
 #[cfg(feature = "s3")]
 #[derive(Debug)]
+// Legacy rusoto backend error surface; some variants are not yet constructed.
+// Retained until the rusoto S3 backend is removed (ADR-015 P5).
+#[allow(dead_code)]
 pub enum S3StoreError {
     /// The object was not found in the bucket.
     NotFound { key: String },
@@ -258,7 +261,7 @@ impl S3Store {
     fn md5_hex(data: &[u8]) -> String {
         // md5::compute returns md5::Digest which is GenericArray<u8, 16>
         // Convert to hex via the Digest trait's output.
-        
+
         let hash = md5::compute(data);
         let mut hex = alloc::string::String::with_capacity(32);
         for byte in hash.iter() {
@@ -268,7 +271,6 @@ impl S3Store {
         hex
     }
 }
-
 
 #[cfg(feature = "s3")]
 impl Store for S3Store {
@@ -345,9 +347,7 @@ impl Store for S3Store {
         };
 
         self.rt.block_on(self.client.put_object(req)).map_err(|e| {
-            consus_core::Error::Io(std::io::Error::other(
-                S3StoreError::Rusoto(Box::new(e)),
-            ))
+            consus_core::Error::Io(std::io::Error::other(S3StoreError::Rusoto(Box::new(e))))
         })?;
 
         if self.read_after_write {
@@ -360,9 +360,7 @@ impl Store for S3Store {
             self.rt
                 .block_on(self.client.head_object(head))
                 .map_err(|e| {
-                    consus_core::Error::Io(std::io::Error::other(
-                        S3StoreError::Rusoto(Box::new(e)),
-                    ))
+                    consus_core::Error::Io(std::io::Error::other(S3StoreError::Rusoto(Box::new(e))))
                 })?;
         }
 
@@ -380,9 +378,7 @@ impl Store for S3Store {
         self.rt
             .block_on(self.client.delete_object(req))
             .map_err(|e| {
-                consus_core::Error::Io(std::io::Error::other(
-                    S3StoreError::Rusoto(Box::new(e)),
-                ))
+                consus_core::Error::Io(std::io::Error::other(S3StoreError::Rusoto(Box::new(e))))
             })?;
 
         Ok(())
@@ -405,9 +401,7 @@ impl Store for S3Store {
                 .rt
                 .block_on(self.client.list_objects_v2(req))
                 .map_err(|e| {
-                    consus_core::Error::Io(std::io::Error::other(
-                        S3StoreError::Rusoto(Box::new(e)),
-                    ))
+                    consus_core::Error::Io(std::io::Error::other(S3StoreError::Rusoto(Box::new(e))))
                 })?;
 
             if let Some(contents) = result.contents {
@@ -489,8 +483,12 @@ fn base64_encode(data: &[u8]) -> String {
 // ---------------------------------------------------------------------------
 
 /// A mock store that records operations for testing without S3.
+///
+/// Legacy testing utility for the rusoto backend; retained until that backend is
+/// removed (ADR-015 P5).
 #[cfg(feature = "alloc")]
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
 pub struct MockS3Store {
     /// All set operations recorded in order.
     pub set_operations: alloc::vec::Vec<(String, Vec<u8>)>,
@@ -503,6 +501,7 @@ pub struct MockS3Store {
 }
 
 #[cfg(feature = "alloc")]
+#[allow(dead_code)]
 impl MockS3Store {
     pub fn new() -> Self {
         Self::default()

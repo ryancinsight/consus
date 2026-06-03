@@ -190,7 +190,7 @@ where
 }
 
 #[cfg(feature = "alloc")]
-fn attach_continue_card(cards: &mut Vec<FitsCard>, continue_card: &FitsCard) -> Result<()> {
+fn attach_continue_card(cards: &mut [FitsCard], continue_card: &FitsCard) -> Result<()> {
     let previous = cards.last_mut().ok_or_else(|| {
         invalid_format_error("CONTINUE card cannot appear before a string-valued card")
     })?;

@@ -9,12 +9,20 @@ use consus_hdmf::{ColumnData, HdmfFile, HdmfFileBuilder};
 fn build_basic_table() -> Vec<u8> {
     HdmfFileBuilder::new("test_table", "a test table")
         .add_column("x", "x values", ColumnData::F64(vec![1.0, 2.0, 3.0]))
-        .add_column("y", "y labels", ColumnData::Str(vec![
-            String::from("a"),
-            String::from("bb"),
-            String::from("ccc"),
-        ]))
-        .add_column("flag", "boolean flags", ColumnData::Bool(vec![true, false, true]))
+        .add_column(
+            "y",
+            "y labels",
+            ColumnData::Str(vec![
+                String::from("a"),
+                String::from("bb"),
+                String::from("ccc"),
+            ]),
+        )
+        .add_column(
+            "flag",
+            "boolean flags",
+            ColumnData::Bool(vec![true, false, true]),
+        )
         .add_column("idx", "integer index", ColumnData::I64(vec![10, 20, 30]))
         .add_column("uid", "uint values", ColumnData::U64(vec![100, 200, 300]))
         .finish()
@@ -160,10 +168,7 @@ fn root_attributes_are_correct() {
         .expect("no data_type")
         .decode_value()
         .expect("decode");
-    assert_eq!(
-        format!("{:?}", data_type),
-        "String(\"DynamicTable\")"
-    );
+    assert_eq!(format!("{:?}", data_type), "String(\"DynamicTable\")");
 
     let namespace = attrs
         .iter()
@@ -171,8 +176,5 @@ fn root_attributes_are_correct() {
         .expect("no namespace")
         .decode_value()
         .expect("decode");
-    assert_eq!(
-        format!("{:?}", namespace),
-        "String(\"hdmf-common\")"
-    );
+    assert_eq!(format!("{:?}", namespace), "String(\"hdmf-common\")");
 }

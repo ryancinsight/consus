@@ -3,8 +3,8 @@
 //! Exposes `ZarrArray` which wraps an `InMemoryStore` + `ArrayMetadata`.
 
 use consus_zarr::{
-    ArrayMetadata, ArrayMetadataV2, ChunkError, ChunkKeySeparator, InMemoryStore, Store,
-    read_chunk, write_chunk,
+    read_chunk, write_chunk, ArrayMetadata, ArrayMetadataV2, ChunkError, ChunkKeySeparator,
+    InMemoryStore, Store,
 };
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -16,12 +16,7 @@ use crate::error::from_consus;
 // Helper: build .zarray JSON
 // ---------------------------------------------------------------------------
 
-fn make_zarray_json(
-    shape: &[u64],
-    chunks: &[u64],
-    dtype: &str,
-    compressor: &str,
-) -> String {
+fn make_zarray_json(shape: &[u64], chunks: &[u64], dtype: &str, compressor: &str) -> String {
     let shape_str = shape
         .iter()
         .map(|d| d.to_string())
@@ -74,20 +69,12 @@ impl PyZarrArray {
     ///     Compression codec: ``"none"`` (default) or ``"gzip"``.
     #[new]
     #[pyo3(signature = (shape, chunks, dtype, compressor = "none"))]
-    fn new(
-        shape: Vec<u64>,
-        chunks: Vec<u64>,
-        dtype: &str,
-        compressor: &str,
-    ) -> PyResult<Self> {
+    fn new(shape: Vec<u64>, chunks: Vec<u64>, dtype: &str, compressor: &str) -> PyResult<Self> {
         let json = make_zarray_json(&shape, &chunks, dtype, compressor);
         let mut store = InMemoryStore::new();
-        store
-            .set(".zarray", json.as_bytes())
-            .map_err(from_consus)?;
-        let v2 = ArrayMetadataV2::parse(&json).map_err(|e| {
-            PyRuntimeError::new_err(format!("invalid zarr metadata: {e:?}"))
-        })?;
+        store.set(".zarray", json.as_bytes()).map_err(from_consus)?;
+        let v2 = ArrayMetadataV2::parse(&json)
+            .map_err(|e| PyRuntimeError::new_err(format!("invalid zarr metadata: {e:?}")))?;
         let meta = v2.to_canonical();
         Ok(Self { store, meta })
     }
@@ -147,7 +134,7 @@ impl PyZarrArray {
     fn to_store(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
         let dict = PyDict::new_bound(py);
         for key in self.store.keys() {
-            let value = self.store.get(&key).map_err(from_consus)?;
+            let value = self.store.get(key).map_err(from_consus)?;
             dict.set_item(key, PyBytes::new_bound(py, &value))?;
         }
         Ok(dict.unbind())
@@ -175,14 +162,13 @@ impl PyZarrArray {
         } else {
             format!("{prefix}/.zarray")
         };
-        let raw = store.get(&zarray_key).map_err(|_| {
-            PyValueError::new_err(format!("store missing key: {zarray_key}"))
-        })?;
+        let raw = store
+            .get(&zarray_key)
+            .map_err(|_| PyValueError::new_err(format!("store missing key: {zarray_key}")))?;
         let json = core::str::from_utf8(&raw)
             .map_err(|_| PyRuntimeError::new_err(".zarray is not valid UTF-8"))?;
-        let v2 = ArrayMetadataV2::parse(json).map_err(|e| {
-            PyRuntimeError::new_err(format!("invalid .zarray JSON: {e:?}"))
-        })?;
+        let v2 = ArrayMetadataV2::parse(json)
+            .map_err(|e| PyRuntimeError::new_err(format!("invalid .zarray JSON: {e:?}")))?;
         let meta = v2.to_canonical();
         Ok(Self { store, meta })
     }

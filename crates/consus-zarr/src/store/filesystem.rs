@@ -152,7 +152,7 @@ impl Store for FsStore {
 
         // If prefix maps to a file (not a directory), return just that key
         if prefix.is_empty() || dir_path.is_dir() {
-            Self::collect_files_recursive(&self.root, &dir_path, prefix, &mut results);
+            Self::collect_files_recursive(&self.root, &dir_path, &mut results);
             // Deduplicate and sort
             results.sort();
             results.dedup();
@@ -171,8 +171,9 @@ impl Store for FsStore {
 
 #[cfg(feature = "std")]
 impl FsStore {
-    /// Recursively collect all file paths under `dir` that start with `prefix`.
-    fn collect_files_recursive(root: &Path, dir: &Path, prefix: &str, out: &mut Vec<String>) {
+    /// Recursively collect all file keys under `dir` (the caller scopes the search
+    /// by choosing `dir` from the prefix, so no per-file prefix filter is needed).
+    fn collect_files_recursive(root: &Path, dir: &Path, out: &mut Vec<String>) {
         let entries = match fs::read_dir(dir) {
             Ok(e) => e,
             Err(_) => return,
@@ -182,7 +183,7 @@ impl FsStore {
             let path = entry.path();
             if path.is_dir() {
                 // Recurse into subdirectory
-                Self::collect_files_recursive(root, &path, prefix, out);
+                Self::collect_files_recursive(root, &path, out);
             } else if path.is_file() {
                 // Compute the Zarr key for this file
                 let relative = path.strip_prefix(root).unwrap_or(&path);

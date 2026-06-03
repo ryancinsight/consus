@@ -61,16 +61,16 @@ impl MatNumericClass {
     /// Canonical string name matching MATLAB `class()` output.
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Double  => "double",
-            Self::Single  => "single",
-            Self::Int8    => "int8",
-            Self::Int16   => "int16",
-            Self::Int32   => "int32",
-            Self::Int64   => "int64",
-            Self::Uint8   => "uint8",
-            Self::Uint16  => "uint16",
-            Self::Uint32  => "uint32",
-            Self::Uint64  => "uint64",
+            Self::Double => "double",
+            Self::Single => "single",
+            Self::Int8 => "int8",
+            Self::Int16 => "int16",
+            Self::Int32 => "int32",
+            Self::Int64 => "int64",
+            Self::Uint8 => "uint8",
+            Self::Uint16 => "uint16",
+            Self::Uint32 => "uint32",
+            Self::Uint64 => "uint64",
         }
     }
 }

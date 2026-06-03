@@ -38,7 +38,10 @@ pub enum FitsColumnValue {
     /// `L`: FITS logical. b'T' = true; b'F' or 0x00 = false; other nonzero = true.
     Logical(bool),
     /// `X`: Bit array. `bits` is the repeat count; `bytes` = ceil(bits/8) bytes, MSB-first.
-    Bits { bits: usize, bytes: alloc::vec::Vec<u8> },
+    Bits {
+        bits: usize,
+        bytes: alloc::vec::Vec<u8>,
+    },
     /// `B`: Unsigned byte.
     UInt8(u8),
     /// `I`: Big-endian signed 16-bit integer.
@@ -180,10 +183,12 @@ pub fn decode_ascii_column(row: &[u8], column: &FitsTableColumn) -> Result<FitsC
                 }
                 s
             };
-            let v = normalized.parse::<f64>().map_err(|_| Error::InvalidFormat {
-                #[cfg(feature = "alloc")]
-                message: alloc::format!("cannot parse ASCII D-notation field: '{trimmed}'"),
-            })?;
+            let v = normalized
+                .parse::<f64>()
+                .map_err(|_| Error::InvalidFormat {
+                    #[cfg(feature = "alloc")]
+                    message: alloc::format!("cannot parse ASCII D-notation field: '{trimmed}'"),
+                })?;
             Ok(FitsColumnValue::Float64(v))
         }
         other => Err(Error::UnsupportedFeature {
@@ -251,7 +256,10 @@ fn decode_scalar_binary(code: BinaryFormatCode, bytes: &[u8]) -> Result<FitsColu
         }
         BinaryFormatCode::Complex32 => {
             if bytes.len() < 8 {
-                return Err(Error::BufferTooSmall { required: 8, provided: bytes.len() });
+                return Err(Error::BufferTooSmall {
+                    required: 8,
+                    provided: bytes.len(),
+                });
             }
             let real = f32::from_be_bytes(bytes[0..4].try_into().unwrap());
             let imag = f32::from_be_bytes(bytes[4..8].try_into().unwrap());
@@ -259,7 +267,10 @@ fn decode_scalar_binary(code: BinaryFormatCode, bytes: &[u8]) -> Result<FitsColu
         }
         BinaryFormatCode::Complex64 => {
             if bytes.len() < 16 {
-                return Err(Error::BufferTooSmall { required: 16, provided: bytes.len() });
+                return Err(Error::BufferTooSmall {
+                    required: 16,
+                    provided: bytes.len(),
+                });
             }
             let real = f64::from_be_bytes(bytes[0..8].try_into().unwrap());
             let imag = f64::from_be_bytes(bytes[8..16].try_into().unwrap());
@@ -267,7 +278,10 @@ fn decode_scalar_binary(code: BinaryFormatCode, bytes: &[u8]) -> Result<FitsColu
         }
         BinaryFormatCode::Descriptor32 => {
             if bytes.len() < 8 {
-                return Err(Error::BufferTooSmall { required: 8, provided: bytes.len() });
+                return Err(Error::BufferTooSmall {
+                    required: 8,
+                    provided: bytes.len(),
+                });
             }
             let count = i32::from_be_bytes(bytes[0..4].try_into().unwrap());
             let offset = i32::from_be_bytes(bytes[4..8].try_into().unwrap());
@@ -275,7 +289,10 @@ fn decode_scalar_binary(code: BinaryFormatCode, bytes: &[u8]) -> Result<FitsColu
         }
         BinaryFormatCode::Descriptor64 => {
             if bytes.len() < 16 {
-                return Err(Error::BufferTooSmall { required: 16, provided: bytes.len() });
+                return Err(Error::BufferTooSmall {
+                    required: 16,
+                    provided: bytes.len(),
+                });
             }
             let count = i64::from_be_bytes(bytes[0..8].try_into().unwrap());
             let offset = i64::from_be_bytes(bytes[8..16].try_into().unwrap());
@@ -311,19 +328,28 @@ mod tests {
     #[test]
     fn binary_logical_t_is_true() {
         let row = vec![b'T'];
-        assert_eq!(decode_binary_column(&row, &col("1L", 1, 0)).unwrap(), FitsColumnValue::Logical(true));
+        assert_eq!(
+            decode_binary_column(&row, &col("1L", 1, 0)).unwrap(),
+            FitsColumnValue::Logical(true)
+        );
     }
 
     #[test]
     fn binary_logical_f_is_false() {
         let row = vec![b'F'];
-        assert_eq!(decode_binary_column(&row, &col("1L", 1, 0)).unwrap(), FitsColumnValue::Logical(false));
+        assert_eq!(
+            decode_binary_column(&row, &col("1L", 1, 0)).unwrap(),
+            FitsColumnValue::Logical(false)
+        );
     }
 
     #[test]
     fn binary_logical_zero_is_false() {
         let row = vec![0x00u8];
-        assert_eq!(decode_binary_column(&row, &col("1L", 1, 0)).unwrap(), FitsColumnValue::Logical(false));
+        assert_eq!(
+            decode_binary_column(&row, &col("1L", 1, 0)).unwrap(),
+            FitsColumnValue::Logical(false)
+        );
     }
 
     #[test]
@@ -331,7 +357,10 @@ mod tests {
         let row = vec![0b1010_1010u8];
         assert_eq!(
             decode_binary_column(&row, &col("8X", 1, 0)).unwrap(),
-            FitsColumnValue::Bits { bits: 8, bytes: vec![0b1010_1010u8] }
+            FitsColumnValue::Bits {
+                bits: 8,
+                bytes: vec![0b1010_1010u8]
+            }
         );
     }
 
@@ -340,61 +369,91 @@ mod tests {
         let row = vec![0b1110_0000u8];
         assert_eq!(
             decode_binary_column(&row, &col("3X", 1, 0)).unwrap(),
-            FitsColumnValue::Bits { bits: 3, bytes: vec![0b1110_0000u8] }
+            FitsColumnValue::Bits {
+                bits: 3,
+                bytes: vec![0b1110_0000u8]
+            }
         );
     }
 
     #[test]
     fn binary_uint8() {
         let row = vec![42u8];
-        assert_eq!(decode_binary_column(&row, &col("1B", 1, 0)).unwrap(), FitsColumnValue::UInt8(42));
+        assert_eq!(
+            decode_binary_column(&row, &col("1B", 1, 0)).unwrap(),
+            FitsColumnValue::UInt8(42)
+        );
     }
 
     #[test]
     fn binary_int16() {
         let row = 1000_i16.to_be_bytes().to_vec();
-        assert_eq!(decode_binary_column(&row, &col("1I", 2, 0)).unwrap(), FitsColumnValue::Int16(1000));
+        assert_eq!(
+            decode_binary_column(&row, &col("1I", 2, 0)).unwrap(),
+            FitsColumnValue::Int16(1000)
+        );
     }
 
     #[test]
     fn binary_int16_negative() {
         let row = (-1_i16).to_be_bytes().to_vec();
-        assert_eq!(decode_binary_column(&row, &col("1I", 2, 0)).unwrap(), FitsColumnValue::Int16(-1));
+        assert_eq!(
+            decode_binary_column(&row, &col("1I", 2, 0)).unwrap(),
+            FitsColumnValue::Int16(-1)
+        );
     }
 
     #[test]
     fn binary_int32() {
         let row = 70_000_i32.to_be_bytes().to_vec();
-        assert_eq!(decode_binary_column(&row, &col("1J", 4, 0)).unwrap(), FitsColumnValue::Int32(70_000));
+        assert_eq!(
+            decode_binary_column(&row, &col("1J", 4, 0)).unwrap(),
+            FitsColumnValue::Int32(70_000)
+        );
     }
 
     #[test]
     fn binary_int64() {
         let row = 1_000_000_000_i64.to_be_bytes().to_vec();
-        assert_eq!(decode_binary_column(&row, &col("1K", 8, 0)).unwrap(), FitsColumnValue::Int64(1_000_000_000));
+        assert_eq!(
+            decode_binary_column(&row, &col("1K", 8, 0)).unwrap(),
+            FitsColumnValue::Int64(1_000_000_000)
+        );
     }
     #[test]
     fn binary_char_three_bytes() {
         let row = b"ABC".to_vec();
-        assert_eq!(decode_binary_column(&row, &col("3A", 3, 0)).unwrap(), FitsColumnValue::Chars("ABC".to_owned()));
+        assert_eq!(
+            decode_binary_column(&row, &col("3A", 3, 0)).unwrap(),
+            FitsColumnValue::Chars("ABC".to_owned())
+        );
     }
 
     #[test]
     fn binary_char_trailing_spaces_stripped() {
         let row = b"HI  ".to_vec();
-        assert_eq!(decode_binary_column(&row, &col("4A", 4, 0)).unwrap(), FitsColumnValue::Chars("HI".to_owned()));
+        assert_eq!(
+            decode_binary_column(&row, &col("4A", 4, 0)).unwrap(),
+            FitsColumnValue::Chars("HI".to_owned())
+        );
     }
 
     #[test]
     fn binary_float32() {
         let row = 1.5_f32.to_be_bytes().to_vec();
-        assert_eq!(decode_binary_column(&row, &col("1E", 4, 0)).unwrap(), FitsColumnValue::Float32(1.5));
+        assert_eq!(
+            decode_binary_column(&row, &col("1E", 4, 0)).unwrap(),
+            FitsColumnValue::Float32(1.5)
+        );
     }
 
     #[test]
     fn binary_float64() {
         let row = 3.14_f64.to_be_bytes().to_vec();
-        assert_eq!(decode_binary_column(&row, &col("1D", 8, 0)).unwrap(), FitsColumnValue::Float64(3.14));
+        assert_eq!(
+            decode_binary_column(&row, &col("1D", 8, 0)).unwrap(),
+            FitsColumnValue::Float64(3.14)
+        );
     }
 
     #[test]
@@ -404,7 +463,10 @@ mod tests {
         row.extend_from_slice(&2.0_f32.to_be_bytes());
         assert_eq!(
             decode_binary_column(&row, &col("1C", 8, 0)).unwrap(),
-            FitsColumnValue::Complex32 { real: 1.0, imag: 2.0 }
+            FitsColumnValue::Complex32 {
+                real: 1.0,
+                imag: 2.0
+            }
         );
     }
 
@@ -415,7 +477,10 @@ mod tests {
         row.extend_from_slice(&1.41_f64.to_be_bytes());
         assert_eq!(
             decode_binary_column(&row, &col("1M", 16, 0)).unwrap(),
-            FitsColumnValue::Complex64 { real: 3.14, imag: 1.41 }
+            FitsColumnValue::Complex64 {
+                real: 3.14,
+                imag: 1.41
+            }
         );
     }
 
@@ -426,7 +491,10 @@ mod tests {
         row.extend_from_slice(&100_i32.to_be_bytes());
         assert_eq!(
             decode_binary_column(&row, &col("1P", 8, 0)).unwrap(),
-            FitsColumnValue::Descriptor32 { count: 3, offset: 100 }
+            FitsColumnValue::Descriptor32 {
+                count: 3,
+                offset: 100
+            }
         );
     }
 
@@ -437,7 +505,10 @@ mod tests {
         row.extend_from_slice(&200_i64.to_be_bytes());
         assert_eq!(
             decode_binary_column(&row, &col("1Q", 16, 0)).unwrap(),
-            FitsColumnValue::Descriptor64 { count: 5, offset: 200 }
+            FitsColumnValue::Descriptor64 {
+                count: 5,
+                offset: 200
+            }
         );
     }
     #[test]
@@ -487,14 +558,23 @@ mod tests {
     fn binary_nonzero_col_offset() {
         let mut row = vec![0u8; 4];
         row.extend_from_slice(&42_i32.to_be_bytes());
-        assert_eq!(decode_binary_column(&row, &col("1J", 4, 4)).unwrap(), FitsColumnValue::Int32(42));
+        assert_eq!(
+            decode_binary_column(&row, &col("1J", 4, 4)).unwrap(),
+            FitsColumnValue::Int32(42)
+        );
     }
 
     #[test]
     fn binary_buffer_too_small() {
         let row = vec![0u8; 2];
         let err = decode_binary_column(&row, &col("1J", 4, 0)).unwrap_err();
-        assert!(matches!(err, Error::BufferTooSmall { required: 4, provided: 2 }));
+        assert!(matches!(
+            err,
+            Error::BufferTooSmall {
+                required: 4,
+                provided: 2
+            }
+        ));
     }
 
     #[test]
@@ -506,25 +586,37 @@ mod tests {
     #[test]
     fn ascii_string_field() {
         let row = b"Hello   ".to_vec();
-        assert_eq!(decode_ascii_column(&row, &col("A8", 8, 0)).unwrap(), FitsColumnValue::Chars("Hello".to_owned()));
+        assert_eq!(
+            decode_ascii_column(&row, &col("A8", 8, 0)).unwrap(),
+            FitsColumnValue::Chars("Hello".to_owned())
+        );
     }
 
     #[test]
     fn ascii_string_all_spaces() {
         let row = b"    ".to_vec();
-        assert_eq!(decode_ascii_column(&row, &col("A4", 4, 0)).unwrap(), FitsColumnValue::Chars("".to_owned()));
+        assert_eq!(
+            decode_ascii_column(&row, &col("A4", 4, 0)).unwrap(),
+            FitsColumnValue::Chars("".to_owned())
+        );
     }
 
     #[test]
     fn ascii_integer_field() {
         let row = b"       123".to_vec();
-        assert_eq!(decode_ascii_column(&row, &col("I10", 10, 0)).unwrap(), FitsColumnValue::Int64(123));
+        assert_eq!(
+            decode_ascii_column(&row, &col("I10", 10, 0)).unwrap(),
+            FitsColumnValue::Int64(123)
+        );
     }
 
     #[test]
     fn ascii_integer_negative() {
         let row = b"      -456".to_vec();
-        assert_eq!(decode_ascii_column(&row, &col("I10", 10, 0)).unwrap(), FitsColumnValue::Int64(-456));
+        assert_eq!(
+            decode_ascii_column(&row, &col("I10", 10, 0)).unwrap(),
+            FitsColumnValue::Int64(-456)
+        );
     }
 
     #[test]
@@ -541,44 +633,68 @@ mod tests {
     #[test]
     fn ascii_scientific_e_format() {
         let row = b"  1.5000000E+02".to_vec();
-        assert_eq!(decode_ascii_column(&row, &col("E16.7", 15, 0)).unwrap(), FitsColumnValue::Float64(150.0));
+        assert_eq!(
+            decode_ascii_column(&row, &col("E16.7", 15, 0)).unwrap(),
+            FitsColumnValue::Float64(150.0)
+        );
     }
 
     #[test]
     fn ascii_fortran_d_notation() {
         let row = b"  1.5000000D+02".to_vec();
-        assert_eq!(decode_ascii_column(&row, &col("D16.7", 15, 0)).unwrap(), FitsColumnValue::Float64(150.0));
+        assert_eq!(
+            decode_ascii_column(&row, &col("D16.7", 15, 0)).unwrap(),
+            FitsColumnValue::Float64(150.0)
+        );
     }
 
     #[test]
     fn ascii_nonzero_col_offset() {
         let mut row = b"SKIP".to_vec();
         row.extend_from_slice(b"World   ");
-        assert_eq!(decode_ascii_column(&row, &col("A8", 8, 4)).unwrap(), FitsColumnValue::Chars("World".to_owned()));
+        assert_eq!(
+            decode_ascii_column(&row, &col("A8", 8, 4)).unwrap(),
+            FitsColumnValue::Chars("World".to_owned())
+        );
     }
 
     #[test]
     fn ascii_buffer_too_small() {
         let row = b"Hi".to_vec();
         let err = decode_ascii_column(&row, &col("A8", 8, 0)).unwrap_err();
-        assert!(matches!(err, Error::BufferTooSmall { required: 8, provided: 2 }));
+        assert!(matches!(
+            err,
+            Error::BufferTooSmall {
+                required: 8,
+                provided: 2
+            }
+        ));
     }
 
     #[test]
     fn ascii_integer_invalid() {
         let row = b"    notnum".to_vec();
-        assert!(matches!(decode_ascii_column(&row, &col("I10", 10, 0)).unwrap_err(), Error::InvalidFormat { .. }));
+        assert!(matches!(
+            decode_ascii_column(&row, &col("I10", 10, 0)).unwrap_err(),
+            Error::InvalidFormat { .. }
+        ));
     }
 
     #[test]
     fn ascii_float_invalid() {
         let row = b"    notnum".to_vec();
-        assert!(matches!(decode_ascii_column(&row, &col("F10.3", 10, 0)).unwrap_err(), Error::InvalidFormat { .. }));
+        assert!(matches!(
+            decode_ascii_column(&row, &col("F10.3", 10, 0)).unwrap_err(),
+            Error::InvalidFormat { .. }
+        ));
     }
 
     #[test]
     fn ascii_unsupported_format_code() {
         let row = b"  1234.0  ".to_vec();
-        assert!(matches!(decode_ascii_column(&row, &col("G10.4", 10, 0)).unwrap_err(), Error::UnsupportedFeature { .. }));
+        assert!(matches!(
+            decode_ascii_column(&row, &col("G10.4", 10, 0)).unwrap_err(),
+            Error::UnsupportedFeature { .. }
+        ));
     }
 }

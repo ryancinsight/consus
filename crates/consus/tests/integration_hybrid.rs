@@ -2,13 +2,13 @@
 mod tests {
     use consus::core::Result;
     use consus::hybrid::{read_embedded_parquet, write_embedded_parquet};
-    use consus_hdf5::file::writer::{FileCreationProps, Hdf5FileBuilder};
     use consus_hdf5::file::Hdf5File;
+    use consus_hdf5::file::writer::{FileCreationProps, Hdf5FileBuilder};
     use consus_io::MemCursor;
     use consus_parquet::{
-        HybridMode, HybridPartitioning, HybridStorageDescriptor, HybridStorageEncoding,
-        HybridTableLayout, HybridTableRelation, ParquetReader, ParquetWriter,
-        FieldDescriptor, FieldId, ParquetPhysicalType, ColumnChunkDescriptor,
+        ColumnChunkDescriptor, FieldDescriptor, FieldId, HybridMode, HybridPartitioning,
+        HybridStorageDescriptor, HybridStorageEncoding, HybridTableLayout, HybridTableRelation,
+        ParquetPhysicalType, ParquetReader, ParquetWriter,
     };
 
     #[test]
@@ -18,25 +18,38 @@ mod tests {
         // 1. Create a Parquet writer and write a simple file.
         let parquet_writer = ParquetWriter::new();
         // Just writing an empty plan to get a valid Parquet payload.
-        let schema = consus_parquet::SchemaDescriptor::new(vec![
-            FieldDescriptor::required(FieldId::new(1), "col1", ParquetPhysicalType::Int32)
-        ]);
+        let schema = consus_parquet::SchemaDescriptor::new(vec![FieldDescriptor::required(
+            FieldId::new(1),
+            "col1",
+            ParquetPhysicalType::Int32,
+        )]);
         let dataset_desc = consus_parquet::ParquetDatasetDescriptor::new(
             schema,
-            vec![consus_parquet::RowGroupDescriptor::new(1, vec![
-                ColumnChunkDescriptor::new(FieldId::new(1), 1, 4).unwrap()
-            ]).unwrap()],
-        ).unwrap();
-        
+            vec![
+                consus_parquet::RowGroupDescriptor::new(
+                    1,
+                    vec![ColumnChunkDescriptor::new(FieldId::new(1), 1, 4).unwrap()],
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+
         struct EmptyRowSource;
         impl consus_parquet::RowSource for EmptyRowSource {
-            fn row_count(&self) -> usize { 1 }
+            fn row_count(&self) -> usize {
+                1
+            }
             fn row(&self, _index: usize) -> consus_core::Result<consus_parquet::RowValue<'_>> {
-                Ok(consus_parquet::RowValue::new(vec![consus_parquet::CellValue::Int32(42)]))
+                Ok(consus_parquet::RowValue::new(vec![
+                    consus_parquet::CellValue::Int32(42),
+                ]))
             }
         }
-        let payload = parquet_writer.write_dataset_bytes(&dataset_desc, &EmptyRowSource).unwrap();
-        
+        let payload = parquet_writer
+            .write_dataset_bytes(&dataset_desc, &EmptyRowSource)
+            .unwrap();
+
         let descriptor = HybridStorageDescriptor::new()
             .with_table_layout(HybridTableLayout::new(
                 "my_table".to_string(),
@@ -65,7 +78,7 @@ mod tests {
         let reader = ParquetReader::new(&reconstructed_payload)?;
 
         assert_eq!(reconstructed_descriptor.mode, HybridMode::Embedded);
-        
+
         let layout = reconstructed_descriptor.table_layout().unwrap();
         assert_eq!(layout.table_name, "my_table");
         assert_eq!(layout.payload_path, "/data/payload");

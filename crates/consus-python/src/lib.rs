@@ -7,6 +7,8 @@
 // macro-generated code (the diagnostic span maps to the fn signature, where there
 // is no editable `.into()`), so it is suppressed crate-wide rather than per-site.
 #![allow(clippy::useless_conversion)]
+// Some `#[pymethods]` mirror Python constructor signatures with many parameters.
+#![allow(clippy::too_many_arguments)]
 
 extern crate alloc;
 
@@ -19,8 +21,8 @@ mod parquet;
 mod zarr;
 
 use hdf5::{PyDatasetInfo, PyFileBuilder, PyHdf5File};
-use hdmf::{PyDynamicTable, PyHdmfFileBuilder, read_dynamic_table_bytes};
-use mat::{PyMatFile, PyMatVariable, loadmat_bytes};
+use hdmf::{read_dynamic_table_bytes, PyDynamicTable, PyHdmfFileBuilder};
+use mat::{loadmat_bytes, PyMatFile, PyMatVariable};
 use netcdf::{PyNetcdfFile, PyNetcdfWriter};
 use parquet::{PyParquetBuilder, PyParquetFile};
 use zarr::PyZarrArray;

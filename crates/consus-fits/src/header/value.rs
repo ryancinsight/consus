@@ -257,7 +257,11 @@ fn parse_string(token: &str) -> Result<Option<String>> {
                     decoded.push('\'');
                     chars.next();
                 }
-                _ => return Err(invalid_format("invalid embedded quote in FITS string literal")),
+                _ => {
+                    return Err(invalid_format(
+                        "invalid embedded quote in FITS string literal",
+                    ));
+                }
             }
         } else {
             decoded.push(ch);
@@ -427,7 +431,10 @@ mod tests {
     #[test]
     fn parses_logical_values() {
         assert_eq!(HeaderValue::parse("T").unwrap(), HeaderValue::Logical(true));
-        assert_eq!(HeaderValue::parse("F").unwrap(), HeaderValue::Logical(false));
+        assert_eq!(
+            HeaderValue::parse("F").unwrap(),
+            HeaderValue::Logical(false)
+        );
     }
 
     #[test]

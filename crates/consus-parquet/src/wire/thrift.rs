@@ -31,22 +31,37 @@ use consus_core::{Error, Result};
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThriftType {
-    BoolTrue  = 0x01, BoolFalse = 0x02, Byte   = 0x03, I16    = 0x04,
-    I32       = 0x05, I64       = 0x06, Double = 0x07, Binary = 0x08,
-    List      = 0x09, Set       = 0x0A, Map    = 0x0B, Struct = 0x0C,
-    Uuid      = 0x0D,
+    BoolTrue = 0x01,
+    BoolFalse = 0x02,
+    Byte = 0x03,
+    I16 = 0x04,
+    I32 = 0x05,
+    I64 = 0x06,
+    Double = 0x07,
+    Binary = 0x08,
+    List = 0x09,
+    Set = 0x0A,
+    Map = 0x0B,
+    Struct = 0x0C,
+    Uuid = 0x0D,
 }
 
 impl ThriftType {
     /// Maps a raw type-code byte to a `ThriftType`, or returns `None`.
     pub fn from_code(code: u8) -> Option<Self> {
         match code {
-            0x01 => Some(Self::BoolTrue),  0x02 => Some(Self::BoolFalse),
-            0x03 => Some(Self::Byte),      0x04 => Some(Self::I16),
-            0x05 => Some(Self::I32),       0x06 => Some(Self::I64),
-            0x07 => Some(Self::Double),    0x08 => Some(Self::Binary),
-            0x09 => Some(Self::List),      0x0A => Some(Self::Set),
-            0x0B => Some(Self::Map),       0x0C => Some(Self::Struct),
+            0x01 => Some(Self::BoolTrue),
+            0x02 => Some(Self::BoolFalse),
+            0x03 => Some(Self::Byte),
+            0x04 => Some(Self::I16),
+            0x05 => Some(Self::I32),
+            0x06 => Some(Self::I64),
+            0x07 => Some(Self::Double),
+            0x08 => Some(Self::Binary),
+            0x09 => Some(Self::List),
+            0x0A => Some(Self::Set),
+            0x0B => Some(Self::Map),
+            0x0C => Some(Self::Struct),
             0x0D => Some(Self::Uuid),
             _ => None,
         }
@@ -61,18 +76,29 @@ pub struct ThriftReader<'a> {
 
 impl<'a> ThriftReader<'a> {
     /// Creates a reader at position 0.
-    pub fn new(data: &'a [u8]) -> Self { Self { data, pos: 0 } }
+    pub fn new(data: &'a [u8]) -> Self {
+        Self { data, pos: 0 }
+    }
     /// Returns bytes not yet consumed.
-    pub fn remaining(&self) -> usize { self.data.len().saturating_sub(self.pos) }
+    pub fn remaining(&self) -> usize {
+        self.data.len().saturating_sub(self.pos)
+    }
     /// Returns `true` when all bytes have been consumed.
-    pub fn is_exhausted(&self) -> bool { self.pos >= self.data.len() }
+    pub fn is_exhausted(&self) -> bool {
+        self.pos >= self.data.len()
+    }
     /// Returns the current byte offset.
-    pub fn position(&self) -> usize { self.pos }
+    pub fn position(&self) -> usize {
+        self.pos
+    }
 
     /// Reads one byte; returns `Error::BufferTooSmall` when exhausted.
     pub fn read_byte(&mut self) -> Result<u8> {
         if self.pos >= self.data.len() {
-            return Err(Error::BufferTooSmall { required: self.pos + 1, provided: self.data.len() });
+            return Err(Error::BufferTooSmall {
+                required: self.pos + 1,
+                provided: self.data.len(),
+            });
         }
         let b = self.data[self.pos];
         self.pos += 1;
@@ -92,7 +118,9 @@ impl<'a> ThriftReader<'a> {
             }
             let b = self.read_byte()?;
             result |= ((b & 0x7F) as u64) << shift;
-            if b & 0x80 == 0 { return Ok(result); }
+            if b & 0x80 == 0 {
+                return Ok(result);
+            }
             shift += 7;
         }
     }
@@ -118,7 +146,10 @@ impl<'a> ThriftReader<'a> {
     /// 8-byte little-endian IEEE 754 f64.
     pub fn read_double(&mut self) -> Result<f64> {
         if self.pos + 8 > self.data.len() {
-            return Err(Error::BufferTooSmall { required: self.pos + 8, provided: self.data.len() });
+            return Err(Error::BufferTooSmall {
+                required: self.pos + 8,
+                provided: self.data.len(),
+            });
         }
         let b: [u8; 8] = self.data[self.pos..self.pos + 8].try_into().unwrap();
         self.pos += 8;
@@ -130,7 +161,10 @@ impl<'a> ThriftReader<'a> {
     pub fn read_binary(&mut self) -> Result<Vec<u8>> {
         let len = self.read_varint_u64()? as usize;
         if self.pos + len > self.data.len() {
-            return Err(Error::BufferTooSmall { required: self.pos + len, provided: self.data.len() });
+            return Err(Error::BufferTooSmall {
+                required: self.pos + len,
+                provided: self.data.len(),
+            });
         }
         let v = self.data[self.pos..self.pos + len].to_vec();
         self.pos += len;
@@ -148,12 +182,11 @@ impl<'a> ThriftReader<'a> {
 
     /// Field header: returns `None` on stop byte (0x00), or `Some((field_id, type_code))`.
     /// Updates `last_field_id` in place. `type_code` preserves BoolTrue/BoolFalse nibble semantics.
-    pub fn read_field_header(
-        &mut self,
-        last_field_id: &mut i16,
-    ) -> Result<Option<(i16, u8)>> {
+    pub fn read_field_header(&mut self, last_field_id: &mut i16) -> Result<Option<(i16, u8)>> {
         let byte = self.read_byte()?;
-        if byte == 0x00 { return Ok(None); }
+        if byte == 0x00 {
+            return Ok(None);
+        }
         let delta = (byte >> 4) & 0x0F;
         let type_code = byte & 0x0F;
         let field_id = if delta != 0 {
@@ -171,8 +204,11 @@ impl<'a> ThriftReader<'a> {
         let byte = self.read_byte()?;
         let count_nibble = (byte >> 4) & 0x0F;
         let elem_type = byte & 0x0F;
-        let count = if count_nibble == 0x0F { self.read_varint_u64()? as usize }
-                    else { count_nibble as usize };
+        let count = if count_nibble == 0x0F {
+            self.read_varint_u64()? as usize
+        } else {
+            count_nibble as usize
+        };
         Ok((elem_type, count))
     }
 
@@ -180,7 +216,9 @@ impl<'a> ThriftReader<'a> {
     /// Returns `(key_type, value_type, count)`; count 0 returns `(0,0,0)`.
     pub fn read_map_header(&mut self) -> Result<(u8, u8, usize)> {
         let count = self.read_varint_u64()? as usize;
-        if count == 0 { return Ok((0, 0, 0)); }
+        if count == 0 {
+            return Ok((0, 0, 0));
+        }
         let tb = self.read_byte()?;
         Ok(((tb >> 4) & 0x0F, tb & 0x0F, count))
     }
@@ -191,11 +229,26 @@ impl<'a> ThriftReader<'a> {
     pub fn skip(&mut self, type_code: u8) -> Result<()> {
         match type_code {
             0x01 | 0x02 => Ok(()),
-            0x03 => { self.read_byte()?; Ok(()) }
-            0x04 => { self.read_i16()?; Ok(()) }
-            0x05 => { self.read_i32()?; Ok(()) }
-            0x06 => { self.read_i64()?; Ok(()) }
-            0x07 => { self.read_double()?; Ok(()) }
+            0x03 => {
+                self.read_byte()?;
+                Ok(())
+            }
+            0x04 => {
+                self.read_i16()?;
+                Ok(())
+            }
+            0x05 => {
+                self.read_i32()?;
+                Ok(())
+            }
+            0x06 => {
+                self.read_i64()?;
+                Ok(())
+            }
+            0x07 => {
+                self.read_double()?;
+                Ok(())
+            }
             0x08 => {
                 let len = self.read_varint_u64()? as usize;
                 if self.pos + len > self.data.len() {
@@ -204,16 +257,22 @@ impl<'a> ThriftReader<'a> {
                         provided: self.data.len(),
                     });
                 }
-                self.pos += len; Ok(())
+                self.pos += len;
+                Ok(())
             }
             0x09 | 0x0A => {
                 let (et, n) = self.read_list_header()?;
-                for _ in 0..n { self.skip(et)?; }
+                for _ in 0..n {
+                    self.skip(et)?;
+                }
                 Ok(())
             }
             0x0B => {
                 let (kt, vt, n) = self.read_map_header()?;
-                for _ in 0..n { self.skip(kt)?; self.skip(vt)?; }
+                for _ in 0..n {
+                    self.skip(kt)?;
+                    self.skip(vt)?;
+                }
                 Ok(())
             }
             0x0C => {
@@ -228,10 +287,12 @@ impl<'a> ThriftReader<'a> {
             0x0D => {
                 if self.pos + 16 > self.data.len() {
                     return Err(Error::BufferTooSmall {
-                        required: self.pos + 16, provided: self.data.len(),
+                        required: self.pos + 16,
+                        provided: self.data.len(),
                     });
                 }
-                self.pos += 16; Ok(())
+                self.pos += 16;
+                Ok(())
             }
             _ => Err(Error::InvalidFormat {
                 #[cfg(feature = "alloc")]
@@ -380,4 +441,3 @@ mod tests {
         assert!(matches!(err, consus_core::Error::BufferTooSmall { .. }));
     }
 }
-
