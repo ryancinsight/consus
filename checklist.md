@@ -2,6 +2,11 @@
 
 ## Current Sprint: Phase 3 — Parquet Nested Column Support + NWB Foundation
 
+### Milestone 47: Default Parallel Memory Features
+- [x] Restored Moirai default features for workspace consumers so parallel execution, Mnemosyne-backed memory surfaces, and Mellinoe branding are active by default.
+- [x] Corrected the Snappy RLE_DICTIONARY fixture header from `0x01` to analytically valid `0x03` (`num_groups << 1 | 1`) so the value-semantic dictionary round trip exercises the real decoder.
+- [x] Verification: `cargo fmt --check`; `cargo check --workspace`; `cargo test -p consus-parquet --features snappy decode_compressed_snappy_rle_dict_round_trip`; `cargo test --workspace`.
+
 ### Milestone 41: NWB Verification Against Real Files and Model Re-exports
 - [x] Add crate-root re-exports for NWB semantic model types (`ElectrodeRow`, `ElectrodeTable`, `UnitsTable`)
 - [x] Add `UnitsTable` proptest roundtrip coverage for arbitrary unit partitions and optional IDs

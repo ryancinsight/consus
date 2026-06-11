@@ -68,9 +68,9 @@ lz4_flex = { version = "0.11", default-features = false }
 tokio = { version = "1", default-features = false, features = ["io-util", "fs"] }
 futures-core = { version = "0.3", default-features = false }
 
-# Parallelism: moirai (default-features off avoids its global allocator; the
-# `parallel` feature provides the data-parallel API).
-moirai = { git = "https://github.com/ryancinsight/Moirai.git", default-features = false, features = ["parallel"] }
+# Parallelism: Moirai defaults provide the data-parallel API, Mnemosyne memory
+# integration, and Mellinoe branded partitioning.
+moirai = { git = "https://github.com/ryancinsight/Moirai.git" }
 
 # Native S3 transport (ADR-015 s3-moirai backend): moirai HTTP/1.1 client +
 # SigV4 signing (RustCrypto, no AWS SDK). Replaces rusoto/reqwest, no tokio.

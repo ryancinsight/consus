@@ -106,7 +106,9 @@ fn decode_compressed_zstd_i32_round_trip() {
 #[test]
 fn decode_compressed_snappy_rle_dict_round_trip() {
     let dict = ColumnValues::Int32(alloc::vec![10, 20, 30]);
-    let original: Vec<u8> = alloc::vec![0x02u8, 0x01, 0x49, 0x00];
+    // bit_width=2; one bit-packed group header is (1 << 1) | 1 = 0x03.
+    // The group payload encodes indices [1, 2, 0, 1] as 0b01_00_10_01.
+    let original: Vec<u8> = alloc::vec![0x02u8, 0x03, 0x49, 0x00];
     let mut encoder = snap::raw::Encoder::new();
     let compressed = encoder
         .compress_vec(&original)

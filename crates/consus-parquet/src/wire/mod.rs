@@ -1,4 +1,3 @@
-
 //! Parquet footer byte-validation and canonical trailer metadata model.
 //!
 //! ## Specification
