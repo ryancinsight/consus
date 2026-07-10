@@ -512,6 +512,7 @@ fn prop_stress_random_operations() {
                         }
                     }
                 }
+                1 => {}
                 2 => {
                     // Truncate
                     let new_len = next_random(&mut rng_state, reference.len() + 100);

@@ -38,6 +38,14 @@
       cannot collide with the documented Rust facade's `consus` artifact.
 - [ ] Register the PyPI pending trusted publisher after account verification.
 
+## Current Sprint: Bounded Exact Read Provider
+
+- [x] Add a `std` + `alloc` synchronous exact-read primitive that grows by at
+      most 64 KiB before each confirmed source read.
+- [x] Cover cross-chunk equality, typed truncation, and zero-length behavior.
+- [x] Run package nextest 169/169, warning-denied all-target Clippy, doctests
+      3/3, rustdoc, commit, push, and advance the Atlas Consus gitlink.
+
 ## Current Sprint: Phase 3 — Parquet Nested Column Support + NWB Foundation
 
 ### Milestone 47: Default Parallel Memory Features

@@ -76,6 +76,9 @@
   preventing its `consus` filename from colliding with the Rust facade while
   leaving the built extension and Rust documentation owners unchanged.
 
+- [x] [minor] Own bounded exact streaming reads for hostile format-declared
+  lengths so RITK format crates can remove their legacy core dependency.
+
 ## Phase 1: HDF5 MVP (Read + Write)
 
 ### P1.1 — HDF5 Read Path

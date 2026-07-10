@@ -1,5 +1,12 @@
 # Consus - Gap Audit
 
+## Bounded exact streaming reads (2026-07-10)
+
+RITK's MGH decoder needed a generic exact read that did not reserve a hostile
+header length upfront. That I/O policy belongs in `consus-io`, not a medical
+format or legacy image core. `read_exact_bounded` grows in fixed 64 KiB chunks
+only as bytes are confirmed, returns `UnexpectedEof` with the received count,
+and performs no source access for a zero-length request.
 ## Data Folder Record
 
 - NWB sample acquisition manifest stored at `D:\consus\data\nwb\manifest.txt`
