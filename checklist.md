@@ -58,6 +58,15 @@
 
 ## Current Sprint: Phase 3 — Parquet Nested Column Support + NWB Foundation
 
+### Milestone 48: Typed NPY/NPZ Provider
+- [x] Add `consus-npy` as the single storage owner for NumPy NPY/NPZ files.
+- [x] Parse and write version-1 NPY headers and read version-2/3 headers with
+      bounded allocation, typed dtype validation, checked shape products, and
+      no ndarray dependency.
+- [x] Expose ZIP-backed named NPZ reads/writes and value-semantic round trips.
+- [x] Verify package formatting, compile, Clippy with warnings denied, and
+      nextest (2/2).
+
 ### Milestone 47: Default Parallel Memory Features
 - [x] Restored Moirai default features for workspace consumers so parallel execution, Mnemosyne-backed memory surfaces, and Mellinoe branding are active by default.
 - [x] Corrected the Snappy RLE_DICTIONARY fixture header from `0x01` to analytically valid `0x03` (`num_groups << 1 | 1`) so the value-semantic dictionary round trip exercises the real decoder.

@@ -11,7 +11,7 @@ Consus replaces C-dependent bindings (hdf5-rs, netCDF-sys, etc.) with a native R
 
 - **Zero-copy I/O** with hyperslab and selection reads
 - **Full compression support** (zlib, gzip, zstd, lz4, blosc, szip)
-- **Thread-safe parallel I/O** via Rayon and Tokio
+- **Thread-safe parallel I/O** through Moirai
 - **WASM and embedded targets** (`no_std` compatible core)
 - **Pluggable backend architecture** for format interoperability
 - **Performance parity or better** than HDF5 C library with Rust safety guarantees
@@ -27,6 +27,7 @@ Consus replaces C-dependent bindings (hdf5-rs, netCDF-sys, etc.) with a native R
 | netCDF-4 | Phase 2 – Complete | HDF5-backed semantic extraction implemented for dimension scales, variables, groups, decoded attributes, unlimited-dimension propagation, ancestor-scope dimension resolution for nested groups, DIMENSION_LIST-based variable-to-dimension binding. Classic and enhanced model read and write paths are fully implemented and verified. |
 | Apache Parquet | Phase 3 – Complete | Canonical schema mapping implemented; validated in-memory dataset descriptor, row-group metadata, ordered column projection model, and value-semantic tests implemented. Nested group fields map to canonical compound datatypes and repeated fields map to canonical variable-length datatypes. Thrift footer decoding, file-backed Parquet reader, and full wire-level write path are complete and verified. |
 | NWB (Neurodata Without Borders) | Phase 3 – Complete | Complete HDF5-backed read and write compliance for TimeSeries, Units, ElectrodeTable, and Subject models. End-to-end NWB 2.x conformance validation engine implemented. |
+| NumPy NPY/NPZ | Phase 3 – Typed core complete | Typed little-endian `f32`, `f64`, `i32`, and `i64` arrays; validated shape/header parsing; ZIP-backed named arrays; no ndarray dependency. |
 
 ## Architecture
 
@@ -40,6 +41,7 @@ consus (facade)
 ├── consus-netcdf      # netCDF-4 semantic model + HDF5 mapping layer
 ├── consus-arrow       # Arrow semantic model and bridge planning layer
 ├── consus-fits        # FITS format implementation
+├── consus-npy         # Typed NPY arrays and NPZ archives
 └── consus-parquet     # Parquet interop layer
 ```
 

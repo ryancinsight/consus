@@ -89,6 +89,9 @@
 - [x] [minor] Own bounded exact streaming reads for hostile format-declared
   lengths so RITK format crates can remove their legacy core dependency.
 
+- [x] [minor] Own typed NPY/NPZ storage so simulation consumers can remove
+  `ndarray-npy` without implementing format parsing downstream.
+
 ## Phase 1: HDF5 MVP (Read + Write)
 
 ### P1.1 — HDF5 Read Path

@@ -25,6 +25,15 @@ The ONNX provider integration exposed two downstream contract regressions:
 the bounded reservation helper was absent and the exact reader excluded
 `dyn Read`. Both contracts are restored at the provider boundary with exact
 cap-law and trait-object regressions.
+
+## Typed NPY/NPZ storage closure (2026-07-10)
+
+`consus-npy` now owns bounded NPY header validation and typed NPZ archive I/O.
+The public boundary is an owned shape plus boxed scalar payload, so consumers
+can construct their native array provider without an ndarray compatibility
+layer. Evidence tier: compile-time dtype binding and value-semantic round-trip
+tests. Residual: structured/object dtypes and Fortran-order writing are rejected
+explicitly; Fortran-order reads preserve the storage-order flag.
 ## Data Folder Record
 
 - NWB sample acquisition manifest stored at `D:\consus\data\nwb\manifest.txt`
