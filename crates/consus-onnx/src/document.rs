@@ -136,7 +136,7 @@ pub struct ModelDocument<'a> {
     pub model_version: i64,
     /// Graph name.
     pub graph_name: &'a str,
-    /// Graph inputs excluding no initializer metadata.
+    /// Declared graph inputs, including names that may also be initializers.
     pub inputs: Vec<ValueInfo<'a>>,
     /// Graph outputs.
     pub outputs: Vec<ValueInfo<'a>>,

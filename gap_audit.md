@@ -20,6 +20,11 @@ header length upfront. That I/O policy belongs in `consus-io`, not a medical
 format or legacy image core. `read_exact_bounded` grows in fixed 64 KiB chunks
 only as bytes are confirmed, returns `UnexpectedEof` with the received count,
 and performs no source access for a zero-length request.
+
+The ONNX provider integration exposed two downstream contract regressions:
+the bounded reservation helper was absent and the exact reader excluded
+`dyn Read`. Both contracts are restored at the provider boundary with exact
+cap-law and trait-object regressions.
 ## Data Folder Record
 
 - NWB sample acquisition manifest stored at `D:\consus\data\nwb\manifest.txt`

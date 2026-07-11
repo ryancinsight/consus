@@ -82,6 +82,10 @@
   value/dimension limits. Evidence: nextest 3/3, warning-denied Clippy, and
   Rustdoc.
 
+- [x] [patch] Preserve `consus-io`'s bounded-capacity and unsized-reader
+  consumer contracts across the ONNX provider revision. Evidence: exact cap
+  laws and a `dyn Read` value-semantic regression.
+
 - [x] [minor] Own bounded exact streaming reads for hostile format-declared
   lengths so RITK format crates can remove their legacy core dependency.
 

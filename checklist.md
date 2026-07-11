@@ -44,12 +44,15 @@
 - [x] Decode bounded ModelProto, GraphProto, NodeProto, ValueInfoProto, TensorProto, and operator-set metadata.
 - [x] Borrow names and raw initializer payloads from the source buffer and reject malformed or resource-exhausting inputs with typed errors.
 - [x] Verify exact metadata, zero-copy payload provenance, truncation, missing-graph, and resource-limit behavior under nextest, Clippy, and Rustdoc.
+- [x] Preserve the existing bounded-capacity and trait-object read contracts
+      required by RITK consumers while adding the ONNX reader.
 
 ## Current Sprint: Bounded Exact Read Provider
 
 - [x] Add a `std` + `alloc` synchronous exact-read primitive that grows by at
       most 64 KiB before each confirmed source read.
-- [x] Cover cross-chunk equality, typed truncation, and zero-length behavior.
+- [x] Cover cross-chunk equality, typed truncation, zero-length behavior,
+      capped reservation, and trait-object readers.
 - [x] Run package nextest 169/169, warning-denied all-target Clippy, doctests
       3/3, rustdoc, commit, push, and advance the Atlas Consus gitlink.
 
