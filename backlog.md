@@ -75,6 +75,12 @@
   Follow-up PR #3 excludes the Python `cdylib` from workspace Rustdoc output,
   preventing its `consus` filename from colliding with the Rust facade while
   leaving the built extension and Rust documentation owners unchanged.
+- [x] [minor] M-053: Own bounded zero-copy ONNX protobuf document parsing for
+  RITK so format inspection no longer pulls a tensor-runtime parser. The
+  `consus-onnx` crate decodes graph topology, tensor metadata, operator sets,
+  and borrowed raw initializer payloads under explicit document/field/node/
+  value/dimension limits. Evidence: nextest 3/3, warning-denied Clippy, and
+  Rustdoc.
 
 - [x] [minor] Own bounded exact streaming reads for hostile format-declared
   lengths so RITK format crates can remove their legacy core dependency.

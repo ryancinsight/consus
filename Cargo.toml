@@ -16,6 +16,7 @@ members = [
     "crates/consus-nwb",
     "crates/consus-hdmf",
     "crates/consus-python",
+    "crates/consus-onnx",
 ]
 
 [workspace.package]
@@ -45,6 +46,7 @@ consus-arrow = { path = "crates/consus-arrow", version = "0.1.0", default-featur
 consus-compression = { path = "crates/consus-compression", version = "0.1.0", default-features = false }
 consus-io = { path = "crates/consus-io", version = "0.1.0", default-features = false }
 pyo3 = { version = "0.22" }
+consus-onnx = { path = "crates/consus-onnx", version = "0.1.0", default-features = false }
 
 # External dependencies
 thiserror = { version = "2", default-features = false }

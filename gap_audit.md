@@ -1,5 +1,18 @@
 # Consus - Gap Audit
 
+## M-053 ONNX document ownership (2026-07-10)
+
+RITK required ONNX graph inspection without inheriting a deep-learning tensor
+runtime from its parser. `consus-onnx` now owns the protobuf wire subset needed
+for ModelProto graph topology, value shapes/types, nodes, operator sets, and
+TensorProto initializers. Names and `raw_data` borrow the caller's source bytes;
+all allocating collections and length-delimited fields carry explicit bounds.
+
+Evidence tier: exact synthetic ModelProto values, pointer-range proof that the
+initializer payload aliases the source buffer, and typed negative tests for
+truncation, absent GraphProto, document limits, and node limits. Package
+nextest passes 3/3; warning-denied Clippy and Rustdoc are clean.
+
 ## Bounded exact streaming reads (2026-07-10)
 
 RITK's MGH decoder needed a generic exact read that did not reserve a hostile

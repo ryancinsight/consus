@@ -1,0 +1,17 @@
+[package]
+name = "consus-onnx"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Bounded zero-copy ONNX protobuf document reader"
+
+[features]
+default = ["std"]
+std = ["alloc"]
+alloc = []
+
+[package.metadata.docs.rs]
+all-features = true

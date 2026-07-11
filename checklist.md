@@ -38,6 +38,13 @@
       cannot collide with the documented Rust facade's `consus` artifact.
 - [ ] Register the PyPI pending trusted publisher after account verification.
 
+## Current Sprint: ONNX Document Provider
+
+- [x] Add a dedicated no-std/alloc ONNX format crate independent of tensor runtimes.
+- [x] Decode bounded ModelProto, GraphProto, NodeProto, ValueInfoProto, TensorProto, and operator-set metadata.
+- [x] Borrow names and raw initializer payloads from the source buffer and reject malformed or resource-exhausting inputs with typed errors.
+- [x] Verify exact metadata, zero-copy payload provenance, truncation, missing-graph, and resource-limit behavior under nextest, Clippy, and Rustdoc.
+
 ## Current Sprint: Bounded Exact Read Provider
 
 - [x] Add a `std` + `alloc` synchronous exact-read primitive that grows by at
