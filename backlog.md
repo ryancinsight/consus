@@ -63,7 +63,9 @@
   defects: two more HDF5 test fixtures resembled approximate constants, and
   timestamp-derived mmap test paths collided under parallel macOS Nextest.
   The HDF5 oracles now use exact binary/rational values, while both mmap test
-  layers use OS-unique `NamedTempFile` instances.
+  layers use OS-unique `NamedTempFile` instances. Exact code head `a558e79`
+  passes all 58 jobs in hosted run `29797846759`, including the HDF5 Clippy
+  and macOS IO lanes that failed on the preceding head.
 
 ## Phase 1: HDF5 MVP (Read + Write)
 

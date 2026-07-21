@@ -25,10 +25,11 @@
       target without repeating the format pass across the package matrix.
 - [x] Verify the live MinIO ranged read against deterministic source bytes.
 - [x] Create the protected `pypi` GitHub environment restricted to release tags.
-- [ ] Resolve the Rust 1.97.1 test-only Clippy findings from hosted run
+- [x] Resolve the Rust 1.97.1 test-only Clippy findings from hosted run
       `29795739435`, the remaining exact-fixture findings, and the macOS mmap
       test-path collision; pass the affected checks on the replacement PR head.
-- [ ] Merge hosted CI green.
+- [x] Pass exact code head `a558e79` across all 58 jobs in hosted run
+      `29797846759`.
 - [ ] Register the PyPI pending trusted publisher after account verification.
 
 ## Current Sprint: Phase 3 — Parquet Nested Column Support + NWB Foundation
