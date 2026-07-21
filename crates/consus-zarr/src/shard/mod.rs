@@ -324,12 +324,12 @@ pub fn read_inner_chunk_from_shard(
     let offset = u64::from_le_bytes(
         shard_data[entry_offset..entry_offset + 8]
             .try_into()
-            .unwrap(),
+            .expect("8-byte slice for u64 deserialization"),
     );
     let length = u64::from_le_bytes(
         shard_data[entry_offset + 8..entry_offset + 16]
             .try_into()
-            .unwrap(),
+            .expect("8-byte slice for u64 deserialization"),
     );
     // Uninitialized chunk sentinel per the Zarr v3 sharding spec.
     if offset == u64::MAX && length == u64::MAX {

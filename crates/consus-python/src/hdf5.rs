@@ -197,54 +197,54 @@ fn parse_dtype(dtype: &str) -> PyResult<Datatype> {
     };
     match rest {
         "f2" => Ok(Datatype::Float {
-            bits: NonZeroUsize::new(16).unwrap(),
+            bits: NonZeroUsize::new(16).expect("nonzero literal"),
             byte_order: order,
         }),
         "f4" => Ok(Datatype::Float {
-            bits: NonZeroUsize::new(32).unwrap(),
+            bits: NonZeroUsize::new(32).expect("nonzero literal"),
             byte_order: order,
         }),
         "f8" => Ok(Datatype::Float {
-            bits: NonZeroUsize::new(64).unwrap(),
+            bits: NonZeroUsize::new(64).expect("nonzero literal"),
             byte_order: order,
         }),
         "i1" => Ok(Datatype::Integer {
-            bits: NonZeroUsize::new(8).unwrap(),
+            bits: NonZeroUsize::new(8).expect("nonzero literal"),
             byte_order: order,
             signed: true,
         }),
         "i2" => Ok(Datatype::Integer {
-            bits: NonZeroUsize::new(16).unwrap(),
+            bits: NonZeroUsize::new(16).expect("nonzero literal"),
             byte_order: order,
             signed: true,
         }),
         "i4" => Ok(Datatype::Integer {
-            bits: NonZeroUsize::new(32).unwrap(),
+            bits: NonZeroUsize::new(32).expect("nonzero literal"),
             byte_order: order,
             signed: true,
         }),
         "i8" => Ok(Datatype::Integer {
-            bits: NonZeroUsize::new(64).unwrap(),
+            bits: NonZeroUsize::new(64).expect("nonzero literal"),
             byte_order: order,
             signed: true,
         }),
         "u1" => Ok(Datatype::Integer {
-            bits: NonZeroUsize::new(8).unwrap(),
+            bits: NonZeroUsize::new(8).expect("nonzero literal"),
             byte_order: order,
             signed: false,
         }),
         "u2" => Ok(Datatype::Integer {
-            bits: NonZeroUsize::new(16).unwrap(),
+            bits: NonZeroUsize::new(16).expect("nonzero literal"),
             byte_order: order,
             signed: false,
         }),
         "u4" => Ok(Datatype::Integer {
-            bits: NonZeroUsize::new(32).unwrap(),
+            bits: NonZeroUsize::new(32).expect("nonzero literal"),
             byte_order: order,
             signed: false,
         }),
         "u8" => Ok(Datatype::Integer {
-            bits: NonZeroUsize::new(64).unwrap(),
+            bits: NonZeroUsize::new(64).expect("nonzero literal"),
             byte_order: order,
             signed: false,
         }),

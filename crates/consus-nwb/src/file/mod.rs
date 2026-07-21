@@ -82,7 +82,7 @@ fn fixed_string_bytes(value: &str) -> (Datatype, alloc::vec::Vec<u8>) {
 #[cfg(feature = "alloc")]
 fn f64_le_datatype() -> Datatype {
     Datatype::Float {
-        bits: NonZeroUsize::new(64).unwrap(),
+        bits: NonZeroUsize::new(64).expect("nonzero literal"),
         byte_order: ByteOrder::LittleEndian,
     }
 }
@@ -90,7 +90,7 @@ fn f64_le_datatype() -> Datatype {
 #[cfg(feature = "alloc")]
 fn f32_le_datatype() -> Datatype {
     Datatype::Float {
-        bits: NonZeroUsize::new(32).unwrap(),
+        bits: NonZeroUsize::new(32).expect("nonzero literal"),
         byte_order: ByteOrder::LittleEndian,
     }
 }
@@ -611,7 +611,7 @@ impl NwbFileBuilder {
         let scalar = Shape::scalar();
         let f64_dt = f64_le_datatype();
         let u64_dt = Datatype::Integer {
-            bits: NonZeroUsize::new(64).unwrap(),
+            bits: NonZeroUsize::new(64).expect("nonzero literal"),
             signed: false,
             byte_order: ByteOrder::LittleEndian,
         };
@@ -720,7 +720,7 @@ impl NwbFileBuilder {
     ) -> Result<()> {
         let scalar = Shape::scalar();
         let u64_dt = Datatype::Integer {
-            bits: NonZeroUsize::new(64).unwrap(),
+            bits: NonZeroUsize::new(64).expect("nonzero literal"),
             signed: false,
             byte_order: ByteOrder::LittleEndian,
         };

@@ -261,8 +261,8 @@ fn decode_scalar_binary(code: BinaryFormatCode, bytes: &[u8]) -> Result<FitsColu
                     provided: bytes.len(),
                 });
             }
-            let real = f32::from_be_bytes(bytes[0..4].try_into().unwrap());
-            let imag = f32::from_be_bytes(bytes[4..8].try_into().unwrap());
+            let real = f32::from_be_bytes(bytes[0..4].try_into().expect("4-byte slice for f32 deserialization"));
+            let imag = f32::from_be_bytes(bytes[4..8].try_into().expect("4-byte slice for f32 deserialization"));
             Ok(FitsColumnValue::Complex32 { real, imag })
         }
         BinaryFormatCode::Complex64 => {
@@ -272,8 +272,8 @@ fn decode_scalar_binary(code: BinaryFormatCode, bytes: &[u8]) -> Result<FitsColu
                     provided: bytes.len(),
                 });
             }
-            let real = f64::from_be_bytes(bytes[0..8].try_into().unwrap());
-            let imag = f64::from_be_bytes(bytes[8..16].try_into().unwrap());
+            let real = f64::from_be_bytes(bytes[0..8].try_into().expect("8-byte slice for f64 deserialization"));
+            let imag = f64::from_be_bytes(bytes[8..16].try_into().expect("8-byte slice for f64 deserialization"));
             Ok(FitsColumnValue::Complex64 { real, imag })
         }
         BinaryFormatCode::Descriptor32 => {
@@ -283,8 +283,8 @@ fn decode_scalar_binary(code: BinaryFormatCode, bytes: &[u8]) -> Result<FitsColu
                     provided: bytes.len(),
                 });
             }
-            let count = i32::from_be_bytes(bytes[0..4].try_into().unwrap());
-            let offset = i32::from_be_bytes(bytes[4..8].try_into().unwrap());
+            let count = i32::from_be_bytes(bytes[0..4].try_into().expect("4-byte slice for i32 deserialization"));
+            let offset = i32::from_be_bytes(bytes[4..8].try_into().expect("4-byte slice for i32 deserialization"));
             Ok(FitsColumnValue::Descriptor32 { count, offset })
         }
         BinaryFormatCode::Descriptor64 => {
@@ -294,8 +294,8 @@ fn decode_scalar_binary(code: BinaryFormatCode, bytes: &[u8]) -> Result<FitsColu
                     provided: bytes.len(),
                 });
             }
-            let count = i64::from_be_bytes(bytes[0..8].try_into().unwrap());
-            let offset = i64::from_be_bytes(bytes[8..16].try_into().unwrap());
+            let count = i64::from_be_bytes(bytes[0..8].try_into().expect("8-byte slice for i64 deserialization"));
+            let offset = i64::from_be_bytes(bytes[8..16].try_into().expect("8-byte slice for i64 deserialization"));
             Ok(FitsColumnValue::Descriptor64 { count, offset })
         }
         BinaryFormatCode::Bit | BinaryFormatCode::Char => Err(Error::UnsupportedFeature {
