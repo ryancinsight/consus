@@ -34,50 +34,50 @@ use crate::error::from_consus;
 fn parse_dtype(dtype: &str) -> PyResult<Datatype> {
     match dtype {
         "f32" => Ok(Datatype::Float {
-            bits: NonZeroUsize::new(32).unwrap(),
+            bits: NonZeroUsize::new(32).expect("nonzero literal"),
             byte_order: ByteOrder::LittleEndian,
         }),
         "f64" => Ok(Datatype::Float {
-            bits: NonZeroUsize::new(64).unwrap(),
+            bits: NonZeroUsize::new(64).expect("nonzero literal"),
             byte_order: ByteOrder::LittleEndian,
         }),
         "i8" => Ok(Datatype::Integer {
-            bits: NonZeroUsize::new(8).unwrap(),
+            bits: NonZeroUsize::new(8).expect("nonzero literal"),
             byte_order: ByteOrder::LittleEndian,
             signed: true,
         }),
         "u8" => Ok(Datatype::Integer {
-            bits: NonZeroUsize::new(8).unwrap(),
+            bits: NonZeroUsize::new(8).expect("nonzero literal"),
             byte_order: ByteOrder::LittleEndian,
             signed: false,
         }),
         "i16" => Ok(Datatype::Integer {
-            bits: NonZeroUsize::new(16).unwrap(),
+            bits: NonZeroUsize::new(16).expect("nonzero literal"),
             byte_order: ByteOrder::LittleEndian,
             signed: true,
         }),
         "u16" => Ok(Datatype::Integer {
-            bits: NonZeroUsize::new(16).unwrap(),
+            bits: NonZeroUsize::new(16).expect("nonzero literal"),
             byte_order: ByteOrder::LittleEndian,
             signed: false,
         }),
         "i32" => Ok(Datatype::Integer {
-            bits: NonZeroUsize::new(32).unwrap(),
+            bits: NonZeroUsize::new(32).expect("nonzero literal"),
             byte_order: ByteOrder::LittleEndian,
             signed: true,
         }),
         "u32" => Ok(Datatype::Integer {
-            bits: NonZeroUsize::new(32).unwrap(),
+            bits: NonZeroUsize::new(32).expect("nonzero literal"),
             byte_order: ByteOrder::LittleEndian,
             signed: false,
         }),
         "i64" => Ok(Datatype::Integer {
-            bits: NonZeroUsize::new(64).unwrap(),
+            bits: NonZeroUsize::new(64).expect("nonzero literal"),
             byte_order: ByteOrder::LittleEndian,
             signed: true,
         }),
         "u64" => Ok(Datatype::Integer {
-            bits: NonZeroUsize::new(64).unwrap(),
+            bits: NonZeroUsize::new(64).expect("nonzero literal"),
             byte_order: ByteOrder::LittleEndian,
             signed: false,
         }),
@@ -158,7 +158,7 @@ fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject
         let s = &data[i * nbytes..(i + 1) * nbytes];
         match dt {
             Datatype::Float { bits, byte_order } if bits.get() == 32 => {
-                let arr: [u8; 4] = s.try_into().unwrap();
+                let arr: [u8; 4] = s.try_into().expect("validated slice length");
                 let v = match byte_order {
                     ByteOrder::LittleEndian => f32::from_le_bytes(arr),
                     ByteOrder::BigEndian => f32::from_be_bytes(arr),
@@ -166,7 +166,7 @@ fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject
                 list.append(v)?;
             }
             Datatype::Float { bits, byte_order } if bits.get() == 64 => {
-                let arr: [u8; 8] = s.try_into().unwrap();
+                let arr: [u8; 8] = s.try_into().expect("validated slice length");
                 let v = match byte_order {
                     ByteOrder::LittleEndian => f64::from_le_bytes(arr),
                     ByteOrder::BigEndian => f64::from_be_bytes(arr),
@@ -193,7 +193,7 @@ fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject
                 signed: true,
                 byte_order,
             } if bits.get() == 16 => {
-                let arr: [u8; 2] = s.try_into().unwrap();
+                let arr: [u8; 2] = s.try_into().expect("validated slice length");
                 let v = match byte_order {
                     ByteOrder::LittleEndian => i16::from_le_bytes(arr),
                     ByteOrder::BigEndian => i16::from_be_bytes(arr),
@@ -205,7 +205,7 @@ fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject
                 signed: false,
                 byte_order,
             } if bits.get() == 16 => {
-                let arr: [u8; 2] = s.try_into().unwrap();
+                let arr: [u8; 2] = s.try_into().expect("validated slice length");
                 let v = match byte_order {
                     ByteOrder::LittleEndian => u16::from_le_bytes(arr),
                     ByteOrder::BigEndian => u16::from_be_bytes(arr),
@@ -217,7 +217,7 @@ fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject
                 signed: true,
                 byte_order,
             } if bits.get() == 32 => {
-                let arr: [u8; 4] = s.try_into().unwrap();
+                let arr: [u8; 4] = s.try_into().expect("validated slice length");
                 let v = match byte_order {
                     ByteOrder::LittleEndian => i32::from_le_bytes(arr),
                     ByteOrder::BigEndian => i32::from_be_bytes(arr),
@@ -229,7 +229,7 @@ fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject
                 signed: false,
                 byte_order,
             } if bits.get() == 32 => {
-                let arr: [u8; 4] = s.try_into().unwrap();
+                let arr: [u8; 4] = s.try_into().expect("validated slice length");
                 let v = match byte_order {
                     ByteOrder::LittleEndian => u32::from_le_bytes(arr),
                     ByteOrder::BigEndian => u32::from_be_bytes(arr),
@@ -241,7 +241,7 @@ fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject
                 signed: true,
                 byte_order,
             } if bits.get() == 64 => {
-                let arr: [u8; 8] = s.try_into().unwrap();
+                let arr: [u8; 8] = s.try_into().expect("validated slice length");
                 let v = match byte_order {
                     ByteOrder::LittleEndian => i64::from_le_bytes(arr),
                     ByteOrder::BigEndian => i64::from_be_bytes(arr),
@@ -253,7 +253,7 @@ fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject
                 signed: false,
                 byte_order,
             } if bits.get() == 64 => {
-                let arr: [u8; 8] = s.try_into().unwrap();
+                let arr: [u8; 8] = s.try_into().expect("validated slice length");
                 let v = match byte_order {
                     ByteOrder::LittleEndian => u64::from_le_bytes(arr),
                     ByteOrder::BigEndian => u64::from_be_bytes(arr),

@@ -151,7 +151,9 @@ impl<'a> ThriftReader<'a> {
                 provided: self.data.len(),
             });
         }
-        let b: [u8; 8] = self.data[self.pos..self.pos + 8].try_into().unwrap();
+        let b: [u8; 8] = self.data[self.pos..self.pos + 8]
+            .try_into()
+            .expect("8-byte slice for f64 deserialization");
         self.pos += 8;
         Ok(f64::from_le_bytes(b))
     }

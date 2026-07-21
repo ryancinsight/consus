@@ -7,34 +7,21 @@
 mod mmap_tests {
     use consus_io::{Length, MmapReader, ReadAt};
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
-    fn write_temp(payload: &[u8]) -> (std::path::PathBuf, impl Drop) {
-        struct Guard(std::path::PathBuf);
-        impl Drop for Guard {
-            fn drop(&mut self) {
-                let _ = std::fs::remove_file(&self.0);
-            }
-        }
-        let path = std::env::temp_dir().join(format!(
-            "consus_mmap_integration_{}.bin",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.subsec_nanos())
-                .unwrap_or(0)
-        ));
-        let mut f = std::fs::File::create(&path).expect("create temp");
-        f.write_all(payload).expect("write temp");
-        f.flush().expect("flush");
-        let guard = Guard(path.clone());
-        (path, guard)
+    fn write_temp(payload: &[u8]) -> NamedTempFile {
+        let mut file = NamedTempFile::new().expect("create unique temporary file");
+        file.write_all(payload).expect("write temporary file");
+        file.flush().expect("flush temporary file");
+        file
     }
 
     #[test]
     fn integration_mmap_read_large_payload() {
         // 64 KiB sequential payload for mmap coverage.
         let payload: Vec<u8> = (0u8..=255).cycle().take(65536).collect();
-        let (path, _g) = write_temp(&payload);
-        let reader = MmapReader::open(&path).expect("open must succeed");
+        let file = write_temp(&payload);
+        let reader = MmapReader::open(file.path()).expect("open must succeed");
         assert_eq!(reader.len().unwrap(), 65536);
 
         // Read a 256-byte window at offset 1024.
@@ -48,8 +35,8 @@ mod mmap_tests {
     #[test]
     fn integration_mmap_read_last_bytes() {
         let payload = b"end_marker";
-        let (path, _g) = write_temp(payload);
-        let reader = MmapReader::open(&path).expect("open must succeed");
+        let file = write_temp(payload);
+        let reader = MmapReader::open(file.path()).expect("open must succeed");
         let n = payload.len() as u64;
         // Read the last 3 bytes.
         let mut buf = [0u8; 3];
@@ -62,8 +49,8 @@ mod mmap_tests {
     #[test]
     fn integration_mmap_length_matches_file_size() {
         let payload = vec![0xABu8; 4096];
-        let (path, _g) = write_temp(&payload);
-        let reader = MmapReader::open(&path).expect("open must succeed");
+        let file = write_temp(&payload);
+        let reader = MmapReader::open(file.path()).expect("open must succeed");
         assert_eq!(reader.len().unwrap(), 4096);
     }
 }

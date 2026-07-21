@@ -159,7 +159,7 @@ fn simple_datatype_strategy() -> BoxedStrategy<Datatype> {
         // Opaque
         (1usize..=4096).prop_map(|size| Datatype::Opaque { size, tag: None }),
         // Reference
-        reference_type_strategy().prop_map(|r| Datatype::Reference(r)),
+        reference_type_strategy().prop_map(Datatype::Reference),
     ]
     .boxed()
 }
@@ -193,7 +193,7 @@ fn fixed_size_datatype_strategy() -> BoxedStrategy<Datatype> {
         (1usize..=1024, string_encoding_strategy())
             .prop_map(|(length, encoding)| Datatype::FixedString { length, encoding }),
         (1usize..=4096).prop_map(|size| Datatype::Opaque { size, tag: None }),
-        reference_type_strategy().prop_map(|r| Datatype::Reference(r)),
+        reference_type_strategy().prop_map(Datatype::Reference),
     ]
     .boxed()
 }

@@ -261,8 +261,16 @@ fn decode_scalar_binary(code: BinaryFormatCode, bytes: &[u8]) -> Result<FitsColu
                     provided: bytes.len(),
                 });
             }
-            let real = f32::from_be_bytes(bytes[0..4].try_into().unwrap());
-            let imag = f32::from_be_bytes(bytes[4..8].try_into().unwrap());
+            let real = f32::from_be_bytes(
+                bytes[0..4]
+                    .try_into()
+                    .expect("4-byte slice for f32 deserialization"),
+            );
+            let imag = f32::from_be_bytes(
+                bytes[4..8]
+                    .try_into()
+                    .expect("4-byte slice for f32 deserialization"),
+            );
             Ok(FitsColumnValue::Complex32 { real, imag })
         }
         BinaryFormatCode::Complex64 => {
@@ -272,8 +280,16 @@ fn decode_scalar_binary(code: BinaryFormatCode, bytes: &[u8]) -> Result<FitsColu
                     provided: bytes.len(),
                 });
             }
-            let real = f64::from_be_bytes(bytes[0..8].try_into().unwrap());
-            let imag = f64::from_be_bytes(bytes[8..16].try_into().unwrap());
+            let real = f64::from_be_bytes(
+                bytes[0..8]
+                    .try_into()
+                    .expect("8-byte slice for f64 deserialization"),
+            );
+            let imag = f64::from_be_bytes(
+                bytes[8..16]
+                    .try_into()
+                    .expect("8-byte slice for f64 deserialization"),
+            );
             Ok(FitsColumnValue::Complex64 { real, imag })
         }
         BinaryFormatCode::Descriptor32 => {
@@ -283,8 +299,16 @@ fn decode_scalar_binary(code: BinaryFormatCode, bytes: &[u8]) -> Result<FitsColu
                     provided: bytes.len(),
                 });
             }
-            let count = i32::from_be_bytes(bytes[0..4].try_into().unwrap());
-            let offset = i32::from_be_bytes(bytes[4..8].try_into().unwrap());
+            let count = i32::from_be_bytes(
+                bytes[0..4]
+                    .try_into()
+                    .expect("4-byte slice for i32 deserialization"),
+            );
+            let offset = i32::from_be_bytes(
+                bytes[4..8]
+                    .try_into()
+                    .expect("4-byte slice for i32 deserialization"),
+            );
             Ok(FitsColumnValue::Descriptor32 { count, offset })
         }
         BinaryFormatCode::Descriptor64 => {
@@ -294,8 +318,16 @@ fn decode_scalar_binary(code: BinaryFormatCode, bytes: &[u8]) -> Result<FitsColu
                     provided: bytes.len(),
                 });
             }
-            let count = i64::from_be_bytes(bytes[0..8].try_into().unwrap());
-            let offset = i64::from_be_bytes(bytes[8..16].try_into().unwrap());
+            let count = i64::from_be_bytes(
+                bytes[0..8]
+                    .try_into()
+                    .expect("8-byte slice for i64 deserialization"),
+            );
+            let offset = i64::from_be_bytes(
+                bytes[8..16]
+                    .try_into()
+                    .expect("8-byte slice for i64 deserialization"),
+            );
             Ok(FitsColumnValue::Descriptor64 { count, offset })
         }
         BinaryFormatCode::Bit | BinaryFormatCode::Char => Err(Error::UnsupportedFeature {
@@ -449,10 +481,10 @@ mod tests {
 
     #[test]
     fn binary_float64() {
-        let row = 3.14_f64.to_be_bytes().to_vec();
+        let row = 3.125_f64.to_be_bytes().to_vec();
         assert_eq!(
             decode_binary_column(&row, &col("1D", 8, 0)).unwrap(),
-            FitsColumnValue::Float64(3.14)
+            FitsColumnValue::Float64(3.125)
         );
     }
 
@@ -473,12 +505,12 @@ mod tests {
     #[test]
     fn binary_complex64() {
         let mut row = alloc::vec::Vec::new();
-        row.extend_from_slice(&3.14_f64.to_be_bytes());
+        row.extend_from_slice(&3.125_f64.to_be_bytes());
         row.extend_from_slice(&1.41_f64.to_be_bytes());
         assert_eq!(
             decode_binary_column(&row, &col("1M", 16, 0)).unwrap(),
             FitsColumnValue::Complex64 {
-                real: 3.14,
+                real: 3.125,
                 imag: 1.41
             }
         );
@@ -621,10 +653,10 @@ mod tests {
 
     #[test]
     fn ascii_float_f_format() {
-        let row = b"  3.141590".to_vec();
+        let row = b"  3.125000".to_vec();
         let val = decode_ascii_column(&row, &col("F10.5", 10, 0)).unwrap();
         if let FitsColumnValue::Float64(v) = val {
-            assert!((v - 3.14159).abs() < 1e-6, "expected ~3.14159, got {v}");
+            assert_eq!(v, 3.125);
         } else {
             panic!("expected Float64");
         }

@@ -442,9 +442,9 @@ mod lookup3 {
     #[cfg(feature = "alloc")]
     fn all_remainder_lengths() {
         let mut seen = [0u32; 13];
-        for len in 0..=12 {
+        for (len, hash) in seen.iter_mut().enumerate() {
             let input: Vec<u8> = vec![0xAA; len];
-            seen[len] = Lookup3::compute(&input);
+            *hash = Lookup3::compute(&input);
         }
 
         // No two distinct-length inputs should collide

@@ -8,9 +8,11 @@
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::sync::Arc;
 
-use consus_io::{AsyncLength, AsyncReadAt, S3Config, S3MoiraiReader, S3Reader};
-use rusoto_core::Region;
+use consus_io::{AsyncLength, AsyncReadAt, S3Client, S3Config, S3MoiraiReader, S3Reader};
+use rusoto_core::{HttpClient, Region, credential::StaticProvider};
+use rusoto_s3::S3Client as RusotoS3Client;
 
 /// Parse an inclusive `Range: bytes=START-END` from a request head.
 fn parse_range(head: &str) -> Option<(usize, usize)> {
@@ -98,14 +100,6 @@ fn spawn_mock_s3(object: Vec<u8>) -> u16 {
 
 #[test]
 fn rusoto_and_moirai_read_byte_identical() {
-    // Static credentials so rusoto's default chain resolves (env provider); the
-    // mock ignores auth, but rusoto still requires credentials to sign.
-    // SAFETY: single-threaded test setup before any reader is constructed.
-    unsafe {
-        std::env::set_var("AWS_ACCESS_KEY_ID", "test");
-        std::env::set_var("AWS_SECRET_ACCESS_KEY", "secret");
-    }
-
     // Deterministic object with a non-trivial byte pattern.
     let object: Vec<u8> = (0..4096u32).map(|i| (i % 251) as u8).collect();
     let port = spawn_mock_s3(object.clone());
@@ -129,14 +123,15 @@ fn rusoto_and_moirai_read_byte_identical() {
     let moirai_len = rt.block_on(moirai_reader.len()).expect("moirai len");
 
     // ── rusoto reader (legacy, tokio runtime) ────────────────────────────────
-    let rusoto_reader = S3Reader::new(
+    let rusoto_client = RusotoS3Client::new_with(
+        HttpClient::new().expect("construct rusoto HTTP dispatcher"),
+        StaticProvider::new_minimal("test".to_string(), "secret".to_string()),
         Region::Custom {
             name: "local".to_string(),
             endpoint: endpoint.clone(),
         },
-        "bucket",
-        "obj.bin",
     );
+    let rusoto_reader = S3Reader::with_client(Arc::new(rusoto_client), "bucket", "obj.bin");
     let trt = tokio::runtime::Runtime::new().expect("tokio runtime");
     let mut rusoto_buf = vec![0u8; len];
     trt.block_on(rusoto_reader.read_at(pos as u64, &mut rusoto_buf))
@@ -167,7 +162,7 @@ fn rusoto_and_moirai_read_byte_identical() {
 ///
 /// CI sets `S3_TEST_ENDPOINT`, `S3_TEST_BUCKET`, `S3_TEST_KEY`,
 /// `S3_TEST_OBJECT_LEN`, and `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, having
-/// uploaded an object of `S3_TEST_OBJECT_LEN` bytes.
+/// authorized creation of an object with `S3_TEST_OBJECT_LEN` bytes.
 #[test]
 fn moirai_s3_real_endpoint() {
     let Ok(endpoint) = std::env::var("S3_TEST_ENDPOINT") else {
@@ -181,16 +176,33 @@ fn moirai_s3_real_endpoint() {
         .and_then(|v| v.parse().ok())
         .unwrap_or(4096);
 
+    let region = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
+    let access_key = std::env::var("AWS_ACCESS_KEY_ID").expect("AWS_ACCESS_KEY_ID");
+    let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY").expect("AWS_SECRET_ACCESS_KEY");
+    let session_token = std::env::var("AWS_SESSION_TOKEN").ok();
+    let client = S3Client::with_endpoint(
+        endpoint.clone(),
+        region.clone(),
+        access_key.clone(),
+        secret_key.clone(),
+        session_token.clone(),
+        bucket.clone(),
+    );
+    let object: Vec<u8> = (0..object_len)
+        .map(|index| u8::try_from((index * 31 + 17) % 251).expect("modulo 251 fits in one byte"))
+        .collect();
+    let rt = moirai::global();
+    rt.block_on(client.put(&key, &object)).expect("real PUT");
+
     let reader = S3MoiraiReader::new(S3Config {
         endpoint,
-        region: std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string()),
-        access_key: std::env::var("AWS_ACCESS_KEY_ID").expect("AWS_ACCESS_KEY_ID"),
-        secret_key: std::env::var("AWS_SECRET_ACCESS_KEY").expect("AWS_SECRET_ACCESS_KEY"),
-        session_token: std::env::var("AWS_SESSION_TOKEN").ok(),
+        region,
+        access_key,
+        secret_key,
+        session_token,
         bucket,
         key,
     });
-    let rt = moirai::global();
 
     // HEAD: length matches the uploaded object.
     let len = rt.block_on(reader.len()).expect("real HEAD");
@@ -201,12 +213,18 @@ fn moirai_s3_real_endpoint() {
 
     // Ranged GET: exact requested length, and re-reading the same range is
     // deterministic (real round-trips against the live server).
-    let (pos, n) = (17u64, (object_len / 2).max(1));
+    let (pos, n) = (17usize, (object_len / 2).max(1));
     let mut a = vec![0u8; n];
     let mut b = vec![0u8; n];
-    rt.block_on(reader.read_at(pos, &mut a))
+    let read_offset = u64::try_from(pos).expect("test offset fits in u64");
+    rt.block_on(reader.read_at(read_offset, &mut a))
         .expect("real GET #1");
-    rt.block_on(reader.read_at(pos, &mut b))
+    rt.block_on(reader.read_at(read_offset, &mut b))
         .expect("real GET #2");
+    assert_eq!(
+        a,
+        &object[pos..pos + n],
+        "ranged read must equal the uploaded source bytes"
+    );
     assert_eq!(a, b, "repeated ranged reads must be byte-identical");
 }

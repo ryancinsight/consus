@@ -209,7 +209,7 @@ fn read_nested_group_into_model() {
     assert!(data.groups.is_empty());
 }
 
-/// Existing classification tests remain as direct extraction coverage.
+// Existing classification tests remain as direct extraction coverage.
 
 /// A CLASS=DIMENSION_SCALE dataset becomes exactly one dimension.
 /// Name and size are derived from the dataset name and shape.

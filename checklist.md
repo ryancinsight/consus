@@ -1,5 +1,37 @@
 # Consus — Implementation Checklist
 
+## REL-001 — Python release wheels [patch]
+
+- [x] Make Cargo the Python distribution version source of truth.
+- [x] Add the pinned cross-platform wheel, GitHub Release, and PyPI workflow.
+- [x] Build, install, import, and inspect a production wheel locally.
+- [x] Pass workflow lint and focused warning-denied Rust checks.
+- [x] Remove the CI-blocking unused compression-test import and pass its
+      all-feature Nextest target under committed 30/60-second budgets.
+- [x] Pass warning-denied all-target Clippy for the touched compression package.
+- [x] Delete the empty HDF5 property-test artifact, remove the unused
+      large-file-test local, and pass focused warning-denied Clippy plus the
+      all-feature HDF5 Nextest target.
+- [x] Resolve the cross-platform Arrow, IO, and Zarr test build defects and
+      pass each affected all-feature package through Nextest.
+- [x] Pass warning-denied all-target Clippy for IO and Zarr, replacing the
+      tautological chunk-count property with an independent oracle.
+- [x] Remove the process-global AWS credential race and pass both S3
+      differential tests against live MinIO.
+- [x] Commit the workspace dependency lock required by release `--locked`.
+- [x] Route every hosted native test through pinned cargo-nextest with the
+      committed timeout budget; pin the CI action and MinIO supply chain.
+- [x] Hoist workspace formatting to one prerequisite and lint every package
+      target without repeating the format pass across the package matrix.
+- [x] Verify the live MinIO ranged read against deterministic source bytes.
+- [x] Create the protected `pypi` GitHub environment restricted to release tags.
+- [x] Resolve the Rust 1.97.1 test-only Clippy findings from hosted run
+      `29795739435`, the remaining exact-fixture findings, and the macOS mmap
+      test-path collision; pass the affected checks on the replacement PR head.
+- [x] Pass exact code head `a558e79` across all 58 jobs in hosted run
+      `29797846759`.
+- [ ] Register the PyPI pending trusted publisher after account verification.
+
 ## Current Sprint: Phase 3 — Parquet Nested Column Support + NWB Foundation
 
 ### Milestone 47: Default Parallel Memory Features

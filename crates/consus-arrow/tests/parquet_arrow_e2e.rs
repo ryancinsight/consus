@@ -327,11 +327,11 @@ impl RowSource for TwoColumnRows {
         match idx {
             0 => Ok(RowValue::new(vec![
                 CellValue::Int32(7),
-                CellValue::Double(3.14),
+                CellValue::Double(3.125),
             ])),
             1 => Ok(RowValue::new(vec![
                 CellValue::Int32(-1),
-                CellValue::Double(-2.718),
+                CellValue::Double(-2.75),
             ])),
             _ => unreachable!("row index {} exceeds row_count=2", idx),
         }
@@ -349,8 +349,8 @@ fn e2e_two_column_int32_double_pipeline() {
     //   FixedWidth, len=2, element_width=4, 8 bytes total.
     //
     // Column 1 (DOUBLE):
-    //   row 0: 3.14f64   = 0x40091EB851EB851F → LE 8 bytes
-    //   row 1: -2.718f64 = 0xC005C28F5C28F5C3 → LE 8 bytes
+    //   row 0: 3.125f64 = 0x4009000000000000 → LE 8 bytes
+    //   row 1: -2.75f64 = 0xC006000000000000 → LE 8 bytes
     //   FixedWidth, len=2, element_width=8, 16 bytes total.
     let schema = SchemaDescriptor::new(vec![
         FieldDescriptor::required(FieldId::new(1), "a", ParquetPhysicalType::Int32),
@@ -392,7 +392,7 @@ fn e2e_two_column_int32_double_pipeline() {
     assert_eq!(&bytes0[0..4], &7i32.to_le_bytes());
     assert_eq!(&bytes0[4..8], &(-1i32).to_le_bytes());
 
-    // ── column 1: DOUBLE [3.14, -2.718] ─────────────────────────────────────
+    // ── column 1: DOUBLE [3.125, -2.75] ─────────────────────────────────────
     let col1_values = reader.read_column_chunk(0, 1).unwrap();
     assert_eq!(col1_values.len(), 2);
 
@@ -402,6 +402,6 @@ fn e2e_two_column_int32_double_pipeline() {
     assert_eq!(len1, 2);
     assert_eq!(ew1, 8);
     assert_eq!(bytes1.len(), 16);
-    assert_eq!(&bytes1[0..8], &3.14f64.to_le_bytes());
-    assert_eq!(&bytes1[8..16], &(-2.718f64).to_le_bytes());
+    assert_eq!(&bytes1[0..8], &3.125f64.to_le_bytes());
+    assert_eq!(&bytes1[8..16], &(-2.75f64).to_le_bytes());
 }

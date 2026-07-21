@@ -466,7 +466,7 @@ fn h5py_multi_group_readable_by_consus() {
     let val_a = i32::from_le_bytes(buf_a.try_into().unwrap());
     assert_eq!(val_a, 10, "grp_a/ds_a value");
 
-    // /grp_b/ds_b: float64 scalar ≈ 3.14
+    // /grp_b/ds_b: float64 scalar = 157 / 50
     let addr_b = hf.open_path("/grp_b/ds_b").expect("open /grp_b/ds_b");
     let ds_b = hf.dataset_at(addr_b).expect("dataset_at grp_b/ds_b");
     let data_addr_b = ds_b.data_address.expect("ds_b data_address");
@@ -474,7 +474,7 @@ fn h5py_multi_group_readable_by_consus() {
     hf.read_contiguous_dataset_bytes(data_addr_b, 0, &mut buf_b)
         .expect("read ds_b");
     let val_b = f64::from_le_bytes(buf_b.try_into().unwrap());
-    assert!((val_b - 3.14).abs() < 1e-10, "grp_b/ds_b value: {val_b}");
+    assert_eq!(val_b, 157.0 / 50.0, "grp_b/ds_b value");
 }
 
 // ---------------------------------------------------------------------------

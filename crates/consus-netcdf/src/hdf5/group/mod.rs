@@ -75,72 +75,6 @@ fn dimension_names_from_dimension_list(
     Some(names)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use consus_core::{Datatype, ReferenceType, Shape};
-
-    fn make_dimension_list_attr(addresses: &[u64]) -> Hdf5Attribute {
-        let raw_data: Vec<u8> = addresses
-            .iter()
-            .flat_map(|address| address.to_le_bytes())
-            .collect();
-
-        Hdf5Attribute {
-            name: String::from("DIMENSION_LIST"),
-            datatype: Datatype::Reference(ReferenceType::Object),
-            shape: Shape::fixed(&[addresses.len()]),
-            raw_data,
-            name_encoding: 0,
-            creation_order: None,
-        }
-    }
-
-    #[test]
-    fn dimension_names_from_dimension_list_resolves_axis_order() {
-        let attrs = vec![make_dimension_list_attr(&[0x200, 0x100])];
-        let mut mapping = BTreeMap::new();
-        mapping.insert(0x100, String::from("x"));
-        mapping.insert(0x200, String::from("time"));
-
-        assert_eq!(
-            dimension_names_from_dimension_list(&attrs, 2, &mapping),
-            Some(vec![String::from("time"), String::from("x")])
-        );
-    }
-
-    #[test]
-    fn dimension_names_from_dimension_list_rejects_missing_reference() {
-        let attrs = vec![make_dimension_list_attr(&[0x200, 0x999])];
-        let mut mapping = BTreeMap::new();
-        mapping.insert(0x100, String::from("x"));
-        mapping.insert(0x200, String::from("time"));
-
-        assert_eq!(
-            dimension_names_from_dimension_list(&attrs, 2, &mapping),
-            None
-        );
-    }
-
-    #[test]
-    fn dimension_names_from_dimension_list_falls_back_on_short_payload() {
-        let attrs = vec![Hdf5Attribute {
-            name: String::from("DIMENSION_LIST"),
-            datatype: Datatype::Reference(ReferenceType::Object),
-            shape: Shape::fixed(&[2]),
-            raw_data: vec![1, 2, 3, 4],
-            name_encoding: 0,
-            creation_order: None,
-        }];
-        let mapping = BTreeMap::new();
-
-        assert_eq!(
-            dimension_names_from_dimension_list(&attrs, 2, &mapping),
-            None
-        );
-    }
-}
-
 /// Extract a `NetcdfGroup` from the HDF5 group at `group_addr`.
 ///
 /// ## Parameters
@@ -278,4 +212,70 @@ where
     let root = file.root_group();
     let root = extract_group(file, root.path, root.object_header_address)?;
     Ok(crate::model::NetcdfModel { root })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use consus_core::{Datatype, ReferenceType, Shape};
+
+    fn make_dimension_list_attr(addresses: &[u64]) -> Hdf5Attribute {
+        let raw_data: Vec<u8> = addresses
+            .iter()
+            .flat_map(|address| address.to_le_bytes())
+            .collect();
+
+        Hdf5Attribute {
+            name: String::from("DIMENSION_LIST"),
+            datatype: Datatype::Reference(ReferenceType::Object),
+            shape: Shape::fixed(&[addresses.len()]),
+            raw_data,
+            name_encoding: 0,
+            creation_order: None,
+        }
+    }
+
+    #[test]
+    fn dimension_names_from_dimension_list_resolves_axis_order() {
+        let attrs = vec![make_dimension_list_attr(&[0x200, 0x100])];
+        let mut mapping = BTreeMap::new();
+        mapping.insert(0x100, String::from("x"));
+        mapping.insert(0x200, String::from("time"));
+
+        assert_eq!(
+            dimension_names_from_dimension_list(&attrs, 2, &mapping),
+            Some(vec![String::from("time"), String::from("x")])
+        );
+    }
+
+    #[test]
+    fn dimension_names_from_dimension_list_rejects_missing_reference() {
+        let attrs = vec![make_dimension_list_attr(&[0x200, 0x999])];
+        let mut mapping = BTreeMap::new();
+        mapping.insert(0x100, String::from("x"));
+        mapping.insert(0x200, String::from("time"));
+
+        assert_eq!(
+            dimension_names_from_dimension_list(&attrs, 2, &mapping),
+            None
+        );
+    }
+
+    #[test]
+    fn dimension_names_from_dimension_list_falls_back_on_short_payload() {
+        let attrs = vec![Hdf5Attribute {
+            name: String::from("DIMENSION_LIST"),
+            datatype: Datatype::Reference(ReferenceType::Object),
+            shape: Shape::fixed(&[2]),
+            raw_data: vec![1, 2, 3, 4],
+            name_encoding: 0,
+            creation_order: None,
+        }];
+        let mapping = BTreeMap::new();
+
+        assert_eq!(
+            dimension_names_from_dimension_list(&attrs, 2, &mapping),
+            None
+        );
+    }
 }

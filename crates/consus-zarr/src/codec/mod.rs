@@ -338,17 +338,6 @@ pub fn get_codec_by_name(name: &str) -> Result<Box<dyn CodecTrait + 'static>> {
 mod tests {
     use super::*;
 
-    // A minimal codec registry for testing — identity codec only.
-    struct IdentityRegistry;
-
-    impl CompressionRegistryTrait for IdentityRegistry {
-        fn get_by_name(&self, _name: &str) -> Result<Box<dyn CodecTrait + '_>> {
-            Err(consus_core::Error::UnsupportedFeature {
-                feature: alloc::string::String::from("no_codecs_registered"),
-            })
-        }
-    }
-
     #[test]
     fn single_codec_pipeline_roundtrip() {
         let registry = default_registry();

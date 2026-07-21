@@ -102,39 +102,26 @@ mod tests {
     use super::*;
     use crate::io::traits::ReadAt;
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
-    fn write_temp(payload: &[u8]) -> (std::path::PathBuf, impl Drop) {
-        struct Guard(std::path::PathBuf);
-        impl Drop for Guard {
-            fn drop(&mut self) {
-                let _ = std::fs::remove_file(&self.0);
-            }
-        }
-        let path = std::env::temp_dir().join(format!(
-            "consus_mmap_test_{}.bin",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.subsec_nanos())
-                .unwrap_or(0)
-        ));
-        let mut f = std::fs::File::create(&path).expect("create temp");
-        f.write_all(payload).expect("write temp");
-        f.flush().expect("flush temp");
-        let guard = Guard(path.clone());
-        (path, guard)
+    fn write_temp(payload: &[u8]) -> NamedTempFile {
+        let mut file = NamedTempFile::new().expect("create unique temporary file");
+        file.write_all(payload).expect("write temporary file");
+        file.flush().expect("flush temporary file");
+        file
     }
 
     #[test]
     fn mmap_reader_open_and_len() {
-        let (path, _g) = write_temp(b"hello world");
-        let reader = MmapReader::open(&path).expect("open must succeed");
+        let file = write_temp(b"hello world");
+        let reader = MmapReader::open(file.path()).expect("open must succeed");
         assert_eq!(reader.len().unwrap(), 11);
     }
 
     #[test]
     fn mmap_reader_read_at_beginning() {
-        let (path, _g) = write_temp(b"ABCDE");
-        let reader = MmapReader::open(&path).expect("open must succeed");
+        let file = write_temp(b"ABCDE");
+        let reader = MmapReader::open(file.path()).expect("open must succeed");
         let mut buf = [0u8; 5];
         reader.read_at(0, &mut buf).expect("read_at must succeed");
         assert_eq!(&buf, b"ABCDE");
@@ -142,8 +129,8 @@ mod tests {
 
     #[test]
     fn mmap_reader_read_at_offset() {
-        let (path, _g) = write_temp(b"hello world");
-        let reader = MmapReader::open(&path).expect("open must succeed");
+        let file = write_temp(b"hello world");
+        let reader = MmapReader::open(file.path()).expect("open must succeed");
         let mut buf = [0u8; 5];
         reader.read_at(6, &mut buf).expect("read_at must succeed");
         assert_eq!(&buf, b"world");
@@ -151,8 +138,8 @@ mod tests {
 
     #[test]
     fn mmap_reader_zero_len_read_succeeds() {
-        let (path, _g) = write_temp(b"data");
-        let reader = MmapReader::open(&path).expect("open must succeed");
+        let file = write_temp(b"data");
+        let reader = MmapReader::open(file.path()).expect("open must succeed");
         reader
             .read_at(100, &mut [])
             .expect("zero-length read must succeed");
@@ -160,8 +147,8 @@ mod tests {
 
     #[test]
     fn mmap_reader_out_of_bounds_returns_buffer_too_small() {
-        let (path, _g) = write_temp(b"short");
-        let reader = MmapReader::open(&path).expect("open must succeed");
+        let file = write_temp(b"short");
+        let reader = MmapReader::open(file.path()).expect("open must succeed");
         let mut buf = [0u8; 10];
         let err = reader.read_at(0, &mut buf).unwrap_err();
         assert!(
@@ -172,9 +159,8 @@ mod tests {
 
     #[test]
     fn mmap_reader_from_file() {
-        let (path, _g) = write_temp(b"from_file_test");
-        let file = std::fs::File::open(&path).expect("open file");
-        let reader = MmapReader::from_file(&file).expect("from_file must succeed");
+        let file = write_temp(b"from_file_test");
+        let reader = MmapReader::from_file(file.as_file()).expect("from_file must succeed");
         let mut buf = [0u8; 4];
         reader.read_at(0, &mut buf).expect("read_at must succeed");
         assert_eq!(&buf, b"from");
@@ -184,8 +170,8 @@ mod tests {
     #[test]
     fn mmap_reader_as_slice_matches_read_at() {
         let payload = b"slice_vs_read_at";
-        let (path, _g) = write_temp(payload);
-        let reader = MmapReader::open(&path).expect("open must succeed");
+        let file = write_temp(payload);
+        let reader = MmapReader::open(file.path()).expect("open must succeed");
         let slice = reader.as_slice();
         let mut buf = vec![0u8; payload.len()];
         reader.read_at(0, &mut buf).expect("read_at must succeed");

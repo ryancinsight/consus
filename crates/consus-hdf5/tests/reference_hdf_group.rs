@@ -466,11 +466,10 @@ fn object_header_validation() {
         header.version
     );
 
-    // Skip files whose root object header does not expose messages yet.
-    if header.messages.is_empty() {
-        eprintln!("Skipping: root object header parser did not expose messages");
-        return;
-    }
+    assert!(
+        !header.messages.is_empty(),
+        "root object header must expose at least one message"
+    );
 }
 
 /// Test: Validate dataset object headers.

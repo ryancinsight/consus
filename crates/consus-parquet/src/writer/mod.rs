@@ -1760,7 +1760,7 @@ mod tests {
     #[test]
     fn writer_reader_roundtrip_two_columns() {
         // Two-column schema: x:INT32, y:DOUBLE; 2 rows.
-        // Row 0: x=7, y=3.14
+        // Row 0: x=7, y=3.125
         // Row 1: x=42, y=-1.0
         struct Rows;
         impl RowSource for Rows {
@@ -1768,7 +1768,7 @@ mod tests {
                 2
             }
             fn row(&self, idx: usize) -> Result<RowValue<'_>> {
-                let (xi, yf): (i32, f64) = if idx == 0 { (7, 3.14) } else { (42, -1.0) };
+                let (xi, yf): (i32, f64) = if idx == 0 { (7, 3.125) } else { (42, -1.0) };
                 Ok(RowValue::new(vec![
                     CellValue::Int32(xi),
                     CellValue::Double(yf),
@@ -1812,7 +1812,7 @@ mod tests {
         let y_vals = reader.read_column_chunk(0, 1).unwrap();
         assert_eq!(y_vals.len(), 2);
         assert!(
-            matches!(&y_vals, crate::encoding::column::ColumnValues::Double(v) if *v == alloc::vec![3.14, -1.0])
+            matches!(&y_vals, crate::encoding::column::ColumnValues::Double(v) if *v == alloc::vec![3.125, -1.0])
         );
     }
 

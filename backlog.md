@@ -1,5 +1,72 @@
 # Consus — Backlog
 
+## REL-001 — Python release wheels [patch] — in-progress
+
+- Owner: Codex `/root`; scope: `consus-python` package metadata, the Python
+  release workflow, distribution documentation, committed Nextest budgets,
+  the CI-blocking compression-test import, the touched compression package's
+  warning floor, obsolete HDF5 property-test scaffolding, the adjacent
+  large-file regression warning, cross-platform Arrow/IO/Zarr test build
+  defects, deterministic S3 differential credentials, the committed workspace
+  dependency lock, the native-test CI runner and supply-chain pins, and this
+  owner-keyed PM entry.
+  Python binding behavior and other Consus crate behavior are non-goals.
+- Acceptance: a GitHub Release tagged `atlas-consus-v<version>` builds locked
+  Linux, Windows, and universal macOS wheels for every supported CPython,
+  installs and imports each wheel, validates metadata against the tag, attests
+  and attaches the exact artifacts to the GitHub Release, then publishes the
+  same wheels to the `atlas-consus` PyPI project through OIDC.
+- Current evidence: actionlint, locked Cargo metadata, package check,
+  warning-denied Clippy, and a production CPython 3.13 wheel build pass. The
+  wheel installs as `atlas-consus` version `0.1.0`, imports as `consus`, and
+  exposes the expected format classes. GitHub environment `pypi` accepts only
+  `atlas-consus-v*` tags. Hosted CI and PyPI pending-publisher registration are
+  pending. The first hosted matrix exposed an unconditional unused `CodecId`
+  test import; removing it and resolving the touched package's two range-loop
+  diagnostics restores warning-denied all-target Clippy and all 357
+  all-feature compression tests under committed 30/60-second Nextest budgets.
+  The corrected head then exposed an empty HDF5 property-test artifact and one
+  unused large-file-test local on macOS; both are removed at their source.
+  Focused warning-denied Clippy and all 415 all-feature HDF5 tests pass.
+  The same matrix exposed one unused Arrow setup value, two unused IO imports,
+  one ambiguous empty-slice assertion, a missing `futures` test-only dependency
+  caused by an unnecessary `join_all`, an unused Zarr test registry, and eight
+  unused Zarr property-test strategies. Each is removed or expressed directly
+  without a new dependency. Current-toolchain all-target Clippy also exposed an
+  IO match guard and mechanical Zarr test representations; both packages now
+  pass warning-denied all-target checks. The Zarr chunk-count property now uses
+  independently counted chunk starts instead of comparing one formula to
+  itself. Arrow passes 81 tests, IO passes 246 tests, and Zarr passes 314 tests
+  under Nextest. The MinIO lane's 403 was a test race: the
+  in-process differential overwrote process-global AWS credentials while the
+  live-endpoint test read them. Rusoto now receives a static provider directly;
+  both live tests pass concurrently against MinIO and Moirai `91c802e2`. The
+  workspace now commits `Cargo.lock`, so fresh release runners can honor the
+  Maturin `--locked` contract. CI now runs native tests exclusively through
+  cargo-nextest `0.9.140`, pins every third-party action, pins MinIO by image
+  digest, and checksum-verifies the versioned MinIO client. The live test puts a
+  deterministic nontrivial byte pattern and verifies the ranged result against
+  those source bytes; both S3 tests pass concurrently under Nextest. Workspace
+  formatting runs once as the package-check prerequisite, and Clippy covers all
+  package targets without repeating the format pass eleven times. Hosted run
+  `29795739435` then exercised Rust `1.97.1` across all 57 jobs and isolated six
+  package failures to new test-only Clippy diagnostics in Core, FITS, Arrow,
+  HDF5, Parquet, and NetCDF. The corrective patch uses `BuildHasher::hash_one`,
+  direct enum constructors, exactly representable numeric fixtures, an exact
+  HDF5 reference oracle, non-vacuous object-header validation, array-backed
+  FITS cards, and test modules after production items; exact-toolchain local
+  verification and the replacement hosted head remain pending. Replacement
+  run `29796739510` passed 42 jobs before its HDF5 check found one remaining
+  approximate-constant assertion in a committed reference fixture. That
+  assertion now uses the fixture's exact `157 / 50` value without a tolerance.
+  Run `29797375813` then passed 54 jobs and exposed two final cross-platform
+  defects: two more HDF5 test fixtures resembled approximate constants, and
+  timestamp-derived mmap test paths collided under parallel macOS Nextest.
+  The HDF5 oracles now use exact binary/rational values, while both mmap test
+  layers use OS-unique `NamedTempFile` instances. Exact code head `a558e79`
+  passes all 58 jobs in hosted run `29797846759`, including the HDF5 Clippy
+  and macOS IO lanes that failed on the preceding head.
+
 ## Phase 1: HDF5 MVP (Read + Write)
 
 ### P1.1 — HDF5 Read Path

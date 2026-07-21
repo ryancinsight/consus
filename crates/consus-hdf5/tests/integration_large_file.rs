@@ -16,21 +16,18 @@ struct VirtualLargeFile {
 
 impl ReadAt for VirtualLargeFile {
     fn read_at(&self, offset: u64, buf: &mut [u8]) -> consus_core::Result<()> {
-        // Superblock V2 with 8-byte offsets and 8-byte lengths is 48 bytes.
-        let sb_size = 48;
-
-        for i in 0..buf.len() {
+        for (i, byte) in buf.iter_mut().enumerate() {
             let pos = offset + i as u64;
             if pos < self.original.len() as u64 {
                 // Serve metadata from 0..original.len()
-                buf[i] = self.original[pos as usize];
+                *byte = self.original[pos as usize];
             } else if pos >= self.shift && pos < self.shift + self.raw_dataset_bytes.len() as u64 {
                 // Serve shifted data at 5GiB boundary
                 let orig_pos = pos - self.shift;
-                buf[i] = self.raw_dataset_bytes[orig_pos as usize];
+                *byte = self.raw_dataset_bytes[orig_pos as usize];
             } else {
                 // Serve zeroes for the gap
-                buf[i] = 0;
+                *byte = 0;
             }
         }
         Ok(())

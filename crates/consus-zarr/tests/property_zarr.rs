@@ -2,8 +2,6 @@
 //!
 //! ## Coverage
 //!
-//! - Random array shapes and dtypes
-//! - Random chunk configurations
 //! - Random attribute values
 //! - Compression roundtrip with random data
 //! - Store operations with random keys and values
@@ -11,7 +9,6 @@
 
 use consus_zarr::Codec;
 use consus_zarr::chunk::{ChunkKeySeparator, chunk_key};
-use consus_zarr::codec::CompressionRegistryTrait;
 use consus_zarr::codec::{CodecPipeline, default_registry};
 use consus_zarr::metadata::{AttributeValue, parse_zattrs, serialize_zattrs};
 use consus_zarr::store::{InMemoryStore, Store};
@@ -21,78 +18,6 @@ use proptest::prelude::*;
 // ---------------------------------------------------------------------------
 // Strategies for generating test data
 // ---------------------------------------------------------------------------
-
-/// Strategy for generating valid dimension sizes (1 to 1000).
-fn dimension_size() -> impl Strategy<Value = usize> {
-    1usize..=1000usize
-}
-
-/// Strategy for generating valid chunk sizes (1 to 100).
-fn chunk_size() -> impl Strategy<Value = usize> {
-    1usize..=100usize
-}
-
-/// Strategy for generating array shapes (1D to 5D).
-fn array_shape() -> impl Strategy<Value = Vec<usize>> {
-    prop::collection::vec(dimension_size(), 1..=5)
-}
-
-/// Strategy for generating chunk shapes matching array dimensions.
-fn chunk_shape_for_shape(ndim: usize) -> impl Strategy<Value = Vec<usize>> {
-    prop::collection::vec(chunk_size(), ndim..=ndim)
-}
-
-/// Strategy for generating Zarr v2 dtype strings.
-fn dtype_v2() -> impl Strategy<Value = String> {
-    prop_oneof![
-        // Float types
-        Just("<f8".to_string()),
-        Just(">f8".to_string()),
-        Just("<f4".to_string()),
-        Just(">f4".to_string()),
-        // Integer types
-        Just("<i8".to_string()),
-        Just(">i8".to_string()),
-        Just("<i4".to_string()),
-        Just(">i4".to_string()),
-        Just("<i2".to_string()),
-        Just(">i2".to_string()),
-        Just("<i1".to_string()),
-        // Unsigned integer types
-        Just("<u8".to_string()),
-        Just(">u8".to_string()),
-        Just("<u4".to_string()),
-        Just(">u4".to_string()),
-        Just("<u2".to_string()),
-        Just(">u2".to_string()),
-        Just("<u1".to_string()),
-        // Boolean
-        Just("|b1".to_string()),
-        // Complex
-        Just("<c16".to_string()),
-        Just("<c8".to_string()),
-    ]
-}
-
-/// Strategy for generating Zarr v3 data type names.
-fn dtype_v3() -> impl Strategy<Value = String> {
-    prop_oneof![
-        Just("bool".to_string()),
-        Just("int8".to_string()),
-        Just("int16".to_string()),
-        Just("int32".to_string()),
-        Just("int64".to_string()),
-        Just("uint8".to_string()),
-        Just("uint16".to_string()),
-        Just("uint32".to_string()),
-        Just("uint64".to_string()),
-        Just("float16".to_string()),
-        Just("float32".to_string()),
-        Just("float64".to_string()),
-        Just("complex64".to_string()),
-        Just("complex128".to_string()),
-    ]
-}
 
 /// Strategy for generating valid Zarr keys.
 fn zarr_key() -> impl Strategy<Value = String> {
@@ -121,25 +46,6 @@ fn compression_level() -> impl Strategy<Value = i32> {
         Just(6i32),
         Just(9i32),
         (-5i32..=-1i32), // For zstd negative levels
-    ]
-}
-
-/// Strategy for generating compressor configurations.
-fn compressor_config() -> impl Strategy<Value = Option<(String, Vec<(String, String)>)>> {
-    prop_oneof![
-        Just(None),
-        Just(Some((
-            "gzip".to_string(),
-            vec![("level".to_string(), "6".to_string())]
-        ))),
-        Just(Some((
-            "zstd".to_string(),
-            vec![("level".to_string(), "3".to_string())]
-        ))),
-        Just(Some((
-            "lz4".to_string(),
-            vec![("level".to_string(), "1".to_string())]
-        ))),
     ]
 }
 
@@ -240,7 +146,7 @@ proptest! {
         level in compression_level()
     ) {
         let registry = default_registry();
-        let level = level.clamp(1, 9) as i32;
+        let level = level.clamp(1, 9);
 
         let pipeline = CodecPipeline::single(Codec {
             name: String::from("gzip"),
@@ -467,10 +373,8 @@ proptest! {
     ///
     /// Total chunks = ceil(shape[i] / chunk[i]) for each dimension.
     ///
-    /// Both  and  are generated with the same length  via
-    /// , guaranteeing  without
-    ///  and eliminating the global-reject storm that occurs when
-    /// two independently-length-chosen vecs are required to match.
+    /// `shape` and `chunk` have the same generated dimension count, avoiding
+    /// global rejects from independently sized vectors.
     #[test]
     fn total_chunks_consistent(
         (shape, chunk) in (1usize..=5usize).prop_flat_map(|ndim| (
@@ -482,13 +386,15 @@ proptest! {
         let total_chunks: usize = shape
             .iter()
             .zip(chunk.iter())
-            .map(|(s, c)| (s + c - 1) / c)
+            .map(|(s, c)| s.div_ceil(*c))
             .product();
 
+        // Count the valid chunk starts independently of the ceiling-division
+        // implementation under test.
         let expected_total: usize = shape
             .iter()
             .zip(chunk.iter())
-            .map(|(s, c)| (s + c - 1) / c)
+            .map(|(s, c)| (0..*s).step_by(*c).count())
             .product();
 
         prop_assert_eq!(total_chunks, expected_total);

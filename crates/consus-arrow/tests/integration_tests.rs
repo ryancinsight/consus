@@ -373,9 +373,6 @@ fn arrow_schema_to_core_conversion() {
 
 #[test]
 fn zero_copy_eligibility_requires_fixed_width() {
-    let parquet_field =
-        FieldDescriptor::required(FieldId::new(1), "value", ParquetPhysicalType::Double);
-
     let arrow_field = ArrowFieldBuilder::new(
         ArrowFieldId::new(1),
         String::from("value"),

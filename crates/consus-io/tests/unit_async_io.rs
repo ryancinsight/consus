@@ -699,11 +699,10 @@ async fn tokio_concurrent_reads() {
     }
 
     // Wait for all reads to complete
-    let results: Vec<_> = futures::future::join_all(handles)
-        .await
-        .into_iter()
-        .map(|r| r.expect("task must complete"))
-        .collect();
+    let mut results = Vec::with_capacity(handles.len());
+    for handle in handles {
+        results.push(handle.await.expect("task must complete"));
+    }
 
     // Verify all reads returned correct data
     for buf in results {
