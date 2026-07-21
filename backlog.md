@@ -11,17 +11,18 @@
   dependency lock, the native-test CI runner and supply-chain pins, and this
   owner-keyed PM entry.
   Python binding behavior and other Consus crate behavior are non-goals.
-- Acceptance: a GitHub Release tagged `atlas-consus-v<version>` builds locked
+- Acceptance: a GitHub Release tagged `consus-python-v<version>` builds locked
   Linux, Windows, and universal macOS wheels for every supported CPython,
   installs and imports each wheel, validates metadata against the tag, attests
   and attaches the exact artifacts to the GitHub Release, then publishes the
-  same wheels to the `atlas-consus` PyPI project through OIDC.
+  same wheels to the `consus-python` PyPI project through OIDC.
 - Current evidence: actionlint, locked Cargo metadata, package check,
   warning-denied Clippy, and a production CPython 3.13 wheel build pass. The
-  wheel installs as `atlas-consus` version `0.1.0`, imports as `consus`, and
-  exposes the expected format classes. GitHub environment `pypi` accepts only
-  `atlas-consus-v*` tags. Hosted CI and PyPI pending-publisher registration are
-  pending. The first hosted matrix exposed an unconditional unused `CodecId`
+  wheel installs as `consus-python` version `0.1.0`, imports as `consus`, and
+  exposes the expected format classes. The GitHub environment `pypi` accepts
+  only `consus-python-v*` tags. Hosted CI and PyPI pending-publisher
+  registration are pending. The first hosted matrix exposed an unconditional
+  unused `CodecId`
   test import; removing it and resolving the touched package's two range-loop
   diagnostics restores warning-denied all-target Clippy and all 357
   all-feature compression tests under committed 30/60-second Nextest budgets.

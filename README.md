@@ -64,8 +64,8 @@ fn main() -> consus::Result<()> {
 
 ## Python Distribution
 
-The Python extension is distributed as `atlas-consus` and imported as
-`consus`. GitHub Releases tagged `atlas-consus-v<version>` produce locked
+The Python extension is distributed as `consus-python` and imported as
+`consus`. GitHub Releases tagged `consus-python-v<version>` produce locked
 Linux, Windows, and universal macOS wheels, attach the validated wheel set and
 SHA-256 checksums to the release, and publish the same artifacts to PyPI through
 OIDC Trusted Publishing. Python package metadata reads the `consus-python`

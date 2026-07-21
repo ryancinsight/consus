@@ -30,6 +30,10 @@
       test-path collision; pass the affected checks on the replacement PR head.
 - [x] Pass exact code head `a558e79` across all 58 jobs in hosted run
       `29797846759`.
+- [x] Rename the unreleased distribution and release-tag contract from
+      `atlas-consus` to `consus-python` and update the protected environment.
+      A locked CPython 3.13 wheel rebuilt as `consus-python` 0.1.0, installed
+      into an isolated target, and imported as `consus`.
 - [ ] Register the PyPI pending trusted publisher after account verification.
 
 ## Current Sprint: Phase 3 — Parquet Nested Column Support + NWB Foundation
