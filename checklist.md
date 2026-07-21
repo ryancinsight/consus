@@ -2,11 +2,12 @@
 
 ## REL-001 — Python release wheels [patch]
 
-- [ ] Make Cargo the Python distribution version source of truth.
-- [ ] Add the pinned cross-platform wheel, GitHub Release, and PyPI workflow.
-- [ ] Build, install, import, and inspect a production wheel locally.
-- [ ] Pass workflow lint and focused warning-denied Rust checks.
-- [ ] Create the protected `pypi` GitHub environment and merge hosted CI green.
+- [x] Make Cargo the Python distribution version source of truth.
+- [x] Add the pinned cross-platform wheel, GitHub Release, and PyPI workflow.
+- [x] Build, install, import, and inspect a production wheel locally.
+- [x] Pass workflow lint and focused warning-denied Rust checks.
+- [x] Create the protected `pypi` GitHub environment restricted to release tags.
+- [ ] Merge hosted CI green.
 - [ ] Register the PyPI pending trusted publisher after account verification.
 
 ## Current Sprint: Phase 3 — Parquet Nested Column Support + NWB Foundation

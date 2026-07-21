@@ -10,6 +10,12 @@
   installs and imports each wheel, validates metadata against the tag, attests
   and attaches the exact artifacts to the GitHub Release, then publishes the
   same wheels to the `atlas-consus` PyPI project through OIDC.
+- Current evidence: actionlint, locked Cargo metadata, package check,
+  warning-denied Clippy, and a production CPython 3.13 wheel build pass. The
+  wheel installs as `atlas-consus` version `0.1.0`, imports as `consus`, and
+  exposes the expected format classes. GitHub environment `pypi` accepts only
+  `atlas-consus-v*` tags. Hosted CI and PyPI pending-publisher registration are
+  pending.
 
 ## Phase 1: HDF5 MVP (Read + Write)
 

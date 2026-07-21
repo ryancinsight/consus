@@ -3,6 +3,15 @@ requires = ["maturin>=1,<2"]
 build-backend = "maturin"
 
 [project]
-name = "consus"
-version = "0.1.0"
+name = "atlas-consus"
+dynamic = ["version"]
+description = "Python bindings for the Consus scientific storage library"
+authors = [
+    { name = "Ryan Clanton", email = "ryanclanton@outlook.com" },
+]
+license = { text = "MIT OR Apache-2.0" }
+readme = "README.md"
 requires-python = ">=3.9"
+
+[tool.maturin]
+module-name = "consus"
