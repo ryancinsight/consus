@@ -6,7 +6,9 @@
   release workflow, distribution documentation, committed Nextest budgets,
   the CI-blocking compression-test import, the touched compression package's
   warning floor, obsolete HDF5 property-test scaffolding, the adjacent
-  large-file regression warning, and this owner-keyed PM entry.
+  large-file regression warning, cross-platform Arrow/IO/Zarr test build
+  defects, deterministic S3 differential credentials, the committed workspace
+  dependency lock, and this owner-keyed PM entry.
   Python binding behavior and other Consus crate behavior are non-goals.
 - Acceptance: a GitHub Release tagged `atlas-consus-v<version>` builds locked
   Linux, Windows, and universal macOS wheels for every supported CPython,
@@ -25,6 +27,21 @@
   The corrected head then exposed an empty HDF5 property-test artifact and one
   unused large-file-test local on macOS; both are removed at their source.
   Focused warning-denied Clippy and all 415 all-feature HDF5 tests pass.
+  The same matrix exposed one unused Arrow setup value, two unused IO imports,
+  one ambiguous empty-slice assertion, a missing `futures` test-only dependency
+  caused by an unnecessary `join_all`, an unused Zarr test registry, and eight
+  unused Zarr property-test strategies. Each is removed or expressed directly
+  without a new dependency. Current-toolchain all-target Clippy also exposed an
+  IO match guard and mechanical Zarr test representations; both packages now
+  pass warning-denied all-target checks. The Zarr chunk-count property now uses
+  independently counted chunk starts instead of comparing one formula to
+  itself. Arrow passes 81 tests, IO passes 246 tests, and Zarr passes 314 tests
+  under Nextest. The MinIO lane's 403 was a test race: the
+  in-process differential overwrote process-global AWS credentials while the
+  live-endpoint test read them. Rusoto now receives a static provider directly;
+  both live tests pass concurrently against MinIO and Moirai `91c802e2`. The
+  workspace now commits `Cargo.lock`, so fresh release runners can honor the
+  Maturin `--locked` contract.
 
 ## Phase 1: HDF5 MVP (Read + Write)
 

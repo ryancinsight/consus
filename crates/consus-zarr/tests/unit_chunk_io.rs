@@ -405,19 +405,19 @@ fn partial_chunk_data() {
 #[test]
 fn chunk_size_calculation() {
     // 2D chunk: 10x10 float64 = 100 * 8 = 800 bytes
-    let chunk_shape = vec![10, 10];
+    let chunk_shape = [10, 10];
     let element_size = 8; // float64
     let expected_size = chunk_shape.iter().product::<usize>() * element_size;
     assert_eq!(expected_size, 800);
 
     // 3D chunk: 5x5x5 int32 = 125 * 4 = 500 bytes
-    let chunk_shape = vec![5, 5, 5];
+    let chunk_shape = [5, 5, 5];
     let element_size = 4; // int32
     let expected_size = chunk_shape.iter().product::<usize>() * element_size;
     assert_eq!(expected_size, 500);
 
     // 1D chunk: 1000 uint8 = 1000 * 1 = 1000 bytes
-    let chunk_shape = vec![1000];
+    let chunk_shape = [1000];
     let element_size = 1; // uint8
     let expected_size = chunk_shape.iter().product::<usize>() * element_size;
     assert_eq!(expected_size, 1000);
@@ -431,32 +431,32 @@ fn chunk_size_calculation() {
 #[test]
 fn total_chunks_calculation() {
     // Array: 100x100, Chunk: 10x10 -> 10x10 = 100 chunks
-    let array_shape = vec![100, 100];
-    let chunk_shape = vec![10, 10];
+    let array_shape = [100usize, 100];
+    let chunk_shape = [10usize, 10];
     let total_chunks: usize = array_shape
         .iter()
         .zip(chunk_shape.iter())
-        .map(|(a, c)| (a + c - 1) / c)
+        .map(|(a, c)| a.div_ceil(*c))
         .product();
     assert_eq!(total_chunks, 100);
 
     // Array: 256x256x256, Chunk: 64x64x64 -> 4x4x4 = 64 chunks
-    let array_shape = vec![256, 256, 256];
-    let chunk_shape = vec![64, 64, 64];
+    let array_shape = [256usize, 256, 256];
+    let chunk_shape = [64usize, 64, 64];
     let total_chunks: usize = array_shape
         .iter()
         .zip(chunk_shape.iter())
-        .map(|(a, c)| (a + c - 1) / c)
+        .map(|(a, c)| a.div_ceil(*c))
         .product();
     assert_eq!(total_chunks, 64);
 
     // Array: 1000, Chunk: 100 -> 10 chunks
-    let array_shape = vec![1000];
-    let chunk_shape = vec![100];
+    let array_shape = [1000usize];
+    let chunk_shape = [100usize];
     let total_chunks: usize = array_shape
         .iter()
         .zip(chunk_shape.iter())
-        .map(|(a, c)| (a + c - 1) / c)
+        .map(|(a, c)| a.div_ceil(*c))
         .product();
     assert_eq!(total_chunks, 10);
 }
@@ -465,10 +465,10 @@ fn total_chunks_calculation() {
 #[test]
 fn chunk_linear_index() {
     // 2D grid: 10x10 chunks
-    let grid_shape = vec![10, 10];
+    let grid_shape = [10, 10];
 
     // (0, 0) -> 0
-    let coords = vec![0, 0];
+    let coords = [0, 0];
     let linear: usize = coords.iter().enumerate().fold(0, |acc, (i, &c)| {
         let multiplier: usize = grid_shape[i + 1..].iter().product();
         acc + c * multiplier
@@ -476,7 +476,7 @@ fn chunk_linear_index() {
     assert_eq!(linear, 0);
 
     // (1, 0) -> 10  (row 1, col 0, C-order: 1 * 10 + 0 = 10)
-    let coords = vec![1, 0];
+    let coords = [1, 0];
     let linear: usize = coords.iter().enumerate().fold(0, |acc, (i, &c)| {
         let multiplier: usize = grid_shape[i + 1..].iter().product();
         acc + c * multiplier
@@ -484,7 +484,7 @@ fn chunk_linear_index() {
     assert_eq!(linear, 10);
 
     // (0, 1) -> 1  (row 0, col 1, C-order: 0 * 10 + 1 = 1)
-    let coords = vec![0, 1];
+    let coords = [0, 1];
     let linear: usize = coords.iter().enumerate().fold(0, |acc, (i, &c)| {
         let multiplier: usize = grid_shape[i + 1..].iter().product();
         acc + c * multiplier
@@ -492,7 +492,7 @@ fn chunk_linear_index() {
     assert_eq!(linear, 1);
 
     // (5, 3) -> 53
-    let coords = vec![5, 3];
+    let coords = [5, 3];
     let linear: usize = coords.iter().enumerate().fold(0, |acc, (i, &c)| {
         let multiplier: usize = grid_shape[i + 1..].iter().product();
         acc + c * multiplier

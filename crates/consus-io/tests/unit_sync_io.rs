@@ -10,7 +10,7 @@
 //! These tests run WITHOUT the async-io feature enabled.
 
 use consus_core::Error;
-use consus_io::{Length, MemCursor, ReadAt, Truncate, WriteAt};
+use consus_io::{MemCursor, ReadAt, WriteAt};
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 // ReadAt Trait Contract Tests

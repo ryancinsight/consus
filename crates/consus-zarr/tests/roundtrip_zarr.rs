@@ -1080,7 +1080,7 @@ fn python_fixture_v2_selection_write_preserves_unselected_values() {
     let mut store = FsStore::open(tmp.path()).expect("open must succeed");
     let meta = load_v2_fixture_metadata(&store);
 
-    let patch_values = vec![100i32, 101, 102, 103];
+    let patch_values = [100i32, 101, 102, 103];
     let patch_bytes: Vec<u8> = patch_values
         .iter()
         .flat_map(|value| value.to_le_bytes())

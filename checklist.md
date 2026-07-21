@@ -12,6 +12,13 @@
 - [x] Delete the empty HDF5 property-test artifact, remove the unused
       large-file-test local, and pass focused warning-denied Clippy plus the
       all-feature HDF5 Nextest target.
+- [x] Resolve the cross-platform Arrow, IO, and Zarr test build defects and
+      pass each affected all-feature package through Nextest.
+- [x] Pass warning-denied all-target Clippy for IO and Zarr, replacing the
+      tautological chunk-count property with an independent oracle.
+- [x] Remove the process-global AWS credential race and pass both S3
+      differential tests against live MinIO.
+- [x] Commit the workspace dependency lock required by release `--locked`.
 - [x] Create the protected `pypi` GitHub environment restricted to release tags.
 - [ ] Merge hosted CI green.
 - [ ] Register the PyPI pending trusted publisher after account verification.

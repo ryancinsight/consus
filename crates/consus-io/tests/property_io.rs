@@ -499,18 +499,16 @@ fn prop_stress_random_operations() {
                     reference[offset..end].copy_from_slice(&data);
                     cursor.write_at(offset as u64, &data).expect("write must succeed");
                 }
-                1 => {
+                1 if !reference.is_empty() => {
                     // Read
-                    if !reference.is_empty() {
-                        let offset = next_random(&mut rng_state, reference.len());
-                        let max_len = reference.len() - offset;
-                        let len = next_random(&mut rng_state, max_len + 1);
+                    let offset = next_random(&mut rng_state, reference.len());
+                    let max_len = reference.len() - offset;
+                    let len = next_random(&mut rng_state, max_len + 1);
 
-                        if len > 0 {
-                            let mut buf = vec![0u8; len];
-                            if cursor.read_at(offset as u64, &mut buf).is_ok() {
-                                prop_assert_eq!(buf.as_slice(), &reference[offset..offset + len]);
-                            }
+                    if len > 0 {
+                        let mut buf = vec![0u8; len];
+                        if cursor.read_at(offset as u64, &mut buf).is_ok() {
+                            prop_assert_eq!(buf.as_slice(), &reference[offset..offset + len]);
                         }
                     }
                 }

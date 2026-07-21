@@ -18,7 +18,7 @@ fn new_creates_empty_buffer() {
     let cursor = MemCursor::new();
     assert_eq!(cursor.byte_len(), 0);
     assert!(cursor.is_empty());
-    assert_eq!(cursor.as_bytes(), &[]);
+    assert!(cursor.as_bytes().is_empty());
 }
 
 /// Default trait creates an empty cursor identical to new().

@@ -752,7 +752,7 @@ mod tests {
         assert_eq!(canon.shape, &[50, 50]);
         assert_eq!(canon.chunks, &[10, 10]);
         assert_eq!(canon.dtype, "int32");
-        assert!(canon.codecs.len() >= 1);
+        assert!(!canon.codecs.is_empty());
     }
 
     #[test]

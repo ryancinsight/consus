@@ -8,9 +8,11 @@
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::sync::Arc;
 
 use consus_io::{AsyncLength, AsyncReadAt, S3Config, S3MoiraiReader, S3Reader};
-use rusoto_core::Region;
+use rusoto_core::{HttpClient, Region, credential::StaticProvider};
+use rusoto_s3::S3Client as RusotoS3Client;
 
 /// Parse an inclusive `Range: bytes=START-END` from a request head.
 fn parse_range(head: &str) -> Option<(usize, usize)> {
@@ -98,14 +100,6 @@ fn spawn_mock_s3(object: Vec<u8>) -> u16 {
 
 #[test]
 fn rusoto_and_moirai_read_byte_identical() {
-    // Static credentials so rusoto's default chain resolves (env provider); the
-    // mock ignores auth, but rusoto still requires credentials to sign.
-    // SAFETY: single-threaded test setup before any reader is constructed.
-    unsafe {
-        std::env::set_var("AWS_ACCESS_KEY_ID", "test");
-        std::env::set_var("AWS_SECRET_ACCESS_KEY", "secret");
-    }
-
     // Deterministic object with a non-trivial byte pattern.
     let object: Vec<u8> = (0..4096u32).map(|i| (i % 251) as u8).collect();
     let port = spawn_mock_s3(object.clone());
@@ -129,14 +123,15 @@ fn rusoto_and_moirai_read_byte_identical() {
     let moirai_len = rt.block_on(moirai_reader.len()).expect("moirai len");
 
     // ── rusoto reader (legacy, tokio runtime) ────────────────────────────────
-    let rusoto_reader = S3Reader::new(
+    let rusoto_client = RusotoS3Client::new_with(
+        HttpClient::new().expect("construct rusoto HTTP dispatcher"),
+        StaticProvider::new_minimal("test".to_string(), "secret".to_string()),
         Region::Custom {
             name: "local".to_string(),
             endpoint: endpoint.clone(),
         },
-        "bucket",
-        "obj.bin",
     );
+    let rusoto_reader = S3Reader::with_client(Arc::new(rusoto_client), "bucket", "obj.bin");
     let trt = tokio::runtime::Runtime::new().expect("tokio runtime");
     let mut rusoto_buf = vec![0u8; len];
     trt.block_on(rusoto_reader.read_at(pos as u64, &mut rusoto_buf))
