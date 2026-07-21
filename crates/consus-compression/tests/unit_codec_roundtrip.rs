@@ -17,7 +17,7 @@
 
 #![cfg(feature = "std")]
 
-use consus_compression::{Codec, CodecId, CompressionLevel};
+use consus_compression::{Codec, CompressionLevel};
 
 // =============================================================================
 // DEFLATE (HDF5 filter ID 1)

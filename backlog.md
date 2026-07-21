@@ -3,8 +3,10 @@
 ## REL-001 — Python release wheels [patch] — in-progress
 
 - Owner: Codex `/root`; scope: `consus-python` package metadata, the Python
-  release workflow, distribution documentation, and this owner-keyed PM entry.
-  Python binding behavior and other Consus crates are non-goals.
+  release workflow, distribution documentation, committed Nextest budgets,
+  the CI-blocking compression-test import, the touched compression package's
+  warning floor, and this owner-keyed PM entry.
+  Python binding behavior and other Consus crate behavior are non-goals.
 - Acceptance: a GitHub Release tagged `atlas-consus-v<version>` builds locked
   Linux, Windows, and universal macOS wheels for every supported CPython,
   installs and imports each wheel, validates metadata against the tag, attests
@@ -15,7 +17,10 @@
   wheel installs as `atlas-consus` version `0.1.0`, imports as `consus`, and
   exposes the expected format classes. GitHub environment `pypi` accepts only
   `atlas-consus-v*` tags. Hosted CI and PyPI pending-publisher registration are
-  pending.
+  pending. The first hosted matrix exposed an unconditional unused `CodecId`
+  test import; removing it and resolving the touched package's two range-loop
+  diagnostics restores warning-denied all-target Clippy and all 357
+  all-feature compression tests under committed 30/60-second Nextest budgets.
 
 ## Phase 1: HDF5 MVP (Read + Write)
 

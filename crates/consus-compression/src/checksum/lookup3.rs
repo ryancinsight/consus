@@ -343,9 +343,9 @@ mod tests {
     #[test]
     fn all_remainder_lengths() {
         let mut seen = [0u32; 13];
-        for len in 0..=12 {
-            let input: &[u8] = &vec![0xAA_u8; len];
-            seen[len] = hash(input);
+        for (len, value) in seen.iter_mut().enumerate() {
+            let input = vec![0xAA_u8; len];
+            *value = hash(&input);
         }
         // No two distinct-length inputs of the same byte should collide.
         for i in 0..13 {

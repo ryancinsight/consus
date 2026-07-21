@@ -6,6 +6,9 @@
 - [x] Add the pinned cross-platform wheel, GitHub Release, and PyPI workflow.
 - [x] Build, install, import, and inspect a production wheel locally.
 - [x] Pass workflow lint and focused warning-denied Rust checks.
+- [x] Remove the CI-blocking unused compression-test import and pass its
+      all-feature Nextest target under committed 30/60-second budgets.
+- [x] Pass warning-denied all-target Clippy for the touched compression package.
 - [x] Create the protected `pypi` GitHub environment restricted to release tags.
 - [ ] Merge hosted CI green.
 - [ ] Register the PyPI pending trusted publisher after account verification.
