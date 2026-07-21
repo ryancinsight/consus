@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
@@ -30,22 +37,23 @@ jobs:
           - consus-io
           - consus-mat
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
+          toolchain: stable
           components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
       - name: cargo fmt
         run: cargo fmt --all -- --check
       - name: cargo clippy (${{ matrix.package }})
-        run: cargo clippy -p ${{ matrix.package }} --all-features -- -D warnings
+        run: cargo clippy --locked -p ${{ matrix.package }} --all-features -- -D warnings
       - name: cargo check (${{ matrix.package }}, default features)
-        run: cargo check -p ${{ matrix.package }}
+        run: cargo check --locked -p ${{ matrix.package }}
       - name: cargo check (${{ matrix.package }}, all features)
-        run: cargo check -p ${{ matrix.package }} --all-features
+        run: cargo check --locked -p ${{ matrix.package }} --all-features
       - name: cargo check (no_std core)
         if: matrix.package == 'consus-core'
-        run: cargo check -p consus-core --no-default-features
+        run: cargo check --locked -p consus-core --no-default-features
 
   test:
     name: Test
@@ -67,11 +75,16 @@ jobs:
           - consus-io
           - consus-mat
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: cargo test (${{ matrix.package }})
-        run: cargo test -p ${{ matrix.package }} --all-features
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+      - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
+        with:
+          tool: nextest@0.9.140
+      - name: cargo nextest (${{ matrix.package }})
+        run: cargo nextest run --locked -p ${{ matrix.package }} --all-features
 
   msrv:
     name: MSRV (1.85.0)
@@ -92,23 +105,30 @@ jobs:
           - consus-io
           - consus-mat
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.85.0
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: 1.85.0
+      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
       - name: cargo check (${{ matrix.package }})
-        run: cargo check -p ${{ matrix.package }}
+        run: cargo check --locked -p ${{ matrix.package }}
 
   test-mat-features:
     name: Test consus-mat feature matrix
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: cargo test (consus-mat, default features)
-        run: cargo test -p consus-mat
-      - name: cargo test (consus-mat, no compress / no v73)
-        run: cargo test -p consus-mat --no-default-features --features std,alloc
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+      - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
+        with:
+          tool: nextest@0.9.140
+      - name: cargo nextest (consus-mat, default features)
+        run: cargo nextest run --locked -p consus-mat
+      - name: cargo nextest (consus-mat, no compress / no v73)
+        run: cargo nextest run --locked -p consus-mat --no-default-features --features std,alloc
 
   # ADR-015: native moirai S3 backend (no tokio) against a real S3 server.
   # The rusoto<->moirai byte-identical differential runs in-process (mock); this
@@ -117,26 +137,34 @@ jobs:
     name: S3 native backend (MinIO)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+      - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
+        with:
+          tool: nextest@0.9.140
       - name: Start MinIO
         run: |
           docker run -d --name minio -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio server /data
+            minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e \
+            server /data
           for i in $(seq 1 30); do
             curl -sf http://127.0.0.1:9000/minio/health/ready && break
             sleep 1
           done
-      - name: Create bucket and upload test object
+      - name: Create test bucket
         run: |
-          curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o mc
+          curl -fsSL \
+            https://dl.min.io/client/mc/release/linux-amd64/archive/mc.RELEASE.2025-08-13T08-35-41Z \
+            -o mc
+          echo "01f866e9c5f9b87c2b09116fa5d7c06695b106242d829a8bb32990c00312e891  mc" \
+            | sha256sum --check --strict
           chmod +x mc
           ./mc alias set local http://127.0.0.1:9000 minioadmin minioadmin
           ./mc mb local/consus-test
-          head -c 4096 /dev/urandom > object.bin
-          ./mc cp object.bin local/consus-test/object.bin
       - name: S3 differential + real-endpoint moirai read
         env:
           S3_TEST_ENDPOINT: http://127.0.0.1:9000
@@ -147,5 +175,5 @@ jobs:
           AWS_SECRET_ACCESS_KEY: minioadmin
           AWS_REGION: us-east-1
         run: |
-          cargo test -p consus-io --no-default-features --features "s3,s3-moirai" \
-            --test s3_rusoto_moirai_differential -- --nocapture
+          cargo nextest run --locked -p consus-io --no-default-features \
+            --features "s3,s3-moirai" --test s3_rusoto_moirai_differential

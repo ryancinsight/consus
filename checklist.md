@@ -19,6 +19,9 @@
 - [x] Remove the process-global AWS credential race and pass both S3
       differential tests against live MinIO.
 - [x] Commit the workspace dependency lock required by release `--locked`.
+- [x] Route every hosted native test through pinned cargo-nextest with the
+      committed timeout budget; pin the CI action and MinIO supply chain.
+- [x] Verify the live MinIO ranged read against deterministic source bytes.
 - [x] Create the protected `pypi` GitHub environment restricted to release tags.
 - [ ] Merge hosted CI green.
 - [ ] Register the PyPI pending trusted publisher after account verification.

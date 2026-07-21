@@ -8,7 +8,8 @@
   warning floor, obsolete HDF5 property-test scaffolding, the adjacent
   large-file regression warning, cross-platform Arrow/IO/Zarr test build
   defects, deterministic S3 differential credentials, the committed workspace
-  dependency lock, and this owner-keyed PM entry.
+  dependency lock, the native-test CI runner and supply-chain pins, and this
+  owner-keyed PM entry.
   Python binding behavior and other Consus crate behavior are non-goals.
 - Acceptance: a GitHub Release tagged `atlas-consus-v<version>` builds locked
   Linux, Windows, and universal macOS wheels for every supported CPython,
@@ -41,7 +42,11 @@
   live-endpoint test read them. Rusoto now receives a static provider directly;
   both live tests pass concurrently against MinIO and Moirai `91c802e2`. The
   workspace now commits `Cargo.lock`, so fresh release runners can honor the
-  Maturin `--locked` contract.
+  Maturin `--locked` contract. CI now runs native tests exclusively through
+  cargo-nextest `0.9.140`, pins every third-party action, pins MinIO by image
+  digest, and checksum-verifies the versioned MinIO client. The live test puts a
+  deterministic nontrivial byte pattern and verifies the ranged result against
+  those source bytes; both S3 tests pass concurrently under Nextest.
 
 ## Phase 1: HDF5 MVP (Read + Write)
 
