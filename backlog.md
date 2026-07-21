@@ -46,7 +46,9 @@
   cargo-nextest `0.9.140`, pins every third-party action, pins MinIO by image
   digest, and checksum-verifies the versioned MinIO client. The live test puts a
   deterministic nontrivial byte pattern and verifies the ranged result against
-  those source bytes; both S3 tests pass concurrently under Nextest.
+  those source bytes; both S3 tests pass concurrently under Nextest. Workspace
+  formatting runs once as the package-check prerequisite, and Clippy covers all
+  package targets without repeating the format pass eleven times.
 
 ## Phase 1: HDF5 MVP (Read + Write)
 
