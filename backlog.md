@@ -48,7 +48,14 @@
   deterministic nontrivial byte pattern and verifies the ranged result against
   those source bytes; both S3 tests pass concurrently under Nextest. Workspace
   formatting runs once as the package-check prerequisite, and Clippy covers all
-  package targets without repeating the format pass eleven times.
+  package targets without repeating the format pass eleven times. Hosted run
+  `29795739435` then exercised Rust `1.97.1` across all 57 jobs and isolated six
+  package failures to new test-only Clippy diagnostics in Core, FITS, Arrow,
+  HDF5, Parquet, and NetCDF. The corrective patch uses `BuildHasher::hash_one`,
+  direct enum constructors, exactly representable numeric fixtures, an exact
+  HDF5 reference oracle, non-vacuous object-header validation, array-backed
+  FITS cards, and test modules after production items; exact-toolchain local
+  verification and the replacement hosted head remain pending.
 
 ## Phase 1: HDF5 MVP (Read + Write)
 

@@ -367,14 +367,11 @@ fn byte_order_equality() {
 #[test]
 fn byte_order_hash_consistency() {
     // Theorem: Equal values have equal hashes
-    use core::hash::{Hash, Hasher};
+    use core::hash::Hash;
 
     fn compute_hash<T: Hash>(value: &T) -> u64 {
         use std::hash::BuildHasher;
-        let mut hasher =
-            std::hash::BuildHasherDefault::<std::hash::DefaultHasher>::default().build_hasher();
-        value.hash(&mut hasher);
-        hasher.finish()
+        std::hash::BuildHasherDefault::<std::hash::DefaultHasher>::default().hash_one(value)
     }
 
     let h1 = compute_hash(&ByteOrder::LittleEndian);
@@ -407,14 +404,11 @@ fn string_encoding_equality() {
 
 #[test]
 fn string_encoding_hash_consistency() {
-    use core::hash::{Hash, Hasher};
+    use core::hash::Hash;
 
     fn compute_hash<T: Hash>(value: &T) -> u64 {
         use std::hash::BuildHasher;
-        let mut hasher =
-            std::hash::BuildHasherDefault::<std::hash::DefaultHasher>::default().build_hasher();
-        value.hash(&mut hasher);
-        hasher.finish()
+        std::hash::BuildHasherDefault::<std::hash::DefaultHasher>::default().hash_one(value)
     }
 
     let h1 = compute_hash(&StringEncoding::Ascii);

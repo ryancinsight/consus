@@ -687,7 +687,7 @@ mod tests {
             byte_order: CoreByteOrder::LittleEndian,
         };
         let shape = Shape::scalar();
-        let raw = 3.14f32.to_bits().to_le_bytes().to_vec();
+        let raw = core::f32::consts::PI.to_bits().to_le_bytes().to_vec();
         let attr = Hdf5Attribute {
             name: alloc::string::String::from("pi"),
             datatype: dtype,
@@ -698,7 +698,7 @@ mod tests {
         };
         match attr.decode_value().unwrap() {
             AttributeValue::Float(v) => {
-                assert!((v - 3.14f64).abs() < 1e-5, "expected ~3.14, got {v}");
+                assert_eq!(v, f64::from(core::f32::consts::PI));
             }
             other => panic!("expected Float, got {other:?}"),
         }

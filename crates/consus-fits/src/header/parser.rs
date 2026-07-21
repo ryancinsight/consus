@@ -435,7 +435,7 @@ mod tests {
 
     #[test]
     fn parse_header_cards_accepts_card_iterator() {
-        let cards = vec![
+        let cards = [
             card("SIMPLE  =                    T"),
             card("BITPIX  =                  -32"),
             card("NAXIS   =                    2"),

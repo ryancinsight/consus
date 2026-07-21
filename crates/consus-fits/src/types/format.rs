@@ -133,7 +133,12 @@ pub fn parse_binary_format(tform: &str) -> Result<(usize, BinaryFormatCode)> {
         Some((i, _)) if i + 1 < trimmed.len() => {
             // Last digit is at index i; type code starts at i + 1.
             let (d, c) = trimmed.split_at(i + 1);
-            (d, c.chars().next().expect("non-empty split produces valid char"))
+            (
+                d,
+                c.chars()
+                    .next()
+                    .expect("non-empty split produces valid char"),
+            )
         }
         _ => {
             // No digits, or digit is the last character (treated as type code).
