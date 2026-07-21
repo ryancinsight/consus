@@ -3,7 +3,7 @@ requires = ["maturin>=1,<2"]
 build-backend = "maturin"
 
 [project]
-name = "atlas-consus"
+name = "consus-python"
 dynamic = ["version"]
 description = "Python bindings for the Consus scientific storage library"
 authors = [
