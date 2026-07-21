@@ -5,7 +5,8 @@
 - Owner: Codex `/root`; scope: `consus-python` package metadata, the Python
   release workflow, distribution documentation, committed Nextest budgets,
   the CI-blocking compression-test import, the touched compression package's
-  warning floor, and this owner-keyed PM entry.
+  warning floor, obsolete HDF5 property-test scaffolding, the adjacent
+  large-file regression warning, and this owner-keyed PM entry.
   Python binding behavior and other Consus crate behavior are non-goals.
 - Acceptance: a GitHub Release tagged `atlas-consus-v<version>` builds locked
   Linux, Windows, and universal macOS wheels for every supported CPython,
@@ -21,6 +22,9 @@
   test import; removing it and resolving the touched package's two range-loop
   diagnostics restores warning-denied all-target Clippy and all 357
   all-feature compression tests under committed 30/60-second Nextest budgets.
+  The corrected head then exposed an empty HDF5 property-test artifact and one
+  unused large-file-test local on macOS; both are removed at their source.
+  Focused warning-denied Clippy and all 415 all-feature HDF5 tests pass.
 
 ## Phase 1: HDF5 MVP (Read + Write)
 

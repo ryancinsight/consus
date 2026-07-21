@@ -9,6 +9,9 @@
 - [x] Remove the CI-blocking unused compression-test import and pass its
       all-feature Nextest target under committed 30/60-second budgets.
 - [x] Pass warning-denied all-target Clippy for the touched compression package.
+- [x] Delete the empty HDF5 property-test artifact, remove the unused
+      large-file-test local, and pass focused warning-denied Clippy plus the
+      all-feature HDF5 Nextest target.
 - [x] Create the protected `pypi` GitHub environment restricted to release tags.
 - [ ] Merge hosted CI green.
 - [ ] Register the PyPI pending trusted publisher after account verification.
