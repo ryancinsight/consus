@@ -1,5 +1,14 @@
 # Consus — Implementation Checklist
 
+## REL-001 — Python release wheels [patch]
+
+- [ ] Make Cargo the Python distribution version source of truth.
+- [ ] Add the pinned cross-platform wheel, GitHub Release, and PyPI workflow.
+- [ ] Build, install, import, and inspect a production wheel locally.
+- [ ] Pass workflow lint and focused warning-denied Rust checks.
+- [ ] Create the protected `pypi` GitHub environment and merge hosted CI green.
+- [ ] Register the PyPI pending trusted publisher after account verification.
+
 ## Current Sprint: Phase 3 — Parquet Nested Column Support + NWB Foundation
 
 ### Milestone 47: Default Parallel Memory Features

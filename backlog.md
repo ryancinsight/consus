@@ -1,5 +1,16 @@
 # Consus — Backlog
 
+## REL-001 — Python release wheels [patch] — in-progress
+
+- Owner: Codex `/root`; scope: `consus-python` package metadata, the Python
+  release workflow, distribution documentation, and this owner-keyed PM entry.
+  Python binding behavior and other Consus crates are non-goals.
+- Acceptance: a GitHub Release tagged `atlas-consus-v<version>` builds locked
+  Linux, Windows, and universal macOS wheels for every supported CPython,
+  installs and imports each wheel, validates metadata against the tag, attests
+  and attaches the exact artifacts to the GitHub Release, then publishes the
+  same wheels to the `atlas-consus` PyPI project through OIDC.
+
 ## Phase 1: HDF5 MVP (Read + Write)
 
 ### P1.1 — HDF5 Read Path
