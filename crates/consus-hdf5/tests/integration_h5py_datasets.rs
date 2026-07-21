@@ -153,7 +153,7 @@ fn h5py_scalar_i32() {
 /// ## Invariants
 ///
 /// - Shape is scalar.
-/// - Eight raw bytes decode as little-endian f64 within 1e-14 of 3.14159265358979.
+/// - Eight raw bytes decode as the fixture's exact binary64 value.
 #[test]
 fn h5py_scalar_f64() {
     let file = match open_fixture() {
@@ -172,11 +172,8 @@ fn h5py_scalar_f64() {
 
     let raw = read_dataset_raw_bytes(&file, addr, 8);
     let value = f64::from_le_bytes(raw[..8].try_into().unwrap());
-    let expected = 3.14159265358979_f64;
-    assert!(
-        (value - expected).abs() < 1e-14,
-        "/scalar_f64 value {value} differs from expected {expected} by more than 1e-14"
-    );
+    let expected = f64::from_bits(0x4009_21FB_5444_2D11);
+    assert_eq!(value, expected, "/scalar_f64 fixture value changed");
 }
 
 // ---------------------------------------------------------------------------

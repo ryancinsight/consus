@@ -707,7 +707,7 @@ fn consus_nested_groups_3level_readable_by_h5py() {
 fn consus_multi_attrs_dataset_readable_by_h5py() {
     let ds_raw = 5i32.to_le_bytes();
     let count_raw = 10i32.to_le_bytes();
-    let scale_raw = 3.14f64.to_le_bytes();
+    let scale_raw = (157.0_f64 / 50.0).to_le_bytes();
 
     let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
     builder

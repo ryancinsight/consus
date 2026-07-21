@@ -26,8 +26,8 @@
 - [x] Verify the live MinIO ranged read against deterministic source bytes.
 - [x] Create the protected `pypi` GitHub environment restricted to release tags.
 - [ ] Resolve the Rust 1.97.1 test-only Clippy findings from hosted run
-      `29795739435` and pass the six affected package checks locally and on the
-      replacement PR head.
+      `29795739435`, the remaining exact-fixture findings, and the macOS mmap
+      test-path collision; pass the affected checks on the replacement PR head.
 - [ ] Merge hosted CI green.
 - [ ] Register the PyPI pending trusted publisher after account verification.
 

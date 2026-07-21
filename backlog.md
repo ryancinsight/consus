@@ -59,6 +59,11 @@
   run `29796739510` passed 42 jobs before its HDF5 check found one remaining
   approximate-constant assertion in a committed reference fixture. That
   assertion now uses the fixture's exact `157 / 50` value without a tolerance.
+  Run `29797375813` then passed 54 jobs and exposed two final cross-platform
+  defects: two more HDF5 test fixtures resembled approximate constants, and
+  timestamp-derived mmap test paths collided under parallel macOS Nextest.
+  The HDF5 oracles now use exact binary/rational values, while both mmap test
+  layers use OS-unique `NamedTempFile` instances.
 
 ## Phase 1: HDF5 MVP (Read + Write)
 
