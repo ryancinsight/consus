@@ -11,7 +11,7 @@
 //! | `/grp_b`                     | group        | —      | no attributes |
 //! | `/grp_b/nested`              | group        | —      | —         |
 //! | `/grp_b/nested/deep_ds`      | Integer(i32) | scalar | `42`      |
-//! | `/grp_b/nested/deep_ds_float`| Float(f64)   | scalar | `3.14`    |
+//! | `/grp_b/nested/deep_ds_float`| Float(f64)   | scalar | `157 / 50` |
 //!
 //! ## Group navigation strategy
 //!
@@ -262,7 +262,7 @@ fn group_ref_deep_path() {
 /// ## Invariants
 ///
 /// - `/grp_b/nested/deep_ds_float` is a scalar dataset.
-/// - Value decoded as little-endian f64 is within `1e-10` of `3.14`.
+/// - Value decoded as little-endian f64 equals the fixture value `157 / 50`.
 #[test]
 fn group_ref_deep_float() {
     let file = match open_fixture() {
@@ -285,10 +285,10 @@ fn group_ref_deep_float() {
         buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
     ]);
 
-    assert!(
-        (value - 3.14_f64).abs() < 1e-10,
-        "/grp_b/nested/deep_ds_float must be approximately 3.14, got {:.15}",
-        value
+    assert_eq!(
+        value,
+        157.0 / 50.0,
+        "/grp_b/nested/deep_ds_float fixture value"
     );
 }
 

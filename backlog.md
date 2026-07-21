@@ -55,7 +55,10 @@
   direct enum constructors, exactly representable numeric fixtures, an exact
   HDF5 reference oracle, non-vacuous object-header validation, array-backed
   FITS cards, and test modules after production items; exact-toolchain local
-  verification and the replacement hosted head remain pending.
+  verification and the replacement hosted head remain pending. Replacement
+  run `29796739510` passed 42 jobs before its HDF5 check found one remaining
+  approximate-constant assertion in a committed reference fixture. That
+  assertion now uses the fixture's exact `157 / 50` value without a tolerance.
 
 ## Phase 1: HDF5 MVP (Read + Write)
 
