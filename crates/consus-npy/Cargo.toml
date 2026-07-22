@@ -1,0 +1,15 @@
+[package]
+name = "consus-npy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Typed pure-Rust NPY and NPZ array storage"
+
+[dependencies]
+byteorder = { workspace = true, features = ["std"] }
+consus-io = { workspace = true, features = ["std", "alloc"] }
+thiserror.workspace = true
+zip.workspace = true

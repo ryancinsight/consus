@@ -16,6 +16,8 @@ members = [
     "crates/consus-nwb",
     "crates/consus-hdmf",
     "crates/consus-python",
+    "crates/consus-onnx",
+    "crates/consus-npy",
 ]
 
 [workspace.package]
@@ -44,7 +46,9 @@ consus-parquet = { path = "crates/consus-parquet", version = "0.1.0", default-fe
 consus-arrow = { path = "crates/consus-arrow", version = "0.1.0", default-features = false }
 consus-compression = { path = "crates/consus-compression", version = "0.1.0", default-features = false }
 consus-io = { path = "crates/consus-io", version = "0.1.0", default-features = false }
+consus-npy = { path = "crates/consus-npy", version = "0.1.0" }
 pyo3 = { version = "0.22" }
+consus-onnx = { path = "crates/consus-onnx", version = "0.1.0", default-features = false }
 
 # External dependencies
 thiserror = { version = "2", default-features = false }
@@ -52,6 +56,7 @@ bytes = { version = "1", default-features = false }
 smallvec = { version = "1", default-features = false }
 zerocopy = { version = "0.8", default-features = false }
 byteorder = { version = "1", default-features = false }
+zip = { version = "6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 memmap2      = { version = "0.9" }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 serde_json = { version = "1", default-features = false, features = ["alloc"] }

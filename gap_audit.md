@@ -1,5 +1,59 @@
 # Consus - Gap Audit
 
+## Stale provider branch recovery (2026-07-22)
+
+Four stale branch refs retained required provider work absent from `main`.
+`codex/consus-bounded-read-main`, `codex/consus-npy-provider`, and
+`codex/consus-bounded-read-ritk` each carried a parallel bounded-read commit;
+`codex/consus-bounded-read-ritk` then added ONNX and the final consumer
+contract. RITK pins `ec386e3` and uses its 16 MiB bounded-capacity policy, so it
+supersedes `codex/consus-bounded-capacity-ritk`'s earlier 64 KiB reservation
+variant. The independent NPY/NPZ provider from `14bb619` remains required.
+
+Recovery rebases the canonical bounded-read and ONNX history plus the NPY/NPZ
+provider onto current `main`. Current-tree verification found and fixed an
+unbounded NPY payload reservation, a hidden `consus-io/alloc` feature-unification
+dependency, test-only type inference drift, and the stale `zip` 0.6 dependency.
+The recovered surface uses `zip` 6.0, the newest maintained line compatible
+with the workspace Rust 1.85 MSRV. Focused evidence: NPY 4/4, ONNX 3/3, and
+Consus I/O 251/251 Nextest tests; warning-denied Clippy and rustdoc; three
+doctests; ONNX `alloc`-only compilation; locked metadata; and 196/196
+applicable Consus I/O semver checks.
+
+## M-053 ONNX document ownership (2026-07-10)
+
+RITK required ONNX graph inspection without inheriting a deep-learning tensor
+runtime from its parser. `consus-onnx` now owns the protobuf wire subset needed
+for ModelProto graph topology, value shapes/types, nodes, operator sets, and
+TensorProto initializers. Names and `raw_data` borrow the caller's source bytes;
+all allocating collections and length-delimited fields carry explicit bounds.
+
+Evidence tier: exact synthetic ModelProto values, pointer-range proof that the
+initializer payload aliases the source buffer, and typed negative tests for
+truncation, absent GraphProto, document limits, and node limits. Package
+nextest passes 3/3; warning-denied Clippy and Rustdoc are clean.
+
+## Bounded exact streaming reads (2026-07-10)
+
+RITK's MGH decoder needed a generic exact read that did not reserve a hostile
+header length upfront. That I/O policy belongs in `consus-io`, not a medical
+format or legacy image core. `read_exact_bounded` grows in fixed 64 KiB chunks
+only as bytes are confirmed, returns `UnexpectedEof` with the received count,
+and performs no source access for a zero-length request.
+
+The ONNX provider integration exposed two downstream contract regressions:
+the bounded reservation helper was absent and the exact reader excluded
+`dyn Read`. Both contracts are restored at the provider boundary with exact
+cap-law and trait-object regressions.
+
+## Typed NPY/NPZ storage closure (2026-07-10)
+
+`consus-npy` now owns bounded NPY header validation and typed NPZ archive I/O.
+The public boundary is an owned shape plus boxed scalar payload, so consumers
+can construct their native array provider without an ndarray compatibility
+layer. Evidence tier: compile-time dtype binding and value-semantic round-trip
+tests. Residual: structured/object dtypes and Fortran-order writing are rejected
+explicitly; Fortran-order reads preserve the storage-order flag.
 ## Data Folder Record
 
 - NWB sample acquisition manifest stored at `D:\consus\data\nwb\manifest.txt`

@@ -49,6 +49,8 @@ pub mod io;
 pub use io::traits::{Length, RandomAccess, ReadAt, SeekFrom, Seekable, Truncate, WriteAt};
 
 // Sync implementations
+#[cfg(all(feature = "std", feature = "alloc"))]
+pub use io::sync::bounded::{bounded_capacity, read_exact_bounded};
 #[cfg(feature = "alloc")]
 pub use io::sync::cursor::MemCursor;
 #[cfg(feature = "mmap")]
