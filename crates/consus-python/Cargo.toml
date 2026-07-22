@@ -12,6 +12,7 @@ license.workspace = true
 [lib]
 name = "consus"
 crate-type = ["cdylib"]
+doc = false
 
 [dependencies]
 consus-core = { workspace = true, features = ["std"] }
