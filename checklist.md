@@ -1,5 +1,13 @@
 # Consus — Implementation Checklist
 
+## DOCS-001 — Documentation without mandatory Pages [patch]
+
+- [x] Preserve unconditional workspace Rustdoc and redirect generation.
+- [x] Gate Pages configuration, artifact upload, and deployment on repository
+      variable `CONSUS_ENABLE_PAGES == 'true'`.
+- [x] Leave Pages disabled and require hosted CI to prove a green build with a
+      skipped deployment path.
+
 ## REL-001 — Python release wheels [patch]
 
 - [x] Make Cargo the Python distribution version source of truth.

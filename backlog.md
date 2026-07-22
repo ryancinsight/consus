@@ -1,5 +1,18 @@
 # Consus — Backlog
 
+## DOCS-001 — Decouple documentation checks from Pages [patch] — done
+
+- Owner: Codex `/root/architecture_audit`; scope: documentation workflow and
+  matching PM records only. Pages settings and deployment enablement are
+  explicit non-goals.
+- Root cause: documentation run `29941230671` built Rustdoc and its redirect,
+  then failed in `actions/configure-pages@v5` because this repository does not
+  have Pages enabled.
+- Acceptance: every documentation run builds Rustdoc and the redirect. Pages
+  configuration, artifact upload, and deployment run only when repository
+  variable `CONSUS_ENABLE_PAGES` equals `true`; with the variable absent or
+  false, the build passes and the deployment path is skipped.
+
 ## REL-001 — Python release wheels [patch] — blocked
 
 - Owner: Codex `/root`; scope: `consus-python` package metadata, the Python

@@ -31,14 +31,17 @@ jobs:
         run: echo '<meta http-equiv="refresh" content="0; url=consus/index.html">' > target/doc/index.html
 
       - name: Setup Pages
+        if: ${{ vars.CONSUS_ENABLE_PAGES == 'true' }}
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
+        if: ${{ vars.CONSUS_ENABLE_PAGES == 'true' }}
         uses: actions/upload-pages-artifact@v3
         with:
           path: 'target/doc'
 
   deploy:
+    if: ${{ vars.CONSUS_ENABLE_PAGES == 'true' }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

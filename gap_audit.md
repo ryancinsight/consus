@@ -1,5 +1,15 @@
 # Consus - Gap Audit
 
+## Pages-disabled documentation CI (2026-07-22)
+
+Documentation run `29941230671` proved that Rustdoc and redirect generation
+were healthy, but the same build job unconditionally queried the GitHub Pages
+API and failed when Pages was disabled. Documentation verification now remains
+unconditional while Pages configuration, artifact upload, and deployment are
+one explicit opt-in path controlled by repository variable
+`CONSUS_ENABLE_PAGES == 'true'`. An absent or false variable skips publication
+without masking Rustdoc failures or changing repository Pages settings.
+
 ## Stale provider branch recovery (2026-07-22)
 
 Four stale branch refs retained required provider work absent from `main`.
