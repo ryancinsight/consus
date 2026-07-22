@@ -34,6 +34,8 @@
       `atlas-consus` to `consus-python` and update the protected environment.
       A locked CPython 3.13 wheel rebuilt as `consus-python` 0.1.0, installed
       into an isolated target, and imported as `consus`.
+- [x] Exclude the `consus-python` `cdylib` from workspace Rustdoc output so it
+      cannot collide with the documented Rust facade's `consus` artifact.
 - [ ] Register the PyPI pending trusted publisher after account verification.
 
 ## Current Sprint: Phase 3 — Parquet Nested Column Support + NWB Foundation

@@ -1,6 +1,6 @@
 # Consus — Backlog
 
-## REL-001 — Python release wheels [patch] — in-progress
+## REL-001 — Python release wheels [patch] — blocked
 
 - Owner: Codex `/root`; scope: `consus-python` package metadata, the Python
   release workflow, distribution documentation, committed Nextest budgets,
@@ -11,6 +11,10 @@
   dependency lock, the native-test CI runner and supply-chain pins, and this
   owner-keyed PM entry.
   Python binding behavior and other Consus crate behavior are non-goals.
+- Reopen trigger: the `consus-python` PyPI pending trusted publisher is
+  registered and release authority is granted for the first tagged
+  publication. Implementation and hosted verification are complete; no
+  release or deployment is authorized by this repository state.
 - Acceptance: a GitHub Release tagged `consus-python-v<version>` builds locked
   Linux, Windows, and universal macOS wheels for every supported CPython,
   installs and imports each wheel, validates metadata against the tag, attests
@@ -66,7 +70,11 @@
   The HDF5 oracles now use exact binary/rational values, while both mmap test
   layers use OS-unique `NamedTempFile` instances. Exact code head `a558e79`
   passes all 58 jobs in hosted run `29797846759`, including the HDF5 Clippy
-  and macOS IO lanes that failed on the preceding head.
+  and macOS IO lanes that failed on the preceding head. PR #2 merged the
+  corrected `consus-python` distribution contract to `main` as `e07c2b1`.
+  Follow-up PR #3 excludes the Python `cdylib` from workspace Rustdoc output,
+  preventing its `consus` filename from colliding with the Rust facade while
+  leaving the built extension and Rust documentation owners unchanged.
 
 ## Phase 1: HDF5 MVP (Read + Write)
 
