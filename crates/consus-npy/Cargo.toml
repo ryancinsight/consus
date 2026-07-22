@@ -9,6 +9,7 @@ repository.workspace = true
 description = "Typed pure-Rust NPY and NPZ array storage"
 
 [dependencies]
-byteorder.workspace = true
+byteorder = { workspace = true, features = ["std"] }
+consus-io = { workspace = true, features = ["std", "alloc"] }
 thiserror.workspace = true
 zip.workspace = true

@@ -88,7 +88,7 @@ mod tests {
         }
         assert_eq!(
             read_exact_bounded(&mut FailingReader, 0).unwrap(),
-            Vec::new()
+            Vec::<u8>::new()
         );
     }
 

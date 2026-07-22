@@ -1,5 +1,25 @@
 # Consus - Gap Audit
 
+## Stale provider branch recovery (2026-07-22)
+
+Four stale branch refs retained required provider work absent from `main`.
+`codex/consus-bounded-read-main`, `codex/consus-npy-provider`, and
+`codex/consus-bounded-read-ritk` each carried a parallel bounded-read commit;
+`codex/consus-bounded-read-ritk` then added ONNX and the final consumer
+contract. RITK pins `ec386e3` and uses its 16 MiB bounded-capacity policy, so it
+supersedes `codex/consus-bounded-capacity-ritk`'s earlier 64 KiB reservation
+variant. The independent NPY/NPZ provider from `14bb619` remains required.
+
+Recovery rebases the canonical bounded-read and ONNX history plus the NPY/NPZ
+provider onto current `main`. Current-tree verification found and fixed an
+unbounded NPY payload reservation, a hidden `consus-io/alloc` feature-unification
+dependency, test-only type inference drift, and the stale `zip` 0.6 dependency.
+The recovered surface uses `zip` 6.0, the newest maintained line compatible
+with the workspace Rust 1.85 MSRV. Focused evidence: NPY 4/4, ONNX 3/3, and
+Consus I/O 251/251 Nextest tests; warning-denied Clippy and rustdoc; three
+doctests; ONNX `alloc`-only compilation; locked metadata; and 196/196
+applicable Consus I/O semver checks.
+
 ## M-053 ONNX document ownership (2026-07-10)
 
 RITK required ONNX graph inspection without inheriting a deep-learning tensor

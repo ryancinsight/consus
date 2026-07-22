@@ -28,6 +28,7 @@ Consus replaces C-dependent bindings (hdf5-rs, netCDF-sys, etc.) with a native R
 | Apache Parquet | Phase 3 – Complete | Canonical schema mapping implemented; validated in-memory dataset descriptor, row-group metadata, ordered column projection model, and value-semantic tests implemented. Nested group fields map to canonical compound datatypes and repeated fields map to canonical variable-length datatypes. Thrift footer decoding, file-backed Parquet reader, and full wire-level write path are complete and verified. |
 | NWB (Neurodata Without Borders) | Phase 3 – Complete | Complete HDF5-backed read and write compliance for TimeSeries, Units, ElectrodeTable, and Subject models. End-to-end NWB 2.x conformance validation engine implemented. |
 | NumPy NPY/NPZ | Phase 3 – Typed core complete | Typed little-endian `f32`, `f64`, `i32`, and `i64` arrays; validated shape/header parsing; ZIP-backed named arrays; no ndarray dependency. |
+| ONNX | Phase 3 – Document core complete | Bounded zero-copy protobuf decoding for graph topology, tensor metadata, operator sets, and borrowed initializer payloads without a tensor-runtime dependency. |
 
 ## Architecture
 
@@ -42,6 +43,7 @@ consus (facade)
 ├── consus-arrow       # Arrow semantic model and bridge planning layer
 ├── consus-fits        # FITS format implementation
 ├── consus-npy         # Typed NPY arrays and NPZ archives
+├── consus-onnx        # Bounded zero-copy ONNX document decoding
 └── consus-parquet     # Parquet interop layer
 ```
 

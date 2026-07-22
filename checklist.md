@@ -38,6 +38,20 @@
       cannot collide with the documented Rust facade's `consus` artifact.
 - [ ] Register the PyPI pending trusted publisher after account verification.
 
+## REC-001 — Recover orphaned provider branches [minor]
+
+- [x] Prove the three bounded-read commits are parallel descendants and retain
+      the RITK-pinned `ec386e3` contract as the canonical successor.
+- [x] Recover the unique ONNX and NPY/NPZ providers onto current `main`.
+- [x] Bound hostile NPY payload reservation through `consus-io`, declare the
+      complete `std + alloc` feature edge, and use MSRV-compatible `zip` 6.0.
+- [x] Add both provider crates to stable, MSRV, cross-platform Clippy, and
+      Nextest matrices.
+- [x] Pass NPY 4/4, ONNX 3/3, and Consus I/O 251/251 Nextest suites;
+      warning-denied Clippy and rustdoc; focused doctests; ONNX `alloc`-only
+      compilation; locked metadata; and all 196 applicable Consus I/O semver
+      checks.
+
 ## Current Sprint: ONNX Document Provider
 
 - [x] Add a dedicated no-std/alloc ONNX format crate independent of tensor runtimes.
@@ -53,7 +67,7 @@
       most 64 KiB before each confirmed source read.
 - [x] Cover cross-chunk equality, typed truncation, zero-length behavior,
       capped reservation, and trait-object readers.
-- [x] Run package nextest 169/169, warning-denied all-target Clippy, doctests
+- [x] Run package nextest 251/251, warning-denied all-target Clippy, doctests
       3/3, rustdoc, commit, push, and advance the Atlas Consus gitlink.
 
 ## Current Sprint: Phase 3 — Parquet Nested Column Support + NWB Foundation
@@ -65,7 +79,7 @@
       no ndarray dependency.
 - [x] Expose ZIP-backed named NPZ reads/writes and value-semantic round trips.
 - [x] Verify package formatting, compile, Clippy with warnings denied, and
-      nextest (2/2).
+      nextest (4/4).
 
 ### Milestone 47: Default Parallel Memory Features
 - [x] Restored Moirai default features for workspace consumers so parallel execution, Mnemosyne-backed memory surfaces, and Mellinoe branding are active by default.

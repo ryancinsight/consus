@@ -50,13 +50,14 @@ impl<W: Write + Seek> NpzWriter<W> {
         };
         self.archive.start_file(
             member,
-            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated),
+            zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated),
         )?;
         write_npy(&mut self.archive, array)
     }
 
     /// Finishes the ZIP central directory and returns the writer.
-    pub fn finish(mut self) -> Result<W> {
+    pub fn finish(self) -> Result<W> {
         Ok(self.archive.finish()?)
     }
 }

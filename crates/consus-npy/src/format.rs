@@ -1,6 +1,7 @@
 //! NPY stream encoding and decoding.
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use consus_io::bounded_capacity;
 use std::io::{Read, Write};
 
 use crate::{Error, NpyArray, NpyElement, Result};
@@ -50,7 +51,7 @@ pub fn read_npy<T: NpyElement>(mut reader: impl Read) -> Result<NpyArray<T>> {
             .checked_mul(axis)
             .ok_or_else(|| Error::InvalidFormat(format!("shape overflows usize: {shape:?}")))
     })?;
-    let mut values = Vec::with_capacity(count);
+    let mut values = Vec::with_capacity(bounded_capacity(count, core::mem::size_of::<T>()));
     for _ in 0..count {
         values.push(T::read_from(&mut reader)?);
     }
@@ -192,5 +193,24 @@ mod tests {
         assert_eq!(array.shape(), [2, 2]);
         assert_eq!(array.values(), [1.5, -2.0, 3.25, 4.5]);
         assert!(!array.is_fortran_order());
+    }
+
+    #[test]
+    fn hostile_shape_does_not_reserve_declared_payload() {
+        let header = format!(
+            "{{'descr': '<f8', 'fortran_order': False, 'shape': ({},), }}",
+            usize::MAX
+        );
+        let header_len = u16::try_from(header.len()).expect("invariant: test header fits NPY v1");
+        let mut bytes = b"\x93NUMPY\x01\x00".to_vec();
+        bytes.extend_from_slice(&header_len.to_le_bytes());
+        bytes.extend_from_slice(header.as_bytes());
+
+        let error = read_npy::<f64>(Cursor::new(bytes))
+            .expect_err("a declared payload with no stored values must be truncated");
+        match error {
+            Error::Io(error) => assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof),
+            other => panic!("expected truncated payload, received {other}"),
+        }
     }
 }
