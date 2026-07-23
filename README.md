@@ -75,6 +75,15 @@ SHA-256 checksums to the release, and publish the same artifacts to PyPI through
 OIDC Trusted Publishing. Python package metadata reads the `consus-python`
 Cargo version rather than maintaining a second version field.
 
+## Rust Crate Releases
+
+The `Crates.io Release` workflow validates a named workspace package on manual
+dispatch. After that package's required first release is published locally and
+its crates.io Trusted Publisher is registered, a GitHub Release tagged
+`crate-<package>-v<version>` packages, verifies, and publishes the matching
+Cargo version with a short-lived OIDC token. Python bindings remain a wheel-only
+artifact and are marked `publish = false` for crates.io.
+
 ## Current HDF5 Verification Status
 
 Current repository verification indicates:
