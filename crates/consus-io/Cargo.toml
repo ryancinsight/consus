@@ -41,7 +41,7 @@ proptest = { workspace = true }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "net", "time", "io-util"] }
 tempfile = { workspace = true }
 # Drives s3-moirai async tests on the Moirai runtime (no tokio).
-moirai = { git = "https://github.com/ryancinsight/Moirai.git", default-features = false, features = ["async"] }
+moirai = { path = "../../../moirai/moirai", default-features = false, features = ["async"] }
 # For the rusoto↔moirai differential test (build a custom-endpoint Region).
 rusoto_core = { workspace = true }
 
