@@ -38,7 +38,7 @@
 //!   propagated as HDF5 attributes on variables and groups.
 //! - `Bytes`-typed attributes are skipped (no matching HDF5 datatype).
 
-mod helpers;
+mod dataset;
 
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
@@ -48,7 +48,7 @@ use consus_hdf5::file::writer::{FileCreationProps, Hdf5FileBuilder};
 use crate::conventions::{NC_PROPERTIES_ATTR, NC_PROPERTIES_VALUE};
 use crate::model::NetcdfModel;
 
-use helpers::{encode_cf_attrs, write_child_group_content, write_dimension_scale, write_variable};
+use dataset::{encode_cf_attrs, write_child_group_content, write_dimension_scale, write_variable};
 
 /// HDF5 writer for [`NetcdfModel`] instances.
 ///
@@ -225,3 +225,4 @@ mod tests {
         assert!(!bytes.is_empty());
     }
 }
+
