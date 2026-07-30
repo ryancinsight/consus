@@ -1,3 +1,10 @@
+# Pinned build toolchain, uniform with the rest of the Atlas stack.
+#
+# `stable` was a floating channel: it pinned nothing, drifted with whatever
+# rustup last installed, and on a host whose `stable` lagged it resolved to a
+# different compiler than the rest of the stack. Since every repository shares
+# one CARGO_TARGET_DIR and rustc rejects artifacts from another compiler
+# version (E0514), that divergence poisoned the shared cache.
 [toolchain]
-channel = "stable"
+channel = "1.97.0"
 components = ["rustfmt", "clippy", "rust-analyzer"]
