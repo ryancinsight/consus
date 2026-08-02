@@ -1,5 +1,18 @@
 # Consus — Backlog
 
+## CRATES-REL-003 — Facade package documentation [patch] — done
+
+- Owner: Codex `/root`; scope: the `consus` facade's packaged README and
+  crate-level Rustdoc.
+- Root cause: the source-tree-relative Rustdoc include escaped the packaged
+  crate archive, so `cargo publish --dry-run --package consus` could not compile
+  the verified tarball.
+- Acceptance: Cargo packages the workspace README inside the facade archive,
+  while self-contained crate Rustdoc compiles from both the workspace and the
+  flattened package archive.
+- Evidence: source-tree doctests and a locked facade publish dry-run against
+  the standalone release tree.
+
 ## CRATES-REL-002 — Moirai package identity [patch] — done
 
 - Owner: Codex `/root`; scope: the root and `consus-io` Moirai dependency

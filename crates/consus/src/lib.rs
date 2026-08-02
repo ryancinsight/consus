@@ -1,5 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-#![doc = include_str!("../../../README.md")]
+//! Unified facade for Consus scientific data formats.
+//!
+//! The facade re-exports the format, compression, and I/O crates behind one
+//! feature-controlled API. Applications that need only one format can depend
+//! on that format crate directly.
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
