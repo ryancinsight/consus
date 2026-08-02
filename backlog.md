@@ -1,5 +1,15 @@
 # Consus — Backlog
 
+## CRATES-REL-002 — Moirai package identity [patch] — done
+
+- Owner: Codex `/root`; scope: the root and `consus-io` Moirai dependency
+  identities, standalone lockfile, and crates.io package verification.
+- Acceptance: clean metadata resolves the `moirai` Rust import through package
+  `moirai-runtime` 0.4.0, and `consus-core` remains packageable without a local
+  overlay.
+- Evidence: standalone locked metadata, workspace formatting, and the
+  `consus-core` package dry run pass.
+
 ## DOCS-001 — Decouple documentation checks from Pages [patch] — done
 
 - Owner: Codex `/root/architecture_audit`; scope: documentation workflow and

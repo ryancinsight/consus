@@ -1,5 +1,12 @@
 # Consus — Implementation Checklist
 
+## CRATES-REL-002 — Moirai package identity [patch]
+
+- [x] Bind the `moirai` Rust import to registry package `moirai-runtime`.
+- [x] Regenerate the standalone lockfile and pass locked metadata plus the
+      strongest independent leaf-package dry run.
+- [x] Deliver the focused release-manifest correction for hosted verification.
+
 ## DOCS-001 — Documentation without mandatory Pages [patch]
 
 - [x] Preserve unconditional workspace Rustdoc and redirect generation.
