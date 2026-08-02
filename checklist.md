@@ -1,5 +1,11 @@
 # Consus — Implementation Checklist
 
+## CRATES-REL-003 — Facade package documentation [patch]
+
+- [x] Declare the workspace README as facade package metadata.
+- [x] Remove source-tree-relative paths from crate-level Rustdoc.
+- [x] Verify the exact packaged source with a locked facade publish dry-run.
+
 ## CRATES-REL-002 — Moirai package identity [patch]
 
 - [x] Bind the `moirai` Rust import to registry package `moirai-runtime`.
