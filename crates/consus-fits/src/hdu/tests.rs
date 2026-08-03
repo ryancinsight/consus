@@ -5,7 +5,7 @@ use super::*;
 use crate::datastructure::{
     FitsBlockAlignment, FitsDataSpan, FitsHeaderBlock, FitsHeaderCardCount,
 };
-use crate::file::parse_extension_header_bytes;
+use crate::file::types::parse_extension_header_bytes;
 use crate::header::parse_header_bytes;
 use crate::types::HduType;
 

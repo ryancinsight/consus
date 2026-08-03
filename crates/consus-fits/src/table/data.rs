@@ -9,7 +9,7 @@ use consus_io::ReadAt;
 use crate::datastructure::FitsDataSpan;
 
 #[cfg(feature = "alloc")]
-use super::{FitsTableDescriptor, decode};
+use super::{decode, FitsTableDescriptor};
 
 /// Raw FITS table view over a data-unit span.
 ///
@@ -205,7 +205,7 @@ mod tests {
 
     use super::*;
     use crate::datastructure::{FitsBlockAlignment, FitsDataSpan};
-    use crate::file::parse_extension_header_bytes;
+    use crate::file::types::parse_extension_header_bytes;
     use crate::table::{FitsColumnValue, FitsTableDescriptor};
     use consus_core::{Error, Hyperslab, HyperslabDim};
     use consus_io::MemCursor;

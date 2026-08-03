@@ -425,7 +425,7 @@ mod tests {
 
     use super::*;
     use crate::datastructure::FitsBlockAlignment;
-    use crate::file::parse_extension_header_bytes;
+    use crate::file::types::parse_extension_header_bytes;
 
     fn card(text: &str) -> [u8; 80] {
         assert!(text.len() <= 80);
