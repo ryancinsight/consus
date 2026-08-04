@@ -14,7 +14,7 @@ use crate::schema::logical::Repetition;
 use crate::schema::physical::ParquetPhysicalType;
 use crate::writer::{CellValue, ParquetWriter, RowSource, RowValue};
 
-use super::encode_bool_column_plain;
+use super::encode::encode_bool_column_plain;
 use crate::encoding::plain::decode_plain_boolean;
 
 // ── helpers ─────────────────────────────────────────────────────────────────

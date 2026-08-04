@@ -327,7 +327,7 @@ mod tests {
             "GCOUNT  =                    1",
             "END",
         ]);
-        let header = crate::file::parse_extension_header_bytes(&bytes).unwrap();
+        let header = crate::file::types::parse_extension_header_bytes(&bytes).unwrap();
         FitsHdu::from_header(
             FitsHduIndex::new(1),
             header,
