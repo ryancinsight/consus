@@ -1,0 +1,14 @@
+[book]
+title = "consus: Scientific Persistence for Atlas"
+authors = ["Ryan Clanton"]
+src = "."
+language = "en"
+[build]
+build-dir = "../../target/book/consus"
+create-missing = false
+[output.html]
+no-section-label = false
+mathjax-support = false
+site-url = "/consus/"
+git-repository-url = "https://github.com/ryancinsight/consus"
+default-theme = "rust"

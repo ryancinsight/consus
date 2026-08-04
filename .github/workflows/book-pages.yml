@@ -1,0 +1,22 @@
+name: Deploy mdBook
+on:
+  push:
+    branches: [main]
+    paths: ["docs/book/**",".github/workflows/book-pages.yml"]
+  pull_request:
+    paths: ["docs/book/**",".github/workflows/book-pages.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: book-pages-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  deploy:
+    uses: ryancinsight/atlas/.github/workflows/book-pages.yml@2d071b077d12357c158c1a2eb4854d540b7d6833
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    with:
+      output-path: target/book/consus
