@@ -426,11 +426,13 @@ mod tests {
             FieldDescriptor::required(FieldId::new(2), "y", ParquetPhysicalType::Int32),
         ]);
 
-        let row_groups = vec![RowGroupDescriptor::new(
-            4,
-            vec![ColumnChunkDescriptor::new(FieldId::new(1), 4, 16).unwrap()],
-        )
-        .unwrap()];
+        let row_groups = vec![
+            RowGroupDescriptor::new(
+                4,
+                vec![ColumnChunkDescriptor::new(FieldId::new(1), 4, 16).unwrap()],
+            )
+            .unwrap(),
+        ];
 
         let err = ParquetDatasetDescriptor::new(schema, row_groups).unwrap_err();
         assert!(matches!(err, Error::InvalidFormat { .. }));
@@ -443,14 +445,16 @@ mod tests {
             FieldDescriptor::required(FieldId::new(2), "y", ParquetPhysicalType::Int32),
         ]);
 
-        let row_groups = vec![RowGroupDescriptor::new(
-            4,
-            vec![
-                ColumnChunkDescriptor::new(FieldId::new(2), 4, 16).unwrap(),
-                ColumnChunkDescriptor::new(FieldId::new(1), 4, 16).unwrap(),
-            ],
-        )
-        .unwrap()];
+        let row_groups = vec![
+            RowGroupDescriptor::new(
+                4,
+                vec![
+                    ColumnChunkDescriptor::new(FieldId::new(2), 4, 16).unwrap(),
+                    ColumnChunkDescriptor::new(FieldId::new(1), 4, 16).unwrap(),
+                ],
+            )
+            .unwrap(),
+        ];
 
         let err = ParquetDatasetDescriptor::new(schema, row_groups).unwrap_err();
         assert!(matches!(err, Error::InvalidFormat { .. }));
@@ -468,11 +472,13 @@ mod tests {
             ],
         )]);
 
-        let row_groups = vec![RowGroupDescriptor::new(
-            3,
-            vec![ColumnChunkDescriptor::new(FieldId::new(1), 3, 24).unwrap()],
-        )
-        .unwrap()];
+        let row_groups = vec![
+            RowGroupDescriptor::new(
+                3,
+                vec![ColumnChunkDescriptor::new(FieldId::new(1), 3, 24).unwrap()],
+            )
+            .unwrap(),
+        ];
 
         let dataset = ParquetDatasetDescriptor::new(schema, row_groups).unwrap();
         let column = dataset.column("point").unwrap();
@@ -499,11 +505,13 @@ mod tests {
             ParquetPhysicalType::Int32,
         )]);
 
-        let row_groups = vec![RowGroupDescriptor::new(
-            4,
-            vec![ColumnChunkDescriptor::new(FieldId::new(1), 4, 32).unwrap()],
-        )
-        .unwrap()];
+        let row_groups = vec![
+            RowGroupDescriptor::new(
+                4,
+                vec![ColumnChunkDescriptor::new(FieldId::new(1), 4, 32).unwrap()],
+            )
+            .unwrap(),
+        ];
 
         let dataset = ParquetDatasetDescriptor::new(schema, row_groups).unwrap();
         let column = dataset.column("samples").unwrap();
@@ -531,11 +539,13 @@ mod tests {
             ],
         )]);
 
-        let row_groups = vec![RowGroupDescriptor::new(
-            2,
-            vec![ColumnChunkDescriptor::new(FieldId::new(1), 2, 16).unwrap()],
-        )
-        .unwrap()];
+        let row_groups = vec![
+            RowGroupDescriptor::new(
+                2,
+                vec![ColumnChunkDescriptor::new(FieldId::new(1), 2, 16).unwrap()],
+            )
+            .unwrap(),
+        ];
 
         let dataset = ParquetDatasetDescriptor::new(schema, row_groups).unwrap();
         let column = dataset.column("points").unwrap();

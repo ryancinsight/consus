@@ -454,8 +454,7 @@ fn nwb_version_returns_v2_8_for_2_8_0() {
     use crate::version::NwbVersion;
     let bytes = make_minimal_nwb("id", "desc", "2023-01-01T00:00:00+00:00");
     // Build a file with version "2.8.0" to verify V2_8 parsing.
-    let builder =
-        NwbFileBuilder::new("2.8.0", "id-v28", "desc", "2024-01-01T00:00:00").unwrap();
+    let builder = NwbFileBuilder::new("2.8.0", "id-v28", "desc", "2024-01-01T00:00:00").unwrap();
     let bytes28 = builder.finish().unwrap();
     let nwb = NwbFile::open(&bytes28).unwrap();
     assert_eq!(nwb.nwb_version().unwrap(), NwbVersion::V2_8);

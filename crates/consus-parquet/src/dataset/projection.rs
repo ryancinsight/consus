@@ -100,15 +100,17 @@ mod tests {
             FieldDescriptor::required(FieldId::new(3), "c", ParquetPhysicalType::Double),
         ]);
 
-        let row_groups = vec![RowGroupDescriptor::new(
-            2,
-            vec![
-                ColumnChunkDescriptor::new(FieldId::new(1), 2, 8).unwrap(),
-                ColumnChunkDescriptor::new(FieldId::new(2), 2, 16).unwrap(),
-                ColumnChunkDescriptor::new(FieldId::new(3), 2, 16).unwrap(),
-            ],
-        )
-        .unwrap()];
+        let row_groups = vec![
+            RowGroupDescriptor::new(
+                2,
+                vec![
+                    ColumnChunkDescriptor::new(FieldId::new(1), 2, 8).unwrap(),
+                    ColumnChunkDescriptor::new(FieldId::new(2), 2, 16).unwrap(),
+                    ColumnChunkDescriptor::new(FieldId::new(3), 2, 16).unwrap(),
+                ],
+            )
+            .unwrap(),
+        ];
 
         let dataset = ParquetDatasetDescriptor::new(schema, row_groups).unwrap();
         let projection = dataset.project(&["c", "a"]).unwrap();

@@ -5,7 +5,7 @@ use consus_core::{Datatype, Error, HasAttributes, Result, Selection};
 use consus_io::{Length, ReadAt, WriteAt};
 
 use crate::datastructure::{
-    FitsDataSpan, FitsHeaderBlock, FitsHeaderCardCount, FITS_LOGICAL_RECORD_LEN,
+    FITS_LOGICAL_RECORD_LEN, FitsDataSpan, FitsHeaderBlock, FitsHeaderCardCount,
 };
 use crate::hdu::{FitsHdu, FitsHduIndex, FitsHduSequence};
 use crate::header::{FitsCard, FitsHeader, HeaderValue};
@@ -394,7 +394,7 @@ mod tests {
     };
     use consus_io::MemCursor;
 
-    use super::{FitsFile, FITS_FORMAT_NAME};
+    use super::{FITS_FORMAT_NAME, FitsFile};
     use crate::datastructure::FitsBlockAlignment;
 
     fn card(text: &str) -> [u8; 80] {

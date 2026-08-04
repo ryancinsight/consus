@@ -9,7 +9,7 @@ use consus_io::ReadAt;
 use crate::datastructure::FitsDataSpan;
 
 #[cfg(feature = "alloc")]
-use super::{decode, FitsTableDescriptor};
+use super::{FitsTableDescriptor, decode};
 
 /// Raw FITS table view over a data-unit span.
 ///

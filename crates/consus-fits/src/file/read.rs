@@ -6,7 +6,7 @@ use crate::hdu::{FitsHdu, FitsHduPayload};
 use crate::image::FitsImageDescriptor;
 use crate::table::{FitsAsciiTableDescriptor, FitsBinaryTableDescriptor};
 
-use super::types::{invalid_format, parse_dataset_path, DatasetPath, FitsFile, FITS_FORMAT_NAME};
+use super::types::{DatasetPath, FITS_FORMAT_NAME, FitsFile, invalid_format, parse_dataset_path};
 
 #[cfg(feature = "alloc")]
 impl<IO> FileRead for FitsFile<IO>

@@ -42,4 +42,4 @@ mod read;
 pub(crate) mod types;
 mod write;
 
-pub use types::{FitsFile, FITS_FORMAT_NAME};
+pub use types::{FITS_FORMAT_NAME, FitsFile};
