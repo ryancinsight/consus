@@ -119,9 +119,48 @@ fn stored_shape_for_chunk<'a>(
     }
 }
 
-/// Internal helper: computes the realized indices for each selection dimension.
-fn selection_indices(steps: &[SelectionStep]) -> Vec<Vec<u64>> {
-    steps.iter().map(|step| step.indices().collect()).collect()
+/// CSR-shaped selection indices: realized indices for all selection
+/// dimensions stored in one contiguous buffer, with an offset table locating
+/// each dimension's slice.
+///
+/// Replaces a `Vec<Vec<u64>>` so the traversal hot path performs a single
+/// indirection (`flat[offsets[dim] + position]`) instead of two.
+struct SelectionIndices {
+    flat: Vec<u64>,
+    offsets: Vec<usize>,
+}
+
+impl SelectionIndices {
+    fn build(steps: &[SelectionStep]) -> Self {
+        let mut flat = Vec::new();
+        let mut offsets = Vec::with_capacity(steps.len());
+        for step in steps {
+            offsets.push(flat.len());
+            flat.extend(step.indices());
+        }
+        Self { flat, offsets }
+    }
+
+    /// The realized indices for one selection dimension.
+    fn dim(&self, dim: usize) -> &[u64] {
+        let start = self.offsets[dim];
+        let end = self
+            .offsets
+            .get(dim + 1)
+            .copied()
+            .unwrap_or(self.flat.len());
+        &self.flat[start..end]
+    }
+
+    /// Number of selection dimensions.
+    fn len(&self) -> usize {
+        self.offsets.len()
+    }
+
+    /// True when the selection has no dimensions (scalar access).
+    fn is_empty(&self) -> bool {
+        self.offsets.is_empty()
+    }
 }
 
 /// Internal helper: checks if a chunk intersects with a selection.
@@ -152,12 +191,15 @@ fn copy_chunk_selection_to_output(
     chunk_origin: &[u64],
     chunk_extent: &[usize],
     stored_shape: &[usize],
-    selection_indices: &[Vec<u64>],
+    selection_indices: &SelectionIndices,
     output: &mut [u8],
     element_size: usize,
 ) -> Result<(), ChunkError> {
     let chunk_strides = compute_strides(stored_shape);
-    let selection_shape: Vec<usize> = selection_indices.iter().map(Vec::len).collect();
+    let dims: Vec<&[u64]> = (0..selection_indices.len())
+        .map(|dim| selection_indices.dim(dim))
+        .collect();
+    let selection_shape: Vec<usize> = dims.iter().map(|dim| dim.len()).collect();
     let output_strides = compute_strides(&selection_shape);
 
     if selection_indices.is_empty() {
@@ -176,7 +218,7 @@ fn copy_chunk_selection_to_output(
         let mut output_linear = 0usize;
 
         for dim in 0..selection_indices.len() {
-            let absolute_index = selection_indices[dim][selection_position[dim]];
+            let absolute_index = dims[dim][selection_position[dim]];
             let chunk_start = chunk_origin[dim];
             let chunk_end = chunk_start + chunk_extent[dim] as u64;
             if absolute_index < chunk_start || absolute_index >= chunk_end {
@@ -206,7 +248,7 @@ fn copy_chunk_selection_to_output(
         let mut advanced = false;
         for dim in (0..selection_position.len()).rev() {
             selection_position[dim] += 1;
-            if selection_position[dim] < selection_indices[dim].len() {
+            if selection_position[dim] < dims[dim].len() {
                 advanced = true;
                 break;
             }
@@ -224,7 +266,7 @@ fn copy_chunk_selection_to_output(
 /// Internal helper: copies selected elements from the input buffer into a chunk buffer.
 fn copy_selection_input_to_chunk(
     input: &[u8],
-    selection_indices: &[Vec<u64>],
+    selection_indices: &SelectionIndices,
     chunk_origin: &[u64],
     chunk_extent: &[usize],
     stored_shape: &[usize],
@@ -232,7 +274,10 @@ fn copy_selection_input_to_chunk(
     element_size: usize,
 ) -> Result<(), ChunkError> {
     let chunk_strides = compute_strides(stored_shape);
-    let selection_shape: Vec<usize> = selection_indices.iter().map(Vec::len).collect();
+    let dims: Vec<&[u64]> = (0..selection_indices.len())
+        .map(|dim| selection_indices.dim(dim))
+        .collect();
+    let selection_shape: Vec<usize> = dims.iter().map(|dim| dim.len()).collect();
     let input_strides = compute_strides(&selection_shape);
 
     if selection_indices.is_empty() {
@@ -251,7 +296,7 @@ fn copy_selection_input_to_chunk(
         let mut input_linear = 0usize;
 
         for dim in 0..selection_indices.len() {
-            let absolute_index = selection_indices[dim][selection_position[dim]];
+            let absolute_index = dims[dim][selection_position[dim]];
             let chunk_start = chunk_origin[dim];
             let chunk_end = chunk_start + chunk_extent[dim] as u64;
             if absolute_index < chunk_start || absolute_index >= chunk_end {
@@ -281,7 +326,7 @@ fn copy_selection_input_to_chunk(
         let mut advanced = false;
         for dim in (0..selection_position.len()).rev() {
             selection_position[dim] += 1;
-            if selection_position[dim] < selection_indices[dim].len() {
+            if selection_position[dim] < dims[dim].len() {
                 advanced = true;
                 break;
             }
@@ -454,7 +499,7 @@ pub fn read_array<S: Store>(
         .zip(meta.chunks.iter())
         .map(|(&shape, &chunk)| shape.div_ceil(chunk) as u64)
         .collect();
-    let selection_indices = selection_indices(&selection_steps);
+    let selection_indices = SelectionIndices::build(&selection_steps);
     let mut chunk_indices: Vec<u64> = vec![0; meta.shape.len()];
 
     let mut chunk_indices_list = Vec::new();
@@ -654,7 +699,7 @@ pub fn write_array_selection<S: Store>(
         .zip(meta.chunks.iter())
         .map(|(&shape, &chunk)| shape.div_ceil(chunk) as u64)
         .collect();
-    let selection_indices = selection_indices(&selection_steps);
+    let selection_indices = SelectionIndices::build(&selection_steps);
     let mut chunk_indices: Vec<u64> = vec![0; meta.shape.len()];
 
     loop {
@@ -882,7 +927,7 @@ fn read_array_sharded<S: Store>(
         .map(|(&shape, &chunk)| shape.div_ceil(chunk) as u64)
         .collect();
     let inner_per_dim = shard_cfg.inner_chunks_per_dim(&meta.chunks);
-    let sel_indices = selection_indices(&selection_steps);
+    let sel_indices = SelectionIndices::build(&selection_steps);
     let mut shard_coords: Vec<u64> = vec![0; meta.shape.len()];
 
     loop {

@@ -12,9 +12,24 @@ fn main() {
     // Dimension 0: start=0, stride=2, count=5 → rows 0,2,4,6,8
     // Dimension 1: all 8 columns
     // Dimension 2: all 4 channels
-    let row_stride = HyperslabDim { start: 0, stride: 2, count: 5, block: 1 };
-    let all_cols   = HyperslabDim { start: 0, stride: 1, count: 8, block: 1 };
-    let all_chans  = HyperslabDim { start: 0, stride: 1, count: 4, block: 1 };
+    let row_stride = HyperslabDim {
+        start: 0,
+        stride: 2,
+        count: 5,
+        block: 1,
+    };
+    let all_cols = HyperslabDim {
+        start: 0,
+        stride: 1,
+        count: 8,
+        block: 1,
+    };
+    let all_chans = HyperslabDim {
+        start: 0,
+        stride: 1,
+        count: 4,
+        block: 1,
+    };
     let slab = Hyperslab::new(&[row_stride, all_cols, all_chans]);
 
     let selected = slab.num_elements();
@@ -25,8 +40,18 @@ fn main() {
     // ── Block selection: 2×2 blocks with stride ──
     // Dimension 0: start=0, stride=3, count=2, block=2 → indices [0,1, 3,4]
     // Dimension 1: start=0, stride=1, count=4, block=2 → indices [0,1, 2,3, 4,5, 6,7]
-    let block_rows = HyperslabDim { start: 0, stride: 3, count: 2, block: 2 };
-    let block_cols = HyperslabDim { start: 0, stride: 1, count: 4, block: 2 };
+    let block_rows = HyperslabDim {
+        start: 0,
+        stride: 3,
+        count: 2,
+        block: 2,
+    };
+    let block_cols = HyperslabDim {
+        start: 0,
+        stride: 1,
+        count: 4,
+        block: 2,
+    };
     let block_slab = Hyperslab::new(&[block_rows, block_cols]);
 
     let block_selected = block_slab.num_elements();

@@ -48,3 +48,8 @@ bytes = { version = "1", default-features = false, optional = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 proptest = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "zarr_selection_copy"
+harness = false

@@ -466,6 +466,7 @@ dependencies = [
  "consus-compression",
  "consus-core",
  "consus-io",
+ "criterion",
  "futures",
  "md5",
  "moirai-runtime",
