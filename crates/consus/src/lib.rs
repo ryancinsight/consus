@@ -89,10 +89,13 @@ pub mod fits {
     }
 }
 
+#[cfg(feature = "alloc")]
 pub mod builders;
+#[cfg(feature = "alloc")]
 pub mod highlevel;
 #[cfg(all(feature = "hdf5", feature = "parquet"))]
 pub mod hybrid;
+#[cfg(feature = "alloc")]
 pub mod sync;
 
 #[cfg(feature = "async-io")]
@@ -114,6 +117,7 @@ pub use highlevel::{
     UnifiedBackend, ZeroCopyBytes,
 };
 
+#[cfg(feature = "alloc")]
 pub use sync::{
     ByteView as ZeroCopySlice, IoRange, TypedByteView, ZeroCopyRead, par_read_ranges,
     partition_range, read_ranges, read_typed, selection_byte_len, source_len, write_ranges,
@@ -150,8 +154,9 @@ pub mod prelude {
         Dataset, DatasetBuilder, File, FileBuilder, FileOpenOptions, Group, GroupBuilder,
     };
 
-    #[cfg(feature = "async-io")]
+    #[cfg(all(feature = "alloc", feature = "async-io"))]
     pub use crate::r#async::AsyncFacadeUnavailable;
 
+    #[cfg(feature = "alloc")]
     pub use crate::sync::{ByteView, IoRange, ZeroCopyRead};
 }

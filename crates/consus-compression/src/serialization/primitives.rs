@@ -12,11 +12,21 @@
 //!
 //! ## Note on error construction
 //!
-//! The workspace dependency on `consus-core` does not set
-//! `default-features = false`, so `consus-core`'s default features
-//! (`std` → `alloc`) are always enabled. `Error::InvalidFormat` therefore
-//! always carries `message: String`. All error-construction paths use
-//! `alloc::string::String` unconditionally.
+//! `consus-core` supports both diagnostic-rich `alloc` errors and compact
+//! no-alloc errors. This module preserves the diagnostic message when `alloc`
+//! is enabled and constructs the corresponding compact variant otherwise.
+
+#[cfg(feature = "alloc")]
+fn invalid_format(message: &str) -> consus_core::Error {
+    consus_core::Error::InvalidFormat {
+        message: alloc::string::String::from(message),
+    }
+}
+
+#[cfg(not(feature = "alloc"))]
+fn invalid_format(_message: &str) -> consus_core::Error {
+    consus_core::Error::InvalidFormat {}
+}
 
 /// Maximum number of bytes in a ULEB128-encoded `u64`.
 ///
@@ -74,9 +84,7 @@ pub fn decode_uleb128(input: &[u8]) -> consus_core::Result<(u64, usize)> {
 
     for (i, &byte) in input.iter().enumerate() {
         if i >= ULEB128_MAX_BYTES {
-            return Err(consus_core::Error::InvalidFormat {
-                message: alloc::string::String::from("ULEB128 encoding exceeds 10 bytes"),
-            });
+            return Err(invalid_format("ULEB128 encoding exceeds 10 bytes"));
         }
 
         let low7 = (byte & 0x7F) as u64;
@@ -89,9 +97,7 @@ pub fn decode_uleb128(input: &[u8]) -> consus_core::Result<(u64, usize)> {
     }
 
     // Reached end of slice with continuation bit still set.
-    Err(consus_core::Error::InvalidFormat {
-        message: alloc::string::String::from("truncated ULEB128 encoding"),
-    })
+    Err(invalid_format("truncated ULEB128 encoding"))
 }
 
 /// Encode an `i64` as a signed LEB128 variable-length integer.
@@ -138,9 +144,7 @@ pub fn decode_sleb128(input: &[u8]) -> consus_core::Result<(i64, usize)> {
 
     for (i, &b) in input.iter().enumerate() {
         if i >= SLEB128_MAX_BYTES {
-            return Err(consus_core::Error::InvalidFormat {
-                message: alloc::string::String::from("SLEB128 encoding exceeds 10 bytes"),
-            });
+            return Err(invalid_format("SLEB128 encoding exceeds 10 bytes"));
         }
 
         last_byte = b;
@@ -160,9 +164,7 @@ pub fn decode_sleb128(input: &[u8]) -> consus_core::Result<(i64, usize)> {
 
     // Reached end of slice with continuation bit still set.
     let _ = last_byte;
-    Err(consus_core::Error::InvalidFormat {
-        message: alloc::string::String::from("truncated SLEB128 encoding"),
-    })
+    Err(invalid_format("truncated SLEB128 encoding"))
 }
 
 /// Read a NUL-terminated byte string from a slice.
@@ -176,9 +178,7 @@ pub fn decode_sleb128(input: &[u8]) -> consus_core::Result<(i64, usize)> {
 pub fn read_null_terminated(input: &[u8]) -> consus_core::Result<(&[u8], usize)> {
     match input.iter().position(|&b| b == 0) {
         Some(pos) => Ok((&input[..pos], pos + 1)),
-        None => Err(consus_core::Error::InvalidFormat {
-            message: alloc::string::String::from("no NUL terminator found in input"),
-        }),
+        None => Err(invalid_format("no NUL terminator found in input")),
     }
 }
 
@@ -219,7 +219,7 @@ pub const fn padding_for(offset: u64, alignment: u64) -> u64 {
 // Tests
 // ---------------------------------------------------------------------------
 
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
 
@@ -467,5 +467,18 @@ mod tests {
     #[should_panic(expected = "alignment must be a power of two")]
     fn align_up_panics_on_three() {
         let _ = align_up(0, 3);
+    }
+}
+
+#[cfg(all(test, not(feature = "alloc")))]
+mod no_alloc_tests {
+    use super::*;
+
+    #[test]
+    fn malformed_uleb128_preserves_compact_error_variant() {
+        assert!(matches!(
+            decode_uleb128(&[0x80]),
+            Err(consus_core::Error::InvalidFormat {})
+        ));
     }
 }

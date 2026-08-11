@@ -1,5 +1,18 @@
 # Consus — Implementation Checklist
 
+## ATLAS-CONSUS-001 — Themis topology partition sizing [minor]
+
+- [x] Make the standard `consus` feature set use Themis CPU topology for the
+      default parallel-I/O partition count, retaining the standard-library
+      fallback.
+- [x] Add the value-semantic Themis partition-count regression.
+- [x] Restore no-default compilation by gating alloc-only facade modules and
+      preserving compact no-alloc error construction in compression parsing.
+- [x] Pass formatting, default and no-default package checks, warning-denied
+      Clippy for the affected packages, Nextest 7/7, doctests, and rustdoc.
+- [ ] Reconcile the standalone Git-source lock, merge current `origin/main`,
+      and advance the Atlas Consus gitlink.
+
 ## CRATES-REL-003 — Facade package documentation [patch]
 
 - [x] Declare the workspace README as facade package metadata.

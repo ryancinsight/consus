@@ -3,6 +3,8 @@
 //! Verifies correctness against known test vectors and validates
 //! the incremental equivalence invariant.
 
+#![cfg(feature = "alloc")]
+
 use consus_compression::checksum::{Checksum, Crc32, Fletcher32, Lookup3};
 
 // =============================================================================
