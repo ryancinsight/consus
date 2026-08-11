@@ -13,7 +13,7 @@ description.workspace = true
 readme = "../../README.md"
 
 [features]
-default = ["std", "hdf5", "fits", "deflate"]
+default = ["std", "hdf5", "fits", "deflate", "atlas-themis"]
 std = [
     "alloc",
     "consus-core/std",
@@ -53,6 +53,9 @@ lz4 = ["consus-compression/lz4"]
 
 # Async I/O
 async-io = ["consus-io/async-io"]
+# Atlas integration: prefer Themis topology detection for the default
+# partition count, with the standard-library fallback preserved.
+atlas-themis = ["std", "dep:themis"]
 
 [dependencies]
 consus-core = { workspace = true }
@@ -65,6 +68,7 @@ consus-parquet = { workspace = true, optional = true }
 consus-arrow = { workspace = true, optional = true }
 consus-fits = { workspace = true, optional = true }
 moirai = { workspace = true }
+themis = { workspace = true, optional = true }
 
 [package.metadata.docs.rs]
 all-features = true

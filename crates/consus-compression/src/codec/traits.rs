@@ -11,6 +11,7 @@
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
+#[cfg(feature = "alloc")]
 use consus_core::Result;
 
 /// Compression level hint.

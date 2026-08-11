@@ -1,5 +1,20 @@
 # Consus — Backlog
 
+## ATLAS-CONSUS-001 — Themis topology partition sizing [minor] — review
+
+- Owner: Codex; scope: the `consus` facade's default parallel-I/O policy and
+  the no-alloc feature boundary in the compression/facade crates.
+- Acceptance: the standard feature set derives its default partition count
+  from Themis CPU topology; `no_default_features` remains compilable without
+  Themis or alloc; malformed low-level inputs preserve the compact no-alloc
+  error variant; focused tests, Clippy, doctests, and rustdoc pass.
+- Evidence: `cargo fmt --all -- --check`; default `consus` check, Clippy,
+  Nextest 7/7, doctests, and rustdoc pass; no-default `consus` check and
+  no-default `consus-compression` Clippy pass.
+- Delivery blocker: the Atlas overlay rewrites this checkout's `Cargo.lock`,
+  and the branch is one commit behind `origin/main`; the lock must be
+  reconciled from a clean standalone resolution before the Atlas gitlink moves.
+
 ## CRATES-REL-003 — Facade package documentation [patch] — done
 
 - Owner: Codex `/root`; scope: the `consus` facade's packaged README and

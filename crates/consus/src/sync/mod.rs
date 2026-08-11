@@ -92,10 +92,22 @@ impl Parallelism {
 
 #[cfg(feature = "std")]
 fn default_partition_count() -> usize {
-    std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1)
-        .max(1)
+    #[cfg(feature = "atlas-themis")]
+    {
+        themis::CpuTopology::detect()
+            .map(|topology| topology.logical_processors())
+            .or_else(|| std::thread::available_parallelism().ok().map(|n| n.get()))
+            .unwrap_or(1)
+            .max(1)
+    }
+
+    #[cfg(not(feature = "atlas-themis"))]
+    {
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1)
+            .max(1)
+    }
 }
 
 #[cfg(not(feature = "std"))]
@@ -504,6 +516,18 @@ mod tests {
 
         assert_eq!(policy.partitions_for_len(128), 1);
         assert_eq!(policy.partitions_for_len(4096), 8);
+    }
+
+    #[cfg(feature = "atlas-themis")]
+    #[test]
+    fn default_parallelism_matches_themis_topology() {
+        let expected = themis::CpuTopology::detect()
+            .map(|topology| topology.logical_processors())
+            .or_else(|| std::thread::available_parallelism().ok().map(|n| n.get()))
+            .unwrap_or(1)
+            .max(1);
+
+        assert_eq!(Parallelism::new().configured_partitions(), expected);
     }
 
     #[test]

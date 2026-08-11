@@ -11,7 +11,7 @@ Consus replaces C-dependent bindings (hdf5-rs, netCDF-sys, etc.) with a native R
 
 - **Zero-copy I/O** with hyperslab and selection reads
 - **Full compression support** (zlib, gzip, zstd, lz4, blosc, szip)
-- **Thread-safe parallel I/O** through Moirai
+- **Thread-safe parallel I/O** through Moirai, sized from Themis CPU topology
 - **WASM and embedded targets** (`no_std` compatible core)
 - **Pluggable backend architecture** for format interoperability
 - **Performance parity or better** than HDF5 C library with Rust safety guarantees
