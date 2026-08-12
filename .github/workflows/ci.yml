@@ -59,6 +59,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
       - name: Normalize lock onto current provider heads
+        shell: bash
         run: cargo metadata --format-version 1 --all-features > /dev/null
       - name: cargo clippy (${{ matrix.package }})
         run: cargo clippy --locked -p ${{ matrix.package }} --all-features --all-targets -- -D warnings
@@ -101,6 +102,7 @@ jobs:
         with:
           tool: nextest@0.9.140
       - name: Normalize lock onto current provider heads
+        shell: bash
         run: cargo metadata --format-version 1 --all-features > /dev/null
       - name: cargo nextest (${{ matrix.package }})
         run: cargo nextest run --locked -p ${{ matrix.package }} --all-features
@@ -132,6 +134,7 @@ jobs:
           toolchain: 1.85.0
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
       - name: Normalize lock onto current provider heads
+        shell: bash
         run: cargo metadata --format-version 1 --all-features > /dev/null
       - name: cargo check (${{ matrix.package }})
         run: cargo check --locked -p ${{ matrix.package }}
@@ -149,6 +152,7 @@ jobs:
         with:
           tool: nextest@0.9.140
       - name: Normalize lock onto current provider heads
+        shell: bash
         run: cargo metadata --format-version 1 --all-features > /dev/null
       - name: cargo nextest (consus-mat, default features)
         run: cargo nextest run --locked -p consus-mat
