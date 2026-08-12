@@ -29,7 +29,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       startsWith(github.event.release.tag_name, 'crate-')
     # Body owned once by Atlas (ADR 0035), pinned by SHA like any action.
-    uses: ryancinsight/atlas/.github/workflows/crates-publish.yml@8ddc71dc52aa5f77dfa21e5fd9f61cd7e345f068
+    uses: ryancinsight/atlas/.github/workflows/crates-publish.yml@ceafa3d3d9c25f455ed102555e3b57b615e8543f
     permissions:
       contents: read
       id-token: write # OIDC trusted publishing; no stored registry token.
