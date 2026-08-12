@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   deploy:
-    uses: ryancinsight/atlas/.github/workflows/book-pages.yml@ceafa3d3d9c25f455ed102555e3b57b615e8543f
+    uses: ryancinsight/atlas/.github/workflows/book-pages.yml@ceafa3d951f7db9ffcd93a79e5efbbdd09e199de
     permissions:
       contents: read
       pages: write
