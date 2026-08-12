@@ -58,6 +58,8 @@ jobs:
           toolchain: stable
           components: clippy
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+      - name: Normalize lock onto current provider heads
+        run: cargo metadata --format-version 1 --all-features > /dev/null
       - name: cargo clippy (${{ matrix.package }})
         run: cargo clippy --locked -p ${{ matrix.package }} --all-features --all-targets -- -D warnings
       - name: cargo check (${{ matrix.package }}, default features)
@@ -98,6 +100,8 @@ jobs:
       - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
         with:
           tool: nextest@0.9.140
+      - name: Normalize lock onto current provider heads
+        run: cargo metadata --format-version 1 --all-features > /dev/null
       - name: cargo nextest (${{ matrix.package }})
         run: cargo nextest run --locked -p ${{ matrix.package }} --all-features
 
@@ -127,6 +131,8 @@ jobs:
         with:
           toolchain: 1.85.0
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+      - name: Normalize lock onto current provider heads
+        run: cargo metadata --format-version 1 --all-features > /dev/null
       - name: cargo check (${{ matrix.package }})
         run: cargo check --locked -p ${{ matrix.package }}
 
@@ -142,6 +148,8 @@ jobs:
       - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
         with:
           tool: nextest@0.9.140
+      - name: Normalize lock onto current provider heads
+        run: cargo metadata --format-version 1 --all-features > /dev/null
       - name: cargo nextest (consus-mat, default features)
         run: cargo nextest run --locked -p consus-mat
       - name: cargo nextest (consus-mat, no compress / no v73)
