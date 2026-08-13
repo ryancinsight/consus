@@ -15,7 +15,10 @@
 - Evidence: focused all-format Nextest 8/8; all-format plus compression 9/9;
   integration-test package all-features Nextest 42/42; warning-denied Clippy
   for the touched target and workspace all-targets/all-features; workspace
-  no-default locked check; formatting and diff checks.
+  no-default locked check; warning-denied workspace Rustdoc; formatting and
+  diff checks. PR #24 source head `a5b9cfdde4c789c237652e0d62c42ce8372005f5`
+  merged at `33c2df06b0209f21755462fe44bec85e6a979253`; hosted run
+  `31683877253` passed all 68 repository-owned jobs at the exact source head.
 
 ## CONSUS-NODEF-FITS-003 — Close FITS no-default cfg boundary [patch] — done 2026-08-13
 

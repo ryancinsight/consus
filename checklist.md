@@ -11,7 +11,9 @@
 - [x] Pass focused cross-format 8/8, compression-inclusive 9/9, and package
       all-features 42/42 Nextest; pass warning-denied Clippy, workspace
       no-default check, formatting, and diff checks.
-- [ ] Commit the provider slice and run hosted exact-head gates.
+- [x] Commit the provider slice as `a5b9cfd`; hosted run `31683877253` passed
+      all 68 repository-owned jobs at the exact source head, and PR #24 merged
+      to provider default at `33c2df0`.
 
 ## CONSUS-NODEF-FITS-003 — Close FITS no-default cfg boundary — done 2026-08-13
 

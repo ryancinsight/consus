@@ -11,11 +11,13 @@ contracts directly. HDF5 roundtrips use the builder/list/dataset APIs, Zarr
 roundtrips use canonical metadata and chunk operations, and NetCDF compatibility
 uses `NetcdfWriter` plus `read_model` over in-memory HDF5 images.
 
-Verification at the lane head: focused all-format Nextest 8/8; compression-
-inclusive 9/9; package all-features Nextest 42/42; warning-denied Clippy for
-the target and workspace all-targets/all-features; workspace no-default locked
-check; formatting and diff checks. Hosted exact-head verification remains the
-only open delivery gate for this provider commit.
+Verification at the implementation head: focused all-format Nextest 8/8;
+compression-inclusive 9/9; package all-features Nextest 42/42; warning-denied
+Clippy for the target and workspace all-targets/all-features; workspace
+no-default locked check; warning-denied workspace Rustdoc; formatting and diff
+checks. Source head `a5b9cfdde4c789c237652e0d62c42ce8372005f5` merged as
+`33c2df06b0209f21755462fe44bec85e6a979253`; hosted run `31683877253` passed
+all 68 repository-owned jobs at that exact source head. The residual is closed.
 
 ## FITS and NWB no-default closure (2026-08-13, implementation complete; hosted verification pending)
 
