@@ -7,6 +7,10 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Pure-Rust netCDF-4 format implementation for the Consus scientific storage library"
+homepage.workspace = true
+readme = "README.md"
+keywords = ["netcdf", "hdf5", "climate", "scientific-computing", "storage"]
+categories = ["science", "encoding", "filesystem", "no-std"]
 
 [features]
 default = ["std"]
@@ -21,3 +25,6 @@ consus-io = { workspace = true }
 [dev-dependencies]
 proptest = { workspace = true }
 tempfile = { workspace = true }
+
+[lints]
+workspace = true

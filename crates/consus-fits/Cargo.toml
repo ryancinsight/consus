@@ -7,9 +7,10 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-keywords.workspace = true
-categories.workspace = true
+keywords = ["fits", "astronomy", "scientific-computing", "storage", "image"]
+categories = ["science", "encoding", "parser-implementations", "no-std"]
 description = "Pure-Rust FITS format implementation for the Consus scientific storage library"
+readme = "README.md"
 
 [features]
 default = ["std"]
@@ -23,3 +24,6 @@ consus-compression = { workspace = true }
 
 [package.metadata.docs.rs]
 all-features = true
+
+[lints]
+workspace = true

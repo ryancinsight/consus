@@ -66,7 +66,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json"] }
 
 # Compression (optional)
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
-zstd = { version = "0.13", default-features = false }
+zrip = { version = "0.8.5", default-features = false, features = ["alloc"] }
 lz4_flex = { version = "0.11", default-features = false }
 
 # Async (optional)
@@ -87,6 +87,85 @@ quick-xml = { version = "0.37", default-features = false }
 proptest = { version = "1" }
 criterion = { version = "0.5" }
 tempfile = { version = "3" }
+
+# ---------------------------------------------------------------------------
+# Lint floor
+#
+# Declared once here; every member inherits it via `[lints] workspace = true`.
+# `pedantic` is denied, so any pedantic class NOT named below is a hard error
+# in new and touched code.
+#
+# The `allow` entries are a ratchet baseline, not a policy: each is a class
+# that already fires on pre-existing code, recorded with its count at the time
+# the floor landed (`scripts/lint_baseline.sh` re-measures). The rule is
+# non-increasing — an entry may shrink and be deleted, never grow. Denying
+# them outright today would be a ~4 000-site refactor; leaving the floor off
+# entirely would let a 3 974th site land unnoticed.
+#
+# The three restriction lints below are the trust-boundary floor the standard
+# requires of parser crates. They are workspace-allowed for the same ratchet
+# reason and re-denied at module scope wherever the code is already clean —
+# see `consus-core::parse` and `consus-io`'s bounded-read module.
+# ---------------------------------------------------------------------------
+[workspace.lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+
+# --- Documentation debt (2 113 sites) ---
+doc_markdown = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+return_self_not_must_use = "allow"
+
+# --- Numeric conversion debt (864 sites); the real fix is typed conversions ---
+cast_lossless = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+float_cmp = "allow"
+approx_constant = "allow"
+unreadable_literal = "allow"
+
+# --- Style debt (996 sites) ---
+bool_to_int_with_if = "allow"
+case_sensitive_file_extension_comparisons = "allow"
+clone_on_copy = "allow"
+cloned_ref_to_slice_refs = "allow"
+elidable_lifetime_names = "allow"
+explicit_iter_loop = "allow"
+if_not_else = "allow"
+inline_always = "allow"
+items_after_statements = "allow"
+manual_let_else = "allow"
+manual_string_new = "allow"
+map_unwrap_or = "allow"
+match_same_arms = "allow"
+match_wildcard_for_single_variants = "allow"
+needless_option_as_deref = "allow"
+needless_pass_by_value = "allow"
+needless_raw_string_hashes = "allow"
+no_effect_underscore_binding = "allow"
+redundant_closure_for_method_calls = "allow"
+semicolon_if_nothing_returned = "allow"
+similar_names = "allow"
+single_char_pattern = "allow"
+single_match_else = "allow"
+struct_excessive_bools = "allow"
+too_many_lines = "allow"
+unnecessary_debug_formatting = "allow"
+unnecessary_literal_bound = "allow"
+unnecessary_trailing_comma = "allow"
+unnecessary_wraps = "allow"
+uninlined_format_args = "allow"
+unused_self = "allow"
+used_underscore_items = "allow"
+wildcard_imports = "allow"
+
+# --- Trust-boundary restriction floor (ratchet; denied per-module where clean) ---
+unwrap_used = "allow"
+indexing_slicing = "allow"
+arithmetic_side_effects = "allow"
 
 [profile.release]
 lto = "thin"

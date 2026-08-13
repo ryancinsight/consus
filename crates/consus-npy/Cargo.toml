@@ -7,9 +7,16 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Typed pure-Rust NPY and NPZ array storage"
+homepage.workspace = true
+readme = "README.md"
+keywords = ["npy", "npz", "numpy", "array", "storage"]
+categories = ["science", "encoding", "parser-implementations"]
 
 [dependencies]
 byteorder = { workspace = true, features = ["std"] }
 consus-io = { workspace = true, features = ["std", "alloc"] }
 thiserror.workspace = true
 zip.workspace = true
+
+[lints]
+workspace = true

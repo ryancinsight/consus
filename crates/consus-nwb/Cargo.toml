@@ -3,6 +3,10 @@ name = "consus-nwb"
 version = "0.1.0"
 edition = "2021"
 description = "Neurodata Without Borders (NWB) read/write support for Consus"
+homepage.workspace = true
+readme = "README.md"
+keywords = ["nwb", "neuroscience", "hdmf", "hdf5", "neurodata"]
+categories = ["science", "encoding", "no-std"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/ryancinsight/consus"
 
@@ -24,3 +28,6 @@ proptest    = "1"
 [[test]]
 name = "integration_real_file"
 path = "tests/integration_real_file.rs"
+
+[lints]
+workspace = true

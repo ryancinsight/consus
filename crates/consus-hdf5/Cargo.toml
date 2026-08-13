@@ -7,6 +7,10 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Pure-Rust HDF5 format implementation for the Consus scientific storage library"
+homepage.workspace = true
+readme = "README.md"
+keywords = ["hdf5", "scientific-computing", "storage", "chunked", "no-std"]
+categories = ["science", "encoding", "filesystem", "no-std"]
 
 [features]
 default = ["std"]
@@ -44,3 +48,6 @@ required-features = ["alloc"]
 name = "async_hdf5"
 path = "tests/async_hdf5.rs"
 required-features = ["async-io"]
+
+[lints]
+workspace = true

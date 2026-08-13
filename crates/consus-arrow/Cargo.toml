@@ -7,6 +7,10 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Arrow interoperability layer for the Consus scientific storage library"
+homepage.workspace = true
+readme = "README.md"
+keywords = ["arrow", "columnar", "interop", "schema", "storage"]
+categories = ["science", "encoding", "data-structures", "no-std"]
 
 [features]
 default = ["std"]
@@ -28,3 +32,6 @@ consus-parquet = { workspace = true }
 name = "arrow_bridge"
 harness = false
 required-features = ["alloc"]
+
+[lints]
+workspace = true

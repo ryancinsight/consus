@@ -84,6 +84,13 @@ pub const BTREE_V2_INTERNAL_SIGNATURE: [u8; 4] = *b"BTIN";
 /// B-tree v2 leaf node signature.
 pub const BTREE_V2_LEAF_SIGNATURE: [u8; 4] = *b"BTLF";
 
+/// Smallest node a B-tree v2 leaf or internal node can occupy:
+/// signature(4) + version(1) + type(1) + checksum(4).
+///
+/// A `node_size` below this cannot hold the fields the parser then indexes,
+/// so it is rejected up front rather than panicking on `buf[0..4]`.
+const MIN_NODE_BYTES: usize = 10;
+
 /// B-tree v2 record type constants.
 pub mod record_type {
     /// Testing only (type 0).
@@ -319,11 +326,27 @@ impl BTreeV2LeafNode {
         address: u64,
         header: &BTreeV2Header,
         num_records: u16,
+        ctx: &ParseContext,
     ) -> Result<Self> {
-        // Read the full node (node_size bytes)
-        let node_size = header.node_size as usize;
-        let mut buf = vec![0u8; node_size];
-        source.read_at(address, &mut buf)?;
+        // Read the full node. `node_size` is a u32 straight out of the B-tree
+        // header, so it is bounded against the budget and grown only as the
+        // reads confirm the bytes exist.
+        let buf = consus_io::read_at_bounded(
+            source,
+            address,
+            u64::from(header.node_size),
+            &ctx.budget,
+            "b-tree v2 leaf node size",
+        )?;
+        let node_size = buf.len();
+        if node_size < MIN_NODE_BYTES {
+            return Err(Error::InvalidFormat {
+                message: format!(
+                    "b-tree v2 leaf node at offset {address:#x} declares {node_size} bytes, \
+                     below the {MIN_NODE_BYTES}-byte minimum"
+                ),
+            });
+        }
 
         // Validate signature
         if buf[0..4] != BTREE_V2_LEAF_SIGNATURE {
@@ -346,7 +369,14 @@ impl BTreeV2LeafNode {
         let record_type = buf[5];
         let rec_size = header.record_size as usize;
 
-        let mut records = Vec::with_capacity(num_records as usize);
+        // `num_records` is attacker-chosen, but every record must be backed by
+        // `rec_size` real bytes inside this node, so the node's own length is
+        // the tighter bound on the reservation.
+        let mut records = Vec::with_capacity(
+            ctx.budget
+                .capacity_hint(u64::from(num_records), size_of::<BTreeV2Record>())
+                .min(node_size / rec_size.max(1)),
+        );
         let mut pos = 6; // after signature(4) + version(1) + type(1)
 
         for _ in 0..num_records {
@@ -372,10 +402,25 @@ impl BTreeV2LeafNode {
         address: u64,
         header: &BTreeV2Header,
         num_records: u16,
+        ctx: &ParseContext,
     ) -> Result<Self> {
-        let node_size = header.node_size as usize;
-        let mut buf = vec![0u8; node_size];
-        source.read_at(address, &mut buf).await?;
+        let buf = consus_io::async_read_at_bounded(
+            source,
+            address,
+            u64::from(header.node_size),
+            &ctx.budget,
+            "b-tree v2 leaf node size",
+        )
+        .await?;
+        let node_size = buf.len();
+        if node_size < MIN_NODE_BYTES {
+            return Err(Error::InvalidFormat {
+                message: format!(
+                    "b-tree v2 leaf node at offset {address:#x} declares {node_size} bytes, \
+                     below the {MIN_NODE_BYTES}-byte minimum"
+                ),
+            });
+        }
 
         if buf[0..4] != BTREE_V2_LEAF_SIGNATURE {
             return Err(Error::InvalidFormat {
@@ -397,7 +442,11 @@ impl BTreeV2LeafNode {
         let record_type = buf[5];
         let rec_size = header.record_size as usize;
 
-        let mut records = Vec::with_capacity(num_records as usize);
+        let mut records = Vec::with_capacity(
+            ctx.budget
+                .capacity_hint(u64::from(num_records), size_of::<BTreeV2Record>())
+                .min(node_size / rec_size.max(1)),
+        );
         let mut pos = 6;
 
         for _ in 0..num_records {
@@ -456,9 +505,22 @@ impl BTreeV2InternalNode {
         num_records: u16,
         ctx: &ParseContext,
     ) -> Result<Self> {
-        let node_size = header.node_size as usize;
-        let mut buf = vec![0u8; node_size];
-        source.read_at(address, &mut buf)?;
+        let buf = consus_io::read_at_bounded(
+            source,
+            address,
+            u64::from(header.node_size),
+            &ctx.budget,
+            "b-tree v2 internal node size",
+        )?;
+        let node_size = buf.len();
+        if node_size < MIN_NODE_BYTES {
+            return Err(Error::InvalidFormat {
+                message: format!(
+                    "b-tree v2 internal node at offset {address:#x} declares {node_size} bytes, \
+                     below the {MIN_NODE_BYTES}-byte minimum"
+                ),
+            });
+        }
 
         // Validate signature
         if buf[0..4] != BTREE_V2_INTERNAL_SIGNATURE {
@@ -487,7 +549,9 @@ impl BTreeV2InternalNode {
         let n_children = n_rec + 1;
 
         // Parse records
-        let mut records = Vec::with_capacity(n_rec);
+        // Bound the reservation by what the node can physically hold: each
+        // record needs `rec_size` bytes inside `buf`.
+        let mut records = Vec::with_capacity(n_rec.min(node_size / rec_size.max(1)));
         let mut pos = 6;
         for _ in 0..n_rec {
             if pos + rec_size > buf.len() {
@@ -507,8 +571,11 @@ impl BTreeV2InternalNode {
         // but 2 bytes handles nodes up to 65535 records.
         let num_records_width = compute_num_records_width(header);
 
-        let mut child_addresses = Vec::with_capacity(n_children);
-        let mut child_num_records = Vec::with_capacity(n_children);
+        // Each child entry needs `s + num_records_width` bytes inside `buf`.
+        let child_entry_bytes = s + num_records_width;
+        let max_children = node_size / child_entry_bytes.max(1);
+        let mut child_addresses = Vec::with_capacity(n_children.min(max_children));
+        let mut child_num_records = Vec::with_capacity(n_children.min(max_children));
 
         for _ in 0..n_children {
             if pos + s > buf.len() {
@@ -544,9 +611,23 @@ impl BTreeV2InternalNode {
         num_records: u16,
         ctx: &ParseContext,
     ) -> Result<Self> {
-        let node_size = header.node_size as usize;
-        let mut buf = vec![0u8; node_size];
-        source.read_at(address, &mut buf).await?;
+        let buf = consus_io::async_read_at_bounded(
+            source,
+            address,
+            u64::from(header.node_size),
+            &ctx.budget,
+            "b-tree v2 internal node size",
+        )
+        .await?;
+        let node_size = buf.len();
+        if node_size < MIN_NODE_BYTES {
+            return Err(Error::InvalidFormat {
+                message: format!(
+                    "b-tree v2 internal node at offset {address:#x} declares {node_size} bytes, \
+                     below the {MIN_NODE_BYTES}-byte minimum"
+                ),
+            });
+        }
 
         if buf[0..4] != BTREE_V2_INTERNAL_SIGNATURE {
             return Err(Error::InvalidFormat {
@@ -573,7 +654,9 @@ impl BTreeV2InternalNode {
         let n_rec = num_records as usize;
         let n_children = n_rec + 1;
 
-        let mut records = Vec::with_capacity(n_rec);
+        // Bound the reservation by what the node can physically hold: each
+        // record needs `rec_size` bytes inside `buf`.
+        let mut records = Vec::with_capacity(n_rec.min(node_size / rec_size.max(1)));
         let mut pos = 6;
         for _ in 0..n_rec {
             if pos + rec_size > buf.len() {
@@ -586,8 +669,11 @@ impl BTreeV2InternalNode {
 
         let num_records_width = compute_num_records_width(header);
 
-        let mut child_addresses = Vec::with_capacity(n_children);
-        let mut child_num_records = Vec::with_capacity(n_children);
+        // Each child entry needs `s + num_records_width` bytes inside `buf`.
+        let child_entry_bytes = s + num_records_width;
+        let max_children = node_size / child_entry_bytes.max(1);
+        let mut child_addresses = Vec::with_capacity(n_children.min(max_children));
+        let mut child_num_records = Vec::with_capacity(n_children.min(max_children));
 
         for _ in 0..n_children {
             if pos + s > buf.len() {
@@ -682,13 +768,20 @@ pub fn collect_all_records<R: ReadAt>(
         return Ok(Vec::new());
     }
 
-    let mut records = Vec::with_capacity(header.total_records as usize);
+    // `total_records` is a u64 read straight from the header; a hostile value
+    // selected the allocation before a single record was parsed. It is a hint
+    // whose truth the traversal establishes, so clamp rather than reject.
+    let mut records = Vec::with_capacity(
+        ctx.budget
+            .capacity_hint(header.total_records, size_of::<BTreeV2Record>()),
+    );
     collect_records_recursive(
         source,
         header,
         header.root_address,
         header.root_num_records,
         header.depth,
+        0,
         ctx,
         &mut records,
     )?;
@@ -703,12 +796,18 @@ fn collect_records_recursive<R: ReadAt>(
     node_address: u64,
     num_records: u16,
     depth: u16,
+    descent: u16,
     ctx: &ParseContext,
     records: &mut Vec<BTreeV2Record>,
 ) -> Result<()> {
+    // `header.depth` is a u16 read from the file, so an adversarial tree can
+    // demand 65 535 stack frames. Rust performs no tail-call elimination and
+    // a stack overflow aborts, so the descent is bounded here.
+    let descent = ctx.budget.descend(descent, "b-tree v2 tree depth")?;
+
     if depth == 0 {
         // Leaf node
-        let leaf = BTreeV2LeafNode::parse(source, node_address, header, num_records)?;
+        let leaf = BTreeV2LeafNode::parse(source, node_address, header, num_records, ctx)?;
         records.extend(leaf.records);
     } else {
         // Internal node
@@ -729,6 +828,7 @@ fn collect_records_recursive<R: ReadAt>(
                     child_addr,
                     child_nrec,
                     depth - 1,
+                    descent,
                     ctx,
                     records,
                 )?;
@@ -758,13 +858,20 @@ pub async fn async_collect_all_records<R: AsyncReadAt>(
         return Ok(Vec::new());
     }
 
-    let mut records = Vec::with_capacity(header.total_records as usize);
+    // `total_records` is a u64 read straight from the header; a hostile value
+    // selected the allocation before a single record was parsed. It is a hint
+    // whose truth the traversal establishes, so clamp rather than reject.
+    let mut records = Vec::with_capacity(
+        ctx.budget
+            .capacity_hint(header.total_records, size_of::<BTreeV2Record>()),
+    );
     Box::pin(async_collect_records_recursive(
         source,
         header,
         header.root_address,
         header.root_num_records,
         header.depth,
+        0,
         ctx,
         &mut records,
     ))
@@ -779,11 +886,15 @@ async fn async_collect_records_recursive<R: AsyncReadAt>(
     node_address: u64,
     num_records: u16,
     depth: u16,
+    descent: u16,
     ctx: &ParseContext,
     records: &mut Vec<BTreeV2Record>,
 ) -> Result<()> {
+    let descent = ctx.budget.descend(descent, "b-tree v2 tree depth")?;
+
     if depth == 0 {
-        let leaf = BTreeV2LeafNode::async_parse(source, node_address, header, num_records).await?;
+        let leaf =
+            BTreeV2LeafNode::async_parse(source, node_address, header, num_records, ctx).await?;
         records.extend(leaf.records);
     } else {
         let internal =
@@ -803,6 +914,7 @@ async fn async_collect_records_recursive<R: AsyncReadAt>(
                     child_addr,
                     child_nrec,
                     depth - 1,
+                    descent,
                     ctx,
                     records,
                 ))
@@ -874,7 +986,7 @@ pub fn find_huge_object_record<R: ReadAt>(
     if btree_header.root_address == crate::constants::UNDEFINED_ADDRESS {
         return Ok(None);
     }
-    find_huge_object_recursive(source, btree_header, btree_header.root_address, key, ctx)
+    find_huge_object_recursive(source, btree_header, btree_header.root_address, key, 0, ctx)
 }
 
 /// Recursive helper for [`find_huge_object_record`].
@@ -884,11 +996,20 @@ fn find_huge_object_recursive<R: ReadAt>(
     header: &BTreeV2Header,
     node_address: u64,
     key: u64,
+    descent: u16,
     ctx: &ParseContext,
 ) -> Result<Option<HugeObjectLocation>> {
+    // `header.depth` is loop-invariant here, so the internal-node arm below
+    // recurses until the stack runs out unless the descent is bounded: a
+    // crafted node whose child pointer targets itself never terminates.
+    let descent = ctx
+        .budget
+        .descend(descent, "b-tree v2 huge-object descent")?;
+
     if header.depth == 0 {
         // Leaf node: search for the key
-        let leaf = BTreeV2LeafNode::parse(source, node_address, header, header.root_num_records)?;
+        let leaf =
+            BTreeV2LeafNode::parse(source, node_address, header, header.root_num_records, ctx)?;
         for record in &leaf.records {
             if let Some(loc) = try_parse_huge_object_record(record, header.record_size, ctx)? {
                 // The key is the first 8 bytes of the record data (little-endian u64)
@@ -913,12 +1034,17 @@ fn find_huge_object_recursive<R: ReadAt>(
             }
             child_idx = i + 1;
         }
-        if child_idx >= internal.child_addresses.len() {
-            child_idx = internal.child_addresses.len() - 1;
-        }
-        let child_addr = internal.child_addresses[child_idx];
-        let _child_nrec = internal.child_num_records[child_idx];
-        find_huge_object_recursive(source, header, child_addr, key, ctx)
+        // A truncated node yields no children at all; indexing `len() - 1`
+        // would underflow rather than report the malformed node.
+        let Some(last) = internal.child_addresses.len().checked_sub(1) else {
+            return Err(Error::InvalidFormat {
+                message: format!(
+                    "b-tree v2 internal node at offset {node_address:#x} has no child pointers"
+                ),
+            });
+        };
+        let child_addr = internal.child_addresses[child_idx.min(last)];
+        find_huge_object_recursive(source, header, child_addr, key, descent, ctx)
     }
 }
 
@@ -1243,7 +1369,8 @@ mod tests {
             // Checksum at end (bytes 60..64), left as zeros.
 
             let cursor = MemCursor::from_bytes(buf);
-            let leaf = BTreeV2LeafNode::parse(&cursor, 0, &header, 3).unwrap();
+            let ctx = ParseContext::new(8, 8);
+            let leaf = BTreeV2LeafNode::parse(&cursor, 0, &header, 3, &ctx).unwrap();
 
             assert_eq!(leaf.record_type, record_type::LINK_NAME);
             assert_eq!(leaf.records.len(), 3);
@@ -1270,7 +1397,8 @@ mod tests {
             buf[0..4].copy_from_slice(b"XXXX"); // bad signature
 
             let cursor = MemCursor::from_bytes(buf);
-            let err = BTreeV2LeafNode::parse(&cursor, 0, &header, 0).unwrap_err();
+            let ctx = ParseContext::new(8, 8);
+            let err = BTreeV2LeafNode::parse(&cursor, 0, &header, 0, &ctx).unwrap_err();
             match err {
                 Error::InvalidFormat { message } => {
                     assert!(message.contains("BTLF"));

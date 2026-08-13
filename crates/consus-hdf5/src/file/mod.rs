@@ -529,7 +529,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
             .ok_or_else(|| Error::InvalidFormat {
             message: String::from("committed datatype object header missing datatype message"),
         })?;
-        crate::datatype::compound::parse_datatype(&dt_msg.data)
+        crate::datatype::compound::parse_datatype(&dt_msg.data, &self.ctx.budget)
     }
 
     #[cfg(feature = "alloc")]

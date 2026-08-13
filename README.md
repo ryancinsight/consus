@@ -9,12 +9,29 @@
 
 Consus replaces C-dependent bindings (hdf5-rs, netCDF-sys, etc.) with a native Rust implementation providing:
 
-- **Zero-copy I/O** with hyperslab and selection reads
+- **Hyperslab and selection reads** over a positioned-read (`ReadAt`) abstraction
 - **Full compression support** (zlib, gzip, zstd, lz4, blosc, szip)
 - **Thread-safe parallel I/O** through Moirai, sized from Themis CPU topology
 - **WASM and embedded targets** (`no_std` compatible core)
 - **Pluggable backend architecture** for format interoperability
-- **Performance parity or better** than HDF5 C library with Rust safety guarantees
+
+### I/O and copy behavior
+
+State of the tree, not a roadmap:
+
+- Positioned reads (`ReadAt::read_at`) fill a caller-provided buffer. Hyperslab
+  and selection reads materialize an **owned** `Vec<u8>` per region.
+- `MmapReader::as_slice` (`consus-io`) exposes the memory mapping directly, so
+  callers that want to read a mapped file without a copy can borrow from it.
+- `consus-onnx` parses **borrowed**: `ModelDocument<'a>`, `Initializer<'a>`, and
+  `Node<'a>` alias the source protobuf buffer rather than copying names and
+  initializer payloads.
+- The `ZeroCopyRead` trait (`consus::sync`) is **not implemented**: its single
+  blanket `impl<T: ReadAt>` always allocates and returns `ByteView::Owned`, so
+  `is_zero_copy()` is `false` for every source in the tree. Because it is a
+  blanket impl, a per-type borrowing implementation (for example on
+  `MmapReader`) would also be a coherence conflict. Treat the trait as reserved
+  surface, not a capability.
 
 ## Supported Formats
 
@@ -42,10 +59,18 @@ consus (facade)
 ├── consus-netcdf      # netCDF-4 semantic model + HDF5 mapping layer
 ├── consus-arrow       # Arrow semantic model and bridge planning layer
 ├── consus-fits        # FITS format implementation
+├── consus-mat         # MATLAB .mat v4/v5/v7.3 reader
+├── consus-hdmf        # HDMF DynamicTable read/write
+├── consus-nwb         # Neurodata Without Borders models over HDF5/HDMF
 ├── consus-npy         # Typed NPY arrays and NPZ archives
 ├── consus-onnx        # Bounded zero-copy ONNX document decoding
 └── consus-parquet     # Parquet interop layer
+
+consus-python          # PyO3 extension module (wheel-only, publish = false)
 ```
+
+All sixteen crates above are `[workspace] members` of the root `Cargo.toml`;
+`tests` is an additional non-publishable integration-test member.
 
 ## Quick Start
 
@@ -111,7 +136,12 @@ Current repository verification indicates:
 - **Auditability**: Pure Rust source, no C FFI boundary to audit
 - **Supply-chain security**: Minimal, auditable dependency tree
 - **Cross-compilation**: Targets WASM, ARM, RISC-V without toolchain pain
-- **Memory safety**: Zero unsafe in format logic; ownership-driven resource management
+- **Memory safety**: two `unsafe` blocks in the whole workspace — the `memmap2`
+  mapping call in `consus-io/src/io/sync/mmap.rs` and one slice reinterpretation
+  in `consus/src/builders/dataset.rs`, both carrying `// SAFETY:` comments. No
+  format parser or encoder contains `unsafe`. This is currently a property of
+  the code rather than a compiler-enforced one: only `consus-hdmf` and
+  `consus-npy` declare `#![forbid(unsafe_code)]`
 - **Astronomy pipeline interoperability**: FITS support enables direct ingestion of telescope image products, calibration frames, and catalog tables into the same unified API used for other scientific formats
 - **Spectral and survey R&D continuity**: One storage facade now spans astronomy archive interchange and downstream analysis workflows, reducing format-specific glue code in spectral reduction, sky survey processing, and observatory data engineering
 

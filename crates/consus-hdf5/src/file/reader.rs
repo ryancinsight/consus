@@ -150,7 +150,7 @@ pub fn read_dataset_metadata(
         find_message(header, message_types::DATATYPE).ok_or_else(|| Error::InvalidFormat {
             message: String::from("dataset object header missing datatype message"),
         })?;
-    let datatype = crate::datatype::compound::parse_datatype(&dt_msg.data)?;
+    let datatype = crate::datatype::compound::parse_datatype(&dt_msg.data, &ctx.budget)?;
 
     // --- Dataspace ---
     let ds_msg =
