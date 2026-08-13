@@ -149,10 +149,10 @@ fn read_u32_le(data: &[u8], offset: usize) -> u32 {
 ///
 /// 1. Set `a = b = c = 0xdeadbeef + len + initval`.
 /// 2. Consume 12-byte chunks: read three little-endian `u32`s, add to
-///    `a`, `b`, `c`, then [`mix`].
+///    `a`, `b`, `c`, then `mix`.
 /// 3. Fold remaining 1–12 bytes into `a`, `b`, `c` via a byte-level
 ///    switch.
-/// 4. If any bytes were present, apply [`final_mix`].
+/// 4. If any bytes were present, apply `final_mix`.
 /// 5. Return `c`.
 ///
 /// ## Determinism

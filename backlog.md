@@ -1,5 +1,22 @@
 # Consus — Backlog
 
+## CONSUS-TEST-API-001 — Migrate cross-format tests to provider-owned APIs [patch] — done 2026-08-13
+
+- Owner: Atlas integration. Scope: `tests/cross_format_interop.rs` only;
+  no provider facade or compatibility layer was added.
+- Delivered: HDF5 tests now use `Hdf5FileBuilder`, `list_root_group`,
+  `dataset_at`, and the contiguous/chunked read APIs; Zarr tests use the
+  canonical `ArrayMetadata` plus `write_chunk`/`read_chunk`; NetCDF tests use
+  `NetcdfWriter` and `read_model` over deterministic in-memory HDF5 images.
+  The absent-file skip paths and stale Arrow/Parquet call signatures are gone.
+- Acceptance: all nine cross-format scenarios execute with value-semantic
+  assertions; no test depends on an aspirational `ZarrArray`, `ArrayMetadataV3`,
+  `NcFile`, `build_writer`, or `MemCursor::new(buffer)` surface.
+- Evidence: focused all-format Nextest 8/8; all-format plus compression 9/9;
+  integration-test package all-features Nextest 42/42; warning-denied Clippy
+  for the touched target and workspace all-targets/all-features; workspace
+  no-default locked check; formatting and diff checks.
+
 ## CONSUS-NODEF-FITS-003 — Close FITS no-default cfg boundary [patch] — done 2026-08-13
 
 - Owner: Atlas integration. Scope: `consus-fits` module, re-export, test, and

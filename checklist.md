@@ -1,5 +1,18 @@
 # Consus — Implementation Checklist
 
+## CONSUS-TEST-API-001 — Migrate cross-format tests to provider-owned APIs — done 2026-08-13
+
+- [x] Verify the residual at exact `origin/main` `b3ca01c21b2e9bad4c7b7dc23c47083ca79a3307`;
+      preserve the peer checkout and work in a fresh lane.
+- [x] Replace the stale HDF5, Zarr, NetCDF, and in-memory I/O calls directly
+      against the provider-owned contracts; add no wrapper or fallback path.
+- [x] Replace absent-file skip behavior with deterministic in-memory NetCDF/HDF5
+      fixtures and preserve value-semantic assertions.
+- [x] Pass focused cross-format 8/8, compression-inclusive 9/9, and package
+      all-features 42/42 Nextest; pass warning-denied Clippy, workspace
+      no-default check, formatting, and diff checks.
+- [ ] Commit the provider slice and run hosted exact-head gates.
+
 ## CONSUS-NODEF-FITS-003 — Close FITS no-default cfg boundary — done 2026-08-13
 
 - [x] Gate alloc-only FITS image, table, file, facade, validation, HDU, header
