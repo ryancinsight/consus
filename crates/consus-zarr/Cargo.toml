@@ -57,3 +57,6 @@ criterion = { workspace = true }
 [[bench]]
 name = "zarr_selection_copy"
 harness = false
+
+[lints]
+workspace = true

@@ -18,7 +18,7 @@ pub mod slice;
 #[cfg(feature = "alloc")]
 pub mod stream;
 
-#[cfg(all(feature = "std", feature = "alloc"))]
+#[cfg(feature = "alloc")]
 pub mod bounded;
 
 #[cfg(feature = "std")]

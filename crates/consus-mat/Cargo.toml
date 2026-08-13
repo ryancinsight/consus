@@ -51,3 +51,6 @@ required-features = ["v73"]
 name = "roundtrip_scipy_to_consus"
 path = "tests/roundtrip_scipy_to_consus.rs"
 required-features = ["v73"]
+
+[lints]
+workspace = true

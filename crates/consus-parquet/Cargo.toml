@@ -36,3 +36,6 @@ criterion = { workspace = true }
 name = "parquet_rw"
 harness = false
 required-features = ["alloc"]
+
+[lints]
+workspace = true

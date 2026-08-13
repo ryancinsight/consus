@@ -32,3 +32,6 @@ consus-parquet = { workspace = true }
 name = "arrow_bridge"
 harness = false
 required-features = ["alloc"]
+
+[lints]
+workspace = true

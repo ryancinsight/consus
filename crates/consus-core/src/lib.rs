@@ -20,6 +20,8 @@
 //! ├── core/            # Abstract traits and error hierarchy
 //! │   ├── traits       # File, Group, Dataset, Attribute, Link, Selection traits
 //! │   └── error        # Comprehensive error types and Result alias
+//! ├── parse/           # Untrusted-input policy shared by every backend
+//! │   └── budget       # ParseBudget: byte, element, and depth ceilings
 //! └── types/           # Canonical type definitions (SSOT)
 //!     ├── datatype     # Datatype, ByteOrder, StringEncoding, CompoundField, EnumMember
 //!     ├── dimension    # Extent, Shape, ChunkShape, Layout
@@ -43,6 +45,7 @@
 extern crate alloc;
 
 pub mod core;
+pub mod parse;
 pub mod types;
 
 // ---------------------------------------------------------------------------
@@ -50,6 +53,12 @@ pub mod types;
 // ---------------------------------------------------------------------------
 
 pub use self::core::error::{Error, Result};
+
+// ---------------------------------------------------------------------------
+// Re-export the untrusted-input parsing policy at the crate root.
+// ---------------------------------------------------------------------------
+
+pub use parse::ParseBudget;
 
 // ---------------------------------------------------------------------------
 // Re-export abstract traits at the crate root.

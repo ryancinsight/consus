@@ -12,7 +12,7 @@
 //! | 1 | SNAPPY | `snappy` | `snap` crate |
 //! | 2 | GZIP | `gzip` | `flate2::read::DeflateDecoder` (raw deflate) |
 //! | 3 | LZ4_RAW | `lz4` | `lz4_flex::decompress` (raw block) |
-//! | 4 | ZSTD | `zstd` | `zstd::bulk::decompress` |
+//! | 4 | ZSTD | `zstd` | `zrip::decompress_with_limit` |
 //! | 5 | LZ4 | `lz4` | `lz4_flex::decompress_size_prepended` |
 //! | 6 | BROTLI | (none) | always `UnsupportedFeature` |
 //! | 7 | ZLIB | `gzip` | `flate2::read::DeflateDecoder` (raw deflate) |
@@ -59,7 +59,7 @@ impl CompressionCodec {
 /// GZIP / ZLIB: raw deflate via `flate2::read::DeflateEncoder`.
 ///              Level: `flate2::Compression::default()`.
 /// SNAPPY: `snap::raw::Encoder::new().compress_vec(data)`.
-/// ZSTD: `zstd::bulk::compress(data, 3)`.
+/// ZSTD: `zrip::compress(data, 3)`.
 /// LZ4_RAW: `lz4_flex::compress(data)`.
 /// LZ4: `lz4_flex::compress_prepend_size(data)`.
 /// BROTLI: always returns `Error::UnsupportedFeature { feature: "parquet compression codec BROTLI (6)" }`.
@@ -124,7 +124,7 @@ pub(crate) fn compress_page_values(data: &[u8], codec: CompressionCodec) -> Resu
         CompressionCodec::Zstd => {
             #[cfg(feature = "zstd")]
             {
-                zstd::bulk::compress(data, 3).map_err(|e| Error::CompressionError {
+                zrip::compress(data, 3).map_err(|e| Error::CompressionError {
                     message: format!("zstd compress failed: {e}"),
                 })
             }
@@ -244,7 +244,7 @@ pub fn decompress_page_values(
         CompressionCodec::Zstd => {
             #[cfg(feature = "zstd")]
             {
-                zstd::bulk::decompress(data, uncompressed_size).map_err(|e| {
+                zrip::decompress_with_limit(data, uncompressed_size).map_err(|e| {
                     Error::CompressionError {
                         message: format!("zstd decompress failed: {e}"),
                     }
@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn decompress_zstd_round_trip() {
         let input: Vec<u8> = (0u8..=255).cycle().take(1024).collect();
-        let compressed = zstd::bulk::compress(&input, 3).expect("zstd compress must succeed");
+        let compressed = zrip::compress(&input, 3).expect("zstd compress must succeed");
 
         let decompressed = decompress_page_values(&compressed, CompressionCodec::Zstd, input.len())
             .expect("zstd decompress must succeed");

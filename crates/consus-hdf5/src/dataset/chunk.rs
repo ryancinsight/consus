@@ -38,13 +38,13 @@
 //! | 6 | ScaleOffset | Integer/float scaling |
 
 #[cfg(feature = "alloc")]
-use alloc::{string::String, vec, vec::Vec};
+use alloc::{string::String, vec::Vec};
 
 #[cfg(feature = "alloc")]
 use consus_compression::Checksum;
 
 #[cfg(feature = "alloc")]
-use consus_core::{Error, Result};
+use consus_core::{Error, ParseBudget, Result};
 
 /// Address and size of a single chunk in the file.
 ///
@@ -104,10 +104,16 @@ pub fn read_chunk_raw<R: consus_io::ReadAt>(
     registry: &dyn consus_compression::CompressionRegistry,
     fill_value: Option<&[u8]>,
 ) -> Result<Vec<u8>> {
+    let budget = ParseBudget::DEFAULT;
+
     // Uninitialized chunk: address is undefined (chunk not yet written).
     // Return a buffer filled with the fill value pattern, or zeros if no fill value.
     if location.address == crate::constants::UNDEFINED_ADDRESS {
-        let mut buf = vec![0u8; uncompressed_size];
+        // `uncompressed_size` is the product of the layout message's chunk
+        // dimensions, all attacker-chosen; no read follows on this branch, so
+        // the budget is the only thing standing between the header and the
+        // allocator.
+        let mut buf = budget.zeroed(uncompressed_size as u64, "chunk uncompressed size")?;
         if let Some(fv) = fill_value {
             if !fv.is_empty() {
                 // Tile the fill value pattern across the buffer.
@@ -121,10 +127,15 @@ pub fn read_chunk_raw<R: consus_io::ReadAt>(
         return Ok(buf);
     }
 
-    // 1. Read raw on-disk data.
-    let disk_size = location.size as usize;
-    let mut compressed = vec![0u8; disk_size];
-    source.read_at(location.address, &mut compressed)?;
+    // 1. Read raw on-disk data. `location.size` comes from a chunk B-tree
+    //    record, so the buffer grows only as far as reads confirm.
+    let compressed = consus_io::read_at_bounded(
+        source,
+        location.address,
+        location.size,
+        &budget,
+        "chunk on-disk size",
+    )?;
 
     // 2. No filters → return raw bytes.
     if filter_ids.is_empty() {
@@ -162,8 +173,10 @@ pub async fn async_read_chunk_raw<R: consus_io::AsyncReadAt>(
     registry: &dyn consus_compression::CompressionRegistry,
     fill_value: Option<&[u8]>,
 ) -> Result<Vec<u8>> {
+    let budget = ParseBudget::DEFAULT;
+
     if location.address == crate::constants::UNDEFINED_ADDRESS {
-        let mut buf = vec![0u8; uncompressed_size];
+        let mut buf = budget.zeroed(uncompressed_size as u64, "chunk uncompressed size")?;
         if let Some(fv) = fill_value {
             if !fv.is_empty() {
                 for chunk in buf.chunks_mut(fv.len()) {
@@ -175,9 +188,14 @@ pub async fn async_read_chunk_raw<R: consus_io::AsyncReadAt>(
         return Ok(buf);
     }
 
-    let disk_size = location.size as usize;
-    let mut compressed = vec![0u8; disk_size];
-    source.read_at(location.address, &mut compressed).await?;
+    let compressed = consus_io::async_read_at_bounded(
+        source,
+        location.address,
+        location.size,
+        &budget,
+        "chunk on-disk size",
+    )
+    .await?;
 
     if filter_ids.is_empty() {
         return Ok(compressed);

@@ -101,7 +101,7 @@ impl Hdf5Attribute {
         let name = Self::read_null_terminated_name(data, cursor, name_size)?;
         cursor += align_up(name_size, V1_ALIGNMENT);
 
-        let datatype = Self::read_datatype(data, cursor, dt_size)?;
+        let datatype = Self::read_datatype(data, cursor, dt_size, &ctx.budget)?;
         cursor += align_up(dt_size, V1_ALIGNMENT);
 
         let shape = Self::read_dataspace(data, cursor, ds_size, ctx)?;
@@ -134,7 +134,7 @@ impl Hdf5Attribute {
         let name = Self::read_null_terminated_name(data, cursor, name_size)?;
         cursor += name_size;
 
-        let datatype = Self::read_datatype(data, cursor, dt_size)?;
+        let datatype = Self::read_datatype(data, cursor, dt_size, &ctx.budget)?;
         cursor += dt_size;
 
         let shape = Self::read_dataspace(data, cursor, ds_size, ctx)?;
@@ -194,7 +194,7 @@ impl Hdf5Attribute {
             .into();
         cursor += name_size;
 
-        let datatype = Self::read_datatype(data, cursor, dt_size)?;
+        let datatype = Self::read_datatype(data, cursor, dt_size, &ctx.budget)?;
         cursor += dt_size;
 
         let shape = Self::read_dataspace(data, cursor, ds_size, ctx)?;
@@ -246,7 +246,12 @@ impl Hdf5Attribute {
     ///
     /// Delegates to `crate::datatype::compound::parse_datatype` which handles
     /// all HDF5 datatype classes.
-    fn read_datatype(data: &[u8], offset: usize, size: usize) -> Result<consus_core::Datatype> {
+    fn read_datatype(
+        data: &[u8],
+        offset: usize,
+        size: usize,
+        budget: &consus_core::ParseBudget,
+    ) -> Result<consus_core::Datatype> {
         if size == 0 {
             return Err(Error::InvalidFormat {
                 message: String::from("attribute datatype has zero size"),
@@ -263,7 +268,7 @@ impl Hdf5Attribute {
             });
         }
         let dt_bytes = &data[offset..offset + size];
-        crate::datatype::compound::parse_datatype(dt_bytes)
+        crate::datatype::compound::parse_datatype(dt_bytes, budget)
     }
 
     /// Read and parse a dataspace from `data[offset..offset+size]`.

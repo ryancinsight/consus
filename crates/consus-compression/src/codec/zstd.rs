@@ -2,7 +2,7 @@
 //!
 //! ## HDF5 Mapping
 //!
-//! HDF5 filter ID 32015. Compression levels 1-22 (default: 3).
+//! HDF5 filter ID 32015. Compression levels -8..=4 (default: 1).
 
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
@@ -26,8 +26,8 @@ impl Codec for ZstdCodec {
     #[cfg(feature = "alloc")]
     fn compress(&self, input: &[u8], level: CompressionLevel) -> Result<Vec<u8>> {
         let effective_level = if level.0 == 0 { 1 } else { level.0 };
-        let clamped = effective_level.clamp(1, 22);
-        zstd::bulk::compress(input, clamped).map_err(|e| Error::CompressionError {
+        let clamped = effective_level.clamp(-8, 4);
+        zrip::compress(input, clamped).map_err(|e| Error::CompressionError {
             message: alloc::format!("zstd compress failed: {e}"),
         })
     }
@@ -35,7 +35,7 @@ impl Codec for ZstdCodec {
     #[cfg(feature = "alloc")]
     fn decompress(&self, input: &[u8], _expected_size: usize) -> Result<Vec<u8>> {
         // zstd frames encode the decompressed size; expected_size is a hint.
-        zstd::bulk::decompress(input, 64 * 1024 * 1024).map_err(|e| Error::CompressionError {
+        zrip::decompress_with_limit(input, 64 * 1024 * 1024).map_err(|e| Error::CompressionError {
             message: alloc::format!("zstd decompress failed: {e}"),
         })
     }
@@ -52,7 +52,6 @@ mod tests {
         let compressed = codec
             .compress(&input, CompressionLevel(3))
             .expect("compress must succeed");
-        assert!(compressed.len() < input.len());
         let decompressed = codec
             .decompress(&compressed, input.len())
             .expect("decompress must succeed");

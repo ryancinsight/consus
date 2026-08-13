@@ -28,3 +28,6 @@ proptest    = "1"
 [[test]]
 name = "integration_real_file"
 path = "tests/integration_real_file.rs"
+
+[lints]
+workspace = true

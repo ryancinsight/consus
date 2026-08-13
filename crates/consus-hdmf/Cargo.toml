@@ -25,3 +25,6 @@ consus-io   = { workspace = true }
 [dev-dependencies]
 consus-hdf5 = { workspace = true, features = ["std"] }
 consus-io   = { workspace = true, features = ["std"] }
+
+[lints]
+workspace = true

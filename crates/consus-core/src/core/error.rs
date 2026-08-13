@@ -117,6 +117,22 @@ pub enum Error {
 
     /// Permission or access mode violation (e.g., write on read-only file).
     ReadOnly,
+
+    /// A declared size, count, or nesting depth exceeded the parse budget.
+    ///
+    /// Distinct from [`Self::InvalidFormat`]: the input is structurally
+    /// well-formed but demands more of one resource than
+    /// [`crate::ParseBudget`] permits. Carries no heap-allocated context
+    /// because the paths that raise it are precisely those where allocation
+    /// is already in doubt.
+    ResourceLimit {
+        /// The bounded quantity, named for the field it was read from.
+        what: &'static str,
+        /// The value the input declared.
+        requested: u64,
+        /// The ceiling the budget permits.
+        limit: u64,
+    },
 }
 
 impl Error {
@@ -217,6 +233,15 @@ impl ::core::fmt::Display for Error {
             Self::Overflow => write!(f, "integer overflow in size computation"),
 
             Self::ReadOnly => write!(f, "write operation on read-only handle"),
+
+            Self::ResourceLimit {
+                what,
+                requested,
+                limit,
+            } => write!(
+                f,
+                "parse budget exceeded: {what} declared {requested}, limit {limit}"
+            ),
         }
     }
 }
