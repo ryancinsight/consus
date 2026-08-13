@@ -41,10 +41,9 @@ use core::num::NonZeroUsize;
 
 use consus_core::{ByteOrder, Datatype, Error, Result};
 
-pub use format::{
-    BinaryFormatCode, binary_format_element_size, binary_format_to_datatype, parse_binary_format,
-    tform_to_datatype,
-};
+pub use format::{BinaryFormatCode, binary_format_element_size, parse_binary_format};
+#[cfg(feature = "alloc")]
+pub use format::{binary_format_to_datatype, tform_to_datatype};
 
 /// FITS image storage encoding derived from the `BITPIX` header keyword.
 ///
@@ -91,10 +90,19 @@ impl Bitpix {
             64 => Ok(Self::I64),
             -32 => Ok(Self::F32),
             -64 => Ok(Self::F64),
-            _ => Err(Error::InvalidFormat {
+            _ => {
                 #[cfg(feature = "alloc")]
-                message: alloc::format!("unsupported FITS BITPIX value: {value}"),
-            }),
+                {
+                    Err(Error::invalid_format(&alloc::format!(
+                        "unsupported FITS BITPIX value: {value}"
+                    )))
+                }
+                #[cfg(not(feature = "alloc"))]
+                {
+                    let _ = value;
+                    Err(Error::invalid_format("unsupported FITS BITPIX value"))
+                }
+            }
         }
     }
 
@@ -232,10 +240,19 @@ impl HduType {
                 "IMAGE" => Ok(Self::Image),
                 "TABLE" => Ok(Self::Table),
                 "BINTABLE" => Ok(Self::BinTable),
-                other => Err(Error::InvalidFormat {
+                _other => {
                     #[cfg(feature = "alloc")]
-                    message: alloc::format!("unsupported FITS XTENSION value: {other}"),
-                }),
+                    {
+                        Err(Error::invalid_format(&alloc::format!(
+                            "unsupported FITS XTENSION value: {_other}"
+                        )))
+                    }
+                    #[cfg(not(feature = "alloc"))]
+                    {
+                        let _ = _other;
+                        Err(Error::invalid_format("unsupported FITS XTENSION value"))
+                    }
+                }
             },
         }
     }

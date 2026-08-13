@@ -1,3 +1,5 @@
+#![cfg(feature = "alloc")]
+
 use consus_core::{Datatype, Shape};
 use consus_hdf5::file::Hdf5File;
 use consus_hdf5::file::writer::{DatasetCreationProps, FileCreationProps, Hdf5FileBuilder};

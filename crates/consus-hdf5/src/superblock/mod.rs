@@ -61,14 +61,9 @@ impl Superblock {
             return Self::parse_at(source, offset);
         }
 
-        #[cfg(feature = "alloc")]
-        return Err(Error::InvalidFormat {
-            message: alloc::string::String::from("no HDF5 superblock found at expected offsets"),
-        });
-        #[cfg(not(feature = "alloc"))]
-        return Err(Error::InvalidFormat {
-            message: alloc::string::String::from("invalid superblock format"),
-        });
+        Err(Error::invalid_format(
+            "no HDF5 superblock found at expected offsets",
+        ))
     }
 
     /// Parse superblock at a known offset.
@@ -82,21 +77,12 @@ impl Superblock {
         match version {
             0 | 1 => v0_v1::parse(source, offset),
             2 | 3 => v2_v3::parse(source, offset),
-            _ => {
-                #[cfg(feature = "alloc")]
-                return Err(Error::InvalidFormat {
-                    message: alloc::format!("unsupported superblock version: {version}"),
-                });
-                #[cfg(not(feature = "alloc"))]
-                return Err(Error::InvalidFormat {
-                    message: alloc::string::String::from("invalid superblock version"),
-                });
-            }
+            _ => Err(Error::invalid_format("unsupported superblock version")),
         }
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
     use byteorder::{ByteOrder, LittleEndian};

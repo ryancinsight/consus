@@ -1,5 +1,39 @@
 # Consus - Gap Audit
 
+## FITS and NWB no-default closure (2026-08-13, implementation complete; hosted verification pending)
+
+The initial `consus-fits --no-default-features` check failed with 45 errors and
+36 warnings because alloc-only FITS parsing, HDU, image, table, file, and
+validation modules were still compiled, while their re-exports were only
+partially gated. The current slice gates those boundaries and the alloc-only
+header parser/value model and datatype construction functions. The retained
+no-alloc surface is `Bitpix`, `HduType`, `BinaryFormatCode` parsing and element
+size, `FitsHduIndex`, and FITS block/span descriptors.
+
+Evidence after the implementation pass: no-default check, strict Clippy, and
+Nextest 16/16 pass; default check, strict Clippy, and Nextest 170/170 pass;
+all-features check/Clippy, doctests, warning-denied Rustdoc, and workspace
+formatting pass. The workspace no-default check and strict Clippy now pass after
+closing the shared `Error::invalid_format` feature-unification boundary, the NWB
+re-export/version/test boundary, and the transitive HDF5 module/test boundary.
+The NWB default suite passes 278/278, the HDF5 default suite passes 405/405,
+and the explicit no-default no-tests gates pass. Hosted exact-head verification
+is the only remaining gate for this provider slice.
+
+## HDF5 no-default closure (2026-08-13)
+
+The NWB no-default library gate originally failed in `consus-hdf5` because
+alloc-backed file APIs and B-tree re-exports were compiled without `alloc`, and
+superblock errors constructed heap-backed payloads unconditionally. The HDF5
+root now retains only its allocation-free structural modules in no-default
+builds; alloc-backed modules, tests, and the benchmark are feature-gated. The
+shared `Error::invalid_format` constructor preserves the error category in
+no-alloc builds and retains detailed messages in alloc builds.
+
+Evidence: HDF5 no-default check, strict Clippy, and explicit no-test Nextest
+pass; default strict Clippy and Nextest 405/405 pass. The workspace no-default
+check and strict Clippy pass after this closure.
+
 ## Arrow/Parquet no-default closure (2026-08-13)
 
 `consus-arrow` and `consus-parquet` now honor their declared `alloc` boundary.

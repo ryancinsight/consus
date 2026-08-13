@@ -69,19 +69,31 @@
 extern crate alloc;
 
 pub mod address;
+#[cfg(feature = "alloc")]
 pub mod attribute;
+#[cfg(feature = "alloc")]
 pub mod btree;
 pub mod constants;
+#[cfg(feature = "alloc")]
 pub mod dataset;
+#[cfg(feature = "alloc")]
 pub mod dataspace;
+#[cfg(feature = "alloc")]
 pub mod datatype;
+#[cfg(feature = "alloc")]
 pub mod file;
+#[cfg(feature = "alloc")]
 pub mod filter;
+#[cfg(feature = "alloc")]
 pub mod group;
+#[cfg(feature = "alloc")]
 pub mod heap;
+#[cfg(feature = "alloc")]
 pub mod link;
+#[cfg(feature = "alloc")]
 pub mod object_header;
 pub mod primitives;
+#[cfg(feature = "alloc")]
 pub mod property_list;
 pub mod superblock;
 

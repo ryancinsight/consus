@@ -480,7 +480,7 @@ mod tests {
     #[test]
     fn decode_f64_le_identity() {
         // Theorem: 3 × f64 LE bytes → same values.
-        let values: [f64; 3] = [1.0, -2.5, 3.14159265358979];
+        let values: [f64; 3] = [1.0, -2.5, core::f64::consts::PI];
         let raw: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
         let dt = Datatype::Float {
             bits: NonZeroUsize::new(64).unwrap(),
@@ -490,7 +490,7 @@ mod tests {
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].to_bits(), 1.0f64.to_bits());
         assert_eq!(result[1].to_bits(), (-2.5f64).to_bits());
-        assert_eq!(result[2].to_bits(), 3.14159265358979f64.to_bits());
+        assert_eq!(result[2].to_bits(), core::f64::consts::PI.to_bits());
     }
 
     #[test]

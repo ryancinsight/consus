@@ -105,7 +105,7 @@ proptest! {
             count,
             block: 1,
         };
-        let left = Selection::Hyperslab(Hyperslab::new(&[dim.clone()]));
+        let left = Selection::Hyperslab(Hyperslab::new(&[dim]));
         let right = Selection::Hyperslab(Hyperslab::new(&[dim]));
 
         prop_assert_eq!(left, right);

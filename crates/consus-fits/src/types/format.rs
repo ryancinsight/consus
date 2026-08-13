@@ -37,9 +37,13 @@
 #[cfg(feature = "alloc")]
 use alloc::{boxed::Box, string::String, vec};
 
+#[cfg(feature = "alloc")]
 use core::num::NonZeroUsize;
 
-use consus_core::{ByteOrder, Datatype, Error, Result, StringEncoding};
+use consus_core::{Error, Result};
+
+#[cfg(feature = "alloc")]
+use consus_core::{ByteOrder, Datatype, StringEncoding};
 
 #[cfg(feature = "alloc")]
 use consus_core::CompoundField;
@@ -120,10 +124,7 @@ impl BinaryFormatCode {
 pub fn parse_binary_format(tform: &str) -> Result<(usize, BinaryFormatCode)> {
     let trimmed = tform.trim();
     if trimmed.is_empty() {
-        return Err(Error::InvalidFormat {
-            #[cfg(feature = "alloc")]
-            message: "empty TFORM string".to_string(),
-        });
+        return Err(Error::invalid_format("empty TFORM string"));
     }
 
     // Split into leading digits (repeat count) and trailing type code character.
@@ -147,9 +148,15 @@ pub fn parse_binary_format(tform: &str) -> Result<(usize, BinaryFormatCode)> {
         }
     };
 
-    let repeat: usize = digits.parse().map_err(|_| Error::InvalidFormat {
+    let repeat: usize = digits.parse().map_err(|_| {
         #[cfg(feature = "alloc")]
-        message: alloc::format!("invalid repeat count in TFORM: {tform}"),
+        {
+            Error::invalid_format(&alloc::format!("invalid repeat count in TFORM: {tform}"))
+        }
+        #[cfg(not(feature = "alloc"))]
+        {
+            Error::invalid_format("invalid repeat count in TFORM")
+        }
     })?;
 
     let code = match code_char {
@@ -167,12 +174,19 @@ pub fn parse_binary_format(tform: &str) -> Result<(usize, BinaryFormatCode)> {
         'P' => BinaryFormatCode::Descriptor32,
         'Q' => BinaryFormatCode::Descriptor64,
         _ => {
-            return Err(Error::InvalidFormat {
-                #[cfg(feature = "alloc")]
-                message: alloc::format!(
+            #[cfg(feature = "alloc")]
+            {
+                return Err(Error::invalid_format(&alloc::format!(
                     "invalid FITS binary table format code: '{code_char}' in TFORM '{tform}'"
-                ),
-            });
+                )));
+            }
+            #[cfg(not(feature = "alloc"))]
+            {
+                let _ = (code_char, tform);
+                return Err(Error::invalid_format(
+                    "invalid FITS binary table format code",
+                ));
+            }
         }
     };
 
@@ -243,6 +257,7 @@ pub const fn binary_format_element_size(code: BinaryFormatCode) -> usize {
 /// `Datatype::Array { base, dims: [repeat] }`.
 /// For `repeat == 1`, the scalar type is returned directly.
 #[allow(clippy::result_large_err)]
+#[cfg(feature = "alloc")]
 pub fn binary_format_to_datatype(code: BinaryFormatCode, repeat: usize) -> Datatype {
     match code {
         BinaryFormatCode::Logical => Datatype::Boolean,
@@ -355,6 +370,7 @@ pub fn binary_format_to_datatype(code: BinaryFormatCode, repeat: usize) -> Datat
 /// ## Errors
 ///
 /// Returns `Error::InvalidFormat` for unrecognized format codes.
+#[cfg(feature = "alloc")]
 pub fn tform_to_datatype(tform: &str) -> Result<Datatype> {
     let (repeat, code) = parse_binary_format(tform)?;
 
@@ -391,6 +407,7 @@ pub fn tform_to_datatype(tform: &str) -> Result<Datatype> {
 ///
 /// Callers must pass a nonzero `bits` value. Used only with FITS-mandated
 /// bit widths (8, 16, 32, 64) which are all nonzero by specification.
+#[cfg(feature = "alloc")]
 const fn nonzero(bits: usize) -> NonZeroUsize {
     match NonZeroUsize::new(bits) {
         Some(v) => v,
@@ -398,7 +415,7 @@ const fn nonzero(bits: usize) -> NonZeroUsize {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
 

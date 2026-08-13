@@ -1,5 +1,46 @@
 # Consus — Implementation Checklist
 
+## CONSUS-NODEF-FITS-003 — Close FITS no-default cfg boundary — done 2026-08-13
+
+- [x] Gate alloc-only FITS image, table, file, facade, validation, HDU, header
+      parser/value/card, and datatype-construction surfaces at their module or
+      item boundaries.
+- [x] Retain the no-alloc FITS type, block, span, and index descriptors with
+      value-semantic unit coverage; remove nested `no_std` attributes and
+      feature-induced warnings.
+- [x] Pass no-default check, strict Clippy, and Nextest 16/16.
+- [x] Pass default check, strict Clippy, and Nextest 170/170; pass all-features
+      check/Clippy, doctests, warning-denied Rustdoc, and formatting.
+- [x] Close the workspace feature-unification error constructor, gate the
+      no-default NWB re-exports/version path, and remove the workspace
+      integration-test `Copy` clone, stale Option assertions, and approximate
+      PI fixture literal caught by strict Clippy.
+- [x] Close the workspace feature-unification constructor and the downstream
+      `consus-nwb` no-default module, re-export, version, and test boundaries.
+- [x] Close the transitive `consus-hdf5` no-default module, error, test, and
+      benchmark boundaries required by the NWB library build.
+- [ ] Commit the provider slice and run hosted exact-head gates.
+
+## CONSUS-NODEF-NWB-004 — Close NWB no-default cfg boundary — done 2026-08-13
+
+- [x] Gate alloc-only NWB modules, re-exports, namespace helpers, and
+      integration/property tests at their ownership boundaries.
+- [x] Preserve the no-alloc conventions/version surface and exhaustive unknown
+      version behavior.
+- [x] Pass workspace no-default check and strict Clippy; pass default NWB
+      Nextest 278/278 and the explicit no-default no-tests gate.
+- [ ] Commit the provider slice and run hosted exact-head gates with the FITS
+      item above.
+
+## CONSUS-NODEF-HDF5-005 — Close HDF5 no-default cfg boundary — done 2026-08-13
+
+- [x] Gate alloc-backed HDF5 modules and preserve the allocation-free address,
+      constants, primitives, and superblock surface.
+- [x] Gate alloc-backed unit/integration tests and the HDF5 benchmark target;
+      retain the default test suite unchanged.
+- [x] Pass no-default check, strict Clippy, explicit no-test Nextest, default
+      strict Clippy, and default Nextest 405/405.
+
 ## CONSUS-NODEF-ARROW-PARQUET-002 — Close Arrow/Parquet no-default cfg boundary
 
 - [x] Gate alloc-only `consus-parquet` schema, bridge, conversion, wire, and

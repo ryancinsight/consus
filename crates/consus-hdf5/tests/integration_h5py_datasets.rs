@@ -1,3 +1,5 @@
+#![cfg(feature = "alloc")]
+
 //! Integration tests: h5py-created datasets read with consus-hdf5.
 //!
 //! ## Purpose

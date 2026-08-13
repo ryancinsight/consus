@@ -1,3 +1,5 @@
+#![cfg(feature = "alloc")]
+
 //! HDF5 round-trip tests.
 //!
 //! ## Specification Reference

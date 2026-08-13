@@ -1,3 +1,5 @@
+#![cfg(feature = "alloc")]
+
 //! Roundtrip tests: consus-hdf5 writer → h5py reader.
 //!
 //! ## Purpose

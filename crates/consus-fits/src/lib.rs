@@ -55,41 +55,59 @@ pub mod datastructure;
 pub mod hdu;
 
 /// FITS image metadata extraction and raw image access.
+#[cfg(feature = "alloc")]
 pub mod image;
 
 /// FITS ASCII and binary table metadata extraction and raw row access.
+#[cfg(feature = "alloc")]
 pub mod table;
 
 /// FITS file wrapper and `consus-core` trait integration.
+#[cfg(feature = "alloc")]
 pub mod file;
 
 /// FITS facade integration for `consus-core` and top-level `consus`.
+#[cfg(feature = "alloc")]
 pub mod fits;
 
 /// FITS file-, HDU-, and path-level invariant validation.
+#[cfg(feature = "alloc")]
 pub mod validation;
 
 pub use datastructure::{
     FitsBlockAlignment, FitsDataSpan, FitsHeaderBlock, FitsHeaderCardCount, FitsLogicalRecord,
 };
+#[cfg(feature = "alloc")]
 pub use file::FitsFile;
 
-pub use hdu::{FitsHdu, FitsHduIndex, FitsHduKind, FitsHduSequence};
+pub use hdu::FitsHduIndex;
+#[cfg(feature = "alloc")]
+pub use hdu::{FitsHdu, FitsHduKind, FitsHduSequence};
 pub use header::{
-    card::{FITS_CARD_LEN, FitsCard},
+    card::FITS_CARD_LEN,
     keyword::{
-        BITPIX_KEYWORD, COMMENT_KEYWORD, CONTINUE_KEYWORD, END_KEYWORD, FitsKeyword,
-        HIERARCH_KEYWORD, HISTORY_KEYWORD, KeywordError, MandatoryPrimaryKeyword, NAXIS_KEYWORD,
-        ReservedKeywordClass, SIMPLE_KEYWORD, STANDARD_KEYWORD_WIDTH,
-        classify_mandatory_primary_keyword, classify_reserved_keyword,
-        is_mandatory_primary_keyword, is_reserved_keyword, is_valid_hierarchical_segment,
-        mandatory_primary_keywords,
+        BITPIX_KEYWORD, COMMENT_KEYWORD, CONTINUE_KEYWORD, END_KEYWORD, HIERARCH_KEYWORD,
+        HISTORY_KEYWORD, MandatoryPrimaryKeyword, NAXIS_KEYWORD, ReservedKeywordClass,
+        SIMPLE_KEYWORD, STANDARD_KEYWORD_WIDTH, classify_mandatory_primary_keyword,
+        classify_reserved_keyword, is_mandatory_primary_keyword, is_reserved_keyword,
+        is_valid_hierarchical_segment, mandatory_primary_keywords,
     },
+};
+#[cfg(feature = "alloc")]
+pub use header::{
+    card::FitsCard,
+    keyword::{FitsKeyword, KeywordError},
     parser::{FitsHeader, parse_header_bytes, parse_header_cards},
     value::{ComplexValue, HeaderValue, IntegerValue, RealValue},
 };
+#[cfg(feature = "alloc")]
 pub use image::FitsImageDescriptor;
+#[cfg(feature = "alloc")]
 pub use table::{
     FitsAsciiTableDescriptor, FitsBinaryTableDescriptor, FitsColumnValue, FitsTableColumn,
 };
-pub use types::{BinaryFormatCode, Bitpix, HduType, tform_to_datatype};
+pub use types::{
+    BinaryFormatCode, Bitpix, HduType, binary_format_element_size, parse_binary_format,
+};
+#[cfg(feature = "alloc")]
+pub use types::{binary_format_to_datatype, tform_to_datatype};
