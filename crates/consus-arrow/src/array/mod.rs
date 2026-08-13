@@ -1,3 +1,4 @@
+#[cfg(feature = "alloc")]
 pub mod materialize;
 #[cfg(feature = "alloc")]
 pub use materialize::column_values_to_arrow;
@@ -35,6 +36,9 @@ use alloc::vec::Vec;
 
 use core::fmt;
 
+#[cfg(not(feature = "alloc"))]
+use core::marker::PhantomData;
+
 #[cfg(feature = "alloc")]
 use crate::memory::{ArrowBitmap, ArrowBuffer, ArrowOffsets};
 
@@ -55,6 +59,8 @@ pub enum ArrayData<'a> {
         validity: Option<ArrowBitmap<'a>>,
         #[cfg(not(feature = "alloc"))]
         validity: Option<()>,
+        #[cfg(not(feature = "alloc"))]
+        _marker: PhantomData<&'a ()>,
     },
     /// Variable-width UTF-8 or binary values.
     VariableWidth {
@@ -71,10 +77,24 @@ pub enum ArrayData<'a> {
         validity: Option<ArrowBitmap<'a>>,
         #[cfg(not(feature = "alloc"))]
         validity: Option<()>,
+        #[cfg(not(feature = "alloc"))]
+        _marker: PhantomData<&'a ()>,
     },
 }
 
 impl<'a> ArrayData<'a> {
+    /// Construct a no-allocation fixed-width shape descriptor.
+    #[cfg(not(feature = "alloc"))]
+    #[must_use]
+    pub const fn fixed_width(len: usize, element_width: usize) -> Self {
+        Self::FixedWidth {
+            len,
+            element_width,
+            validity: None,
+            _marker: PhantomData,
+        }
+    }
+
     /// Return the logical length.
     #[must_use]
     pub fn len(&self) -> usize {
@@ -281,7 +301,7 @@ impl<'a> fmt::Display for ArrowArray<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
 
@@ -329,5 +349,18 @@ mod tests {
             assert_eq!(sliced.len(), 1);
             assert!(sliced.is_all_valid());
         }
+    }
+}
+
+#[cfg(all(test, not(feature = "alloc")))]
+mod no_alloc_tests {
+    use super::{ArrayData, ArrowArray};
+
+    #[test]
+    fn fixed_width_descriptor_preserves_shape() {
+        let array = ArrowArray::new(ArrayData::fixed_width(4, 8));
+        assert_eq!(array.len(), 4);
+        assert_eq!(array.null_count(), 0);
+        assert!(array.is_all_valid());
     }
 }

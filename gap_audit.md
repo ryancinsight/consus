@@ -1,5 +1,21 @@
 # Consus - Gap Audit
 
+## Arrow/Parquet no-default closure (2026-08-13)
+
+`consus-arrow` and `consus-parquet` now honor their declared `alloc` boundary.
+Alloc-bearing schema, bridge, conversion, wire, hybrid, reader, writer, and
+materialization surfaces are not compiled in a no-default build. The retained
+no-alloc surface is the physical/logical Parquet model plus an Arrow fixed-width
+shape descriptor; its tests assert value semantics rather than existence only.
+Alloc-only integration tests and Criterion benches declare `alloc` as a
+required feature, so no-default `--all-targets` checks do not compile APIs that
+the feature contract intentionally removes.
+
+Evidence: `consus-parquet` no-default Nextest 10/10 and default 215/215;
+`consus-arrow` no-default Nextest 2/2 and default 79/79; strict Clippy passes
+for both packages in both modes. A workspace no-default check proceeds through
+these two providers and stops at the pre-existing `consus-fits` cfg boundary.
+
 ## Pages-disabled documentation CI (2026-07-22)
 
 Documentation run `29941230671` proved that Rustdoc and redirect generation
@@ -721,13 +737,9 @@ owns the cross-repository matrix.
 - `cargo check` (default): pass.
 - `cargo check --all-features`: pass.
 - Doctests (`--all-features`): pass.
-- `consus-arrow` `--no-default-features`: **partially closed** by this
-  audit's cfg-gating fixes (lib.rs re-export groups, `bridge/mod.rs`
-  alloc-gated schema/field imports, `schema/mod.rs`
-  `ArrowSchemaError`/`ArrowSchemaMergeStep` gating, `conversion/convert.rs`
-  Complex-arm gating). The re-export E0432 surface is closed, but the crate
-  still fails no-default with ~27 errors in `field/mod.rs`, `memory/mod.rs`,
-  and `array/mod.rs` — see CONSUS-NODEF-GATE-001 below.
+- `consus-arrow` and `consus-parquet` no-default cfg closure is complete under
+  `CONSUS-NODEF-ARROW-PARQUET-002`; default and no-default package gates are
+  green. The remaining workspace debt is outside these two providers.
 - Clippy lint fixes landed: `consus-nwb/src/validation/report.rs` redundant
   borrow; `consus-hdmf/tests/integration.rs` `approx_constant` (2 sites).
 - `consus-hdf5` root re-exports added for the `Hdf5File` and `Hdf5FileBuilder`
@@ -735,14 +747,14 @@ owns the cross-repository matrix.
 
 ### Open — CONSUS-NODEF-GATE-001 (--no-default-features cfg debt)
 
-`cargo check --workspace --no-default-features` fails across the format crates
-with systematic alloc/feature-gating debt: unconditional re-exports of
-alloc-gated items and un-gated `alloc::`/`vec!` references in no-std mode.
-Inventory at this audit: `consus-arrow` (~27 errors; the re-export E0432s
-were closed by the fixes above, the remaining sites are in `field/mod.rs`,
-`memory/mod.rs`, and `array/mod.rs`), `consus-parquet` (~10),
-`consus-fits` (~50), `consus-nwb` (4), plus downstream surfaced during
-iterated checks. Closure is a dedicated cfg-hygiene slice.
+`cargo check --workspace --no-default-features` still fails across the
+remaining format crates with systematic alloc/feature-gating debt:
+unconditional re-exports of alloc-gated items and un-gated `alloc::`/`vec!`
+references in no-std mode. `consus-arrow` and `consus-parquet` are closed by
+`CONSUS-NODEF-ARROW-PARQUET-002`; the next deterministic blocker is
+`consus-fits` (50 errors in the current sweep), followed by `consus-nwb` and
+downstream feature edges. Closure remains a dependency-ordered cfg-hygiene
+sequence.
 
 ### Open — CONSUS-TEST-API-001 (integration-test aspirational I/O API)
 

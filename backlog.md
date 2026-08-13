@@ -1,5 +1,25 @@
 # Consus — Backlog
 
+## CONSUS-NODEF-ARROW-PARQUET-002 — Close Arrow/Parquet no-default cfg boundary [patch] — done 2026-08-13
+
+- Owner: Atlas foundation audit; scope: `consus-arrow` and `consus-parquet`
+  no-default module, test, and benchmark surfaces.
+- Delivered: alloc-only Parquet schema, bridge, conversion, wire, hybrid, and
+  Arrow facade modules are feature-gated at their module boundaries; the
+  no-alloc Arrow array descriptor retains a value-semantic shape API; alloc-only
+  integration tests and benchmarks declare their `alloc` requirement.
+- Acceptance: both crates compile with `--no-default-features`; their
+  no-default tests execute real retained surfaces; default behavior remains
+  covered by the complete package suites; warning-denied Clippy is clean in
+  both feature modes.
+- Evidence: `consus-parquet` no-default Nextest 10/10 and default 215/215;
+  `consus-arrow` no-default Nextest 2/2 and default 79/79; strict Clippy in
+  both modes; focused rustfmt check; workspace no-default sweep reaches the
+  next pre-existing `consus-fits` cfg boundary.
+- Residual: `CONSUS-NODEF-GATE-001` remains open for `consus-fits`,
+  `consus-nwb`, and downstream workspace feature edges; `CONSUS-TEST-API-001`
+  remains separate.
+
 ## ATLAS-CONSUS-GATE-FIX-001 — Atlas gate fixes and audit record [patch] — done 2026-08-12
 
 - Owner: foundation audit (ATLAS-FOUNDATION-PLANNING-002); scope: canonical
@@ -8,10 +28,10 @@
   groups, bridge/schema/conversion alloc gating), Clippy lint fixes in
   `consus-nwb` (`report.rs`) and `consus-hdmf` (`tests/integration.rs`), and
   `consus-hdf5` root re-exports for the `Hdf5File`/`Hdf5FileBuilder` facades.
-- Verified: default + all-features checks and doctests pass; `consus-arrow`
-  no-default is partially closed (re-export E0432s fixed; ~27 errors remain
-  in `field/mod.rs`, `memory/mod.rs`, `array/mod.rs` — see
-  CONSUS-NODEF-GATE-001).
+- Verified: default + all-features checks and doctests pass. The initial
+  `consus-arrow` no-default re-export closure was completed by the follow-on
+  `CONSUS-NODEF-ARROW-PARQUET-002` item; the wider workspace cfg debt remains
+  under `CONSUS-NODEF-GATE-001`.
 - Remaining (tracked, not part of this patch): `--no-default-features`
   workspace cfg debt (CONSUS-NODEF-GATE-001) and the integration-test
   aspirational I/O API (CONSUS-TEST-API-001); both are inventoried in

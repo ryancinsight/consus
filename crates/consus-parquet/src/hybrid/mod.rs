@@ -29,6 +29,7 @@
 #[cfg(feature = "alloc")]
 use alloc::string::String;
 
+#[cfg(feature = "alloc")]
 use crate::schema::ParquetPhysicalType;
 
 /// Hybrid storage mode for a Parquet-backed dataset.
@@ -242,7 +243,7 @@ impl Default for HybridStorageDescriptor {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
 

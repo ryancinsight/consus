@@ -31,3 +31,4 @@ criterion = { workspace = true }
 [[bench]]
 name = "parquet_rw"
 harness = false
+required-features = ["alloc"]
