@@ -305,7 +305,7 @@ impl SymbolTableEntry {
 /// A symbol table node is a leaf-level structure referenced by a B-tree v1
 /// (group type). Each node contains a fixed-capacity array of
 /// [`SymbolTableEntry`] values. Deleted entries are identified by an
-/// [`UNDEFINED_ADDRESS`](crate::constants::UNDEFINED_ADDRESS) in the
+/// [`UNDEFINED_ADDRESS`] in the
 /// `object_header_address` field and are excluded from the parsed result.
 ///
 /// ## Layout
@@ -347,7 +347,7 @@ impl SymbolTableNode {
     /// # Deleted Entry Filtering
     ///
     /// Entries whose `object_header_address` equals
-    /// [`UNDEFINED_ADDRESS`](crate::constants::UNDEFINED_ADDRESS) are
+    /// [`UNDEFINED_ADDRESS`] are
     /// interpreted as deleted (freed) slots and are excluded from the
     /// returned `entries` vector.
     pub fn parse<R: ReadAt>(source: &R, address: u64, ctx: &ParseContext) -> Result<Self> {

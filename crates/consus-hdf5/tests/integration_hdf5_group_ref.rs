@@ -1,3 +1,5 @@
+#![cfg(feature = "alloc")]
+
 //! Integration tests for `data/hdf5_group_ref_sample.h5`.
 //!
 //! ## Fixture manifest

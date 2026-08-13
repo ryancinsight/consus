@@ -39,7 +39,7 @@ pub const TIMESERIES_SUBTYPES: &[&str] = &[
 ///
 /// This function resolves up to two levels of inheritance. Chains deeper than
 /// two levels require spec-guided resolution via
-/// [`is_timeseries_type_with_specs`], which consults parsed namespace
+/// `is_timeseries_type_with_specs`, which consults parsed namespace
 /// specifications to attempt one additional resolution step.
 pub fn is_timeseries_type(type_def: &str, type_inc: Option<&str>) -> bool {
     if type_def == "TimeSeries" {

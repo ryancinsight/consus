@@ -1,3 +1,5 @@
+#![cfg(feature = "alloc")]
+
 use consus_core::Error as ConsusError;
 use consus_nwb::file::{NwbFile, NwbFileBuilder};
 use consus_nwb::{ElectrodeTable, UnitsTable};

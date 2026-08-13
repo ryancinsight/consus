@@ -77,7 +77,7 @@ pub const DIRECT_BLOCK_SIGNATURE: [u8; 4] = *b"FHDB";
 ///
 /// All variable-width fields (offset-size and length-size) have been widened
 /// to `u64` during parsing. The original encoding widths are determined by
-/// [`ParseContext`](crate::address::ParseContext).
+/// [`ParseContext`].
 #[derive(Debug, Clone)]
 pub struct FractalHeapHeader {
     /// Number of bytes in a heap ID (used by link messages to reference

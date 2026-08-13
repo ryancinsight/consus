@@ -32,10 +32,14 @@
 #[cfg(feature = "alloc")]
 use alloc::{format, string::String, vec::Vec};
 
+#[cfg(feature = "alloc")]
 use consus_core::{Error, Result};
 
+#[cfg(feature = "alloc")]
 use super::card::{FITS_CARD_LEN, FitsCard};
+#[cfg(feature = "alloc")]
 use super::keyword::{FitsKeyword, MandatoryPrimaryKeyword, ReservedKeywordClass};
+#[cfg(feature = "alloc")]
 use super::value::{HeaderValue, IntegerValue};
 
 /// Ordered FITS header representation.

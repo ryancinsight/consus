@@ -31,13 +31,21 @@
 extern crate alloc;
 
 pub mod conventions;
+#[cfg(feature = "alloc")]
 pub mod file;
+#[cfg(feature = "alloc")]
 pub mod group;
+#[cfg(feature = "alloc")]
 pub mod io;
+#[cfg(feature = "alloc")]
 pub mod metadata;
+#[cfg(feature = "alloc")]
 pub mod model;
+#[cfg(feature = "alloc")]
 pub mod namespace;
+#[cfg(feature = "alloc")]
 pub mod storage;
+#[cfg(feature = "alloc")]
 pub mod validation;
 pub mod version;
 

@@ -119,6 +119,29 @@ pub enum Error {
     ReadOnly,
 }
 
+impl Error {
+    /// Construct an invalid-format error with the strongest available context.
+    ///
+    /// Alloc-enabled builds retain `message`; no-alloc builds preserve the
+    /// failure category without requiring a heap-backed error payload. This
+    /// constructor keeps consumers correct when Cargo unifies dependency
+    /// features across independent workspace members.
+    #[must_use]
+    pub fn invalid_format(message: &str) -> Self {
+        #[cfg(feature = "alloc")]
+        {
+            Self::InvalidFormat {
+                message: String::from(message),
+            }
+        }
+        #[cfg(not(feature = "alloc"))]
+        {
+            let _ = message;
+            Self::InvalidFormat {}
+        }
+    }
+}
+
 impl ::core::fmt::Display for Error {
     fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
         match self {

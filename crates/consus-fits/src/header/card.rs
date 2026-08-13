@@ -32,17 +32,18 @@
 //!   string fragment.
 //! - `append_string_fragment` mutates only string-valued cards.
 
-#![cfg_attr(not(feature = "std"), no_std)]
-
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
 #[cfg(feature = "alloc")]
 use alloc::string::{String, ToString};
 
+#[cfg(feature = "alloc")]
 use consus_core::{Error, Result};
 
+#[cfg(feature = "alloc")]
 use super::keyword::{FitsKeyword, HIERARCH_KEYWORD, KeywordError};
+#[cfg(feature = "alloc")]
 use super::value::HeaderValue;
 
 /// Exact byte width of a FITS card image.
@@ -332,6 +333,7 @@ fn split_value_comment(field: &str) -> Result<(&str, Option<String>)> {
     Ok((trim_right_spaces(field), None))
 }
 
+#[cfg(feature = "alloc")]
 fn trim_right_spaces(value: &str) -> &str {
     value.trim_end_matches(' ')
 }

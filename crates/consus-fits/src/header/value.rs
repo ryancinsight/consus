@@ -31,14 +31,13 @@
 //! - Numeric values preserve lexical fidelity through `raw` fields.
 //! - No I/O behavior is implemented here.
 
-#![cfg_attr(not(feature = "std"), no_std)]
-
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
 #[cfg(feature = "alloc")]
 use alloc::string::{String, ToString};
 
+#[cfg(feature = "alloc")]
 use consus_core::{Error, Result};
 
 /// Canonical FITS header value.
@@ -271,6 +270,7 @@ fn parse_string(token: &str) -> Result<Option<String>> {
     Ok(Some(decoded))
 }
 
+#[cfg(feature = "alloc")]
 fn parse_logical(token: &str) -> Option<bool> {
     match token {
         "T" => Some(true),
@@ -307,6 +307,7 @@ fn parse_complex(token: &str) -> Result<Option<ComplexValue>> {
     }))
 }
 
+#[cfg(feature = "alloc")]
 fn split_complex_components(inner: &str) -> Option<(&str, &str)> {
     let mut comma_index = None;
     for (index, ch) in inner.char_indices() {
@@ -322,6 +323,7 @@ fn split_complex_components(inner: &str) -> Option<(&str, &str)> {
     Some((&inner[..index], &inner[index + 1..]))
 }
 
+#[cfg(feature = "alloc")]
 fn is_integer_token(token: &str) -> bool {
     let bytes = token.as_bytes();
     if bytes.is_empty() {
@@ -340,6 +342,7 @@ fn is_integer_token(token: &str) -> bool {
     bytes[start..].iter().all(u8::is_ascii_digit)
 }
 
+#[cfg(feature = "alloc")]
 fn is_real_token(token: &str) -> bool {
     if token.is_empty() {
         return false;
@@ -397,6 +400,7 @@ fn is_real_token(token: &str) -> bool {
     seen_dot || seen_exp
 }
 
+#[cfg(feature = "alloc")]
 fn normalize_real_token(token: &str) -> String {
     token
         .chars()
@@ -404,6 +408,7 @@ fn normalize_real_token(token: &str) -> String {
         .collect()
 }
 
+#[cfg(feature = "alloc")]
 fn invalid_format(message: &str) -> Error {
     Error::InvalidFormat {
         #[cfg(feature = "alloc")]

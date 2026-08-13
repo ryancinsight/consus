@@ -47,13 +47,19 @@ pub mod keyword;
 pub mod parser;
 pub mod value;
 
-pub use card::{FITS_CARD_LEN, FitsCard};
+pub use card::FITS_CARD_LEN;
+#[cfg(feature = "alloc")]
+pub use card::FitsCard;
 pub use keyword::{
-    BITPIX_KEYWORD, COMMENT_KEYWORD, CONTINUE_KEYWORD, END_KEYWORD, FitsKeyword, HIERARCH_KEYWORD,
-    HISTORY_KEYWORD, KeywordError, MandatoryPrimaryKeyword, NAXIS_KEYWORD, ReservedKeywordClass,
-    SIMPLE_KEYWORD, STANDARD_KEYWORD_WIDTH, classify_mandatory_primary_keyword,
-    classify_reserved_keyword, is_mandatory_primary_keyword, is_reserved_keyword,
-    is_valid_hierarchical_segment, mandatory_primary_keywords,
+    BITPIX_KEYWORD, COMMENT_KEYWORD, CONTINUE_KEYWORD, END_KEYWORD, HIERARCH_KEYWORD,
+    HISTORY_KEYWORD, MandatoryPrimaryKeyword, NAXIS_KEYWORD, ReservedKeywordClass, SIMPLE_KEYWORD,
+    STANDARD_KEYWORD_WIDTH, classify_mandatory_primary_keyword, classify_reserved_keyword,
+    is_mandatory_primary_keyword, is_reserved_keyword, is_valid_hierarchical_segment,
+    mandatory_primary_keywords,
 };
+#[cfg(feature = "alloc")]
+pub use keyword::{FitsKeyword, KeywordError};
+#[cfg(feature = "alloc")]
 pub use parser::{FitsHeader, parse_header_bytes, parse_header_cards};
+#[cfg(feature = "alloc")]
 pub use value::{ComplexValue, HeaderValue, IntegerValue, RealValue};

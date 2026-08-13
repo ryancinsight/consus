@@ -24,8 +24,6 @@
 //! Higher-level HDU and file logic depend on this module for authoritative
 //! byte-layout computations rather than duplicating FITS blocking rules.
 
-#![cfg_attr(not(feature = "std"), no_std)]
-
 use consus_core::{Error, Result};
 
 use crate::header::card::FITS_CARD_LEN;

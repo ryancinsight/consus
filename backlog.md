@@ -1,5 +1,53 @@
 # Consus — Backlog
 
+## CONSUS-NODEF-FITS-003 — Close FITS no-default cfg boundary [patch] — done 2026-08-13
+
+- Owner: Atlas integration. Scope: `consus-fits` module, re-export, test, and
+  format-mapping feature boundaries plus the shared `consus-core` error
+  constructor required by workspace feature unification.
+- Acceptance: `consus-fits --no-default-features` compiles and tests its
+  retained value-semantic descriptors without warnings; default and all-feature
+  FITS behavior remains green; alloc-only parsing, HDU, image, table, file, and
+  validation APIs are not exposed or compiled in the no-alloc build.
+- Current evidence: the no-default package check, strict Clippy, and Nextest
+  16/16 pass after gating. Default package check, strict Clippy, Nextest
+  170/170, all-features check/Clippy, doctests, and warning-denied Rustdoc pass;
+  the workspace no-default check now passes after the shared Error constructor
+  and NWB re-export closure, and the workspace Clippy run exposed and fixed a
+  Copy-value clone in `tests/property_integration.rs`, stale NWB Option
+  assertions, and an approximate-PI fixture literal.
+- Completion: the provider workspace no-default check and strict Clippy pass;
+  `consus-nwb` and its HDF5 dependency are closed in the companion items
+  below. Remaining Consus work is limited to separately tracked test/API audit.
+
+## CONSUS-NODEF-NWB-004 — Close NWB no-default cfg boundary [patch] — done 2026-08-13
+
+- Owner: Atlas integration. Scope: `consus-nwb` module, re-export, version,
+  namespace, and alloc-only integration-test boundaries.
+- Acceptance: no-default builds retain the conventions/version surface without
+  compiling alloc-backed NWB APIs; default behavior remains value-semantically
+  tested; the workspace no-default feature graph remains warning-clean.
+- Delivered: alloc-only NWB modules, re-exports, and integration tests are
+  gated; no-default version matching is exhaustive; the shared workspace
+  `Error::invalid_format` constructor prevents dependency-feature shape from
+  leaking into FITS consumers.
+- Evidence: workspace no-default check and strict Clippy pass; default
+  `consus-nwb` Nextest 278/278 passes; no-default `consus-nwb` has no compiled
+  tests by contract and passes the explicit no-test gate.
+
+## CONSUS-NODEF-HDF5-005 — Close HDF5 no-default cfg boundary [patch] — done 2026-08-13
+
+- Owner: Atlas integration. Scope: `consus-hdf5` alloc-backed module,
+  re-export, test, benchmark, B-tree, and superblock error boundaries.
+- Acceptance: no-default HDF5 retains only its allocation-free structural
+  modules and compiles warning-cleanly; default HDF5 behavior remains covered
+  by its full value-semantic suite.
+- Delivered: alloc-backed HDF5 modules and test/bench targets are gated by the
+  `alloc` feature; no-default superblock errors use `consus-core`'s shared
+  constructor; default B-tree exports remain complete.
+- Evidence: no-default check, strict Clippy, and explicit no-test Nextest pass;
+  default strict Clippy passes and default HDF5 Nextest passes 405/405.
+
 ## CONSUS-NODEF-ARROW-PARQUET-002 — Close Arrow/Parquet no-default cfg boundary [patch] — done 2026-08-13
 
 - Owner: Atlas foundation audit; scope: `consus-arrow` and `consus-parquet`
