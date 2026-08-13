@@ -59,10 +59,12 @@ pub mod schema;
 
 #[cfg(feature = "alloc")]
 pub use array::{ArrayData, ArrowArray, column_values_to_arrow};
-pub use bridge::{ArrowBridgeMode, ArrowDataTypeHint, ArrowSchemaMapping, ArrowZeroCopyConstraint};
 #[cfg(feature = "alloc")]
 pub use bridge::{ArrowBridge, ArrowBridgePlan, ArrowFieldDescriptor};
-pub use datatype::{ArrowDataType, DecimalType, DurationType, FixedSizeBinaryType, IntSign, TimeUnit, TimestampType};
+pub use bridge::{ArrowBridgeMode, ArrowDataTypeHint, ArrowSchemaMapping, ArrowZeroCopyConstraint};
+pub use datatype::{
+    ArrowDataType, DecimalType, DurationType, FixedSizeBinaryType, IntSign, TimeUnit, TimestampType,
+};
 #[cfg(feature = "alloc")]
 pub use datatype::{DictionaryType, ListType, MapType, StructType, UnionType};
 pub use field::{

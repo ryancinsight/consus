@@ -38,7 +38,8 @@ use alloc::{boxed::Box, format, string::String, vec::Vec};
 use core::num::NonZeroUsize;
 
 use consus_core::{
-    ByteOrder, CompoundField, Datatype, EnumMember, Error, ReferenceType, Result, StringEncoding,
+    ByteOrder, CompoundField, Datatype, EnumMember, Error, ParseBudget, ReferenceType, Result,
+    StringEncoding,
 };
 
 use super::classes::{
@@ -46,6 +47,10 @@ use super::classes::{
     VARIABLE_LENGTH,
 };
 use super::{byte_order_from_flags, map_fixed_point, map_floating_point};
+
+/// Smallest number of property bytes one compound member can occupy: a name
+/// null terminator, a 1-byte member offset, and an 8-byte datatype header.
+const MIN_COMPOUND_MEMBER_BYTES: usize = 10;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -63,8 +68,8 @@ use super::{byte_order_from_flags, map_fixed_point, map_floating_point};
 /// - [`Error::InvalidFormat`] on truncated or structurally invalid data.
 /// - [`Error::UnsupportedFeature`] for the deprecated TIME class or
 ///   unknown class values.
-pub fn parse_datatype(data: &[u8]) -> Result<Datatype> {
-    let (dt, _consumed) = parse_datatype_inner(data)?;
+pub fn parse_datatype(data: &[u8], budget: &ParseBudget) -> Result<Datatype> {
+    let (dt, _consumed) = parse_datatype_inner(data, budget, 0)?;
     Ok(dt)
 }
 
@@ -77,7 +82,17 @@ pub fn parse_datatype(data: &[u8]) -> Result<Datatype> {
 /// `total_bytes_consumed` includes the 8-byte header plus class-specific
 /// properties, enabling callers (compound member parsing, enum base type,
 /// array base type, VL base type) to advance past the embedded message.
-fn parse_datatype_inner(data: &[u8]) -> Result<(Datatype, usize)> {
+fn parse_datatype_inner(
+    data: &[u8],
+    budget: &ParseBudget,
+    depth: u16,
+) -> Result<(Datatype, usize)> {
+    // Compound, enum, variable-length, and array datatypes each re-enter this
+    // function, so a nested message is input-driven recursion. Rust performs
+    // no tail-call elimination and a stack overflow is an uncatchable abort,
+    // so every arm of the cycle passes through this one bound.
+    let depth = budget.descend(depth, "datatype nesting depth")?;
+
     if data.len() < 8 {
         return Err(Error::InvalidFormat {
             message: String::from("datatype message shorter than 8-byte header"),
@@ -102,11 +117,11 @@ fn parse_datatype_inner(data: &[u8]) -> Result<(Datatype, usize)> {
         STRING => parse_string(size, flags)?,
         BITFIELD => parse_bitfield(size, flags, props)?,
         OPAQUE => parse_opaque(size, props)?,
-        COMPOUND => parse_compound(size, flags, props, version)?,
+        COMPOUND => parse_compound(size, flags, props, version, budget, depth)?,
         REFERENCE => parse_reference(flags)?,
-        ENUM => parse_enum(flags, props, version)?,
-        VARIABLE_LENGTH => parse_variable_length(flags, props)?,
-        ARRAY => parse_array(props, version)?,
+        ENUM => parse_enum(flags, props, version, budget, depth)?,
+        VARIABLE_LENGTH => parse_variable_length(flags, props, budget, depth)?,
+        ARRAY => parse_array(props, version, budget, depth)?,
         _ => {
             return Err(Error::UnsupportedFeature {
                 feature: format!("datatype class {class}"),
@@ -331,16 +346,26 @@ fn parse_compound(
     flags: [u8; 3],
     props: &[u8],
     version: u8,
+    budget: &ParseBudget,
+    depth: u16,
 ) -> Result<(Datatype, usize)> {
     let num_members = u16::from_le_bytes([flags[0], flags[1]]) as usize;
-    let mut fields = Vec::with_capacity(num_members);
+    // The u16 width caps the count at 65 535, but each member still needs a
+    // name terminator plus an 8-byte datatype header inside `props`; the
+    // available bytes are the tighter bound on the reservation.
+    let mut fields = Vec::with_capacity(
+        budget
+            .capacity_hint(num_members as u64, size_of::<CompoundField>())
+            .min(props.len() / MIN_COMPOUND_MEMBER_BYTES + 1),
+    );
     let mut pos: usize = 0;
 
     for i in 0..num_members {
         let remaining = props.get(pos..).ok_or_else(|| Error::InvalidFormat {
             message: format!("compound member {i} extends past properties"),
         })?;
-        let (field, consumed) = parse_compound_member(remaining, compound_size, version, i)?;
+        let (field, consumed) =
+            parse_compound_member(remaining, compound_size, version, i, budget, depth)?;
         fields.push(field);
         pos += consumed;
     }
@@ -362,6 +387,8 @@ fn parse_compound_member(
     compound_size: usize,
     version: u8,
     member_index: usize,
+    budget: &ParseBudget,
+    depth: u16,
 ) -> Result<(CompoundField, usize)> {
     let mut pos: usize = 0;
 
@@ -443,7 +470,7 @@ fn parse_compound_member(
             message: format!("compound member {member_index} datatype missing"),
         });
     }
-    let (datatype, dt_consumed) = parse_datatype_inner(&data[pos..])?;
+    let (datatype, dt_consumed) = parse_datatype_inner(&data[pos..], budget, depth)?;
     pos += dt_consumed;
 
     Ok((
@@ -497,12 +524,18 @@ fn parse_reference(flags: [u8; 3]) -> Result<(Datatype, usize)> {
 ///    version < 3, no padding for version 3.
 /// 3. **Member values** — packed contiguously, each `base_element_size`
 ///    bytes in the same encoding as the base type.
-fn parse_enum(flags: [u8; 3], props: &[u8], version: u8) -> Result<(Datatype, usize)> {
+fn parse_enum(
+    flags: [u8; 3],
+    props: &[u8],
+    version: u8,
+    budget: &ParseBudget,
+    depth: u16,
+) -> Result<(Datatype, usize)> {
     let num_members = u16::from_le_bytes([flags[0], flags[1]]) as usize;
     let mut pos: usize = 0;
 
     // -- Base type -----------------------------------------------------------
-    let (base_dt, base_consumed) = parse_datatype_inner(props)?;
+    let (base_dt, base_consumed) = parse_datatype_inner(props, budget, depth)?;
     pos += base_consumed;
 
     let base_size = base_dt.element_size().ok_or_else(|| Error::InvalidFormat {
@@ -519,7 +552,12 @@ fn parse_enum(flags: [u8; 3], props: &[u8], version: u8) -> Result<(Datatype, us
     );
 
     // -- Member names --------------------------------------------------------
-    let mut names = Vec::with_capacity(num_members);
+    // Each name needs at least its null terminator inside `props`.
+    let mut names = Vec::with_capacity(
+        budget
+            .capacity_hint(num_members as u64, size_of::<String>())
+            .min(props.len() + 1),
+    );
     for i in 0..num_members {
         let name_start = pos;
         while pos < props.len() && props[pos] != 0 {
@@ -547,7 +585,9 @@ fn parse_enum(flags: [u8; 3], props: &[u8], version: u8) -> Result<(Datatype, us
     }
 
     // -- Member values (packed, base_size bytes each) ------------------------
-    let mut members = Vec::with_capacity(num_members);
+    // `names` was bounded by the bytes actually consumed above, so its length
+    // is the real member count rather than the declared one.
+    let mut members = Vec::with_capacity(names.len());
     for (i, name) in names.into_iter().enumerate() {
         if pos + base_size > props.len() {
             return Err(Error::InvalidFormat {
@@ -595,7 +635,12 @@ fn parse_enum(flags: [u8; 3], props: &[u8], version: u8) -> Result<(Datatype, us
 ///
 /// - **Sequence (type 0):** base datatype message (recursive).
 /// - **String (type 1):** none (charset is in the class bit fields).
-fn parse_variable_length(flags: [u8; 3], props: &[u8]) -> Result<(Datatype, usize)> {
+fn parse_variable_length(
+    flags: [u8; 3],
+    props: &[u8],
+    budget: &ParseBudget,
+    depth: u16,
+) -> Result<(Datatype, usize)> {
     let vl_type = flags[0] & 0x0F;
 
     match vl_type {
@@ -606,7 +651,7 @@ fn parse_variable_length(flags: [u8; 3], props: &[u8]) -> Result<(Datatype, usiz
                     message: String::from("variable-length sequence missing base type properties"),
                 });
             }
-            let (base_dt, base_consumed) = parse_datatype_inner(props)?;
+            let (base_dt, base_consumed) = parse_datatype_inner(props, budget, depth)?;
             Ok((
                 Datatype::VarLen {
                     base: Box::new(base_dt),
@@ -627,7 +672,7 @@ fn parse_variable_length(flags: [u8; 3], props: &[u8]) -> Result<(Datatype, usiz
             // If props is empty (written by an older encoder that omitted the base
             // type), fall back to consuming 0 bytes.
             let base_consumed = if !props.is_empty() {
-                match parse_datatype_inner(props) {
+                match parse_datatype_inner(props, budget, depth) {
                     Ok((_, consumed)) => consumed,
                     Err(_) => 0,
                 }
@@ -668,7 +713,12 @@ fn parse_variable_length(flags: [u8; 3], props: &[u8]) -> Result<(Datatype, usiz
 /// | 0            | 1      | Number of dimensions (rank)   |
 /// | 1            | 4×rank | Dimension sizes (u32 LE each) |
 /// | 1+4×rank     | var    | Base datatype message         |
-fn parse_array(props: &[u8], version: u8) -> Result<(Datatype, usize)> {
+fn parse_array(
+    props: &[u8],
+    version: u8,
+    budget: &ParseBudget,
+    depth: u16,
+) -> Result<(Datatype, usize)> {
     if props.is_empty() {
         return Err(Error::InvalidFormat {
             message: String::from("array datatype properties missing"),
@@ -684,7 +734,9 @@ fn parse_array(props: &[u8], version: u8) -> Result<(Datatype, usize)> {
     }
 
     // Dimension sizes (4 bytes each, u32 LE).
-    let mut dims = Vec::with_capacity(rank);
+    // `rank` is a single byte, but each dimension still needs 4 bytes of
+    // properties; the available bytes are the tighter bound.
+    let mut dims = Vec::with_capacity(rank.min(props.len() / 4 + 1));
     for i in 0..rank {
         if pos + 4 > props.len() {
             return Err(Error::InvalidFormat {
@@ -714,7 +766,7 @@ fn parse_array(props: &[u8], version: u8) -> Result<(Datatype, usize)> {
             message: String::from("array base datatype missing"),
         });
     }
-    let (base_dt, base_consumed) = parse_datatype_inner(&props[pos..])?;
+    let (base_dt, base_consumed) = parse_datatype_inner(&props[pos..], budget, depth)?;
     pos += base_consumed;
 
     Ok((
@@ -860,7 +912,7 @@ mod tests {
     #[test]
     fn parse_u32_le() {
         let msg = int_msg(4, false, true);
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         match dt {
             Datatype::Integer {
                 bits,
@@ -878,7 +930,7 @@ mod tests {
     #[test]
     fn parse_i16_be() {
         let msg = int_msg(2, true, false);
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         match dt {
             Datatype::Integer {
                 bits,
@@ -901,7 +953,7 @@ mod tests {
         let mut msg = hdr.to_vec();
         // 12 bytes of properties (content irrelevant for mapping)
         msg.extend_from_slice(&[0u8; 12]);
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         match dt {
             Datatype::Float { bits, byte_order } => {
                 assert_eq!(bits.get(), 64);
@@ -918,7 +970,7 @@ mod tests {
         // Padding = 0 (null-terminate), charset = 0 (ASCII), size = 10
         let hdr = dt_header(STRING, 1, [0x00, 0x00, 0], 10);
         let msg = hdr.to_vec();
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         match dt {
             Datatype::FixedString { length, encoding } => {
                 assert_eq!(length, 10);
@@ -933,7 +985,7 @@ mod tests {
         // charset = 1 (UTF-8)
         let hdr = dt_header(STRING, 1, [0x00, 0x01, 0], 32);
         let msg = hdr.to_vec();
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         match dt {
             Datatype::FixedString { length, encoding } => {
                 assert_eq!(length, 32);
@@ -950,7 +1002,7 @@ mod tests {
         let hdr = dt_header(BITFIELD, 1, [0x00, 0, 0], 2);
         let mut msg = hdr.to_vec();
         msg.extend_from_slice(&[0u8; 4]); // properties
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         match dt {
             Datatype::Integer {
                 bits,
@@ -974,7 +1026,7 @@ mod tests {
         // Tag "mytype" + null + padding to 8 bytes
         let tag = b"mytype\0\0"; // 8 bytes total
         msg.extend_from_slice(tag);
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         match dt {
             Datatype::Opaque { size, tag } => {
                 assert_eq!(size, 100);
@@ -988,7 +1040,7 @@ mod tests {
     fn parse_opaque_no_tag() {
         let hdr = dt_header(OPAQUE, 1, [0, 0, 0], 8);
         let msg = hdr.to_vec(); // empty properties
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         match dt {
             Datatype::Opaque { size, tag } => {
                 assert_eq!(size, 8);
@@ -1030,7 +1082,7 @@ mod tests {
         msg.push(0x04); // offset = 4
         msg.extend_from_slice(&int_msg(8, true, true));
 
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         match dt {
             Datatype::Compound { ref fields, size } => {
                 assert_eq!(size, 12);
@@ -1097,7 +1149,7 @@ mod tests {
         // Member datatype: u32 LE
         msg.extend_from_slice(&int_msg(4, false, true));
 
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         match dt {
             Datatype::Compound { ref fields, size } => {
                 assert_eq!(size, 4);
@@ -1123,7 +1175,7 @@ mod tests {
     fn parse_object_reference() {
         let hdr = dt_header(REFERENCE, 1, [0x00, 0, 0], 8);
         let msg = hdr.to_vec();
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         assert_eq!(dt, Datatype::Reference(ReferenceType::Object));
     }
 
@@ -1131,7 +1183,7 @@ mod tests {
     fn parse_region_reference() {
         let hdr = dt_header(REFERENCE, 1, [0x01, 0, 0], 12);
         let msg = hdr.to_vec();
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         assert_eq!(dt, Datatype::Reference(ReferenceType::Region));
     }
 
@@ -1164,7 +1216,7 @@ mod tests {
         msg.push(0x00);
         msg.push(0x01);
 
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         match dt {
             Datatype::Enum {
                 ref base,
@@ -1207,7 +1259,7 @@ mod tests {
         msg.extend_from_slice(b"NEGATIVE\0");
         msg.extend_from_slice(&(-42i32).to_le_bytes());
 
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         match dt {
             Datatype::Enum { ref members, .. } => {
                 assert_eq!(members.len(), 1);
@@ -1225,7 +1277,7 @@ mod tests {
         // VL string: type=1, charset=1 (UTF-8) in flags byte 1
         let hdr = dt_header(VARIABLE_LENGTH, 1, [0x01, 0x01, 0], 16);
         let msg = hdr.to_vec();
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         match dt {
             Datatype::VariableString { encoding } => {
                 assert_eq!(encoding, StringEncoding::Utf8);
@@ -1240,7 +1292,7 @@ mod tests {
         let hdr = dt_header(VARIABLE_LENGTH, 1, [0x00, 0, 0], 16);
         let mut msg = hdr.to_vec();
         msg.extend_from_slice(&int_msg(4, false, true));
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         match dt {
             Datatype::VarLen { ref base } => {
                 assert!(matches!(
@@ -1271,7 +1323,7 @@ mod tests {
         msg.extend_from_slice(&base_hdr);
         msg.extend_from_slice(&[0u8; 12]);
 
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         match dt {
             Datatype::Array { ref base, ref dims } => {
                 assert_eq!(dims, &[3, 5]);
@@ -1295,7 +1347,7 @@ mod tests {
         msg.extend_from_slice(&0u32.to_le_bytes()); // perm index (deprecated)
         msg.extend_from_slice(&int_msg(4, false, true)); // base: u32 LE
 
-        let dt = parse_datatype(&msg).unwrap();
+        let dt = parse_datatype(&msg, &ParseBudget::DEFAULT).unwrap();
         match dt {
             Datatype::Array { ref base, ref dims } => {
                 assert_eq!(dims, &[10]);
@@ -1316,21 +1368,21 @@ mod tests {
 
     #[test]
     fn truncated_header_rejected() {
-        let err = parse_datatype(&[0x00, 0x00, 0x00]).unwrap_err();
+        let err = parse_datatype(&[0x00, 0x00, 0x00], &ParseBudget::DEFAULT).unwrap_err();
         assert!(matches!(err, Error::InvalidFormat { .. }));
     }
 
     #[test]
     fn unknown_class_rejected() {
         let hdr = dt_header(15, 1, [0, 0, 0], 4);
-        let err = parse_datatype(&hdr).unwrap_err();
+        let err = parse_datatype(&hdr, &ParseBudget::DEFAULT).unwrap_err();
         assert!(matches!(err, Error::UnsupportedFeature { .. }));
     }
 
     #[test]
     fn time_class_rejected() {
         let hdr = dt_header(TIME, 1, [0, 0, 0], 4);
-        let err = parse_datatype(&hdr).unwrap_err();
+        let err = parse_datatype(&hdr, &ParseBudget::DEFAULT).unwrap_err();
         assert!(matches!(err, Error::UnsupportedFeature { .. }));
     }
 

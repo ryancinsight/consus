@@ -26,3 +26,6 @@ consus-parquet = { workspace = true, features = ["std", "snappy"] }
 consus-hdmf = { workspace = true, features = ["std"] }
 pyo3 = { workspace = true, features = ["extension-module"] }
 serde_json = { workspace = true }
+
+[lints]
+workspace = true

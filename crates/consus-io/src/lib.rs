@@ -50,7 +50,9 @@ pub use io::traits::{Length, RandomAccess, ReadAt, SeekFrom, Seekable, Truncate,
 
 // Sync implementations
 #[cfg(all(feature = "std", feature = "alloc"))]
-pub use io::sync::bounded::{bounded_capacity, read_exact_bounded};
+pub use io::sync::bounded::read_exact_bounded;
+#[cfg(feature = "alloc")]
+pub use io::sync::bounded::{bounded_capacity, read_at_bounded};
 #[cfg(feature = "alloc")]
 pub use io::sync::cursor::MemCursor;
 #[cfg(feature = "mmap")]
@@ -68,6 +70,8 @@ pub use io::traits::{
 // Async implementation re-exports
 #[cfg(feature = "async-traits")]
 pub use io::async_io::AsyncMemCursor;
+#[cfg(feature = "async-traits")]
+pub use io::sync::bounded::async_read_at_bounded;
 
 #[cfg(all(feature = "async-io", feature = "s3"))]
 pub use io::async_io::s3::S3Reader;

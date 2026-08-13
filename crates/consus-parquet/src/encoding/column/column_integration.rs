@@ -87,7 +87,7 @@ fn decode_compressed_zstd_i32_round_trip() {
     let original: Vec<u8> = alloc::vec![
         0x0Au8, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x00
     ];
-    let compressed = zstd::bulk::compress(&original, 3).expect("zstd compress must succeed");
+    let compressed = zrip::compress(&original, 3).expect("zstd compress must succeed");
     let v = decode_compressed_column_values(
         &compressed,
         3,

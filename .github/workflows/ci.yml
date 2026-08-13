@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    # Weekly bounded fuzzing (Monday 03:17 UTC); see the fuzz-run job.
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -51,6 +55,8 @@ jobs:
           - consus-mat
           - consus-npy
           - consus-onnx
+          - consus-nwb
+          - consus-hdmf
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
@@ -92,6 +98,8 @@ jobs:
           - consus-mat
           - consus-npy
           - consus-onnx
+          - consus-nwb
+          - consus-hdmf
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
@@ -127,6 +135,8 @@ jobs:
           - consus-mat
           - consus-npy
           - consus-onnx
+          - consus-nwb
+          - consus-hdmf
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
@@ -158,6 +168,69 @@ jobs:
         run: cargo nextest run --locked -p consus-mat
       - name: cargo nextest (consus-mat, no compress / no v73)
         run: cargo nextest run --locked -p consus-mat --no-default-features --features std,alloc
+
+  # The fuzz crate is excluded from the workspace (`[workspace]` in
+  # fuzz/Cargo.toml), so nothing in the matrices above ever compiles it. Left
+  # alone, the targets rot silently against API changes until someone tries to
+  # run them. This job compiles them on every PR for exactly that reason; it
+  # does not fuzz.
+  fuzz-build:
+    name: Build fuzz targets
+    needs: fmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+        with:
+          workspaces: fuzz
+      - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
+        with:
+          tool: cargo-fuzz@0.13.1
+      - name: cargo fuzz build
+        run: cargo fuzz build --dev
+
+  # Bounded scheduled fuzzing. Each target runs for a fixed wall-clock budget
+  # from the committed seed corpus; a crash fails the job and uploads the
+  # reproducer. Not on PRs — a time-boxed random search is not a merge gate.
+  fuzz-run:
+    name: Fuzz (${{ matrix.target }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - fuzz_hdf5_parser
+          - fuzz_parquet_decoder
+          - fuzz_mat_reader
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+        with:
+          workspaces: fuzz
+      - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
+        with:
+          tool: cargo-fuzz@0.13.1
+      # -rss_limit_mb bounds the allocator so a length-field regression shows
+      # up as an OOM finding rather than the runner being killed.
+      - name: cargo fuzz run (${{ matrix.target }})
+        run: >
+          cargo fuzz run ${{ matrix.target }}
+          -- -max_total_time=900 -rss_limit_mb=2048 -timeout=25
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/
 
   # ADR-015: native moirai S3 backend (no tokio) against a real S3 server.
   # The rusoto<->moirai byte-identical differential runs in-process (mock); this

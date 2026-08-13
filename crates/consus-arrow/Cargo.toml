@@ -31,3 +31,6 @@ consus-parquet = { workspace = true }
 [[bench]]
 name = "arrow_bridge"
 harness = false
+
+[lints]
+workspace = true

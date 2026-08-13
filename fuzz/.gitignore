@@ -1,3 +1,9 @@
 target
-corpus
 artifacts
+
+# Fuzzer-generated corpus entries are derived state and stay untracked; the
+# committed seeds are the `seed-*` files, which give a scheduled run a
+# structurally valid starting point instead of making it rediscover the
+# container formats from random bytes.
+corpus/*/*
+!corpus/*/seed-*

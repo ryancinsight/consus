@@ -47,3 +47,6 @@ harness = false
 name = "async_hdf5"
 path = "tests/async_hdf5.rs"
 required-features = ["async-io"]
+
+[lints]
+workspace = true

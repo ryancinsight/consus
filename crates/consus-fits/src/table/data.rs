@@ -1,7 +1,7 @@
 //! FITS table data-unit access.
 
 #[cfg(feature = "alloc")]
-use consus_core::{Error, Result, Selection};
+use consus_core::{Error, ParseBudget, Result, Selection};
 #[cfg(feature = "alloc")]
 use consus_io::ReadAt;
 
@@ -149,8 +149,10 @@ impl FitsTableData {
         reader: &R,
         row_index: usize,
     ) -> Result<alloc::vec::Vec<decode::FitsColumnValue>> {
-        let row_len = self.descriptor.row_len();
-        let mut row_buf = alloc::vec![0u8; row_len];
+        // `row_len` is the product of NAXIS1/TFORM keywords, all read from an
+        // untrusted header.
+        let mut row_buf = ParseBudget::DEFAULT
+            .zeroed(self.descriptor.row_len() as u64, "FITS table row length")?;
         self.read_row(reader, row_index, &mut row_buf)?;
         let is_binary = self.descriptor.is_binary();
         self.descriptor
@@ -183,9 +185,14 @@ impl FitsTableData {
         let col = columns[col_index].clone();
         let is_binary = self.descriptor.is_binary();
         let rows = self.descriptor.rows();
-        let row_len = self.descriptor.row_len();
-        let mut row_buf = alloc::vec![0u8; row_len];
-        let mut result = alloc::vec::Vec::with_capacity(rows);
+        let budget = ParseBudget::DEFAULT;
+        let mut row_buf =
+            budget.zeroed(self.descriptor.row_len() as u64, "FITS table row length")?;
+        // NAXIS2 is a header keyword; each row must be backed by `row_len`
+        // real bytes, so the reservation is clamped rather than trusted.
+        let mut result: alloc::vec::Vec<decode::FitsColumnValue> = alloc::vec::Vec::with_capacity(
+            budget.capacity_hint(rows as u64, size_of::<decode::FitsColumnValue>()),
+        );
         for row_idx in 0..rows {
             self.read_row(reader, row_idx, &mut row_buf)?;
             let value = if is_binary {

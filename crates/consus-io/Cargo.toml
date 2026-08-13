@@ -73,3 +73,6 @@ required-features = ["alloc"]
 name = "unit_mmap"
 path = "tests/unit_mmap.rs"
 required-features = ["mmap"]
+
+[lints]
+workspace = true
