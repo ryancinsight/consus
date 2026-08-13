@@ -7,6 +7,10 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Bounded zero-copy ONNX protobuf document reader"
+homepage.workspace = true
+readme = "README.md"
+keywords = ["onnx", "protobuf", "zero-copy", "model", "parser"]
+categories = ["science", "encoding", "parser-implementations", "no-std"]
 
 [features]
 default = ["std"]

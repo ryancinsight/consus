@@ -7,6 +7,10 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Pure-Rust Zarr v2/v3 format implementation for the Consus scientific storage library"
+homepage.workspace = true
+readme = "README.md"
+keywords = ["zarr", "chunked", "storage", "scientific-computing", "s3"]
+categories = ["science", "encoding", "filesystem", "no-std"]
 
 [features]
 default = ["std"]
