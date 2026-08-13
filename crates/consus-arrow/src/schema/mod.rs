@@ -187,6 +187,7 @@ impl Default for ArrowSchema {
 }
 
 /// Error raised during Arrow schema validation or projection.
+#[cfg(feature = "alloc")]
 #[derive(Debug)]
 pub enum ArrowSchemaError {
     /// A field name is empty.
@@ -210,6 +211,7 @@ pub enum ArrowSchemaError {
     },
 }
 
+#[cfg(feature = "alloc")]
 impl fmt::Display for ArrowSchemaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -224,6 +226,7 @@ impl fmt::Display for ArrowSchemaError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<Error> for ArrowSchemaError {
     fn from(source: Error) -> Self {
         Self::InvalidField { source }
@@ -241,6 +244,7 @@ impl std::error::Error for ArrowSchemaError {
 }
 
 /// A step in an Arrow schema merge plan.
+#[cfg(feature = "alloc")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ArrowSchemaMergeStep {
     /// Keep an unchanged field.

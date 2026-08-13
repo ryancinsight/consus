@@ -702,8 +702,62 @@ _No open gaps._
 | consus-hdf5 integration | 351/351 |
 | workspace total tests (default) | 2402/2402 |
 | Verified commands | `cargo test -p consus-netcdf` (137/137); `cargo test -p consus-hdf5 --lib` (280/280); `cargo test -p consus-hdf5` (351/351); `cargo test -p consus-nwb --lib` (272/272); `cargo test -p consus-zarr` (303/303); `cargo test -p consus-nwb --test integration_real_file` (1/1); `cargo test --workspace` (2402/2402, default); `cargo check --workspace` (0 errors, 0 warnings); `cargo check -p consus-core/consus-io/consus-hdf5/consus-nwb/consus-zarr --no-default-features --features alloc` (0 errors each) |
-| Open gaps | 0 |
+| Open gaps | 2 tracked at the Atlas gate surface (see `## Atlas gate audit 2026-08-12`) |
 | High-severity open gaps | 0 |
 | Closed this sprint | 11 (M-042 through M-053: NWB Extended Conformance + no_std fixes (M-042–M-049); NO-STD-001 consus-zarr no_std resolved (M-050); DynamicTable column-content layer-6 validation (M-051); proptest harnesses for `is_valid_iso8601` + `decode_attribute_value` (M-052); HDF5 v1 parser correctness + reference fixture coverage (M-053)) |
 | Medium-severity open gaps | 0 |
 | Low-severity open gaps | 0 |
+
+---
+
+## Atlas gate audit 2026-08-12 (ATLAS-FOUNDATION-PLANNING-002)
+
+Canonical Atlas engineering gates run against this checkout by the foundation
+audit. This section is the provider-local record; the Atlas root `backlog.md`
+owns the cross-repository matrix.
+
+### Verified green
+
+- `cargo check` (default): pass.
+- `cargo check --all-features`: pass.
+- Doctests (`--all-features`): pass.
+- `consus-arrow` `--no-default-features`: pass after this audit's cfg-gating
+  fixes (lib.rs re-export groups, `bridge/mod.rs` alloc-gated schema/field
+  imports, `schema/mod.rs` `ArrowSchemaError`/`ArrowSchemaMergeStep` gating,
+  `conversion/convert.rs` Complex-arm gating).
+- Clippy lint fixes landed: `consus-nwb/src/validation/report.rs` redundant
+  borrow; `consus-hdmf/tests/integration.rs` `approx_constant` (2 sites).
+- `consus-hdf5` root re-exports added for the `Hdf5File` and `Hdf5FileBuilder`
+  facades (mirroring the `consus-fits` facade pattern).
+
+### Open — CONSUS-NODEF-GATE-001 (--no-default-features cfg debt)
+
+`cargo check --workspace --no-default-features` fails across the format crates
+with systematic alloc/feature-gating debt: unconditional re-exports of
+alloc-gated items and un-gated `alloc::`/`vec!` references in no-std mode.
+Inventory at this audit: `consus-arrow` (~27 errors, largely closed by the
+fixes above — the remaining sites are in `field/mod.rs`, `memory/mod.rs`,
+`array/mod.rs`, and `conversion/convert.rs`), `consus-parquet` (~10),
+`consus-fits` (~50), `consus-nwb` (4), plus downstream surfaced during
+iterated checks. Closure is a dedicated cfg-hygiene slice.
+
+### Open — CONSUS-TEST-API-001 (integration-test aspirational I/O API)
+
+`--all-targets` clippy/nextest fail on four test targets whose tests target an
+aspirational I/O facade that does not exist in the provider:
+
+- `consus-integration-tests` `tests/cross_format_interop.rs` (45 errors): uses
+  `MemCursor::new(buffer)` (real API takes 0 args), `Hdf5FileBuilder::new()`
+  (real API requires `FileCreationProps`), `build_writer()` (absent), and the
+  absent `consus_zarr::{ArrayMetadataV3, ZarrArray}` and `consus_netcdf::NcFile`
+  facades.
+- `consus-integration-tests` `tests/property_integration.rs` (2 errors): same
+  `build_writer`/cursor assumptions.
+- `consus-nwb` lib test (2 errors) and `tests/integration_real_file.rs`
+  (5 errors): `MemCursor::new(buffer)`, `Hdf5FileBuilder::new()` arg, and
+  `as_deref()`-on-`Option<&str>` redundant deref sites.
+
+Closure is a test-API reconciliation slice that maps the tests onto the real
+`Hdf5FileBuilder` (in-memory byte emission), `MemCursor`, and either adds the
+`ZarrArray`/`ArrayMetadataV3`/`NcFile` facades (the chunk/`read_model` building
+blocks exist) or rewrites the tests against the existing chunk API.

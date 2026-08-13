@@ -58,24 +58,21 @@ pub mod memory;
 pub mod schema;
 
 #[cfg(feature = "alloc")]
-pub use array::column_values_to_arrow;
-pub use array::{ArrayData, ArrowArray};
-pub use bridge::{
-    ArrowBridge, ArrowBridgeMode, ArrowBridgePlan, ArrowDataTypeHint, ArrowFieldDescriptor,
-    ArrowSchemaMapping, ArrowZeroCopyConstraint,
-};
-pub use datatype::{
-    ArrowDataType, DecimalType, DictionaryType, DurationType, FixedSizeBinaryType, IntSign,
-    ListType, MapType, StructType, TimeUnit, TimestampType, UnionType,
-};
+pub use array::{ArrayData, ArrowArray, column_values_to_arrow};
+pub use bridge::{ArrowBridgeMode, ArrowDataTypeHint, ArrowSchemaMapping, ArrowZeroCopyConstraint};
+#[cfg(feature = "alloc")]
+pub use bridge::{ArrowBridge, ArrowBridgePlan, ArrowFieldDescriptor};
+pub use datatype::{ArrowDataType, DecimalType, DurationType, FixedSizeBinaryType, IntSign, TimeUnit, TimestampType};
+#[cfg(feature = "alloc")]
+pub use datatype::{DictionaryType, ListType, MapType, StructType, UnionType};
 pub use field::{
     ArrowField, ArrowFieldBuilder, ArrowFieldId, ArrowFieldKind, ArrowFieldMultiplicity,
     ArrowFieldSemantics, ArrowNullability, field_from_datatype, kind_from_datatype,
 };
-pub use ipc::{
-    BatchKind, BufferOwnership, DictionaryBatchDescriptor, IpcFraming, IpcMaterializationPolicy,
-    IpcPlan, IpcPlanError, RecordBatchDescriptor,
-};
+pub use ipc::{BatchKind, BufferOwnership, IpcFraming, IpcMaterializationPolicy, IpcPlanError};
+#[cfg(feature = "alloc")]
+pub use ipc::{DictionaryBatchDescriptor, IpcPlan, RecordBatchDescriptor};
+#[cfg(feature = "alloc")]
 pub use memory::{ArrowArrayMemory, ArrowBitmap, ArrowBuffer, ArrowOffsets};
 
 #[cfg(feature = "alloc")]

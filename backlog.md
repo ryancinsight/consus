@@ -1,5 +1,20 @@
 # Consus — Backlog
 
+## ATLAS-CONSUS-GATE-FIX-001 — Atlas gate fixes and audit record [patch] — done 2026-08-12
+
+- Owner: foundation audit (ATLAS-FOUNDATION-PLANNING-002); scope: canonical
+  Atlas engineering gates against this checkout.
+- Delivered: `consus-arrow` `--no-default-features` cfg-gating fixes (re-export
+  groups, bridge/schema/conversion alloc gating), Clippy lint fixes in
+  `consus-nwb` (`report.rs`) and `consus-hdmf` (`tests/integration.rs`), and
+  `consus-hdf5` root re-exports for the `Hdf5File`/`Hdf5FileBuilder` facades.
+- Verified: default + all-features checks and doctests pass; `consus-arrow`
+  no-default passes after the fixes.
+- Remaining (tracked, not part of this patch): `--no-default-features`
+  workspace cfg debt (CONSUS-NODEF-GATE-001) and the integration-test
+  aspirational I/O API (CONSUS-TEST-API-001); both are inventoried in
+  `gap_audit.md`.
+
 ## ATLAS-CONSUS-001 — Themis topology partition sizing [minor] — review
 
 - Owner: Codex; scope: the `consus` facade's default parallel-I/O policy and

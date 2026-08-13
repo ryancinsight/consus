@@ -106,7 +106,7 @@ fn roundtrip_empty_table() {
 #[test]
 fn roundtrip_single_row() {
     let bytes = HdmfFileBuilder::new("single", "one row")
-        .add_column("val", "a value", ColumnData::F64(vec![3.14]))
+        .add_column("val", "a value", ColumnData::F64(vec![core::f64::consts::PI]))
         .finish()
         .expect("finish failed");
 
@@ -115,7 +115,7 @@ fn roundtrip_single_row() {
     assert_eq!(table.id, &[0i64]);
     match &table.columns[0].data {
         ColumnData::F64(v) => {
-            assert!((v[0] - 3.14).abs() < 1e-12);
+            assert!((v[0] - core::f64::consts::PI).abs() < 1e-12);
         }
         other => panic!("expected F64, got {:?}", other),
     }
