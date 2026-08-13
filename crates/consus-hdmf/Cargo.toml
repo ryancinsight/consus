@@ -7,9 +7,10 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-keywords.workspace = true
-categories.workspace = true
+keywords = ["hdmf", "nwb", "hdf5", "neuroscience", "table"]
+categories = ["science", "encoding", "no-std"]
 description = "Hierarchical Data Modeling Framework (HDMF) DynamicTable read/write for Consus"
+readme = "README.md"
 
 [features]
 default = ["std"]

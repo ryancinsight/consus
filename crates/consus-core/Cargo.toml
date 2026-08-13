@@ -7,6 +7,10 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Core types, traits, and error types for the Consus scientific storage library"
+homepage.workspace = true
+readme = "README.md"
+keywords = ["hdf5", "scientific-computing", "storage", "dataset", "no-std"]
+categories = ["science", "encoding", "data-structures", "no-std"]
 
 [features]
 default = ["std"]

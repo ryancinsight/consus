@@ -7,6 +7,10 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "MATLAB .mat file reader (v4/v5/v7.3/HDF5) for the Consus scientific storage library"
+homepage.workspace = true
+readme = "README.md"
+keywords = ["matlab", "mat", "hdf5", "scientific-computing", "storage"]
+categories = ["science", "encoding", "parser-implementations", "no-std"]
 
 [features]
 default = ["std", "v73", "compress"]

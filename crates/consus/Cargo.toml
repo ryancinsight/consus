@@ -10,7 +10,7 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description.workspace = true
-readme = "../../README.md"
+readme = "README.md"
 
 [features]
 default = ["std", "hdf5", "fits", "deflate", "atlas-themis"]

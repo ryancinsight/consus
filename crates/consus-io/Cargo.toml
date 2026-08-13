@@ -7,6 +7,10 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Sync and async I/O abstractions for the Consus scientific storage library"
+homepage.workspace = true
+readme = "README.md"
+keywords = ["io", "mmap", "storage", "positioned-io", "no-std"]
+categories = ["filesystem", "asynchronous", "no-std"]
 
 [features]
 default = ["std"]
