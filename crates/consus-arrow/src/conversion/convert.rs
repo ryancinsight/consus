@@ -283,6 +283,7 @@ pub fn core_datatype_to_arrow_hint(datatype: &Datatype) -> ArrowDataType {
             nullable: true,
         }),
 
+        #[cfg(feature = "alloc")]
         Datatype::Complex { component_bits, .. } => {
             let _bit_width = component_bits.get() as u8;
             let real_field = ArrowField {

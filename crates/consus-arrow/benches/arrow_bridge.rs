@@ -1,3 +1,5 @@
+#![cfg(feature = "alloc")]
+
 use consus_arrow::column_values_to_arrow;
 use consus_parquet::ColumnValues;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};

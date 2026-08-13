@@ -27,3 +27,4 @@ consus-parquet = { workspace = true }
 [[bench]]
 name = "arrow_bridge"
 harness = false
+required-features = ["alloc"]

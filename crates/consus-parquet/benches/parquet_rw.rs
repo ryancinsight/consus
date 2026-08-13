@@ -1,3 +1,5 @@
+#![cfg(feature = "alloc")]
+
 //! Criterion benchmarks for `consus-parquet` write and read throughput.
 //!
 //! ## Measured operations

@@ -3,7 +3,7 @@
 //! Implements Parquet encoding ID 3 (RLE/bit-packing hybrid) and
 //! encoding ID 4 (BIT_PACKED, deprecated).
 //!
-//! Reference: https://github.com/apache/parquet-format/blob/master/Encodings.md
+//! Reference: <https://github.com/apache/parquet-format/blob/master/Encodings.md>
 //!
 //! Wire format (encoding ID 3): each run has a 7-bit LSB-first varint header.
 //! header bit 0 == 0: RLE run. header>>1 repetitions of one LE value.

@@ -30,7 +30,10 @@ use alloc::{string::String, vec::Vec};
 
 use consus_core::Datatype;
 
-use crate::field::{ArrowField, ArrowFieldKind};
+#[cfg(feature = "alloc")]
+use crate::field::ArrowField;
+use crate::field::ArrowFieldKind;
+#[cfg(feature = "alloc")]
 use crate::schema::ArrowSchema;
 
 /// Arrow data type hint derived from a field.

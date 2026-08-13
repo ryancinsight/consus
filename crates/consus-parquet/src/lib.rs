@@ -43,10 +43,13 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+#[cfg(feature = "alloc")]
 pub mod arrow_bridge;
+#[cfg(feature = "alloc")]
 pub mod conversion;
 pub mod hybrid;
 pub mod schema;
+#[cfg(feature = "alloc")]
 pub mod wire;
 
 #[cfg(feature = "alloc")]
@@ -61,11 +64,13 @@ mod reader;
 #[cfg(feature = "alloc")]
 mod writer;
 
+#[cfg(feature = "alloc")]
 pub use arrow_bridge::{
     ArrowBridgeMode, ArrowDataTypeHint, ArrowFieldDescriptor, ArrowIntegrationPlan,
     ArrowSchemaMapping, ArrowZeroCopyConstraint,
 };
 
+#[cfg(feature = "alloc")]
 pub use conversion::{
     ParquetCompatibility, ParquetConversionMode, arrow_nullability_to_parquet_repetition,
     core_to_parquet_logical_hint, core_to_parquet_physical_hint, parquet_field_to_core,
@@ -103,11 +108,13 @@ pub use encoding::{
 #[cfg(feature = "alloc")]
 pub use wire::payload::{PagePayload, split_data_page_v1, split_data_page_v2};
 
+#[cfg(feature = "alloc")]
 pub use hybrid::{
     HybridDatasetLayout, HybridMode, HybridPartitioning, HybridStorageDescriptor,
     HybridStorageEncoding, HybridTableLayout, HybridTableRelation,
 };
 
+#[cfg(feature = "alloc")]
 pub use wire::{
     ColumnChunkLocation, FooterPrelude, ParquetFooterDescriptor, ParquetFooterError,
     RowGroupLocation, validate_footer_prelude,
@@ -119,21 +126,26 @@ pub use wire::metadata::{
     SchemaElement as WireSchemaElement, decode_file_metadata,
 };
 
+#[cfg(feature = "alloc")]
 pub use wire::page::{
     DataPageHeader, DataPageHeaderV2, DictionaryPageHeader, PageHeader, PageType,
     decode_page_header,
 };
 
+pub use schema::{LogicalType, Nullability, ParquetPhysicalType, Repetition, TimeUnit};
+
+#[cfg(feature = "alloc")]
 pub use schema::{
-    FieldDescriptor, FieldId, LogicalType, Nullability, ParquetPhysicalType, ParquetPhysicalWidth,
-    Repetition, SchemaDescriptor, SchemaEvolution, SchemaEvolutionStep, SchemaMergeError,
-    SchemaMergeMode, SchemaProjection, SchemaProjectionError, TimeUnit, TypeAnnotation,
+    FieldDescriptor, FieldId, ParquetPhysicalWidth, SchemaDescriptor, SchemaEvolution,
+    SchemaEvolutionStep, SchemaMergeError, SchemaMergeMode, SchemaProjection,
+    SchemaProjectionError, TypeAnnotation,
 };
 
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
 
+    #[cfg(feature = "alloc")]
     #[test]
     fn exports_schema_types() {
         let schema = SchemaDescriptor::empty();
@@ -141,6 +153,7 @@ mod tests {
         assert!(schema.is_empty());
     }
 
+    #[cfg(feature = "alloc")]
     #[test]
     fn exports_hybrid_types() {
         let descriptor = HybridStorageDescriptor::default();
@@ -148,6 +161,7 @@ mod tests {
         assert!(descriptor.table_layout().is_none());
     }
 
+    #[cfg(feature = "alloc")]
     #[test]
     fn conversion_exports_are_available() {
         let physical = ParquetPhysicalType::Boolean;
@@ -175,6 +189,7 @@ mod tests {
         assert_eq!(dataset.column_count(), 1);
     }
 
+    #[cfg(feature = "alloc")]
     #[test]
     fn wire_exports_are_available() {
         let prelude = validate_footer_prelude(b"abcdefghijkl\x04\x00\x00\x00PAR1").unwrap();
@@ -196,6 +211,7 @@ mod tests {
         assert_eq!(footer.total_rows(), 2);
     }
 
+    #[cfg(feature = "alloc")]
     #[test]
     fn page_type_exports_are_available() {
         assert_eq!(PageType::from_i32(0), Some(PageType::DataPage));
@@ -260,5 +276,22 @@ mod tests {
         let row = RowValue::new(vec![CellValue::Null]);
         assert_eq!(row.len(), 1);
         let _plan: Option<WritePlan> = None;
+    }
+}
+
+#[cfg(all(test, not(feature = "alloc")))]
+mod no_alloc_tests {
+    use super::{LogicalType, ParquetPhysicalType, TimeUnit};
+
+    #[test]
+    fn exports_no_alloc_schema_types() {
+        assert_eq!(ParquetPhysicalType::Int64.width(), Some(8));
+        assert!(
+            LogicalType::Timestamp {
+                unit: TimeUnit::Microseconds,
+                is_adjusted_to_utc: false,
+            }
+            .is_temporal()
+        );
     }
 }

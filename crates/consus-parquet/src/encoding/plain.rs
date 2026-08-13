@@ -1,13 +1,14 @@
 //! PLAIN encoding (ID 0) decoders for all Parquet physical types.
 //!
-//! Reference: https://github.com/apache/parquet-format/blob/master/Encodings.md
+//! Reference: <https://github.com/apache/parquet-format/blob/master/Encodings.md>
 
 use alloc::vec::Vec;
 use consus_core::{Error, Result};
 
 /// Decode count boolean values from PLAIN-encoded bytes.
 ///
-/// Booleans are packed LSB-first: value[i] is bit (i % 8) of byte (i / 8).
+/// Booleans are packed LSB-first: `value\[i\]` is bit `(i % 8)` of byte
+/// `(i / 8)`.
 /// Required bytes: ceil(count / 8).
 pub fn decode_plain_boolean(bytes: &[u8], count: usize) -> Result<Vec<bool>> {
     if count == 0 {

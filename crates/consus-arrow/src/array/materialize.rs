@@ -84,7 +84,7 @@ fn fixed_to_le_bytes_fast<'a, T: zerocopy::IntoBytes + zerocopy::Immutable>(
 /// (element-by-element path) or a single `to_vec` call (zerocopy path).
 /// No validity bitmap is attached because `ColumnValues` carries no null
 /// information; callers that require nullable semantics must attach a
-/// [`super::ValidityBitmap`] after conversion.
+/// [`crate::memory::ArrowBitmap`] after conversion.
 #[cfg(feature = "alloc")]
 #[must_use]
 pub fn column_values_to_arrow<'a>(values: &'a ColumnValues) -> ArrowArray<'a> {

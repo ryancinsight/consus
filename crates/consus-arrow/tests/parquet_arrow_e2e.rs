@@ -1,3 +1,5 @@
+#![cfg(feature = "alloc")]
+
 //! End-to-end integration tests: ParquetWriter → ParquetReader → column_values_to_arrow.
 //!
 //! ## Specification

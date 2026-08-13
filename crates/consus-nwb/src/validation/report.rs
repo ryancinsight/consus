@@ -104,7 +104,7 @@ impl NwbConformanceReport {
             message: alloc::format!(
                 "NWB conformance: {} violation(s); first: {:?}",
                 self.violations.len(),
-                &self.violations[0],
+                self.violations[0],
             ),
         })
     }

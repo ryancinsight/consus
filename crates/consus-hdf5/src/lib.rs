@@ -84,3 +84,10 @@ pub mod object_header;
 pub mod primitives;
 pub mod property_list;
 pub mod superblock;
+
+/// File-level read facade (root re-export, mirroring the `consus-fits` pattern).
+#[cfg(feature = "alloc")]
+pub use file::Hdf5File;
+/// File-writer builder facade (root re-export).
+#[cfg(feature = "alloc")]
+pub use file::writer::Hdf5FileBuilder;

@@ -1,5 +1,17 @@
 # Consus — Implementation Checklist
 
+## CONSUS-NODEF-ARROW-PARQUET-002 — Close Arrow/Parquet no-default cfg boundary
+
+- [x] Gate alloc-only `consus-parquet` schema, bridge, conversion, wire, and
+      hybrid modules and re-exports at their ownership boundaries.
+- [x] Gate alloc-only `consus-arrow` facade modules and re-exports while
+      retaining the no-alloc array shape descriptor.
+- [x] Gate alloc-only integration tests and benchmarks with `alloc` feature
+      requirements.
+- [x] Pass no-default and default Nextest suites for both crates.
+- [x] Pass warning-denied Clippy for both crates in both feature modes.
+- [x] Record the remaining workspace no-default blockers in `gap_audit.md`.
+
 ## ATLAS-CONSUS-001 — Themis topology partition sizing [minor]
 
 - [x] Make the standard `consus` feature set use Themis CPU topology for the
