@@ -16,6 +16,18 @@ Evidence: `consus-parquet` no-default Nextest 10/10 and default 215/215;
 for both packages in both modes. A workspace no-default check proceeds through
 these two providers and stops at the pre-existing `consus-fits` cfg boundary.
 
+## Themis topology partition closure (2026-08-12)
+
+The Themis-backed default partition sizing implementation is present on the
+current Consus default at `005d0a7`. The standard facade derives its default
+parallel-I/O partition count from Themis CPU topology; no-default builds keep
+the alloc-free boundary and compact parse errors. The focused implementation
+and hosted evidence are complete: CI `31645404672`, Documentation
+`31645404702`, and Pages deployment `31645405182` all passed at exact head
+`3610b45`. This closes `ATLAS-CONSUS-001`; the remaining Python trusted
+publisher registration is an external release prerequisite, not an
+implementation gap in this item.
+
 ## Pages-disabled documentation CI (2026-07-22)
 
 Documentation run `29941230671` proved that Rustdoc and redirect generation

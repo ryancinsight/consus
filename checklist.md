@@ -22,8 +22,8 @@
       preserving compact no-alloc error construction in compression parsing.
 - [x] Pass formatting, default and no-default package checks, warning-denied
       Clippy for the affected packages, Nextest 7/7, doctests, and rustdoc.
-- [ ] Reconcile the standalone Git-source lock, merge current `origin/main`,
-      and advance the Atlas Consus gitlink.
+- [x] Reconcile the standalone Git-source lock and merge current `origin/main`
+      in `005d0a7`; root Atlas records the exact provider head separately.
 
 ## CRATES-REL-003 — Facade package documentation [patch]
 

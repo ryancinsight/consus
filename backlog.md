@@ -37,7 +37,7 @@
   aspirational I/O API (CONSUS-TEST-API-001); both are inventoried in
   `gap_audit.md`.
 
-## ATLAS-CONSUS-001 — Themis topology partition sizing [minor] — review
+## ATLAS-CONSUS-001 — Themis topology partition sizing [minor] — done
 
 - Owner: Codex; scope: the `consus` facade's default parallel-I/O policy and
   the no-alloc feature boundary in the compression/facade crates.
@@ -48,9 +48,10 @@
 - Evidence: `cargo fmt --all -- --check`; default `consus` check, Clippy,
   Nextest 7/7, doctests, and rustdoc pass; no-default `consus` check and
   no-default `consus-compression` Clippy pass.
-- Delivery blocker: the Atlas overlay rewrites this checkout's `Cargo.lock`,
-  and the branch is one commit behind `origin/main`; the lock must be
-  reconciled from a clean standalone resolution before the Atlas gitlink moves.
+- Delivery: merged as `005d0a7` and present on the current default `3610b45`.
+  Hosted CI `31645404672`, Documentation `31645404702`, and Pages deployment
+  `31645405182` all passed at the exact default head. The Atlas gitlink is
+  advanced separately by the root integration item.
 
 ## CRATES-REL-003 — Facade package documentation [patch] — done
 
