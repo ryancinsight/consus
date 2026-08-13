@@ -9,7 +9,9 @@
   `consus-nwb` (`report.rs`) and `consus-hdmf` (`tests/integration.rs`), and
   `consus-hdf5` root re-exports for the `Hdf5File`/`Hdf5FileBuilder` facades.
 - Verified: default + all-features checks and doctests pass; `consus-arrow`
-  no-default passes after the fixes.
+  no-default is partially closed (re-export E0432s fixed; ~27 errors remain
+  in `field/mod.rs`, `memory/mod.rs`, `array/mod.rs` — see
+  CONSUS-NODEF-GATE-001).
 - Remaining (tracked, not part of this patch): `--no-default-features`
   workspace cfg debt (CONSUS-NODEF-GATE-001) and the integration-test
   aspirational I/O API (CONSUS-TEST-API-001); both are inventoried in

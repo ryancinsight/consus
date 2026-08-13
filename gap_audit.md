@@ -721,10 +721,13 @@ owns the cross-repository matrix.
 - `cargo check` (default): pass.
 - `cargo check --all-features`: pass.
 - Doctests (`--all-features`): pass.
-- `consus-arrow` `--no-default-features`: pass after this audit's cfg-gating
-  fixes (lib.rs re-export groups, `bridge/mod.rs` alloc-gated schema/field
-  imports, `schema/mod.rs` `ArrowSchemaError`/`ArrowSchemaMergeStep` gating,
-  `conversion/convert.rs` Complex-arm gating).
+- `consus-arrow` `--no-default-features`: **partially closed** by this
+  audit's cfg-gating fixes (lib.rs re-export groups, `bridge/mod.rs`
+  alloc-gated schema/field imports, `schema/mod.rs`
+  `ArrowSchemaError`/`ArrowSchemaMergeStep` gating, `conversion/convert.rs`
+  Complex-arm gating). The re-export E0432 surface is closed, but the crate
+  still fails no-default with ~27 errors in `field/mod.rs`, `memory/mod.rs`,
+  and `array/mod.rs` — see CONSUS-NODEF-GATE-001 below.
 - Clippy lint fixes landed: `consus-nwb/src/validation/report.rs` redundant
   borrow; `consus-hdmf/tests/integration.rs` `approx_constant` (2 sites).
 - `consus-hdf5` root re-exports added for the `Hdf5File` and `Hdf5FileBuilder`
@@ -735,9 +738,9 @@ owns the cross-repository matrix.
 `cargo check --workspace --no-default-features` fails across the format crates
 with systematic alloc/feature-gating debt: unconditional re-exports of
 alloc-gated items and un-gated `alloc::`/`vec!` references in no-std mode.
-Inventory at this audit: `consus-arrow` (~27 errors, largely closed by the
-fixes above — the remaining sites are in `field/mod.rs`, `memory/mod.rs`,
-`array/mod.rs`, and `conversion/convert.rs`), `consus-parquet` (~10),
+Inventory at this audit: `consus-arrow` (~27 errors; the re-export E0432s
+were closed by the fixes above, the remaining sites are in `field/mod.rs`,
+`memory/mod.rs`, and `array/mod.rs`), `consus-parquet` (~10),
 `consus-fits` (~50), `consus-nwb` (4), plus downstream surfaced during
 iterated checks. Closure is a dedicated cfg-hygiene slice.
 
