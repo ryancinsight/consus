@@ -13,7 +13,7 @@
 //!    `DIMENSION_LIST` attribute whose entries are the object-reference
 //!    addresses of the corresponding dimension scale datasets in axis order.
 //! 4. Writing each root-group child group recursively via
-//!    [`SubGroupBuilder`], propagating dimensions, variables, and nested
+//!    `SubGroupBuilder`, propagating dimensions, variables, and nested
 //!    groups depth-first.
 //!
 //! ## Invariants
@@ -90,7 +90,7 @@ impl NetcdfWriter {
     /// 1. Root-group `_nc_properties` attribute.
     /// 2. Root dimension scale datasets (addresses collected into `dim_addrs`).
     /// 3. Root variable datasets with `DIMENSION_LIST` attributes.
-    /// 4. Child groups (recursive, depth-first via [`SubGroupBuilder`]).
+    /// 4. Child groups (recursive, depth-first via `SubGroupBuilder`).
     ///
     /// ## Errors
     ///

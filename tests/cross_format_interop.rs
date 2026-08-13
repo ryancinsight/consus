@@ -14,18 +14,81 @@
 //! - Data value preservation through conversion
 //! - Attribute/metadata roundtrip
 
-use std::path::PathBuf;
+#[cfg(feature = "hdf5")]
+use consus_hdf5::dataset::StorageLayout;
+#[cfg(feature = "hdf5")]
+use consus_hdf5::file::Hdf5File;
+#[cfg(feature = "hdf5")]
+use consus_hdf5::file::writer::{DatasetCreationProps, FileCreationProps, Hdf5FileBuilder};
+#[cfg(feature = "hdf5")]
+use consus_io::MemCursor;
 
 // ---------------------------------------------------------------------------
-// Test Data Helpers
+// Provider-contract helpers
 // ---------------------------------------------------------------------------
 
-/// Path to workspace data directory.
-fn data_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("workspace root")
-        .join("data")
+#[cfg(feature = "hdf5")]
+fn write_hdf5_dataset(
+    name: &str,
+    datatype: &consus_core::Datatype,
+    shape: &consus_core::Shape,
+    raw: &[u8],
+    properties: &DatasetCreationProps,
+) -> Vec<u8> {
+    let mut builder = Hdf5FileBuilder::new(FileCreationProps::default());
+    builder
+        .add_dataset(name, datatype, shape, raw, properties)
+        .expect("add HDF5 dataset");
+    builder.finish().expect("finish HDF5 file")
+}
+
+#[cfg(feature = "hdf5")]
+fn find_hdf5_dataset_address(file: &Hdf5File<MemCursor>, name: &str) -> u64 {
+    file.list_root_group()
+        .expect("list HDF5 root group")
+        .into_iter()
+        .find_map(|(child_name, address, _)| (child_name == name).then_some(address))
+        .unwrap_or_else(|| panic!("HDF5 dataset {name:?} is absent"))
+}
+
+#[cfg(feature = "hdf5")]
+fn read_hdf5_dataset(file: &Hdf5File<MemCursor>, name: &str) -> Vec<u8> {
+    let address = find_hdf5_dataset_address(file, name);
+    let dataset = file
+        .dataset_at(address)
+        .expect("read HDF5 dataset metadata");
+
+    match dataset.layout {
+        StorageLayout::Contiguous => {
+            let data_address = dataset.data_address.expect("contiguous data address");
+            let element_size = dataset.datatype.element_size().expect("fixed datatype");
+            let mut bytes = vec![0u8; dataset.shape.num_elements() * element_size];
+            file.read_contiguous_dataset_bytes(data_address, 0, &mut bytes)
+                .expect("read HDF5 contiguous dataset");
+            bytes
+        }
+        StorageLayout::Chunked => file
+            .read_chunked_dataset_all_bytes(address)
+            .expect("read HDF5 chunked dataset"),
+        StorageLayout::Compact | StorageLayout::Virtual => {
+            panic!("unsupported HDF5 test layout: {:?}", dataset.layout)
+        }
+    }
+}
+
+#[cfg(feature = "zarr")]
+fn zarr_metadata(shape: Vec<usize>, chunks: Vec<usize>, dtype: &str) -> consus_zarr::ArrayMetadata {
+    consus_zarr::ArrayMetadata {
+        version: consus_zarr::ZarrVersion::V3,
+        shape,
+        chunks,
+        dtype: dtype.to_string(),
+        fill_value: consus_zarr::FillValue::Default,
+        order: 'C',
+        codecs: Vec::new(),
+        chunk_key_encoding: consus_zarr::ChunkKeyEncoding::default(),
+        dimension_names: None,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -40,95 +103,44 @@ fn data_dir() -> PathBuf {
 #[test]
 #[cfg(all(feature = "hdf5", feature = "zarr"))]
 fn hdf5_to_zarr_roundtrip() {
-    use consus_core::{Datatype, Shape};
-    use consus_hdf5::Hdf5File;
-    use consus_io::MemCursor;
-    use consus_zarr::{ArrayMetadataV3, InMemoryStore, ZarrArray};
-
-    // Create test data in HDF5
-    let mut hdf5_buffer = vec![0u8; 8192];
-    let mut cursor = MemCursor::new(hdf5_buffer);
+    use consus_core::{ByteOrder, Datatype, Shape};
+    use consus_zarr::{InMemoryStore, read_chunk, write_chunk};
 
     let data: Vec<f64> = vec![1.1, 2.2, 3.3, 4.4, 5.5, 6.6];
+    let bytes: Vec<u8> = data.iter().flat_map(|value| value.to_le_bytes()).collect();
+    let datatype = Datatype::Float {
+        bits: core::num::NonZeroUsize::new(64).expect("non-zero"),
+        byte_order: ByteOrder::LittleEndian,
+    };
+    let shape = Shape::fixed(&[data.len()]);
 
-    // Write HDF5 file
-    {
-        let mut writer = consus_hdf5::Hdf5FileBuilder::new()
-            .build_writer(&mut cursor)
-            .expect("create HDF5 writer");
-
-        let dataset = writer
-            .root_group()
-            .create_dataset(
-                "temperature",
-                Datatype::Float {
-                    bits: core::num::NonZeroUsize::new(64).expect("non-zero"),
-                    byte_order: consus_core::ByteOrder::LittleEndian,
-                },
-                Shape::fixed(&[6]),
-            )
-            .expect("create dataset");
-
-        let bytes: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
-        dataset
-            .write(&consus_core::Selection::all(), &bytes)
-            .expect("write data");
-
-        writer.finish().expect("finalize HDF5 file");
-    }
-
-    // Read HDF5 and convert to Zarr
-    cursor.seek(std::io::SeekFrom::Start(0)).expect("seek");
-    let hdf5_file = Hdf5File::open(cursor).expect("open HDF5 file");
-    let hdf5_dataset = hdf5_file
-        .root_group()
-        .get_dataset("temperature")
-        .expect("get dataset");
-
-    let mut read_buf = vec![0u8; 6 * 8];
-    hdf5_dataset
-        .read(&consus_core::Selection::all(), &mut read_buf)
-        .expect("read HDF5 data");
-
-    let hdf5_values: Vec<f64> = read_buf
+    let hdf5_bytes = write_hdf5_dataset(
+        "temperature",
+        &datatype,
+        &shape,
+        &bytes,
+        &DatasetCreationProps::default(),
+    );
+    let hdf5_file = Hdf5File::open(MemCursor::from_bytes(hdf5_bytes)).expect("open HDF5 file");
+    let hdf5_bytes = read_hdf5_dataset(&hdf5_file, "temperature");
+    let hdf5_values: Vec<f64> = hdf5_bytes
         .chunks_exact(8)
         .map(|chunk| f64::from_le_bytes(chunk.try_into().expect("8 bytes")))
         .collect();
 
-    // Write to Zarr
     let mut zarr_store = InMemoryStore::new();
-    let zarr_array = ZarrArray::create(
-        &mut zarr_store,
-        "temperature",
-        ArrayMetadataV3 {
-            shape: vec![6],
-            data_type: "float64".to_string(),
-            chunk_grid: vec![6],
-            fill_value: 0.0,
-            codecs: vec![],
-        },
-    )
-    .expect("create Zarr array");
-
-    zarr_array
-        .write_chunk(&[0], &read_buf)
+    let metadata = zarr_metadata(vec![data.len()], vec![data.len()], "float64");
+    write_chunk(&mut zarr_store, "temperature", &[0], &metadata, &hdf5_bytes)
         .expect("write Zarr chunk");
-
-    // Read back from Zarr
-    let zarr_data = zarr_array.read_chunk(&[0]).expect("read Zarr chunk");
+    let zarr_data =
+        read_chunk(&zarr_store, "temperature", &[0], &metadata).expect("read Zarr chunk");
     let zarr_values: Vec<f64> = zarr_data
         .chunks_exact(8)
         .map(|chunk| f64::from_le_bytes(chunk.try_into().expect("8 bytes")))
         .collect();
 
-    // Verify values match
-    assert_eq!(hdf5_values.len(), zarr_values.len());
-    for (h, z) in hdf5_values.iter().zip(zarr_values.iter()) {
-        assert!(
-            (h - z).abs() < f64::EPSILON,
-            "HDF5 and Zarr values must match"
-        );
-    }
+    assert_eq!(hdf5_values, data, "HDF5 must preserve source values");
+    assert_eq!(zarr_values, data, "Zarr must preserve HDF5 values");
 }
 
 /// Test Zarr array can be read and written to HDF5.
@@ -139,80 +151,34 @@ fn hdf5_to_zarr_roundtrip() {
 #[test]
 #[cfg(all(feature = "hdf5", feature = "zarr"))]
 fn zarr_to_hdf5_conversion() {
-    use consus_core::{Datatype, Shape};
-    use consus_io::MemCursor;
-    use consus_zarr::{ArrayMetadataV3, InMemoryStore, ZarrArray};
+    use consus_core::{ByteOrder, Datatype, Shape};
+    use consus_zarr::{InMemoryStore, read_chunk, write_chunk};
 
-    // Create Zarr array
     let mut store = InMemoryStore::new();
-    let array = ZarrArray::create(
-        &mut store,
-        "data",
-        ArrayMetadataV3 {
-            shape: vec![10],
-            data_type: "int32".to_string(),
-            chunk_grid: vec![5],
-            fill_value: 0,
-            codecs: vec![],
-        },
-    )
-    .expect("create Zarr array");
+    let metadata = zarr_metadata(vec![10], vec![5], "int32");
 
-    // Write data to Zarr
     let data: Vec<i32> = (0..10).collect();
     let bytes: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
-    array
-        .write_chunk(&[0], &bytes[..20])
-        .expect("write chunk 0");
-    array
-        .write_chunk(&[1], &bytes[20..])
-        .expect("write chunk 1");
+    write_chunk(&mut store, "data", &[0], &metadata, &bytes[..20]).expect("write chunk 0");
+    write_chunk(&mut store, "data", &[1], &metadata, &bytes[20..]).expect("write chunk 1");
 
-    // Read from Zarr and write to HDF5
-    let chunk0 = array.read_chunk(&[0]).expect("read chunk 0");
-    let chunk1 = array.read_chunk(&[1]).expect("read chunk 1");
-
-    let mut hdf5_buffer = vec![0u8; 8192];
-    let mut cursor = MemCursor::new(hdf5_buffer);
-
-    {
-        let mut writer = consus_hdf5::Hdf5FileBuilder::new()
-            .build_writer(&mut cursor)
-            .expect("create HDF5 writer");
-
-        let dataset = writer
-            .root_group()
-            .create_dataset(
-                "data",
-                Datatype::Integer {
-                    bits: core::num::NonZeroUsize::new(32).expect("non-zero"),
-                    byte_order: consus_core::ByteOrder::LittleEndian,
-                    signed: true,
-                },
-                Shape::fixed(&[10]),
-            )
-            .expect("create dataset");
-
-        let all_bytes: Vec<u8> = chunk0.into_iter().chain(chunk1.into_iter()).collect();
-        dataset
-            .write(&consus_core::Selection::all(), &all_bytes)
-            .expect("write data");
-
-        writer.finish().expect("finalize HDF5 file");
-    }
-
-    // Verify by reading HDF5
-    cursor.seek(std::io::SeekFrom::Start(0)).expect("seek");
-    let hdf5_file = consus_hdf5::Hdf5File::open(cursor).expect("open HDF5 file");
-    let dataset = hdf5_file
-        .root_group()
-        .get_dataset("data")
-        .expect("get dataset");
-
-    let mut read_buf = vec![0u8; 10 * 4];
-    dataset
-        .read(&consus_core::Selection::all(), &mut read_buf)
-        .expect("read data");
+    let chunk0 = read_chunk(&store, "data", &[0], &metadata).expect("read chunk 0");
+    let chunk1 = read_chunk(&store, "data", &[1], &metadata).expect("read chunk 1");
+    let all_bytes: Vec<u8> = chunk0.into_iter().chain(chunk1).collect();
+    let datatype = Datatype::Integer {
+        bits: core::num::NonZeroUsize::new(32).expect("non-zero"),
+        byte_order: ByteOrder::LittleEndian,
+        signed: true,
+    };
+    let hdf5_bytes = write_hdf5_dataset(
+        "data",
+        &datatype,
+        &Shape::fixed(&[10]),
+        &all_bytes,
+        &DatasetCreationProps::default(),
+    );
+    let hdf5_file = Hdf5File::open(MemCursor::from_bytes(hdf5_bytes)).expect("open HDF5 file");
+    let read_buf = read_hdf5_dataset(&hdf5_file, "data");
 
     let hdf5_values: Vec<i32> = read_buf
         .chunks_exact(4)
@@ -235,27 +201,52 @@ fn zarr_to_hdf5_conversion() {
 /// - Dimensions map to special HDF5 datasets
 /// - Variables map to HDF5 datasets with attributes
 #[test]
-#[cfg(feature = "netcdf")]
+#[cfg(all(feature = "netcdf", feature = "hdf5"))]
 fn netcdf_hdf5_compatibility() {
-    let nc_path = data_dir().join("netcdf_hdf5_compat_sample.nc");
+    use consus_core::{ByteOrder, Datatype, Shape};
+    use consus_netcdf::{NetcdfDimension, NetcdfModel, NetcdfVariable, NetcdfWriter};
 
-    if !nc_path.exists() {
-        eprintln!("Skipping: netCDF sample not found at {:?}", nc_path);
-        return;
-    }
+    let mut model = NetcdfModel::default();
+    model
+        .root
+        .dimensions
+        .push(NetcdfDimension::new(String::from("time"), 4));
+    model.root.variables.push(
+        NetcdfVariable::new(
+            String::from("temperature"),
+            Datatype::Float {
+                bits: core::num::NonZeroUsize::new(32).expect("non-zero"),
+                byte_order: ByteOrder::LittleEndian,
+            },
+            vec![String::from("time")],
+        )
+        .with_shape(Shape::fixed(&[4]))
+        .with_data(
+            (0..4)
+                .flat_map(|value| (value as f32).to_le_bytes())
+                .collect(),
+        ),
+    );
 
-    // Open as NetCDF
-    let nc_file = consus_netcdf::NcFile::open(&nc_path).expect("open netCDF file");
+    let bytes = NetcdfWriter::new()
+        .write_model(&model)
+        .expect("write netCDF model as HDF5");
+    let hdf5_file = Hdf5File::open(MemCursor::from_bytes(bytes)).expect("open netCDF HDF5 image");
+    let decoded = consus_netcdf::read_model(&hdf5_file).expect("read netCDF model from HDF5");
 
-    // Open as HDF5 (should succeed)
-    #[cfg(feature = "hdf5")]
-    {
-        let hdf5_file = consus_hdf5::Hdf5File::open(&nc_path).expect("open as HDF5");
-
-        // Both should report valid structures
-        assert!(nc_file.root_group().is_ok());
-        assert!(hdf5_file.root_group().is_ok());
-    }
+    assert_eq!(decoded.root.name, "/");
+    assert_eq!(decoded.root.dimensions.len(), 1);
+    assert_eq!(decoded.root.variables.len(), 1);
+    assert_eq!(decoded.root.variables[0].name, "temperature");
+    assert_eq!(
+        decoded.root.variables[0]
+            .shape
+            .as_ref()
+            .expect("shape")
+            .current_dims()
+            .as_slice(),
+        &[4]
+    );
 }
 
 /// Test NetCDF-4 dimension and variable structure.
@@ -266,46 +257,50 @@ fn netcdf_hdf5_compatibility() {
 #[test]
 #[cfg(all(feature = "netcdf", feature = "hdf5"))]
 fn netcdf_variable_matches_hdf5_dataset() {
-    let nc_path = data_dir().join("netcdf_small_grid_sample.nc");
+    use consus_core::{ByteOrder, Datatype, Shape};
+    use consus_netcdf::{NetcdfDimension, NetcdfModel, NetcdfVariable, NetcdfWriter};
 
-    if !nc_path.exists() {
-        eprintln!("Skipping: netCDF sample not found at {:?}", nc_path);
-        return;
-    }
+    let mut model = NetcdfModel::default();
+    model
+        .root
+        .dimensions
+        .push(NetcdfDimension::new(String::from("x"), 3));
+    model.root.variables.push(
+        NetcdfVariable::new(
+            String::from("signal"),
+            Datatype::Integer {
+                bits: core::num::NonZeroUsize::new(32).expect("non-zero"),
+                byte_order: ByteOrder::LittleEndian,
+                signed: true,
+            },
+            vec![String::from("x")],
+        )
+        .with_shape(Shape::fixed(&[3]))
+        .with_data((0..3).flat_map(i32::to_le_bytes).collect()),
+    );
 
-    let nc_file = consus_netcdf::NcFile::open(&nc_path).expect("open netCDF");
-    let hdf5_file = consus_hdf5::Hdf5File::open(&nc_path).expect("open HDF5");
+    let bytes = NetcdfWriter::new()
+        .write_model(&model)
+        .expect("write netCDF model");
+    let hdf5_file = Hdf5File::open(MemCursor::from_bytes(bytes)).expect("open HDF5 image");
+    let decoded = consus_netcdf::read_model(&hdf5_file).expect("read netCDF model");
+    let variable = decoded
+        .root
+        .variables
+        .iter()
+        .find(|variable| variable.name == "signal")
+        .expect("decoded signal variable");
 
-    let nc_root = nc_file.root_group().expect("get netCDF root");
-    let hdf5_root = hdf5_file.root_group().expect("get HDF5 root");
-
-    let nc_vars = nc_root.variables().expect("list netCDF variables");
-    let hdf5_datasets = hdf5_root.datasets().expect("list HDF5 datasets");
-
-    // NetCDF variables should correspond to HDF5 datasets
-    for nc_var in &nc_vars {
-        let name = nc_var.name();
-
-        // Find corresponding HDF5 dataset
-        let hdf5_ds = hdf5_datasets.iter().find(|ds| ds.name() == name);
-
-        if let Some(hdf5_ds) = hdf5_ds {
-            // Shapes must match
-            let nc_shape = nc_var.shape().expect("get netCDF shape");
-            let hdf5_shape = hdf5_ds.shape();
-
-            assert_eq!(
-                nc_shape.len(),
-                hdf5_shape.len(),
-                "rank mismatch for {}",
-                name
-            );
-
-            for (nc_dim, hdf5_dim) in nc_shape.iter().zip(hdf5_shape.iter()) {
-                assert_eq!(nc_dim, hdf5_dim, "dimension mismatch for {}", name);
-            }
-        }
-    }
+    assert_eq!(variable.dimensions, vec![String::from("x")]);
+    assert_eq!(
+        variable
+            .shape
+            .as_ref()
+            .expect("variable shape")
+            .current_dims()
+            .as_slice(),
+        &[3]
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -323,9 +318,7 @@ fn netcdf_variable_matches_hdf5_dataset() {
 #[test]
 #[cfg(feature = "arrow")]
 fn arrow_schema_to_core_preserves_semantics() {
-    use consus_arrow::{
-        ArrowDataType, ArrowFieldBuilder, ArrowFieldId, ArrowFieldKind, ArrowSchema,
-    };
+    use consus_arrow::{ArrowFieldBuilder, ArrowFieldId, ArrowFieldKind, ArrowSchema};
     use consus_core::{ByteOrder, Datatype};
 
     let schema = ArrowSchema::new(vec![
@@ -401,6 +394,7 @@ fn parquet_schema_to_core_preserves_types() {
             consus_parquet::FieldId::new(2),
             "value",
             ParquetPhysicalType::Double,
+            None,
         ),
         FieldDescriptor::optional(
             consus_parquet::FieldId::new(3),
@@ -446,11 +440,9 @@ fn parquet_schema_to_core_preserves_types() {
 #[test]
 #[cfg(all(feature = "arrow", feature = "parquet"))]
 fn arrow_parquet_schema_interop() {
-    use consus_arrow::{
-        ArrowDataType, ArrowFieldBuilder, ArrowFieldId, ArrowFieldKind, ArrowSchema,
-    };
+    use consus_arrow::{ArrowFieldBuilder, ArrowFieldId, ArrowFieldKind, ArrowSchema};
     use consus_core::{ByteOrder, Datatype};
-    use consus_parquet::{FieldDescriptor, LogicalType, ParquetPhysicalType, SchemaDescriptor};
+    use consus_parquet::{FieldDescriptor, ParquetPhysicalType, SchemaDescriptor};
 
     // Create Arrow schema
     let arrow_schema = ArrowSchema::new(vec![
@@ -506,89 +498,44 @@ fn arrow_parquet_schema_interop() {
 #[test]
 #[cfg(all(feature = "hdf5", feature = "zarr"))]
 fn data_values_preserved_across_formats() {
-    use consus_core::{Datatype, Selection, Shape};
-    use consus_io::MemCursor;
-    use consus_zarr::{ArrayMetadataV3, InMemoryStore, ZarrArray};
+    use consus_core::{ByteOrder, Datatype, Shape};
+    use consus_zarr::{InMemoryStore, read_chunk, write_chunk};
 
-    // Original data
     let original: Vec<f32> = vec![1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5];
+    let bytes: Vec<u8> = original
+        .iter()
+        .flat_map(|value| value.to_le_bytes())
+        .collect();
+    let datatype = Datatype::Float {
+        bits: core::num::NonZeroUsize::new(32).expect("non-zero"),
+        byte_order: ByteOrder::LittleEndian,
+    };
 
-    // Write to HDF5
-    let mut hdf5_buffer = vec![0u8; 8192];
-    let mut cursor = MemCursor::new(hdf5_buffer);
-
-    {
-        let mut writer = consus_hdf5::Hdf5FileBuilder::new()
-            .build_writer(&mut cursor)
-            .expect("create writer");
-
-        let dataset = writer
-            .root_group()
-            .create_dataset(
-                "data",
-                Datatype::Float {
-                    bits: core::num::NonZeroUsize::new(32).expect("non-zero"),
-                    byte_order: consus_core::ByteOrder::LittleEndian,
-                },
-                Shape::fixed(&[8]),
-            )
-            .expect("create dataset");
-
-        let bytes: Vec<u8> = original.iter().flat_map(|v| v.to_le_bytes()).collect();
-        dataset.write(&Selection::all(), &bytes).expect("write");
-
-        writer.finish().expect("finalize");
-    }
-
-    // Read from HDF5
-    cursor.seek(std::io::SeekFrom::Start(0)).expect("seek");
-    let hdf5_file = consus_hdf5::Hdf5File::open(cursor).expect("open");
-    let dataset = hdf5_file.root_group().get_dataset("data").expect("get");
-
-    let mut hdf5_buf = vec![0u8; 8 * 4];
-    dataset
-        .read(&Selection::all(), &mut hdf5_buf)
-        .expect("read");
-
+    let hdf5_bytes = write_hdf5_dataset(
+        "data",
+        &datatype,
+        &Shape::fixed(&[original.len()]),
+        &bytes,
+        &DatasetCreationProps::default(),
+    );
+    let hdf5_file = Hdf5File::open(MemCursor::from_bytes(hdf5_bytes)).expect("open HDF5");
+    let hdf5_buf = read_hdf5_dataset(&hdf5_file, "data");
     let from_hdf5: Vec<f32> = hdf5_buf
         .chunks_exact(4)
         .map(|c| f32::from_le_bytes(c.try_into().expect("4 bytes")))
         .collect();
 
-    // Write to Zarr
     let mut store = InMemoryStore::new();
-    let zarr = ZarrArray::create(
-        &mut store,
-        "data",
-        ArrayMetadataV3 {
-            shape: vec![8],
-            data_type: "float32".to_string(),
-            chunk_grid: vec![8],
-            fill_value: 0.0,
-            codecs: vec![],
-        },
-    )
-    .expect("create");
-
-    zarr.write_chunk(&[0], &hdf5_buf).expect("write");
-
-    // Read from Zarr
-    let zarr_data = zarr.read_chunk(&[0]).expect("read");
+    let metadata = zarr_metadata(vec![original.len()], vec![original.len()], "float32");
+    write_chunk(&mut store, "data", &[0], &metadata, &hdf5_buf).expect("write Zarr chunk");
+    let zarr_data = read_chunk(&store, "data", &[0], &metadata).expect("read Zarr chunk");
     let from_zarr: Vec<f32> = zarr_data
         .chunks_exact(4)
         .map(|c| f32::from_le_bytes(c.try_into().expect("4 bytes")))
         .collect();
 
-    // All values must match
-    for (i, (orig, h, z)) in original
-        .iter()
-        .zip(from_hdf5.iter())
-        .zip(from_zarr.iter())
-        .enumerate()
-    {
-        assert!((orig - h).abs() < f32::EPSILON, "HDF5 mismatch at {}", i);
-        assert!((orig - z).abs() < f32::EPSILON, "Zarr mismatch at {}", i);
-    }
+    assert_eq!(from_hdf5, original, "HDF5 values must roundtrip");
+    assert_eq!(from_zarr, original, "Zarr values must roundtrip");
 }
 
 // ---------------------------------------------------------------------------
@@ -603,58 +550,34 @@ fn data_values_preserved_across_formats() {
 #[test]
 #[cfg(all(feature = "hdf5", feature = "compression"))]
 fn compression_settings_interop() {
-    use consus_core::{Compression, Datatype, Selection, Shape};
-    use consus_io::MemCursor;
-
-    // Create HDF5 file with deflate compression
-    let mut buffer = vec![0u8; 8192];
-    let mut cursor = MemCursor::new(buffer);
+    use consus_core::{ByteOrder, Compression, Datatype, Shape};
+    use consus_hdf5::property_list::DatasetLayout;
 
     let data: Vec<u8> = (0..=255).cycle().take(1000).collect();
+    let datatype = Datatype::Integer {
+        bits: core::num::NonZeroUsize::new(8).expect("non-zero"),
+        byte_order: ByteOrder::LittleEndian,
+        signed: false,
+    };
+    let properties = DatasetCreationProps {
+        layout: DatasetLayout::Chunked,
+        chunk_dims: Some(vec![data.len()]),
+        compression: Compression::Deflate { level: 6 },
+        ..DatasetCreationProps::default()
+    };
+    let bytes = write_hdf5_dataset(
+        "compressed",
+        &datatype,
+        &Shape::fixed(&[data.len()]),
+        &data,
+        &properties,
+    );
+    let file = Hdf5File::open(MemCursor::from_bytes(bytes)).expect("open HDF5");
+    let address = find_hdf5_dataset_address(&file, "compressed");
+    let dataset = file.dataset_at(address).expect("read compressed metadata");
 
-    {
-        let mut writer = consus_hdf5::Hdf5FileBuilder::new()
-            .build_writer(&mut cursor)
-            .expect("create writer");
-
-        let dataset = writer
-            .root_group()
-            .create_dataset_compressed(
-                "compressed",
-                Datatype::Integer {
-                    bits: core::num::NonZeroUsize::new(8).expect("non-zero"),
-                    byte_order: consus_core::ByteOrder::LittleEndian,
-                    signed: false,
-                },
-                Shape::fixed(&[1000]),
-                Compression::Deflate { level: 6 },
-            )
-            .expect("create compressed dataset");
-
-        dataset.write(&Selection::all(), &data).expect("write");
-        writer.finish().expect("finalize");
-    }
-
-    // Read back and verify compression was applied
-    cursor.seek(std::io::SeekFrom::Start(0)).expect("seek");
-    let file = consus_hdf5::Hdf5File::open(cursor).expect("open");
-
-    let dataset = file.root_group().get_dataset("compressed").expect("get");
-
-    assert!(dataset.is_compressed(), "dataset must report compressed");
-
-    let filters = dataset.filters().expect("get filters");
-    assert!(!filters.is_empty(), "must have compression filter");
-
-    // Should have deflate filter (ID 1)
-    let has_deflate = filters.iter().any(|f| f.id() == 1);
+    let has_deflate = dataset.filters.contains(&1);
     assert!(has_deflate, "must use deflate compression");
 
-    // Data must decompress correctly
-    let mut read_buf = vec![0u8; 1000];
-    dataset
-        .read(&Selection::all(), &mut read_buf)
-        .expect("read");
-
-    assert_eq!(read_buf, data, "decompressed data must match original");
+    assert_eq!(read_hdf5_dataset(&file, "compressed"), data);
 }

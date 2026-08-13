@@ -152,7 +152,7 @@ pub fn read_chunk_raw<R: consus_io::ReadAt>(
 
 /// Read raw chunk data from the file asynchronously, applying the decompression pipeline.
 ///
-/// Same semantics as [`read_chunk_raw`], but over an [`AsyncReadAt`] source.
+/// Same semantics as [`read_chunk_raw`], but over an `AsyncReadAt` source.
 #[cfg(all(feature = "async-io", feature = "alloc"))]
 pub async fn async_read_chunk_raw<R: consus_io::AsyncReadAt>(
     source: &R,

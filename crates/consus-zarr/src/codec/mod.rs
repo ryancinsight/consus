@@ -261,7 +261,7 @@ impl<T: consus_compression::CompressionRegistry> CompressionRegistryTrait for T 
     }
 }
 
-/// Wrapper type that owns the codec reference for Box<dyn CodecTrait>.
+/// Wrapper type that owns a dynamically dispatched codec reference.
 pub struct CodecAdapterWrapper<'a>(&'a dyn consus_compression::Codec);
 
 impl CodecTrait for CodecAdapterWrapper<'_> {

@@ -2,8 +2,8 @@
 //!
 //! ## Design
 //!
-//! Each async function collects raw bytes by issuing positioned [`AsyncReadAt`]
-//! reads, assembles them into a [`MultiRegionBuffer`], then delegates format
+//! Each async function collects raw bytes by issuing positioned `AsyncReadAt`
+//! reads, assembles them into a `MultiRegionBuffer`, then delegates format
 //! parsing to the existing sync parsers that operate on [`ReadAt`].
 //!
 //! Format logic is not duplicated. Only the I/O coordination layer is async.

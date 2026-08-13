@@ -1,5 +1,22 @@
 # Consus - Gap Audit
 
+## Cross-format integration test API closure (2026-08-13)
+
+The former `CONSUS-TEST-API-001` residual was real at the merged default
+`b3ca01c21b2e9bad4c7b7dc23c47083ca79a3307`: the test target used absent
+`ZarrArray`, `ArrayMetadataV3`, and `NcFile` facades, stale HDF5 builder and
+dataset methods, an invalid `MemCursor` constructor, and skip-on-missing-file
+fixtures. `tests/cross_format_interop.rs` now consumes the provider's current
+contracts directly. HDF5 roundtrips use the builder/list/dataset APIs, Zarr
+roundtrips use canonical metadata and chunk operations, and NetCDF compatibility
+uses `NetcdfWriter` plus `read_model` over in-memory HDF5 images.
+
+Verification at the lane head: focused all-format Nextest 8/8; compression-
+inclusive 9/9; package all-features Nextest 42/42; warning-denied Clippy for
+the target and workspace all-targets/all-features; workspace no-default locked
+check; formatting and diff checks. Hosted exact-head verification remains the
+only open delivery gate for this provider commit.
+
 ## FITS and NWB no-default closure (2026-08-13, implementation complete; hosted verification pending)
 
 The initial `consus-fits --no-default-features` check failed with 45 errors and
