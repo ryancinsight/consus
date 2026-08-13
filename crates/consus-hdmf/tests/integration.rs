@@ -106,7 +106,11 @@ fn roundtrip_empty_table() {
 #[test]
 fn roundtrip_single_row() {
     let bytes = HdmfFileBuilder::new("single", "one row")
-        .add_column("val", "a value", ColumnData::F64(vec![core::f64::consts::PI]))
+        .add_column(
+            "val",
+            "a value",
+            ColumnData::F64(vec![core::f64::consts::PI]),
+        )
         .finish()
         .expect("finish failed");
 
