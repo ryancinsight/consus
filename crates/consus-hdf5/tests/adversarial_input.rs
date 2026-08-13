@@ -21,7 +21,7 @@
 
 use consus_core::{Error, ParseBudget};
 use consus_hdf5::address::ParseContext;
-use consus_hdf5::btree::v2::{BTreeV2Header, collect_all_records};
+use consus_hdf5::btree::v2::{BTreeV2Header, collect_all_records, find_huge_object_record};
 use consus_hdf5::dataset::chunk::{ChunkLocation, read_chunk_raw};
 use consus_hdf5::datatype::compound::parse_datatype;
 use consus_io::MemCursor;
@@ -261,4 +261,64 @@ fn well_formed_chunk_read_is_unaffected() {
     let data = read_chunk_raw(&source, &location, payload.len(), &[], &registry, None)
         .expect("a well-formed chunk read must succeed");
     assert_eq!(data, payload);
+}
+
+// ---------------------------------------------------------------------------
+// Fix 3 — malformed HUGE-object B-tree descent
+// ---------------------------------------------------------------------------
+
+/// A self-referential HUGE-object child must hit the descent budget instead
+/// of recursing until the process stack overflows.
+#[test]
+fn huge_object_search_rejects_self_referential_child() {
+    let mut node = vec![0u8; 32];
+    node[..4].copy_from_slice(b"BTIN");
+    node[4] = 0;
+    node[5] = consus_hdf5::btree::v2::record_type::HUGE_OBJECT;
+    // With zero records, the first child pointer starts immediately after the
+    // six-byte internal-node header. It points back to this same node.
+    node[6..14].copy_from_slice(&0u64.to_le_bytes());
+    let source = MemCursor::from_bytes(node);
+    let header = BTreeV2Header {
+        record_type: consus_hdf5::btree::v2::record_type::HUGE_OBJECT,
+        node_size: 32,
+        record_size: 16,
+        depth: 1,
+        root_address: 0,
+        root_num_records: 0,
+        split_percent: 98,
+        merge_percent: 40,
+        total_records: 1,
+    };
+    let error = find_huge_object_record(&source, 0, &header, 7, &ParseContext::new(8, 8))
+        .expect_err("self-referential HUGE-object child must terminate");
+    assert_resource_limit(&error, "self-referential HUGE-object descent");
+}
+
+/// A truncated HUGE-object internal node with no child pointers must return a
+/// format error rather than underflowing `len() - 1`.
+#[test]
+fn huge_object_search_rejects_empty_child_table() {
+    let mut node = vec![0u8; 10];
+    node[..4].copy_from_slice(b"BTIN");
+    node[4] = 0;
+    node[5] = consus_hdf5::btree::v2::record_type::HUGE_OBJECT;
+    let source = MemCursor::from_bytes(node);
+    let header = BTreeV2Header {
+        record_type: consus_hdf5::btree::v2::record_type::HUGE_OBJECT,
+        node_size: 10,
+        record_size: 16,
+        depth: 1,
+        root_address: 0,
+        root_num_records: 0,
+        split_percent: 98,
+        merge_percent: 40,
+        total_records: 1,
+    };
+    let error = find_huge_object_record(&source, 0, &header, 7, &ParseContext::new(8, 8))
+        .expect_err("empty child table must be rejected");
+    assert!(
+        matches!(error, Error::InvalidFormat { .. }),
+        "empty HUGE-object child table: expected invalid format, got {error:?}"
+    );
 }
