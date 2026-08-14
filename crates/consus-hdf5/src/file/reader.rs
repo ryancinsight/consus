@@ -41,6 +41,30 @@ use crate::object_header::message_types;
 #[cfg(feature = "alloc")]
 use crate::object_header::{HeaderMessage, OHDR_SIGNATURE, ObjectHeader};
 
+/// Maximum local-heap data segment materialized by the v1 group reader.
+///
+/// Local heaps are file-declared byte ranges. The reader must bound the
+/// allocation before converting the untrusted length to `usize`; the limit
+/// matches the existing maximum object-header chunk allocation budget.
+#[cfg(feature = "alloc")]
+const MAX_LOCAL_HEAP_DATA_BYTES: u64 = 64 * 1024 * 1024;
+
+#[cfg(feature = "alloc")]
+fn checked_local_heap_data_size(size: u64) -> Result<usize> {
+    if size > MAX_LOCAL_HEAP_DATA_BYTES {
+        return Err(Error::InvalidFormat {
+            message: alloc::format!(
+                "local heap data segment size {size} exceeds the {}-byte allocation limit",
+                MAX_LOCAL_HEAP_DATA_BYTES
+            ),
+        });
+    }
+
+    usize::try_from(size).map_err(|_| Error::InvalidFormat {
+        message: alloc::format!("local heap data segment size {size} does not fit usize"),
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Object header dispatch
 // ---------------------------------------------------------------------------
@@ -277,7 +301,16 @@ pub fn list_group_v1<R: ReadAt>(
     // Parse local heap header and read data segment.
     let heap = crate::heap::local::LocalHeap::parse(source, sym_table.local_heap_address, ctx)?;
 
-    let heap_data_size = heap.data_segment_size as usize;
+    let heap_data_size = checked_local_heap_data_size(heap.data_segment_size)?;
+    heap.data_address
+        .checked_add(heap.data_segment_size)
+        .ok_or_else(|| Error::InvalidFormat {
+            message: alloc::format!(
+                "local heap data range overflows at address 0x{:x} with length {}",
+                heap.data_address,
+                heap.data_segment_size
+            ),
+        })?;
     let mut heap_data = vec![0u8; heap_data_size];
     source.read_at(heap.data_address, &mut heap_data)?;
 
@@ -627,6 +660,19 @@ mod tests {
 
     #[cfg(feature = "alloc")]
     use alloc::vec;
+
+    /// Hostile local-heap lengths are rejected before allocation or narrowing.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn local_heap_data_size_is_bounded() {
+        assert!(checked_local_heap_data_size(MAX_LOCAL_HEAP_DATA_BYTES).is_ok());
+        let err = checked_local_heap_data_size(MAX_LOCAL_HEAP_DATA_BYTES + 1)
+            .expect_err("oversized local heap must be rejected");
+        assert!(matches!(err, Error::InvalidFormat { .. }));
+        let err = checked_local_heap_data_size(u64::MAX)
+            .expect_err("hostile local heap must be rejected");
+        assert!(matches!(err, Error::InvalidFormat { .. }));
+    }
 
     /// Classify an object header with dataspace + datatype + layout → Dataset.
     #[cfg(feature = "alloc")]

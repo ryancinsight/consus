@@ -17,7 +17,7 @@ use flate2::read::{ZlibDecoder, ZlibEncoder};
 use std::io::Read;
 
 use super::traits::{Codec, CompressionLevel};
-use consus_core::{Error, Result};
+use consus_core::{Error, ParseBudget, Result};
 
 /// Deflate codec using zlib framing (RFC 1950).
 ///
@@ -51,13 +51,14 @@ impl Codec for DeflateCodec {
 
     fn decompress(&self, input: &[u8], expected_size: usize) -> Result<Vec<u8>> {
         let mut decoder = ZlibDecoder::new(input);
-        let mut output = Vec::with_capacity(expected_size);
-        decoder
-            .read_to_end(&mut output)
-            .map_err(|e| Error::CompressionError {
-                message: alloc::format!("deflate (zlib) decompress failed: {e}"),
-            })?;
-        Ok(output)
+        ParseBudget::default()
+            .read_bounded(&mut decoder, expected_size, "decompressed output")
+            .map_err(|error| match error {
+                Error::Io(error) => Error::CompressionError {
+                    message: alloc::format!("deflate (zlib) decompress failed: {error}"),
+                },
+                error => error,
+            })
     }
 }
 
@@ -87,5 +88,17 @@ mod tests {
             .decompress(&compressed, input.len())
             .expect("decompress must succeed");
         assert_eq!(decompressed, input, "round-trip must be lossless");
+    }
+
+    #[test]
+    fn decompression_output_is_bounded() {
+        let codec = DeflateCodec;
+        let compressed = codec
+            .compress(&vec![7u8; 8192], CompressionLevel::default())
+            .expect("compress must succeed");
+        let error = codec
+            .decompress(&compressed, usize::MAX)
+            .expect_err("declared output above the shared bound must be rejected");
+        assert!(matches!(error, Error::ResourceLimit { .. }));
     }
 }

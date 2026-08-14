@@ -92,6 +92,20 @@ impl<'a> ThriftReader<'a> {
         self.pos
     }
 
+    /// Takes a bounded byte range and advances the reader past it.
+    fn take_bytes(&mut self, len: usize) -> Result<&'a [u8]> {
+        let end = self.pos.checked_add(len).ok_or(Error::Overflow)?;
+        if end > self.data.len() {
+            return Err(Error::BufferTooSmall {
+                required: end,
+                provided: self.data.len(),
+            });
+        }
+        let bytes = &self.data[self.pos..end];
+        self.pos = end;
+        Ok(bytes)
+    }
+
     /// Reads one byte; returns `Error::BufferTooSmall` when exhausted.
     pub fn read_byte(&mut self) -> Result<u8> {
         if self.pos >= self.data.len() {
@@ -145,32 +159,18 @@ impl<'a> ThriftReader<'a> {
 
     /// 8-byte little-endian IEEE 754 f64.
     pub fn read_double(&mut self) -> Result<f64> {
-        if self.pos + 8 > self.data.len() {
-            return Err(Error::BufferTooSmall {
-                required: self.pos + 8,
-                provided: self.data.len(),
-            });
-        }
-        let b: [u8; 8] = self.data[self.pos..self.pos + 8]
+        let b: [u8; 8] = self
+            .take_bytes(8)?
             .try_into()
-            .expect("8-byte slice for f64 deserialization");
-        self.pos += 8;
+            .expect("invariant: take_bytes returned exactly eight bytes");
         Ok(f64::from_le_bytes(b))
     }
 
     /// Varint length-prefixed binary blob.
     #[cfg(feature = "alloc")]
     pub fn read_binary(&mut self) -> Result<Vec<u8>> {
-        let len = self.read_varint_u64()? as usize;
-        if self.pos + len > self.data.len() {
-            return Err(Error::BufferTooSmall {
-                required: self.pos + len,
-                provided: self.data.len(),
-            });
-        }
-        let v = self.data[self.pos..self.pos + len].to_vec();
-        self.pos += len;
-        Ok(v)
+        let len = usize::try_from(self.read_varint_u64()?).map_err(|_| Error::Overflow)?;
+        Ok(self.take_bytes(len)?.to_vec())
     }
 
     /// UTF-8 string decoded from a binary blob.
@@ -207,19 +207,35 @@ impl<'a> ThriftReader<'a> {
         let count_nibble = (byte >> 4) & 0x0F;
         let elem_type = byte & 0x0F;
         let count = if count_nibble == 0x0F {
-            self.read_varint_u64()? as usize
+            usize::try_from(self.read_varint_u64()?).map_err(|_| Error::Overflow)?
         } else {
             count_nibble as usize
         };
+        if count > self.remaining() {
+            return Err(Error::InvalidFormat {
+                message: alloc::format!(
+                    "thrift: list count {count} exceeds remaining bytes {}",
+                    self.remaining()
+                ),
+            });
+        }
         Ok((elem_type, count))
     }
 
     /// Map header: varint count; if > 0, one byte (key_type<<4)|val_type.
     /// Returns `(key_type, value_type, count)`; count 0 returns `(0,0,0)`.
     pub fn read_map_header(&mut self) -> Result<(u8, u8, usize)> {
-        let count = self.read_varint_u64()? as usize;
+        let count = usize::try_from(self.read_varint_u64()?).map_err(|_| Error::Overflow)?;
         if count == 0 {
             return Ok((0, 0, 0));
+        }
+        if count > self.remaining() / 2 {
+            return Err(Error::InvalidFormat {
+                message: alloc::format!(
+                    "thrift: map count {count} exceeds remaining bytes {}",
+                    self.remaining()
+                ),
+            });
         }
         let tb = self.read_byte()?;
         Ok(((tb >> 4) & 0x0F, tb & 0x0F, count))
@@ -252,14 +268,8 @@ impl<'a> ThriftReader<'a> {
                 Ok(())
             }
             0x08 => {
-                let len = self.read_varint_u64()? as usize;
-                if self.pos + len > self.data.len() {
-                    return Err(Error::BufferTooSmall {
-                        required: self.pos + len,
-                        provided: self.data.len(),
-                    });
-                }
-                self.pos += len;
+                let len = usize::try_from(self.read_varint_u64()?).map_err(|_| Error::Overflow)?;
+                self.take_bytes(len)?;
                 Ok(())
             }
             0x09 | 0x0A => {
@@ -287,13 +297,7 @@ impl<'a> ThriftReader<'a> {
                 }
             }
             0x0D => {
-                if self.pos + 16 > self.data.len() {
-                    return Err(Error::BufferTooSmall {
-                        required: self.pos + 16,
-                        provided: self.data.len(),
-                    });
-                }
-                self.pos += 16;
+                self.take_bytes(16)?;
                 Ok(())
             }
             _ => Err(Error::InvalidFormat {
@@ -396,7 +400,7 @@ mod tests {
     #[test]
     fn list_header_short_form() {
         // 0x25 = (2<<4)|0x05 = count=2, elem_type=I32(0x05)
-        let mut r = ThriftReader::new(&[0x25]);
+        let mut r = ThriftReader::new(&[0x25, 0x00, 0x00]);
         let (elem_type, count) = r.read_list_header().unwrap();
         assert_eq!(elem_type, 0x05);
         assert_eq!(count, 2);
@@ -405,10 +409,40 @@ mod tests {
     #[test]
     fn list_header_long_form() {
         // 0xF5 = (0xF<<4)|0x05 = long form, elem_type=I32; then varint 3
-        let mut r = ThriftReader::new(&[0xF5, 0x03]);
+        let mut r = ThriftReader::new(&[0xF5, 0x03, 0x00, 0x00, 0x00]);
         let (elem_type, count) = r.read_list_header().unwrap();
         assert_eq!(elem_type, 0x05);
         assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn list_header_rejects_count_larger_than_remaining_bytes() {
+        let mut r = ThriftReader::new(&[0xF5, 0xF9, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F]);
+
+        let error = r.read_list_header().unwrap_err();
+
+        match error {
+            consus_core::Error::InvalidFormat { message } => {
+                assert!(message.contains("list count"));
+                assert!(message.contains("exceeds remaining bytes 0"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_header_rejects_count_larger_than_remaining_entries() {
+        let mut r = ThriftReader::new(&[0xF9, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F]);
+
+        let error = r.read_map_header().unwrap_err();
+
+        match error {
+            consus_core::Error::InvalidFormat { message } => {
+                assert!(message.contains("map count"));
+                assert!(message.contains("exceeds remaining bytes 0"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 
     #[test]
@@ -425,6 +459,15 @@ mod tests {
         let mut r = ThriftReader::new(&[0x03, b'a', b'b', b'c']);
         r.skip(0x08).unwrap();
         assert_eq!(r.position(), 4);
+    }
+
+    #[test]
+    fn skip_binary_rejects_length_offset_overflow() {
+        // Ten-byte u64 varint for usize::MAX; adding it to the current
+        // position must return a typed overflow instead of wrapping.
+        let mut r =
+            ThriftReader::new(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01]);
+        assert!(matches!(r.skip(0x08), Err(consus_core::Error::Overflow)));
     }
 
     #[test]

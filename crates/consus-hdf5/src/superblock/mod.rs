@@ -13,6 +13,18 @@ use consus_io::ReadAt;
 
 use crate::constants::{HDF5_MAGIC, SUPERBLOCK_SEARCH_OFFSETS};
 
+/// Validate the variable-width fields before any parser slices a fixed read
+/// buffer using them.
+pub(super) fn validate_field_sizes(offset_size: u8, length_size: u8) -> Result<()> {
+    if !matches!(offset_size, 2 | 4 | 8) {
+        return Err(Error::invalid_format("unsupported HDF5 offset field size"));
+    }
+    if !matches!(length_size, 2 | 4 | 8) {
+        return Err(Error::invalid_format("unsupported HDF5 length field size"));
+    }
+    Ok(())
+}
+
 /// Parsed HDF5 superblock.
 ///
 /// Contains the structural parameters needed to navigate the file.
@@ -124,6 +136,21 @@ mod tests {
         assert_eq!(sb.base_address, 0);
         assert_eq!(sb.eof_address, 4096);
         assert_eq!(sb.root_group_address, 96);
+    }
+
+    /// Reject hostile field widths before variable-width reads can index past
+    /// the fixed superblock buffer.
+    #[test]
+    fn reject_invalid_field_sizes() {
+        let mut data = vec![0u8; 64];
+        data[0..8].copy_from_slice(&HDF5_MAGIC);
+        data[8] = 2;
+        data[9] = u8::MAX;
+        data[10] = u8::MAX;
+
+        let err = Superblock::read_from(&MemCursor::from_bytes(data))
+            .expect_err("invalid field widths must be rejected");
+        assert!(matches!(err, Error::InvalidFormat { .. }));
     }
 
     /// Verify that absence of magic at all valid offsets yields InvalidFormat.

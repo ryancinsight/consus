@@ -1,6 +1,8 @@
 //! Resource ceilings applied while decoding untrusted input.
 
 #[cfg(feature = "alloc")]
+use alloc::string::String;
+#[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
 use crate::core::error::{Error, Result};
@@ -238,6 +240,66 @@ impl ParseBudget {
             })?;
         Ok(collection)
     }
+    /// Read a stream into a bounded buffer without trusting its declared size.
+    ///
+    /// The initial capacity is only a hint from the format metadata. Every
+    /// subsequent growth is checked against `max_alloc_bytes` and uses
+    /// fallible reservation, so a compressed stream cannot turn expansion or
+    /// allocator exhaustion into a process abort.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ResourceLimit`] when the stream exceeds the byte
+    /// ceiling or allocation cannot be satisfied, [`Error::Io`] when reading
+    /// fails, or [`Error::Overflow`] when the accumulated length overflows.
+    #[cfg(all(feature = "alloc", feature = "std"))]
+    pub fn read_bounded<R: std::io::Read>(
+        &self,
+        reader: &mut R,
+        initial_capacity: usize,
+        what: &'static str,
+    ) -> Result<Vec<u8>> {
+        let initial_capacity = self.checked_bytes(
+            u64::try_from(initial_capacity).map_err(|_| Error::Overflow)?,
+            what,
+        )?;
+        let mut output = Vec::new();
+        output
+            .try_reserve_exact(initial_capacity)
+            .map_err(|_| Error::ResourceLimit {
+                what,
+                requested: initial_capacity as u64,
+                limit: self.max_alloc_bytes as u64,
+            })?;
+
+        let mut chunk = [0u8; 8192];
+        loop {
+            let read = reader.read(&mut chunk).map_err(Error::Io)?;
+            if read == 0 {
+                break;
+            }
+            let next_len = output.len().checked_add(read).ok_or(Error::Overflow)?;
+            if next_len > self.max_alloc_bytes {
+                return Err(Error::ResourceLimit {
+                    what,
+                    requested: next_len as u64,
+                    limit: self.max_alloc_bytes as u64,
+                });
+            }
+            output.try_reserve(read).map_err(|_| Error::ResourceLimit {
+                what,
+                requested: next_len as u64,
+                limit: self.max_alloc_bytes as u64,
+            })?;
+            let Some(chunk) = chunk.get(..read) else {
+                return Err(Error::InternalError {
+                    message: String::from("reader returned more bytes than its buffer"),
+                });
+            };
+            output.extend_from_slice(chunk);
+        }
+        Ok(output)
+    }
 }
 
 #[cfg(test)]
@@ -333,5 +395,15 @@ mod tests {
                 .vec_with_capacity::<u64>(u64::MAX, "records")
                 .is_err()
         );
+    }
+    #[cfg(feature = "std")]
+    #[test]
+    fn read_bounded_rejects_output_above_budget() {
+        let budget = ParseBudget::new(4, 4, 1);
+        let mut reader = std::io::Cursor::new([1u8, 2, 3, 4, 5]);
+        let error = budget
+            .read_bounded(&mut reader, 0, "decompressed output")
+            .unwrap_err();
+        assert!(matches!(error, Error::ResourceLimit { .. }));
     }
 }

@@ -5,7 +5,7 @@
 use alloc::{string::String, vec, vec::Vec};
 
 use super::element::{decode_i32_vec, normalize_endian};
-use super::tag::{MiType, pad8, read_subelement_bytes, read_tag};
+use super::tag::{MiType, read_element_bytes, read_subelement_bytes, read_tag};
 use crate::error::MatError;
 use crate::model::{
     MatArray, MatCellArray, MatCharArray, MatLogicalArray, MatNumericArray, MatNumericClass,
@@ -86,7 +86,14 @@ pub fn parse_matrix(
     let numel: usize = if shape.is_empty() {
         1
     } else {
-        shape.iter().product()
+        shape
+            .iter()
+            .try_fold(1usize, |count, &dimension| count.checked_mul(dimension))
+            .ok_or_else(|| {
+                MatError::ShapeError(String::from(
+                    "miMATRIX dimensions exceed the addressable element count",
+                ))
+            })?
     };
     let array = match mx_class {
         code if mx_class_to_numeric(code).is_some() => {
@@ -100,7 +107,12 @@ pub fn parse_matrix(
                 let esz = nc.element_size();
                 let (_rt, rr): (MiType, Vec<u8>) =
                     read_subelement_bytes(payload, &mut pos, big_endian)?;
-                if rr.len() != numel * esz {
+                let expected_bytes = numel.checked_mul(esz).ok_or_else(|| {
+                    MatError::ShapeError(String::from(
+                        "miMATRIX dimensions exceed the addressable byte count",
+                    ))
+                })?;
+                if rr.len() != expected_bytes {
                     return Err(MatError::ShapeError(alloc::format!(
                         "real {} != numel {}*esz {}",
                         rr.len(),
@@ -192,6 +204,12 @@ pub fn parse_matrix(
             )?)
         }
         MX_CELL_CLASS => {
+            let available_element_bytes = payload.len().saturating_sub(pos);
+            if numel > available_element_bytes / 8 {
+                return Err(MatError::ShapeError(String::from(
+                    "mxCELL_CLASS dimensions exceed the available element records",
+                )));
+            }
             let mut cells: Vec<MatArray> = Vec::with_capacity(numel);
             for _ in 0..numel {
                 let ctag = read_tag(payload, &mut pos, big_endian)?;
@@ -200,18 +218,7 @@ pub fn parse_matrix(
                         "mxCELL_CLASS: expected miMATRIX",
                     )));
                 }
-                let cp = if ctag.nbytes == 0 {
-                    vec![]
-                } else {
-                    if pos + ctag.nbytes > payload.len() {
-                        return Err(MatError::InvalidFormat(String::from(
-                            "mxCELL_CLASS: payload truncated",
-                        )));
-                    }
-                    let p = payload[pos..pos + ctag.nbytes].to_vec();
-                    pos += pad8(ctag.nbytes);
-                    p
-                };
+                let cp = read_element_bytes(payload, &mut pos, &ctag)?;
                 let arr = match parse_matrix(&cp, big_endian)? {
                     Some((_, a)) => a,
                     None => MatArray::Numeric(MatNumericArray {
@@ -241,6 +248,17 @@ pub fn parse_matrix(
             let (_fnt, fn_b): (MiType, Vec<u8>) =
                 read_subelement_bytes(payload, &mut pos, big_endian)?;
             let nfields = fn_b.len().checked_div(fnl).unwrap_or(0);
+            let total_elements = nfields.checked_mul(numel).ok_or_else(|| {
+                MatError::ShapeError(String::from(
+                    "mxSTRUCT_CLASS dimensions exceed the addressable element count",
+                ))
+            })?;
+            let available_element_bytes = payload.len().saturating_sub(pos);
+            if total_elements > available_element_bytes / 8 {
+                return Err(MatError::ShapeError(String::from(
+                    "mxSTRUCT_CLASS dimensions exceed the available element records",
+                )));
+            }
             let mut field_names: Vec<String> = Vec::with_capacity(nfields);
             for i in 0..nfields {
                 let s = i * fnl;
@@ -248,7 +266,8 @@ pub fn parse_matrix(
                 let nul = slot.iter().position(|&b| b == 0).unwrap_or(fnl);
                 field_names.push(String::from_utf8_lossy(&slot[..nul]).into_owned());
             }
-            let mut field_data: Vec<Vec<MatArray>> = vec![Vec::with_capacity(numel); nfields];
+            let mut field_data: Vec<Vec<MatArray>> =
+                (0..nfields).map(|_| Vec::with_capacity(numel)).collect();
             for f in 0..nfields {
                 for _ in 0..numel {
                     let ftag = read_tag(payload, &mut pos, big_endian)?;
@@ -257,18 +276,7 @@ pub fn parse_matrix(
                             "mxSTRUCT_CLASS: expected miMATRIX",
                         )));
                     }
-                    let fp = if ftag.nbytes == 0 {
-                        vec![]
-                    } else {
-                        if pos + ftag.nbytes > payload.len() {
-                            return Err(MatError::InvalidFormat(String::from(
-                                "mxSTRUCT_CLASS: payload truncated",
-                            )));
-                        }
-                        let p = payload[pos..pos + ftag.nbytes].to_vec();
-                        pos += pad8(ftag.nbytes);
-                        p
-                    };
+                    let fp = read_element_bytes(payload, &mut pos, &ftag)?;
                     let arr = match parse_matrix(&fp, big_endian)? {
                         Some((_, a)) => a,
                         None => MatArray::Numeric(MatNumericArray {

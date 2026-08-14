@@ -90,15 +90,21 @@ pub fn charset_from_flags(flags_byte: u8) -> StringEncoding {
 ///
 /// - `size_bytes`: total size in bytes (1, 2, 4, or 8).
 /// - `flags`: class bit field byte. Bit 0 = byte order, bit 3 = signedness.
-pub fn map_fixed_point(size_bytes: usize, flags: u8) -> Datatype {
+///
+/// Returns `None` when the byte count cannot be represented as a non-zero bit
+/// count. File-derived sizes must be rejected by the parser rather than
+/// reaching a panic in the canonical datatype representation.
+pub fn map_fixed_point(size_bytes: usize, flags: u8) -> Option<Datatype> {
     let signed = (flags & 0x08) != 0;
     let byte_order = byte_order_from_flags(flags);
-    let bits = core::num::NonZeroUsize::new(size_bytes * 8).expect("HDF5 integer size must be > 0");
-    Datatype::Integer {
+    let bits = size_bytes
+        .checked_mul(8)
+        .and_then(core::num::NonZeroUsize::new)?;
+    Some(Datatype::Integer {
         bits,
         byte_order,
         signed,
-    }
+    })
 }
 
 /// Map an HDF5 floating-point datatype to canonical form.
@@ -107,10 +113,15 @@ pub fn map_fixed_point(size_bytes: usize, flags: u8) -> Datatype {
 ///
 /// - `size_bytes`: total size in bytes (4 or 8).
 /// - `flags`: class bit field byte. Bit 0 = byte order.
-pub fn map_floating_point(size_bytes: usize, flags: u8) -> Datatype {
+///
+/// Returns `None` when the byte count cannot be represented as a non-zero bit
+/// count.
+pub fn map_floating_point(size_bytes: usize, flags: u8) -> Option<Datatype> {
     let byte_order = byte_order_from_flags(flags);
-    let bits = core::num::NonZeroUsize::new(size_bytes * 8).expect("HDF5 float size must be > 0");
-    Datatype::Float { bits, byte_order }
+    let bits = size_bytes
+        .checked_mul(8)
+        .and_then(core::num::NonZeroUsize::new)?;
+    Some(Datatype::Float { bits, byte_order })
 }
 
 /// Map an HDF5 string datatype to canonical form.
@@ -282,7 +293,7 @@ mod tests {
 
     #[test]
     fn map_fixed_point_signed_32bit_little_endian() {
-        let dt = map_fixed_point(4, 0x00);
+        let dt = map_fixed_point(4, 0x00).expect("valid fixed-point size");
         assert_eq!(
             dt,
             Datatype::Integer {
@@ -295,7 +306,7 @@ mod tests {
 
     #[test]
     fn map_fixed_point_signed_64bit_big_endian() {
-        let dt = map_fixed_point(8, 0x09);
+        let dt = map_fixed_point(8, 0x09).expect("valid fixed-point size");
         assert_eq!(
             dt,
             Datatype::Integer {
@@ -307,8 +318,14 @@ mod tests {
     }
 
     #[test]
+    fn map_numeric_types_reject_zero_size() {
+        assert!(map_fixed_point(0, 0).is_none());
+        assert!(map_floating_point(0, 0).is_none());
+    }
+
+    #[test]
     fn map_floating_point_32bit_little_endian() {
-        let dt = map_floating_point(4, 0x00);
+        let dt = map_floating_point(4, 0x00).expect("valid floating-point size");
         assert_eq!(
             dt,
             Datatype::Float {
@@ -320,7 +337,7 @@ mod tests {
 
     #[test]
     fn map_floating_point_64bit_big_endian() {
-        let dt = map_floating_point(8, 0x01);
+        let dt = map_floating_point(8, 0x01).expect("valid floating-point size");
         assert_eq!(
             dt,
             Datatype::Float {

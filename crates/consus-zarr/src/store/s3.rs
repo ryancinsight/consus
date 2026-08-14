@@ -106,10 +106,12 @@ pub struct S3Store {
 impl core::fmt::Debug for S3Store {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("S3Store")
+            .field("client", &"<s3 client>")
             .field("bucket", &self.bucket)
             .field("prefix", &self.prefix)
             .field("compute_md5", &self.compute_md5)
             .field("read_after_write", &self.read_after_write)
+            .field("rt", &"<tokio runtime>")
             .finish()
     }
 }
@@ -265,8 +267,8 @@ impl S3Store {
         let hash = md5::compute(data);
         let mut hex = alloc::string::String::with_capacity(32);
         for byte in hash.iter() {
-            use alloc::format;
-            hex.push_str(&format!("{:02x}", byte));
+            use core::fmt::Write as _;
+            write!(hex, "{byte:02x}").expect("invariant: writing to String cannot fail");
         }
         hex
     }
@@ -522,14 +524,14 @@ impl MockS3Store {
 
 #[cfg(feature = "alloc")]
 impl Store for MockS3Store {
-    fn get(&self, _key: &str) -> Result<Vec<u8>> {
+    fn get(&self, key: &str) -> Result<Vec<u8>> {
         if self.get_error {
             return Err(consus_core::Error::NotFound {
-                path: _key.to_string(),
+                path: key.to_string(),
             });
         }
         Err(consus_core::Error::NotFound {
-            path: _key.to_string(),
+            path: key.to_string(),
         })
     }
 

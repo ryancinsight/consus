@@ -33,8 +33,11 @@
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
+#[cfg(feature = "alloc")]
 use super::Error;
-use super::types::datatype::{ByteOrder, Datatype};
+use super::types::datatype::ByteOrder;
+#[cfg(feature = "alloc")]
+use super::types::datatype::Datatype;
 
 /// Read a `u16` from a slice given a byte order.
 ///

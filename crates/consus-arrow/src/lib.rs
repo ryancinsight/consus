@@ -66,13 +66,11 @@ pub mod memory;
 pub mod schema;
 
 #[cfg(feature = "alloc")]
-pub use array::column_values_to_arrow;
-pub use array::{ArrayData, ArrowArray};
+pub use array::{ArrayData, ArrowArray, column_values_to_arrow};
 #[cfg(feature = "alloc")]
 pub use bridge::{ArrowBridge, ArrowBridgePlan, ArrowFieldDescriptor};
 #[cfg(feature = "alloc")]
 pub use bridge::{ArrowBridgeMode, ArrowDataTypeHint, ArrowSchemaMapping, ArrowZeroCopyConstraint};
-#[cfg(feature = "alloc")]
 pub use datatype::{
     ArrowDataType, DecimalType, DurationType, FixedSizeBinaryType, IntSign, TimeUnit, TimestampType,
 };

@@ -1,5 +1,30 @@
 # Consus - Gap Audit
 
+## ATLAS-CONSUS-HDF5-LINK-098 — Reject overflowing link ranges (2026-08-14)
+
+Hosted fuzz run `31848757905` found a panic in the HDF5 link-message parser at
+`message.rs:321`: a fuzzed cursor and field length overflowed during
+`cursor + need`. The reproducer was
+`crash-3d3e53cb8b8815a14a313be45517235206021935`.
+
+The remaining-range guard now uses checked addition, link-name lengths use a
+fallible `u64`→`usize` conversion, and a regression test asserts that an
+oversized name length returns `InvalidFormat` without panicking. Local HDF5
+nextest (431/431) and strict Clippy pass. The exact-head hosted rerun is
+required before PR merge.
+
+## ATLAS-CONSUS-RESOURCE-BOUNDARY-097 — Bounded external-input expansion (2026-08-14)
+
+The previous blanket statement that all Consus gaps were closed was false for
+resource exhaustion at external-input boundaries. This slice closes the
+identified S3 and decompression paths in source and tests: checked half-open
+ranges reject empty/overflowing requests; `ListObjectsV2` rejects oversized
+responses and aggregate key growth; and the shared `ParseBudget` now provides
+fallible bounded stream reads used by deflate and Parquet page decompression.
+LZ4 and Snappy inspect their encoded output length before allocating, while
+Zstandard receives the validated limit. Hosted and full focused-gate evidence
+is pending on the final provider head.
+
 ## Dataset read + decode consolidation (2026-08-14)
 
 The HDF5 dataset read path was triplicated: `consus-hdmf/src/storage.rs`,
@@ -22,7 +47,6 @@ macOS runner where `Path::join` uses `/`; it now derives expected paths with
 Verification: `cargo test -p consus-hdf5 --lib` 280/280, `consus-nwb --lib`
 272/272; workspace formatting clean; hosted CI green for consus-core/hdf5/
 hdmf/nwb on all platforms plus MSRV. Net -208 lines.
-
 ## Cross-format integration test API closure (2026-08-13)
 
 The former `CONSUS-TEST-API-001` residual was real at the merged default

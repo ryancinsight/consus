@@ -157,7 +157,9 @@ fn parse_fixed_point(size: usize, flags: [u8; 3], props: &[u8]) -> Result<(Datat
             message: String::from("fixed-point properties truncated"),
         });
     }
-    let dt = map_fixed_point(size, flags[0]);
+    let dt = map_fixed_point(size, flags[0]).ok_or_else(|| Error::InvalidFormat {
+        message: String::from("fixed-point datatype size must be nonzero and fit the bit width"),
+    })?;
     Ok((dt, 4))
 }
 
@@ -190,7 +192,9 @@ fn parse_floating_point(size: usize, flags: [u8; 3], props: &[u8]) -> Result<(Da
             message: String::from("floating-point properties truncated"),
         });
     }
-    let dt = map_floating_point(size, flags[0]);
+    let dt = map_floating_point(size, flags[0]).ok_or_else(|| Error::InvalidFormat {
+        message: String::from("floating-point datatype size must be nonzero and fit the bit width"),
+    })?;
     Ok((dt, 12))
 }
 
@@ -1384,6 +1388,12 @@ mod tests {
         let hdr = dt_header(TIME, 1, [0, 0, 0], 4);
         let err = parse_datatype(&hdr, &ParseBudget::DEFAULT).unwrap_err();
         assert!(matches!(err, Error::UnsupportedFeature { .. }));
+    }
+
+    #[test]
+    fn zero_numeric_size_rejected_without_panicking() {
+        let err = parse_datatype(&int_msg(0, false, true), &ParseBudget::DEFAULT).unwrap_err();
+        assert!(matches!(err, Error::InvalidFormat { .. }));
     }
 
     // -- Helpers unit tests --------------------------------------------------

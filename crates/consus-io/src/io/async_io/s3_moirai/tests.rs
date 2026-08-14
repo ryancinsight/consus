@@ -3,6 +3,7 @@
 //! The SigV4 algorithm itself is covered by the known-answer test in `sigv4`.
 
 use super::*;
+use core::fmt::Write as _;
 use std::io::{Read, Write};
 use std::net::TcpListener as StdListener;
 
@@ -251,7 +252,7 @@ fn build_response(
                 "<?xml version=\"1.0\"?><ListBucketResult><IsTruncated>false</IsTruncated>",
             );
             for k in guard.keys().filter(|k| k.starts_with(prefix)) {
-                xml.push_str(&format!("<Contents><Key>{k}</Key></Contents>"));
+                let _ = writeln!(xml, "<Contents><Key>{k}</Key></Contents>");
             }
             xml.push_str("</ListBucketResult>");
             ok("200 OK", xml.as_bytes())

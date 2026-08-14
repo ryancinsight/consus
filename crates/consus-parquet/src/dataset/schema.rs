@@ -64,6 +64,14 @@ fn parse_fields(
     count: usize,
     id_seq: &mut u32,
 ) -> Result<(Vec<FieldDescriptor>, usize)> {
+    let available = elements.len().saturating_sub(pos);
+    if count > available {
+        return Err(Error::InvalidFormat {
+            message: alloc::format!(
+                "parquet schema child count {count} exceeds remaining elements {available}"
+            ),
+        });
+    }
     let mut fields = Vec::with_capacity(count);
     let mut total_consumed: usize = 0;
     let mut i = 0;
@@ -249,6 +257,31 @@ mod tests {
         assert_eq!(schema.fields()[1].name(), "name");
         assert!(schema.fields()[0].is_required());
         assert!(schema.fields()[1].is_optional());
+    }
+
+    #[test]
+    fn schema_elements_reject_child_count_beyond_flat_list() {
+        let elements = vec![SchemaElement {
+            name: "schema".into(),
+            num_children: Some(i32::MAX),
+            type_: None,
+            repetition_type: None,
+            field_id: None,
+            type_length: None,
+            converted_type: None,
+            scale: None,
+            precision: None,
+        }];
+
+        let error = schema_elements_to_schema(&elements).unwrap_err();
+
+        match error {
+            Error::InvalidFormat { message } => {
+                assert!(message.contains("schema child count"));
+                assert!(message.contains("remaining elements 0"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 
     #[test]
