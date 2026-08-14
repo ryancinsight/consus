@@ -8,7 +8,9 @@
 #[cfg(feature = "alloc")]
 use alloc::{format, string::String, vec, vec::Vec};
 
-use consus_core::decode::{decode_to_f64, read_i16, read_i32, read_i64, read_u16, read_u32, read_u64};
+use consus_core::decode::{
+    decode_to_f64, read_i16, read_i32, read_i64, read_u16, read_u32, read_u64,
+};
 use consus_core::{AttributeValue, Datatype, Error, Result};
 use consus_hdf5::attribute::Hdf5Attribute;
 use consus_hdf5::dataset::StorageLayout;
