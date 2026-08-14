@@ -48,7 +48,10 @@ pub fn read_v4_variable(
     if *pos >= data.len() {
         return Ok(None);
     }
-    if *pos + 20 > data.len() {
+    let header_end = (*pos)
+        .checked_add(20)
+        .ok_or_else(|| MatError::InvalidFormat(String::from("MAT v4 header offset overflow")))?;
+    if header_end > data.len() {
         return Err(MatError::InvalidFormat(String::from(
             "MAT v4 record truncated at header",
         )));
@@ -59,28 +62,50 @@ pub fn read_v4_variable(
     let big_endian = (type_le / 1000) == 1; // M=1 → Sun/IEEE BE
 
     let hdr = V4Header::parse(data, pos, big_endian)?;
-    let numel = hdr.mrows.saturating_mul(hdr.ncols);
-    let data_len = numel.saturating_mul(hdr.elem_size);
+    let numel = hdr.mrows.checked_mul(hdr.ncols).ok_or_else(|| {
+        MatError::InvalidFormat(alloc::format!(
+            "MAT v4 dimensions overflow for variable '{}'",
+            hdr.name
+        ))
+    })?;
+    let data_len = numel.checked_mul(hdr.elem_size).ok_or_else(|| {
+        MatError::InvalidFormat(alloc::format!(
+            "MAT v4 data size overflow for variable '{}'",
+            hdr.name
+        ))
+    })?;
 
-    if *pos + data_len > data.len() {
+    let real_end = (*pos).checked_add(data_len).ok_or_else(|| {
+        MatError::InvalidFormat(alloc::format!(
+            "MAT v4 real data range overflow for variable '{}'",
+            hdr.name
+        ))
+    })?;
+    if real_end > data.len() {
         return Err(MatError::InvalidFormat(alloc::format!(
             "MAT v4 real data truncated for variable '{}'",
             hdr.name
         )));
     }
 
-    let mut real_data = data[*pos..*pos + data_len].to_vec();
-    *pos += data_len;
+    let mut real_data = data[*pos..real_end].to_vec();
+    *pos = real_end;
 
     let mut imag_data = if hdr.imagf {
-        if *pos + data_len > data.len() {
+        let imag_end = (*pos).checked_add(data_len).ok_or_else(|| {
+            MatError::InvalidFormat(alloc::format!(
+                "MAT v4 imaginary data range overflow for variable '{}'",
+                hdr.name
+            ))
+        })?;
+        if imag_end > data.len() {
             return Err(MatError::InvalidFormat(alloc::format!(
                 "MAT v4 imaginary data truncated for variable '{}'",
                 hdr.name
             )));
         }
-        let im = data[*pos..*pos + data_len].to_vec();
-        *pos += data_len;
+        let im = data[*pos..imag_end].to_vec();
+        *pos = imag_end;
         Some(im)
     } else {
         None
@@ -131,4 +156,26 @@ pub fn read_v4_variable(
     };
 
     Ok(Some((hdr.name, array)))
+}
+
+#[cfg(all(test, feature = "alloc"))]
+mod tests {
+    use super::*;
+
+    /// The hosted fuzz regression must return an error instead of overflowing
+    /// while computing the MAT v4 real-data range.
+    #[test]
+    fn rejects_dimension_data_range_overflow() {
+        let data = [
+            0x02, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x40, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0xF0, 0x3F, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x32, 0x00, 0x02, 0x00, 0x00, 0x08, 0x4A,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x40, 0x00, 0x00, 0x00, 0x20, 0x00, 0x3F,
+            0x14, 0x40, 0x00, 0x00, 0x00, 0x00, 0xAA, 0x00, 0x18, 0x40,
+        ];
+        let mut pos = 0;
+        let err = read_v4_variable(&data, &mut pos).expect_err("hostile dimensions must fail");
+        assert!(matches!(err, MatError::InvalidFormat(_)));
+    }
 }

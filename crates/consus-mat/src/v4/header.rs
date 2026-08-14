@@ -45,7 +45,10 @@ impl V4Header {
     /// Advances `*pos` past the 20-byte fixed header and the variable-length
     /// name field on success.
     pub fn parse(data: &[u8], pos: &mut usize, big_endian: bool) -> Result<Self, MatError> {
-        if *pos + 20 > data.len() {
+        let header_end = (*pos).checked_add(20).ok_or_else(|| {
+            MatError::InvalidFormat(String::from("MAT v4 header offset overflow"))
+        })?;
+        if header_end > data.len() {
             return Err(MatError::InvalidFormat(String::from(
                 "MAT v4 header truncated",
             )));
@@ -91,14 +94,17 @@ impl V4Header {
             }
         };
 
-        if *pos + namlen > data.len() {
+        let name_end = (*pos).checked_add(namlen).ok_or_else(|| {
+            MatError::InvalidFormat(String::from("MAT v4 variable name range overflow"))
+        })?;
+        if name_end > data.len() {
             return Err(MatError::InvalidFormat(String::from(
                 "MAT v4 variable name truncated",
             )));
         }
 
-        let name_bytes = &data[*pos..*pos + namlen];
-        *pos += namlen;
+        let name_bytes = &data[*pos..name_end];
+        *pos = name_end;
         let nul_end = name_bytes.iter().position(|&b| b == 0).unwrap_or(namlen);
         let name = String::from_utf8_lossy(&name_bytes[..nul_end]).into_owned();
 
