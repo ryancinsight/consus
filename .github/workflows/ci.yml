@@ -191,7 +191,7 @@ jobs:
         with:
           tool: cargo-fuzz@0.13.1
       - name: cargo fuzz build
-        run: cargo fuzz build --dev
+        run: cargo +nightly fuzz build --dev
 
   # Bounded scheduled fuzzing. Each target runs for a fixed wall-clock budget
   # from the committed seed corpus; a crash fails the job and uploads the
@@ -223,7 +223,7 @@ jobs:
       # up as an OOM finding rather than the runner being killed.
       - name: cargo fuzz run (${{ matrix.target }})
         run: >
-          cargo fuzz run ${{ matrix.target }}
+          cargo +nightly fuzz run ${{ matrix.target }}
           -- -max_total_time=900 -rss_limit_mb=2048 -timeout=25
       - name: Upload crash artifacts
         if: failure()

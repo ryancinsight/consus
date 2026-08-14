@@ -8,6 +8,7 @@
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::fmt::Write as _;
 
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
@@ -69,6 +70,10 @@ pub struct CanonicalRequest<'a> {
 }
 
 /// Result of signing: the signature and the derived header fields.
+#[expect(
+    clippy::struct_field_names,
+    reason = "The result exposes the cryptographic signature alongside derived header fields."
+)]
 pub struct Signature {
     /// Lowercase hex signature.
     pub signature: String,
@@ -91,10 +96,10 @@ pub fn sign(
     let mut headers = req.headers.clone();
     headers.sort_by(|a, b| a.0.cmp(&b.0));
 
-    let canonical_headers: String = headers
-        .iter()
-        .map(|(k, v)| format!("{}:{}\n", k, v.trim()))
-        .collect();
+    let mut canonical_headers = String::new();
+    for (k, v) in &headers {
+        let _ = writeln!(canonical_headers, "{k}:{}", v.trim());
+    }
     let signed_headers: String = headers
         .iter()
         .map(|(k, _)| k.as_str())
