@@ -13,7 +13,6 @@ use consus_core::decode::{
 };
 use consus_core::{AttributeValue, Datatype, Error, Result};
 use consus_hdf5::attribute::Hdf5Attribute;
-use consus_hdf5::dataset::StorageLayout;
 use consus_hdf5::file::Hdf5File;
 use consus_io::ReadAt;
 
@@ -25,39 +24,20 @@ use crate::table::ColumnData;
 
 /// Read the complete raw byte payload of a dataset at `addr`.
 ///
-/// Supports contiguous and chunked layouts.
+/// Supports contiguous and chunked layouts; delegates layout dispatch to
+/// [`Hdf5File::read_dataset_raw`].
 #[cfg(feature = "alloc")]
 fn read_dataset_raw<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Result<Vec<u8>> {
     let ds = file.dataset_at(addr)?;
-    match ds.layout {
-        StorageLayout::Contiguous => {
-            // For variable-length types, `element_size()` returns `None` because the
-            // in-memory size is unknown.  On disk, each VL element is encoded as a
-            // fixed-size global-heap reference:  sequence_length (4 bytes, LE) +
-            // heap_collection_address (offset_size bytes) + object_index (4 bytes).
-            let element_size = match &ds.datatype {
-                Datatype::VariableString { .. } => 4 + file.context().offset_bytes() + 4,
-                other => other.element_size().unwrap_or(0),
-            };
-            let n_bytes = ds.shape.num_elements() * element_size;
-            if n_bytes == 0 {
-                return Ok(vec![]);
-            }
-            let data_addr = ds.data_address.ok_or_else(|| Error::InvalidFormat {
-                message: String::from("HDMF: contiguous dataset has no data address"),
-            })?;
-            let mut buf = vec![0u8; n_bytes];
-            file.read_contiguous_dataset_bytes(data_addr, 0, &mut buf)?;
-            Ok(buf)
-        }
-        StorageLayout::Chunked => file.read_chunked_dataset_all_bytes(addr),
-        StorageLayout::Compact => Err(Error::UnsupportedFeature {
-            feature: String::from("HDMF: compact dataset layout is not supported"),
-        }),
-        StorageLayout::Virtual => Err(Error::UnsupportedFeature {
-            feature: String::from("HDMF: virtual dataset layout is not supported"),
-        }),
-    }
+    // For variable-length types, `element_size()` returns `None` because the
+    // in-memory size is unknown. On disk, each VL element is encoded as a
+    // fixed-size global-heap reference: sequence_length (4 bytes, LE) +
+    // heap_collection_address (offset_size bytes) + object_index (4 bytes).
+    let variable_element_size = match &ds.datatype {
+        Datatype::VariableString { .. } => Some(4 + file.context().offset_bytes() + 4),
+        _ => None,
+    };
+    file.read_dataset_raw(&ds, variable_element_size)
 }
 
 // ---------------------------------------------------------------------------

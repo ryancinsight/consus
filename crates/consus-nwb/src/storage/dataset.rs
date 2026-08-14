@@ -1,12 +1,11 @@
 #[cfg(feature = "alloc")]
-use alloc::{format, string::String, vec, vec::Vec};
+use alloc::{format, string::String, vec::Vec};
 
-use consus_core::{ByteOrder, Datatype, Error, Result};
+use consus_core::decode::{read_i16, read_i32, read_i64, read_u16, read_u32, read_u64};
+use consus_core::{Datatype, Error, Result};
 use consus_hdf5::dataset::StorageLayout;
 use consus_hdf5::file::Hdf5File;
 use consus_io::ReadAt;
-
-use super::primitives::{read_i16, read_i32, read_i64, read_u16, read_u32, read_u64};
 
 /// Read a numeric dataset and return its values as `Vec<f64>`.
 ///
@@ -40,32 +39,12 @@ use super::primitives::{read_i16, read_i32, read_i64, read_u16, read_u32, read_u
 #[cfg(feature = "alloc")]
 pub fn read_f64_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Result<Vec<f64>> {
     let ds = file.dataset_at(addr)?;
-
-    let raw: Vec<u8> = match ds.layout {
-        StorageLayout::Contiguous => {
-            let element_size = ds.datatype.element_size().unwrap_or(0);
-            let n_bytes = ds.shape.num_elements() * element_size;
-            let data_addr = ds.data_address.ok_or_else(|| Error::InvalidFormat {
-                message: String::from("NWB: contiguous dataset has no data address"),
-            })?;
-            let mut buf = vec![0u8; n_bytes];
-            file.read_contiguous_dataset_bytes(data_addr, 0, &mut buf)?;
-            buf
+    let raw = file.read_dataset_raw(&ds, None)?;
+    consus_core::decode::decode_to_f64(&raw, &ds.datatype).map_err(|err| {
+        Error::UnsupportedFeature {
+            feature: format!("NWB: f64 dataset decode: {err}"),
         }
-        StorageLayout::Chunked => file.read_chunked_dataset_all_bytes(addr)?,
-        StorageLayout::Compact => {
-            return Err(Error::UnsupportedFeature {
-                feature: String::from("NWB: compact dataset layout is not supported"),
-            });
-        }
-        StorageLayout::Virtual => {
-            return Err(Error::UnsupportedFeature {
-                feature: String::from("NWB: virtual dataset layout is not supported"),
-            });
-        }
-    };
-
-    decode_raw_as_f64(&raw, &ds.datatype)
+    })
 }
 
 /// Read a scalar numeric dataset and return its single `f64` value.
@@ -111,31 +90,7 @@ pub fn read_scalar_f64_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) 
 #[cfg(feature = "alloc")]
 pub fn read_u64_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Result<Vec<u64>> {
     let ds = file.dataset_at(addr)?;
-
-    let raw: Vec<u8> = match ds.layout {
-        StorageLayout::Contiguous => {
-            let element_size = ds.datatype.element_size().unwrap_or(0);
-            let n_bytes = ds.shape.num_elements() * element_size;
-            let data_addr = ds.data_address.ok_or_else(|| Error::InvalidFormat {
-                message: String::from("NWB: contiguous u64 dataset has no data address"),
-            })?;
-            let mut buf = vec![0u8; n_bytes];
-            file.read_contiguous_dataset_bytes(data_addr, 0, &mut buf)?;
-            buf
-        }
-        StorageLayout::Chunked => file.read_chunked_dataset_all_bytes(addr)?,
-        StorageLayout::Compact => {
-            return Err(Error::UnsupportedFeature {
-                feature: String::from("NWB: compact u64 dataset layout is not supported"),
-            });
-        }
-        StorageLayout::Virtual => {
-            return Err(Error::UnsupportedFeature {
-                feature: String::from("NWB: virtual u64 dataset layout is not supported"),
-            });
-        }
-    };
-
+    let raw = file.read_dataset_raw(&ds, None)?;
     decode_raw_as_u64(&raw, &ds.datatype)
 }
 
@@ -170,34 +125,8 @@ pub fn read_string_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> R
             if length == 0 {
                 return Ok(alloc::vec![]);
             }
-            let n_elements = ds.shape.num_elements();
-            let n_bytes = n_elements * length;
-            let raw: Vec<u8> = match ds.layout {
-                StorageLayout::Contiguous => {
-                    let data_addr = ds.data_address.ok_or_else(|| Error::InvalidFormat {
-                        message: String::from("NWB: contiguous string dataset has no data address"),
-                    })?;
-                    let mut buf = vec![0u8; n_bytes];
-                    file.read_contiguous_dataset_bytes(data_addr, 0, &mut buf)?;
-                    buf
-                }
-                StorageLayout::Chunked => file.read_chunked_dataset_all_bytes(addr)?,
-                StorageLayout::Compact => {
-                    return Err(Error::UnsupportedFeature {
-                        feature: String::from(
-                            "NWB: compact FixedString dataset layout is not supported",
-                        ),
-                    });
-                }
-                StorageLayout::Virtual => {
-                    return Err(Error::UnsupportedFeature {
-                        feature: String::from(
-                            "NWB: virtual FixedString dataset layout is not supported",
-                        ),
-                    });
-                }
-            };
-            let mut strings = Vec::with_capacity(n_elements);
+            let raw = file.read_dataset_raw(&ds, None)?;
+            let mut strings = Vec::with_capacity(ds.shape.num_elements());
             for chunk in raw.chunks(length) {
                 // Strip trailing null bytes (NWB uses null-padded fixed-length strings).
                 let trimmed = match chunk.iter().rposition(|&b| b != 0) {
@@ -218,47 +147,22 @@ pub fn read_string_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> R
             // Each element is an HDF5 VL reference:
             // { sequence_length(4 LE) | heap_address(offset_size) | object_index(4 LE) }
             // resolve_vl_references resolves all references against the global heap
-            // and returns one Vec<u8> per element.
+            // and returns one Vec<u8> per element. Chunked VL strings are rejected.
             let n_elements = ds.shape.num_elements();
             if n_elements == 0 {
                 return Ok(alloc::vec![]);
             }
+            if ds.layout != StorageLayout::Contiguous {
+                return Err(Error::UnsupportedFeature {
+                    feature: format!(
+                        "NWB: variable-length string dataset requires contiguous layout, got {:?}",
+                        ds.layout
+                    ),
+                });
+            }
             let ctx = file.context();
             let ref_size = 4 + ctx.offset_bytes() + 4;
-            let n_bytes = n_elements * ref_size;
-            let raw: Vec<u8> = match ds.layout {
-                StorageLayout::Contiguous => {
-                    let data_addr = ds.data_address.ok_or_else(|| Error::InvalidFormat {
-                        message: String::from(
-                            "NWB: contiguous variable-length string dataset has no data address",
-                        ),
-                    })?;
-                    let mut buf = vec![0u8; n_bytes];
-                    file.read_contiguous_dataset_bytes(data_addr, 0, &mut buf)?;
-                    buf
-                }
-                StorageLayout::Chunked => {
-                    return Err(Error::UnsupportedFeature {
-                        feature: String::from(
-                            "NWB: chunked variable-length string dataset is not supported",
-                        ),
-                    });
-                }
-                StorageLayout::Compact => {
-                    return Err(Error::UnsupportedFeature {
-                        feature: String::from(
-                            "NWB: compact variable-length string dataset is not supported",
-                        ),
-                    });
-                }
-                StorageLayout::Virtual => {
-                    return Err(Error::UnsupportedFeature {
-                        feature: String::from(
-                            "NWB: virtual variable-length string dataset is not supported",
-                        ),
-                    });
-                }
-            };
+            let raw = file.read_dataset_raw(&ds, Some(ref_size))?;
             let byte_vecs = consus_hdf5::heap::resolve_vl_references(file.source(), &raw, ctx)?;
             let mut strings = Vec::with_capacity(byte_vecs.len());
             for bytes in byte_vecs {
@@ -374,108 +278,13 @@ fn decode_raw_as_u64(raw: &[u8], dtype: &Datatype) -> Result<Vec<u64>> {
     }
 }
 
-/// Interpret raw bytes as `Vec<f64>` according to `dtype`.
-///
-/// ## Supported datatypes
-///
-/// - `Float { bits: 64 }` — direct reinterpretation (both byte orders).
-/// - `Float { bits: 32 }` — widening cast (both byte orders).
-/// - `Integer { bits: 8|16|32|64, signed: false|true }` — element-wise
-///   `as f64` cast after byte-order decode.
-///
-/// All other datatypes return [`Error::UnsupportedFeature`].
-#[cfg(feature = "alloc")]
-fn decode_raw_as_f64(raw: &[u8], dtype: &Datatype) -> Result<Vec<f64>> {
-    match dtype {
-        Datatype::Float { bits, byte_order } if bits.get() == 64 => {
-            let vals: Vec<f64> = raw
-                .chunks_exact(8)
-                .map(|c| {
-                    let arr = [c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]];
-                    match byte_order {
-                        ByteOrder::LittleEndian => f64::from_le_bytes(arr),
-                        ByteOrder::BigEndian => f64::from_be_bytes(arr),
-                    }
-                })
-                .collect();
-            Ok(vals)
-        }
-        Datatype::Float { bits, byte_order } if bits.get() == 32 => {
-            let vals: Vec<f64> = raw
-                .chunks_exact(4)
-                .map(|c| {
-                    let arr = [c[0], c[1], c[2], c[3]];
-                    let v32 = match byte_order {
-                        ByteOrder::LittleEndian => f32::from_le_bytes(arr),
-                        ByteOrder::BigEndian => f32::from_be_bytes(arr),
-                    };
-                    v32 as f64
-                })
-                .collect();
-            Ok(vals)
-        }
-        Datatype::Integer {
-            bits,
-            signed,
-            byte_order,
-        } => {
-            let b = bits.get();
-            let vals: Vec<f64> = match (b, *signed) {
-                (8, false) => raw.iter().map(|&v| v as f64).collect(),
-                (8, true) => raw.iter().map(|&v| (v as i8) as f64).collect(),
-                (16, false) => raw
-                    .chunks_exact(2)
-                    .map(|c| read_u16(c, *byte_order) as f64)
-                    .collect(),
-                (16, true) => raw
-                    .chunks_exact(2)
-                    .map(|c| read_i16(c, *byte_order) as f64)
-                    .collect(),
-                (32, false) => raw
-                    .chunks_exact(4)
-                    .map(|c| read_u32(c, *byte_order) as f64)
-                    .collect(),
-                (32, true) => raw
-                    .chunks_exact(4)
-                    .map(|c| read_i32(c, *byte_order) as f64)
-                    .collect(),
-                (64, false) => raw
-                    .chunks_exact(8)
-                    .map(|c| read_u64(c, *byte_order) as f64)
-                    .collect(),
-                (64, true) => raw
-                    .chunks_exact(8)
-                    .map(|c| read_i64(c, *byte_order) as f64)
-                    .collect(),
-                _ => {
-                    return Err(Error::UnsupportedFeature {
-                        feature: format!(
-                            "NWB: integer dataset element type {} bits is not supported \
-                             (only 8/16/32/64)",
-                            b
-                        ),
-                    });
-                }
-            };
-            Ok(vals)
-        }
-        other => Err(Error::UnsupportedFeature {
-            feature: format!(
-                "NWB: dataset element type {:?} is not supported (only f32, f64, and \
-                 8/16/32/64-bit integers)",
-                other
-            ),
-        }),
-    }
-}
-
 #[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
     use consus_core::ByteOrder;
     use core::num::NonZeroUsize;
 
-    // ── decode_raw_as_f64 — float paths ───────────────────────────────────
+    // ── consus_core::decode::decode_to_f64 — float paths ───────────────────────────────────
 
     #[test]
     fn decode_f64_le_identity() {
@@ -486,7 +295,7 @@ mod tests {
             bits: NonZeroUsize::new(64).unwrap(),
             byte_order: ByteOrder::LittleEndian,
         };
-        let result = decode_raw_as_f64(&raw, &dt).unwrap();
+        let result = consus_core::decode::decode_to_f64(&raw, &dt).unwrap();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].to_bits(), 1.0f64.to_bits());
         assert_eq!(result[1].to_bits(), (-2.5f64).to_bits());
@@ -502,7 +311,7 @@ mod tests {
             bits: NonZeroUsize::new(32).unwrap(),
             byte_order: ByteOrder::LittleEndian,
         };
-        let result = decode_raw_as_f64(&raw, &dt).unwrap();
+        let result = consus_core::decode::decode_to_f64(&raw, &dt).unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], 1.0f32 as f64);
         assert_eq!(result[1], (-0.5f32) as f64);
@@ -517,7 +326,7 @@ mod tests {
             bits: NonZeroUsize::new(64).unwrap(),
             byte_order: ByteOrder::BigEndian,
         };
-        let result = decode_raw_as_f64(&raw, &dt).unwrap();
+        let result = consus_core::decode::decode_to_f64(&raw, &dt).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].to_bits(), 42.0f64.to_bits());
     }
@@ -528,11 +337,11 @@ mod tests {
             bits: NonZeroUsize::new(64).unwrap(),
             byte_order: ByteOrder::LittleEndian,
         };
-        let result = decode_raw_as_f64(&[], &dt).unwrap();
+        let result = consus_core::decode::decode_to_f64(&[], &dt).unwrap();
         assert!(result.is_empty());
     }
 
-    // ── decode_raw_as_f64 — integer promotion paths ───────────────────────
+    // ── consus_core::decode::decode_to_f64 — integer promotion paths ───────────────────────
 
     #[test]
     fn decode_integer_u8_promoted_to_f64() {
@@ -543,7 +352,7 @@ mod tests {
             byte_order: ByteOrder::LittleEndian,
             signed: false,
         };
-        let result = decode_raw_as_f64(&raw, &dt).unwrap();
+        let result = consus_core::decode::decode_to_f64(&raw, &dt).unwrap();
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], 0.0f64);
         assert_eq!(result[1], 1.0f64);
@@ -561,7 +370,7 @@ mod tests {
             byte_order: ByteOrder::LittleEndian,
             signed: true,
         };
-        let result = decode_raw_as_f64(&raw, &dt).unwrap();
+        let result = consus_core::decode::decode_to_f64(&raw, &dt).unwrap();
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], 0.0f64);
         assert_eq!(result[1], 127.0f64);
@@ -579,7 +388,7 @@ mod tests {
             byte_order: ByteOrder::LittleEndian,
             signed: false,
         };
-        let result = decode_raw_as_f64(&raw, &dt).unwrap();
+        let result = consus_core::decode::decode_to_f64(&raw, &dt).unwrap();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0], 0.0f64);
         assert_eq!(result[1], 1000.0f64);
@@ -596,7 +405,7 @@ mod tests {
             byte_order: ByteOrder::LittleEndian,
             signed: true,
         };
-        let result = decode_raw_as_f64(&raw, &dt).unwrap();
+        let result = consus_core::decode::decode_to_f64(&raw, &dt).unwrap();
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], -32768.0f64);
         assert_eq!(result[1], -1000.0f64);
@@ -615,7 +424,7 @@ mod tests {
             byte_order: ByteOrder::LittleEndian,
             signed: true,
         };
-        let result = decode_raw_as_f64(&raw, &dt).unwrap();
+        let result = consus_core::decode::decode_to_f64(&raw, &dt).unwrap();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0], -1_000_000.0f64);
         assert_eq!(result[1], 0.0f64);
@@ -633,7 +442,7 @@ mod tests {
             byte_order: ByteOrder::LittleEndian,
             signed: true,
         };
-        let result = decode_raw_as_f64(&raw, &dt).unwrap();
+        let result = consus_core::decode::decode_to_f64(&raw, &dt).unwrap();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0], i64::MIN as f64);
         assert_eq!(result[1], 0.0f64);
@@ -649,7 +458,7 @@ mod tests {
             byte_order: ByteOrder::LittleEndian,
             signed: false,
         };
-        let err = decode_raw_as_f64(&raw, &dt).unwrap_err();
+        let err = consus_core::decode::decode_to_f64(&raw, &dt).unwrap_err();
         assert!(
             matches!(err, Error::UnsupportedFeature { .. }),
             "expected UnsupportedFeature for 128-bit integer, got {:?}",
@@ -662,7 +471,7 @@ mod tests {
     #[test]
     fn read_scalar_f64_dataset_via_i16_decode_path() {
         // Verify the decode path exercised by read_scalar_f64_dataset for
-        // i16 LE data: decode_raw_as_f64 produces a 1-element Vec<f64> and
+        // i16 LE data: consus_core::decode::decode_to_f64 produces a 1-element Vec<f64> and
         // read_scalar_f64_dataset extracts the first element.
         //
         // Analytical expectation: i16 -512 → f64 -512.0 (exact, within 2^53).
@@ -673,7 +482,7 @@ mod tests {
             byte_order: ByteOrder::LittleEndian,
             signed: true,
         };
-        let vals = decode_raw_as_f64(&raw, &dt).unwrap();
+        let vals = consus_core::decode::decode_to_f64(&raw, &dt).unwrap();
         assert_eq!(vals.len(), 1, "single i16 element must decode to 1 f64");
         // Simulate read_scalar_f64_dataset's extraction of the first element.
         let scalar = vals.into_iter().next().unwrap();

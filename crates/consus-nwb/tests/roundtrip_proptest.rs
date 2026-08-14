@@ -180,22 +180,13 @@ fn nwb_fixture_directory_guard_fails_when_real_sample_is_absent() {
     let manifest = nwb_fixture_manifest_path();
     let sample = nwb_real_sample_path();
 
-    // Compare normalized spellings so this Windows-owned external-data contract
-    // remains testable on Unix CI, where `Path::join` uses `/`.
-    assert_eq!(
-        dir.to_string_lossy().replace('\\', "/"),
-        "D:/consus/data/nwb"
-    );
-    assert_eq!(
-        manifest.to_string_lossy().replace('\\', "/"),
-        "D:/consus/data/nwb/manifest.txt"
-    );
-    assert_eq!(
-        sample.to_string_lossy().replace('\\', "/"),
-        "D:/consus/data/nwb/allen_brain_observatory_sample.nwb"
-    );
+    // Build the expected paths with `join` (portable separators) rather than
+    // hardcoded backslash literals, so this assertion holds on every host.
+    assert_eq!(manifest, dir.join("manifest.txt"));
+    assert_eq!(sample, dir.join("allen_brain_observatory_sample.nwb"));
     assert!(
         !sample.exists(),
-        "real NWB sample must be acquired into D:\\consus\\data\\nwb before this test can pass"
+        "real NWB sample must be acquired into {:?} before this test can pass",
+        dir
     );
 }

@@ -35,7 +35,7 @@ use crate::btree::v1::{BTreeV1Header, BTreeV1Type};
 #[cfg(feature = "alloc")]
 use crate::btree::{BTreeV2Header, btree_v2_record_type, collect_all_btree_v2_records};
 #[cfg(feature = "alloc")]
-use crate::dataset::Hdf5Dataset;
+use crate::dataset::{Hdf5Dataset, StorageLayout};
 use crate::group::Hdf5Group;
 use crate::object_header::ObjectHeader;
 use crate::superblock::Superblock;
@@ -350,6 +350,66 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                 feature: String::from(
                     "chunked dataset read requires v3 v1-tree or v4 B-tree v2 index",
                 ),
+            }),
+        }
+    }
+
+    /// Read the full raw byte payload of a dataset, dispatching on its
+    /// storage layout.
+    ///
+    /// This is the single layout-dispatch point shared by the high-level
+    /// format crates (HDMF, NWB): contiguous datasets are read directly from
+    /// their data address, chunked datasets delegate to
+    /// [`Self::read_chunked_dataset_all_bytes`], and compact / virtual
+    /// layouts fail closed with [`Error::UnsupportedFeature`].
+    ///
+    /// For variable-length element types (`VariableString`, `VarLen`) the
+    /// element size is unknown; `variable_element_size` supplies the on-disk
+    /// element width when the caller knows it (e.g. the fixed-size VL string
+    /// reference layout), and is ignored for fixed-size datatypes.
+    ///
+    /// ## Errors
+    ///
+    /// - [`Error::InvalidFormat`] — contiguous dataset has no data address.
+    /// - [`Error::UnsupportedFeature`] — compact or virtual layout.
+    /// - Propagates HDF5 I/O and chunk-index errors.
+    #[cfg(feature = "alloc")]
+    pub fn read_dataset_raw(
+        &self,
+        dataset: &Hdf5Dataset,
+        variable_element_size: Option<usize>,
+    ) -> Result<Vec<u8>> {
+        match dataset.layout {
+            StorageLayout::Contiguous => {
+                let element_size = match &dataset.datatype {
+                    Datatype::VariableString { .. } => {
+                        variable_element_size.ok_or_else(|| Error::UnsupportedFeature {
+                            feature: String::from(
+                                "variable-length contiguous dataset read needs an element size",
+                            ),
+                        })?
+                    }
+                    other => other.element_size().unwrap_or(0),
+                };
+                let n_bytes = dataset.shape.num_elements() * element_size;
+                if n_bytes == 0 {
+                    return Ok(Vec::new());
+                }
+                let data_addr = dataset.data_address.ok_or_else(|| Error::InvalidFormat {
+                    message: String::from("contiguous dataset has no data address"),
+                })?;
+                let mut buf = vec![0u8; n_bytes];
+                self.read_contiguous_dataset_bytes(data_addr, 0, &mut buf)?;
+                Ok(buf)
+            }
+            StorageLayout::Chunked => {
+                self.read_chunked_dataset_all_bytes(dataset.object_header_address)
+            }
+            StorageLayout::Compact => Err(Error::UnsupportedFeature {
+                feature: String::from("compact dataset layout is not supported"),
+            }),
+            StorageLayout::Virtual => Err(Error::UnsupportedFeature {
+                feature: String::from("virtual dataset layout is not supported"),
             }),
         }
     }
