@@ -36,7 +36,6 @@
 
 mod attribute;
 mod dataset;
-mod primitives;
 
 #[cfg(feature = "alloc")]
 pub use attribute::{read_f64_attr, read_string_attr};
