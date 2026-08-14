@@ -240,16 +240,16 @@ impl HduType {
                 "IMAGE" => Ok(Self::Image),
                 "TABLE" => Ok(Self::Table),
                 "BINTABLE" => Ok(Self::BinTable),
-                _other => {
+                other => {
                     #[cfg(feature = "alloc")]
                     {
                         Err(Error::invalid_format(&alloc::format!(
-                            "unsupported FITS XTENSION value: {_other}"
+                            "unsupported FITS XTENSION value: {other}"
                         )))
                     }
                     #[cfg(not(feature = "alloc"))]
                     {
-                        let _ = _other;
+                        let _ = other;
                         Err(Error::invalid_format("unsupported FITS XTENSION value"))
                     }
                 }

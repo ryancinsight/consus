@@ -395,10 +395,9 @@ fn rice_parameter(block: &[u8], bits_per_sample: u8) -> u8 {
     if mean == 0 {
         return 0;
     }
-    // floor(log2(mean)) for positive integer mean:
-    // For u64, leading_zeros gives the number of leading zero bits.
-    // 63 - leading_zeros = position of the highest set bit = floor(log2(mean)).
-    let k = (63 - mean.leading_zeros()) as u8;
+    // floor(log2(mean)) for positive integer mean (position of the highest
+    // set bit), capped at the sample bit width.
+    let k = mean.ilog2() as u8;
     k.min(bits_per_sample - 1)
 }
 
