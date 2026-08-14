@@ -1,5 +1,28 @@
 # Consus - Gap Audit
 
+## Dataset read + decode consolidation (2026-08-14)
+
+The HDF5 dataset read path was triplicated: `consus-hdmf/src/storage.rs`,
+`consus-nwb/src/storage/dataset.rs`, and kwavers-diagnostics each hand-rolled
+the storage-layout dispatch (contiguous/chunked/compact/virtual) and the
+byte-order decode. `Hdf5File::read_dataset_raw` now owns the single
+layout-dispatch + raw-payload read (including the variable-length string
+element-size case); consus-hdmf's private loader and consus-nwb's
+`read_f64_dataset`/`read_u64_dataset`/`read_string_dataset` delegate to it.
+The NWB `decode_raw_as_f64` (an exact duplicate of
+`consus_core::decode::decode_to_f64`) and the duplicated `primitives.rs`
+byte readers were deleted; the 13 value-semantic NWB decode tests now
+exercise the consus-core implementation directly.
+
+Also fixed: the NWB fixture-guard test built expected paths from hardcoded
+Windows backslash literals (`D:\consus\data\nwb\...`), which failed on the
+macOS runner where `Path::join` uses `/`; it now derives expected paths with
+`join`, so it is host-portable.
+
+Verification: `cargo test -p consus-hdf5 --lib` 280/280, `consus-nwb --lib`
+272/272; workspace formatting clean; hosted CI green for consus-core/hdf5/
+hdmf/nwb on all platforms plus MSRV. Net -208 lines.
+
 ## Cross-format integration test API closure (2026-08-13)
 
 The former `CONSUS-TEST-API-001` residual was real at the merged default
