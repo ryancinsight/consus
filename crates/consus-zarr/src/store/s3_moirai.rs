@@ -253,7 +253,9 @@ mod tests {
                     "<?xml version=\"1.0\"?><ListBucketResult><IsTruncated>false</IsTruncated>",
                 );
                 for k in g.keys().filter(|k| k.starts_with(prefix.as_str())) {
-                    xml.push_str(&format!("<Contents><Key>{k}</Key></Contents>"));
+                    use core::fmt::Write as _;
+                    write!(xml, "<Contents><Key>{k}</Key></Contents>")
+                        .expect("invariant: writing to String cannot fail");
                 }
                 xml.push_str("</ListBucketResult>");
                 with_body("200 OK", xml.as_bytes())

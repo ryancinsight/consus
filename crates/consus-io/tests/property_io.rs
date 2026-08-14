@@ -80,14 +80,14 @@ fn prop_multiple_writes_combined() {
 
         for (offset, data) in &writes {
             let offset = offset % 1000;
-            let data: Vec<u8> = data.iter().cloned().take(100).collect();
+            let data: Vec<u8> = data.iter().copied().take(100).collect();
             cursor.write_at(offset, &data).expect("write must succeed");
         }
 
         // Verify each write
         for (offset, data) in &writes {
             let offset = offset % 1000;
-            let data: Vec<u8> = data.iter().cloned().take(100).collect();
+            let data: Vec<u8> = data.iter().copied().take(100).collect();
 
             if data.is_empty() {
                 continue;
@@ -297,7 +297,7 @@ fn prop_interleaved_read_write() {
 
         for (is_write, offset, data) in &operations {
             let offset = offset % 500;
-            let data: Vec<u8> = data.iter().cloned().take(50).collect();
+            let data: Vec<u8> = data.iter().copied().take(50).collect();
 
             if *is_write {
                 cursor.write_at(offset, &data).expect("write must succeed");
@@ -357,7 +357,7 @@ fn prop_large_random_writes() {
 
         for (offset, data) in &writes {
             let offset = offset % max_size;
-            let data: Vec<u8> = data.iter().cloned().take(100).collect();
+            let data: Vec<u8> = data.iter().copied().take(100).collect();
 
             cursor.write_at(offset as u64, &data).expect("write must succeed");
 
