@@ -92,6 +92,20 @@ impl<'a> ThriftReader<'a> {
         self.pos
     }
 
+    /// Takes a bounded byte range and advances the reader past it.
+    fn take_bytes(&mut self, len: usize) -> Result<&'a [u8]> {
+        let end = self.pos.checked_add(len).ok_or(Error::Overflow)?;
+        if end > self.data.len() {
+            return Err(Error::BufferTooSmall {
+                required: end,
+                provided: self.data.len(),
+            });
+        }
+        let bytes = &self.data[self.pos..end];
+        self.pos = end;
+        Ok(bytes)
+    }
+
     /// Reads one byte; returns `Error::BufferTooSmall` when exhausted.
     pub fn read_byte(&mut self) -> Result<u8> {
         if self.pos >= self.data.len() {
@@ -145,32 +159,18 @@ impl<'a> ThriftReader<'a> {
 
     /// 8-byte little-endian IEEE 754 f64.
     pub fn read_double(&mut self) -> Result<f64> {
-        if self.pos + 8 > self.data.len() {
-            return Err(Error::BufferTooSmall {
-                required: self.pos + 8,
-                provided: self.data.len(),
-            });
-        }
-        let b: [u8; 8] = self.data[self.pos..self.pos + 8]
+        let b: [u8; 8] = self
+            .take_bytes(8)?
             .try_into()
-            .expect("8-byte slice for f64 deserialization");
-        self.pos += 8;
+            .expect("invariant: take_bytes returned exactly eight bytes");
         Ok(f64::from_le_bytes(b))
     }
 
     /// Varint length-prefixed binary blob.
     #[cfg(feature = "alloc")]
     pub fn read_binary(&mut self) -> Result<Vec<u8>> {
-        let len = self.read_varint_u64()? as usize;
-        if self.pos + len > self.data.len() {
-            return Err(Error::BufferTooSmall {
-                required: self.pos + len,
-                provided: self.data.len(),
-            });
-        }
-        let v = self.data[self.pos..self.pos + len].to_vec();
-        self.pos += len;
-        Ok(v)
+        let len = usize::try_from(self.read_varint_u64()?).map_err(|_| Error::Overflow)?;
+        Ok(self.take_bytes(len)?.to_vec())
     }
 
     /// UTF-8 string decoded from a binary blob.
@@ -268,14 +268,8 @@ impl<'a> ThriftReader<'a> {
                 Ok(())
             }
             0x08 => {
-                let len = self.read_varint_u64()? as usize;
-                if self.pos + len > self.data.len() {
-                    return Err(Error::BufferTooSmall {
-                        required: self.pos + len,
-                        provided: self.data.len(),
-                    });
-                }
-                self.pos += len;
+                let len = usize::try_from(self.read_varint_u64()?).map_err(|_| Error::Overflow)?;
+                self.take_bytes(len)?;
                 Ok(())
             }
             0x09 | 0x0A => {
@@ -303,13 +297,7 @@ impl<'a> ThriftReader<'a> {
                 }
             }
             0x0D => {
-                if self.pos + 16 > self.data.len() {
-                    return Err(Error::BufferTooSmall {
-                        required: self.pos + 16,
-                        provided: self.data.len(),
-                    });
-                }
-                self.pos += 16;
+                self.take_bytes(16)?;
                 Ok(())
             }
             _ => Err(Error::InvalidFormat {
@@ -471,6 +459,15 @@ mod tests {
         let mut r = ThriftReader::new(&[0x03, b'a', b'b', b'c']);
         r.skip(0x08).unwrap();
         assert_eq!(r.position(), 4);
+    }
+
+    #[test]
+    fn skip_binary_rejects_length_offset_overflow() {
+        // Ten-byte u64 varint for usize::MAX; adding it to the current
+        // position must return a typed overflow instead of wrapping.
+        let mut r =
+            ThriftReader::new(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01]);
+        assert!(matches!(r.skip(0x08), Err(consus_core::Error::Overflow)));
     }
 
     #[test]
