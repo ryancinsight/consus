@@ -204,6 +204,12 @@ pub fn parse_matrix(
             )?)
         }
         MX_CELL_CLASS => {
+            let available_element_bytes = payload.len().saturating_sub(pos);
+            if numel > available_element_bytes / 8 {
+                return Err(MatError::ShapeError(String::from(
+                    "mxCELL_CLASS dimensions exceed the available element records",
+                )));
+            }
             let mut cells: Vec<MatArray> = Vec::with_capacity(numel);
             for _ in 0..numel {
                 let ctag = read_tag(payload, &mut pos, big_endian)?;
@@ -242,6 +248,17 @@ pub fn parse_matrix(
             let (_fnt, fn_b): (MiType, Vec<u8>) =
                 read_subelement_bytes(payload, &mut pos, big_endian)?;
             let nfields = fn_b.len().checked_div(fnl).unwrap_or(0);
+            let total_elements = nfields.checked_mul(numel).ok_or_else(|| {
+                MatError::ShapeError(String::from(
+                    "mxSTRUCT_CLASS dimensions exceed the addressable element count",
+                ))
+            })?;
+            let available_element_bytes = payload.len().saturating_sub(pos);
+            if total_elements > available_element_bytes / 8 {
+                return Err(MatError::ShapeError(String::from(
+                    "mxSTRUCT_CLASS dimensions exceed the available element records",
+                )));
+            }
             let mut field_names: Vec<String> = Vec::with_capacity(nfields);
             for i in 0..nfields {
                 let s = i * fnl;

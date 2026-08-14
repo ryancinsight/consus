@@ -110,6 +110,14 @@ fn v5_dimension_product_overflow_returns_error() {
 }
 
 #[test]
+fn v5_cell_dimension_allocation_is_bounded_by_payload() {
+    let payload = matrix_payload(1, 0, 0, &[1_413_565_953, 75], b"x", &[]);
+    let data = v5_file(&[matrix_element(payload)]);
+    let error = loadmat_bytes(&data).expect_err("cell dimensions must be bounded");
+    assert!(matches!(error, consus_mat::MatError::ShapeError(_)));
+}
+
+#[test]
 fn v5_invalid_endian_indicator_returns_error() {
     let mut data = [0u8; 128];
     data[124] = 0x00;
