@@ -30,6 +30,7 @@ pub(super) fn parse<R: ReadAt>(source: &R, offset: u64) -> Result<Superblock> {
     let offset_size = buf[9];
     let length_size = buf[10];
     let consistency_flags = buf[11] as u32;
+    super::validate_field_sizes(offset_size, length_size)?;
 
     let s = offset_size as usize;
     let mut pos = 12;

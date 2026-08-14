@@ -33,6 +33,7 @@ pub(super) fn parse<R: ReadAt>(source: &R, offset: u64) -> Result<Superblock> {
 
     let offset_size = buf[13];
     let length_size = buf[14];
+    super::validate_field_sizes(offset_size, length_size)?;
     let group_leaf_k = LittleEndian::read_u16(&buf[16..18]);
     let group_internal_k = LittleEndian::read_u16(&buf[18..20]);
     let consistency_flags = LittleEndian::read_u32(&buf[20..24]);
