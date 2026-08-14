@@ -8,65 +8,14 @@
 #[cfg(feature = "alloc")]
 use alloc::{format, string::String, vec, vec::Vec};
 
-use consus_core::{AttributeValue, ByteOrder, Datatype, Error, Result};
+use consus_core::decode::{decode_to_f64, read_i16, read_i32, read_i64, read_u16, read_u32, read_u64};
+use consus_core::{AttributeValue, Datatype, Error, Result};
 use consus_hdf5::attribute::Hdf5Attribute;
 use consus_hdf5::dataset::StorageLayout;
 use consus_hdf5::file::Hdf5File;
 use consus_io::ReadAt;
 
 use crate::table::ColumnData;
-
-// ---------------------------------------------------------------------------
-// Byte-order helpers
-// ---------------------------------------------------------------------------
-
-fn read_u16(c: &[u8], bo: ByteOrder) -> u16 {
-    let arr = [c[0], c[1]];
-    match bo {
-        ByteOrder::LittleEndian => u16::from_le_bytes(arr),
-        ByteOrder::BigEndian => u16::from_be_bytes(arr),
-    }
-}
-
-fn read_i16(c: &[u8], bo: ByteOrder) -> i16 {
-    let arr = [c[0], c[1]];
-    match bo {
-        ByteOrder::LittleEndian => i16::from_le_bytes(arr),
-        ByteOrder::BigEndian => i16::from_be_bytes(arr),
-    }
-}
-
-fn read_u32(c: &[u8], bo: ByteOrder) -> u32 {
-    let arr = [c[0], c[1], c[2], c[3]];
-    match bo {
-        ByteOrder::LittleEndian => u32::from_le_bytes(arr),
-        ByteOrder::BigEndian => u32::from_be_bytes(arr),
-    }
-}
-
-fn read_i32(c: &[u8], bo: ByteOrder) -> i32 {
-    let arr = [c[0], c[1], c[2], c[3]];
-    match bo {
-        ByteOrder::LittleEndian => i32::from_le_bytes(arr),
-        ByteOrder::BigEndian => i32::from_be_bytes(arr),
-    }
-}
-
-fn read_u64_bo(c: &[u8], bo: ByteOrder) -> u64 {
-    let arr = [c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]];
-    match bo {
-        ByteOrder::LittleEndian => u64::from_le_bytes(arr),
-        ByteOrder::BigEndian => u64::from_be_bytes(arr),
-    }
-}
-
-fn read_i64_bo(c: &[u8], bo: ByteOrder) -> i64 {
-    let arr = [c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]];
-    match bo {
-        ByteOrder::LittleEndian => i64::from_le_bytes(arr),
-        ByteOrder::BigEndian => i64::from_be_bytes(arr),
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Raw-bytes loader
@@ -115,72 +64,9 @@ fn read_dataset_raw<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Result<V
 
 #[cfg(feature = "alloc")]
 fn decode_as_f64(raw: &[u8], dtype: &Datatype) -> Result<Vec<f64>> {
-    match dtype {
-        Datatype::Float { bits, byte_order } if bits.get() == 64 => Ok(raw
-            .chunks_exact(8)
-            .map(|c| {
-                let arr = [c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]];
-                match byte_order {
-                    ByteOrder::LittleEndian => f64::from_le_bytes(arr),
-                    ByteOrder::BigEndian => f64::from_be_bytes(arr),
-                }
-            })
-            .collect()),
-        Datatype::Float { bits, byte_order } if bits.get() == 32 => Ok(raw
-            .chunks_exact(4)
-            .map(|c| {
-                let arr = [c[0], c[1], c[2], c[3]];
-                let v32 = match byte_order {
-                    ByteOrder::LittleEndian => f32::from_le_bytes(arr),
-                    ByteOrder::BigEndian => f32::from_be_bytes(arr),
-                };
-                v32 as f64
-            })
-            .collect()),
-        Datatype::Integer {
-            bits,
-            signed,
-            byte_order,
-        } => {
-            let bo = *byte_order;
-            Ok(match (bits.get(), *signed) {
-                (8, false) => raw.iter().map(|&v| v as f64).collect(),
-                (8, true) => raw.iter().map(|&v| (v as i8) as f64).collect(),
-                (16, false) => raw
-                    .chunks_exact(2)
-                    .map(|c| read_u16(c, bo) as f64)
-                    .collect(),
-                (16, true) => raw
-                    .chunks_exact(2)
-                    .map(|c| read_i16(c, bo) as f64)
-                    .collect(),
-                (32, false) => raw
-                    .chunks_exact(4)
-                    .map(|c| read_u32(c, bo) as f64)
-                    .collect(),
-                (32, true) => raw
-                    .chunks_exact(4)
-                    .map(|c| read_i32(c, bo) as f64)
-                    .collect(),
-                (64, false) => raw
-                    .chunks_exact(8)
-                    .map(|c| read_u64_bo(c, bo) as f64)
-                    .collect(),
-                (64, true) => raw
-                    .chunks_exact(8)
-                    .map(|c| read_i64_bo(c, bo) as f64)
-                    .collect(),
-                (b, _) => {
-                    return Err(Error::UnsupportedFeature {
-                        feature: format!("HDMF: {b}-bit integer to f64 not supported"),
-                    });
-                }
-            })
-        }
-        other => Err(Error::UnsupportedFeature {
-            feature: format!("HDMF: decode as f64 not supported for {:?}", other),
-        }),
-    }
+    decode_to_f64(raw, dtype).map_err(|err| Error::UnsupportedFeature {
+        feature: format!("HDMF: decode as f64: {err}"),
+    })
 }
 
 #[cfg(feature = "alloc")]
@@ -213,9 +99,9 @@ fn decode_as_i64(raw: &[u8], dtype: &Datatype) -> Result<Vec<i64>> {
                     .collect(),
                 (64, false) => raw
                     .chunks_exact(8)
-                    .map(|c| read_u64_bo(c, bo) as i64)
+                    .map(|c| read_u64(c, bo) as i64)
                     .collect(),
-                (64, true) => raw.chunks_exact(8).map(|c| read_i64_bo(c, bo)).collect(),
+                (64, true) => raw.chunks_exact(8).map(|c| read_i64(c, bo)).collect(),
                 (b, _) => {
                     return Err(Error::UnsupportedFeature {
                         feature: format!("HDMF: {b}-bit integer to i64 not supported"),
@@ -257,10 +143,10 @@ fn decode_as_u64(raw: &[u8], dtype: &Datatype) -> Result<Vec<u64>> {
                     .chunks_exact(4)
                     .map(|c| read_i32(c, bo) as u64)
                     .collect(),
-                (64, false) => raw.chunks_exact(8).map(|c| read_u64_bo(c, bo)).collect(),
+                (64, false) => raw.chunks_exact(8).map(|c| read_u64(c, bo)).collect(),
                 (64, true) => raw
                     .chunks_exact(8)
-                    .map(|c| read_i64_bo(c, bo) as u64)
+                    .map(|c| read_i64(c, bo) as u64)
                     .collect(),
                 (b, _) => {
                     return Err(Error::UnsupportedFeature {
