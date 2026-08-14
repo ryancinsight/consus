@@ -207,19 +207,35 @@ impl<'a> ThriftReader<'a> {
         let count_nibble = (byte >> 4) & 0x0F;
         let elem_type = byte & 0x0F;
         let count = if count_nibble == 0x0F {
-            self.read_varint_u64()? as usize
+            usize::try_from(self.read_varint_u64()?).map_err(|_| Error::Overflow)?
         } else {
             count_nibble as usize
         };
+        if count > self.remaining() {
+            return Err(Error::InvalidFormat {
+                message: alloc::format!(
+                    "thrift: list count {count} exceeds remaining bytes {}",
+                    self.remaining()
+                ),
+            });
+        }
         Ok((elem_type, count))
     }
 
     /// Map header: varint count; if > 0, one byte (key_type<<4)|val_type.
     /// Returns `(key_type, value_type, count)`; count 0 returns `(0,0,0)`.
     pub fn read_map_header(&mut self) -> Result<(u8, u8, usize)> {
-        let count = self.read_varint_u64()? as usize;
+        let count = usize::try_from(self.read_varint_u64()?).map_err(|_| Error::Overflow)?;
         if count == 0 {
             return Ok((0, 0, 0));
+        }
+        if count > self.remaining() / 2 {
+            return Err(Error::InvalidFormat {
+                message: alloc::format!(
+                    "thrift: map count {count} exceeds remaining bytes {}",
+                    self.remaining()
+                ),
+            });
         }
         let tb = self.read_byte()?;
         Ok(((tb >> 4) & 0x0F, tb & 0x0F, count))
@@ -396,7 +412,7 @@ mod tests {
     #[test]
     fn list_header_short_form() {
         // 0x25 = (2<<4)|0x05 = count=2, elem_type=I32(0x05)
-        let mut r = ThriftReader::new(&[0x25]);
+        let mut r = ThriftReader::new(&[0x25, 0x00, 0x00]);
         let (elem_type, count) = r.read_list_header().unwrap();
         assert_eq!(elem_type, 0x05);
         assert_eq!(count, 2);
@@ -405,10 +421,40 @@ mod tests {
     #[test]
     fn list_header_long_form() {
         // 0xF5 = (0xF<<4)|0x05 = long form, elem_type=I32; then varint 3
-        let mut r = ThriftReader::new(&[0xF5, 0x03]);
+        let mut r = ThriftReader::new(&[0xF5, 0x03, 0x00, 0x00, 0x00]);
         let (elem_type, count) = r.read_list_header().unwrap();
         assert_eq!(elem_type, 0x05);
         assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn list_header_rejects_count_larger_than_remaining_bytes() {
+        let mut r = ThriftReader::new(&[0xF5, 0xF9, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F]);
+
+        let error = r.read_list_header().unwrap_err();
+
+        match error {
+            consus_core::Error::InvalidFormat { message } => {
+                assert!(message.contains("list count"));
+                assert!(message.contains("exceeds remaining bytes 0"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_header_rejects_count_larger_than_remaining_entries() {
+        let mut r = ThriftReader::new(&[0xF9, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F]);
+
+        let error = r.read_map_header().unwrap_err();
+
+        match error {
+            consus_core::Error::InvalidFormat { message } => {
+                assert!(message.contains("map count"));
+                assert!(message.contains("exceeds remaining bytes 0"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 
     #[test]

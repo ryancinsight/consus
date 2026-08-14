@@ -55,11 +55,6 @@ impl MiType {
     }
 }
 
-#[inline]
-pub const fn pad8(n: usize) -> usize {
-    (n + 7) & !7
-}
-
 #[derive(Debug, Clone)]
 pub struct DataTag {
     pub mi_type: MiType,
@@ -68,7 +63,12 @@ pub struct DataTag {
 }
 
 pub fn read_tag(data: &[u8], pos: &mut usize, big_endian: bool) -> Result<DataTag, MatError> {
-    if *pos + 8 > data.len() {
+    let tag_end = pos.checked_add(8).ok_or_else(|| {
+        MatError::InvalidFormat(alloc::string::String::from(
+            "data element tag offset overflow",
+        ))
+    })?;
+    if tag_end > data.len() {
         return Err(MatError::InvalidFormat(alloc::string::String::from(
             "data element tag truncated",
         )));
@@ -86,6 +86,11 @@ pub fn read_tag(data: &[u8], pos: &mut usize, big_endian: bool) -> Result<DataTa
         )
     };
     if small_nbytes != 0 {
+        if small_nbytes > 4 {
+            return Err(MatError::InvalidFormat(alloc::format!(
+                "small element payload has {small_nbytes} bytes; inline tags carry at most 4"
+            )));
+        }
         let mi_type = MiType::from_u32(small_type as u32).ok_or_else(|| {
             MatError::InvalidFormat(alloc::format!("unknown small element type {small_type}"))
         })?;
@@ -125,16 +130,42 @@ pub fn read_element_bytes(
     tag: &DataTag,
 ) -> Result<Vec<u8>, MatError> {
     if tag.small {
-        if *pos + 4 > data.len() {
+        if tag.nbytes > 4 {
+            return Err(MatError::InvalidFormat(alloc::format!(
+                "small element payload has {} bytes; inline tags carry at most 4",
+                tag.nbytes
+            )));
+        }
+        let end = pos.checked_add(4).ok_or_else(|| {
+            MatError::InvalidFormat(alloc::string::String::from(
+                "small element data offset overflow",
+            ))
+        })?;
+        if end > data.len() {
             return Err(MatError::InvalidFormat(alloc::string::String::from(
                 "small element data truncated",
             )));
         }
         let d = data[*pos..*pos + tag.nbytes].to_vec();
-        *pos += 4;
+        *pos = end;
         Ok(d)
     } else {
-        if *pos + tag.nbytes > data.len() {
+        let payload_end = pos.checked_add(tag.nbytes).ok_or_else(|| {
+            MatError::InvalidFormat(alloc::string::String::from(
+                "element payload offset overflow",
+            ))
+        })?;
+        let padded_nbytes = tag.nbytes.checked_add(7).ok_or_else(|| {
+            MatError::InvalidFormat(alloc::string::String::from(
+                "element payload padding overflow",
+            ))
+        })? & !7;
+        let padded_end = pos.checked_add(padded_nbytes).ok_or_else(|| {
+            MatError::InvalidFormat(alloc::string::String::from(
+                "element padding offset overflow",
+            ))
+        })?;
+        if payload_end > data.len() || padded_end > data.len() {
             return Err(MatError::InvalidFormat(alloc::format!(
                 "element data truncated: need {}, available {}",
                 tag.nbytes,
@@ -142,7 +173,7 @@ pub fn read_element_bytes(
             )));
         }
         let d = data[*pos..*pos + tag.nbytes].to_vec();
-        *pos += pad8(tag.nbytes);
+        *pos = padded_end;
         Ok(d)
     }
 }
@@ -156,4 +187,51 @@ pub fn read_subelement_bytes(
     let tag = read_tag(payload, local_pos, big_endian)?;
     let bytes = read_element_bytes(payload, local_pos, &tag)?;
     Ok((tag.mi_type, bytes))
+}
+
+#[cfg(all(test, feature = "alloc"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_inline_tag_payload_larger_than_four_bytes() {
+        let mut pos = 0;
+        let data = [1, 0, 5, 0, 0, 0, 0, 0];
+
+        let error = read_tag(&data, &mut pos, false).unwrap_err();
+
+        match error {
+            MatError::InvalidFormat(message) => {
+                assert_eq!(
+                    message,
+                    "small element payload has 5 bytes; inline tags carry at most 4"
+                );
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+        assert_eq!(pos, 0);
+    }
+
+    #[test]
+    fn rejects_inline_element_payload_larger_than_four_bytes() {
+        let mut pos = 0;
+        let tag = DataTag {
+            mi_type: MiType::Uint8,
+            nbytes: 5,
+            small: true,
+        };
+
+        let error = read_element_bytes(&[0; 8], &mut pos, &tag).unwrap_err();
+
+        match error {
+            MatError::InvalidFormat(message) => {
+                assert_eq!(
+                    message,
+                    "small element payload has 5 bytes; inline tags carry at most 4"
+                );
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+        assert_eq!(pos, 0);
+    }
 }

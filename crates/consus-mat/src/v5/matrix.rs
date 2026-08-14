@@ -5,7 +5,7 @@
 use alloc::{string::String, vec, vec::Vec};
 
 use super::element::{decode_i32_vec, normalize_endian};
-use super::tag::{MiType, pad8, read_subelement_bytes, read_tag};
+use super::tag::{MiType, read_element_bytes, read_subelement_bytes, read_tag};
 use crate::error::MatError;
 use crate::model::{
     MatArray, MatCellArray, MatCharArray, MatLogicalArray, MatNumericArray, MatNumericClass,
@@ -200,18 +200,7 @@ pub fn parse_matrix(
                         "mxCELL_CLASS: expected miMATRIX",
                     )));
                 }
-                let cp = if ctag.nbytes == 0 {
-                    vec![]
-                } else {
-                    if pos + ctag.nbytes > payload.len() {
-                        return Err(MatError::InvalidFormat(String::from(
-                            "mxCELL_CLASS: payload truncated",
-                        )));
-                    }
-                    let p = payload[pos..pos + ctag.nbytes].to_vec();
-                    pos += pad8(ctag.nbytes);
-                    p
-                };
+                let cp = read_element_bytes(payload, &mut pos, &ctag)?;
                 let arr = match parse_matrix(&cp, big_endian)? {
                     Some((_, a)) => a,
                     None => MatArray::Numeric(MatNumericArray {
@@ -257,18 +246,7 @@ pub fn parse_matrix(
                             "mxSTRUCT_CLASS: expected miMATRIX",
                         )));
                     }
-                    let fp = if ftag.nbytes == 0 {
-                        vec![]
-                    } else {
-                        if pos + ftag.nbytes > payload.len() {
-                            return Err(MatError::InvalidFormat(String::from(
-                                "mxSTRUCT_CLASS: payload truncated",
-                            )));
-                        }
-                        let p = payload[pos..pos + ftag.nbytes].to_vec();
-                        pos += pad8(ftag.nbytes);
-                        p
-                    };
+                    let fp = read_element_bytes(payload, &mut pos, &ftag)?;
                     let arr = match parse_matrix(&fp, big_endian)? {
                         Some((_, a)) => a,
                         None => MatArray::Numeric(MatNumericArray {
