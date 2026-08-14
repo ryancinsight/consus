@@ -17,8 +17,57 @@ use crate::encoding::column::{
 };
 use crate::encoding::compression::{CompressionCodec, decompress_page_values};
 use crate::schema::physical::ParquetPhysicalType;
-use crate::wire::page::{PageType, decode_page_header};
+use crate::wire::page::{PageHeader, PageType, decode_page_header};
 use crate::wire::payload::{split_data_page_v1, split_data_page_v2};
+
+/// Advances over one page header and returns its bounded payload.
+///
+/// Page sizes are signed Thrift integers, while slice offsets are `usize`.
+/// Validate the sign and every offset conversion before indexing so malformed
+/// page headers remain ordinary parse errors under release and fuzz builds.
+fn take_page_payload<'a>(
+    bytes: &'a [u8],
+    pos: &mut usize,
+    consumed: usize,
+    header: &PageHeader,
+) -> Result<(&'a [u8], usize)> {
+    if consumed == 0 {
+        return Err(Error::InvalidFormat {
+            message: String::from("parquet: page header consumed no bytes"),
+        });
+    }
+    let header_end = pos
+        .checked_add(consumed)
+        .ok_or_else(|| Error::InvalidFormat {
+            message: String::from("parquet: page header offset overflow"),
+        })?;
+    let compressed_sz =
+        usize::try_from(header.compressed_page_size).map_err(|_| Error::InvalidFormat {
+            message: String::from("parquet: compressed_page_size must be non-negative"),
+        })?;
+    let uncompressed_sz =
+        usize::try_from(header.uncompressed_page_size).map_err(|_| Error::InvalidFormat {
+            message: String::from("parquet: uncompressed_page_size must be non-negative"),
+        })?;
+    let page_end = header_end
+        .checked_add(compressed_sz)
+        .ok_or_else(|| Error::InvalidFormat {
+            message: String::from("parquet: page payload offset overflow"),
+        })?;
+    if page_end > bytes.len() {
+        return Err(Error::BufferTooSmall {
+            required: page_end,
+            provided: bytes.len(),
+        });
+    }
+    let page_bytes = bytes
+        .get(header_end..page_end)
+        .ok_or_else(|| Error::InvalidFormat {
+            message: String::from("parquet: page payload range is invalid"),
+        })?;
+    *pos = page_end;
+    Ok((page_bytes, uncompressed_sz))
+}
 
 /// Concatenate a non-empty sequence of per-page `ColumnValues` into one.
 ///
@@ -176,20 +225,8 @@ impl ColumnPageDecoder {
 
         while pos < bytes.len() {
             let (header, consumed) = decode_page_header(&bytes[pos..])?;
-            pos += consumed;
-
-            let compressed_sz = header.compressed_page_size as usize;
-            let uncompressed_sz = header.uncompressed_page_size as usize;
-
-            if pos + compressed_sz > bytes.len() {
-                return Err(Error::BufferTooSmall {
-                    required: pos + compressed_sz,
-                    provided: bytes.len(),
-                });
-            }
-
-            let page_bytes = &bytes[pos..pos + compressed_sz];
-            pos += compressed_sz;
+            let (page_bytes, uncompressed_sz) =
+                take_page_payload(bytes, &mut pos, consumed, &header)?;
 
             match header.type_ {
                 PageType::DictionaryPage => {
@@ -317,20 +354,8 @@ impl ColumnPageDecoder {
 
         while pos < bytes.len() {
             let (header, consumed) = decode_page_header(&bytes[pos..])?;
-            pos += consumed;
-
-            let compressed_sz = header.compressed_page_size as usize;
-            let uncompressed_sz = header.uncompressed_page_size as usize;
-
-            if pos + compressed_sz > bytes.len() {
-                return Err(Error::BufferTooSmall {
-                    required: pos + compressed_sz,
-                    provided: bytes.len(),
-                });
-            }
-
-            let page_bytes = &bytes[pos..pos + compressed_sz];
-            pos += compressed_sz;
+            let (page_bytes, uncompressed_sz) =
+                take_page_payload(bytes, &mut pos, consumed, &header)?;
 
             match header.type_ {
                 PageType::DictionaryPage => {

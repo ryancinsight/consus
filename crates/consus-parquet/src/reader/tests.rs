@@ -268,6 +268,23 @@ fn decoder_truncated_payload_returns_buffer_too_small() {
     assert!(matches!(err, consus_core::Error::BufferTooSmall { .. }));
 }
 
+#[test]
+fn decoder_rejects_negative_page_size() {
+    // PageHeader with type=DATA_PAGE, uncompressed=0, compressed=-1. Thrift
+    // compact I32 uses zigzag encoding, so -1 is encoded as 0x01.
+    let header = [0x15u8, 0x00, 0x15, 0x00, 0x15, 0x01, 0x00];
+    let mut dec = ColumnPageDecoder::new(
+        ParquetPhysicalType::Int32,
+        CompressionCodec::Uncompressed,
+        0,
+        0,
+    );
+    let err = dec.decode_pages_from_chunk_bytes(&header).unwrap_err();
+    assert!(
+        matches!(err, consus_core::Error::InvalidFormat { message } if message.contains("compressed_page_size"))
+    );
+}
+
 // ── ParquetReader ────────────────────────────────────────────────────────────
 
 #[test]
