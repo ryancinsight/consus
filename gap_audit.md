@@ -1,5 +1,18 @@
 # Consus - Gap Audit
 
+## ATLAS-CONSUS-HDF5-LINK-098 — Reject overflowing link ranges (2026-08-14)
+
+Hosted fuzz run `31848757905` found a panic in the HDF5 link-message parser at
+`message.rs:321`: a fuzzed cursor and field length overflowed during
+`cursor + need`. The reproducer was
+`crash-3d3e53cb8b8815a14a313be45517235206021935`.
+
+The remaining-range guard now uses checked addition, link-name lengths use a
+fallible `u64`→`usize` conversion, and a regression test asserts that an
+oversized name length returns `InvalidFormat` without panicking. Local HDF5
+nextest (431/431) and strict Clippy pass. The exact-head hosted rerun is
+required before PR merge.
+
 ## ATLAS-CONSUS-RESOURCE-BOUNDARY-097 — Bounded external-input expansion (2026-08-14)
 
 The previous blanket statement that all Consus gaps were closed was false for

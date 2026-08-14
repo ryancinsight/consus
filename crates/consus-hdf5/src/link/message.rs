@@ -182,7 +182,10 @@ impl Hdf5Link {
         let name_length = read_name_length(&data[cursor..], name_len_field_size)?;
         cursor += name_len_field_size;
 
-        let name_length_usize = name_length as usize;
+        let name_length_usize = usize::try_from(name_length).map_err(|_| Error::InvalidFormat {
+            #[cfg(feature = "alloc")]
+            message: alloc::format!("link name length does not fit usize: {name_length}"),
+        })?;
         ensure_remaining(data, cursor, name_length_usize, "link name")?;
         let name =
             core::str::from_utf8(&data[cursor..cursor + name_length_usize]).map_err(|_| {
@@ -318,7 +321,15 @@ fn parse_external_link_value(data: &[u8]) -> Result<ExternalLinkData> {
 }
 
 fn ensure_remaining(data: &[u8], cursor: usize, need: usize, field: &str) -> Result<()> {
-    if data.len() < cursor + need {
+    let Some(end) = cursor.checked_add(need) else {
+        return Err(Error::InvalidFormat {
+            #[cfg(feature = "alloc")]
+            message: alloc::format!(
+                "link message offset overflow at {field}: offset {cursor}, length {need}"
+            ),
+        });
+    };
+    if data.len() < end {
         return Err(Error::InvalidFormat {
             #[cfg(feature = "alloc")]
             message: alloc::format!(
@@ -329,4 +340,21 @@ fn ensure_remaining(data: &[u8], cursor: usize, need: usize, field: &str) -> Res
         });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn oversized_name_length_is_rejected_without_panicking() {
+        let mut data = [0_u8; 10];
+        data[0] = LINK_MESSAGE_VERSION;
+        data[1] = FLAG_NAME_LENGTH_SIZE_MASK;
+        data[2..].copy_from_slice(&u64::MAX.to_le_bytes());
+
+        let result = Hdf5Link::parse(&data, &ParseContext::new(8, 8));
+
+        assert!(matches!(result, Err(Error::InvalidFormat { .. })));
+    }
 }
