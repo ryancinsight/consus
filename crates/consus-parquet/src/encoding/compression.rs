@@ -19,7 +19,7 @@
 
 use alloc::{format, string::String, vec::Vec};
 
-use consus_core::{Error, Result};
+use consus_core::{Error, ParseBudget, Result};
 
 /// Parquet compression codec, discriminant matches thrift `CompressionCodec`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -197,7 +197,7 @@ pub fn decompress_page_values(
     uncompressed_size: usize,
 ) -> Result<Vec<u8>> {
     match codec {
-        CompressionCodec::Uncompressed => Ok(data.to_vec()),
+        CompressionCodec::Uncompressed => copy_bounded(data),
 
         CompressionCodec::Gzip | CompressionCodec::Zlib => {
             #[cfg(feature = "gzip")]
@@ -224,11 +224,21 @@ pub fn decompress_page_values(
         CompressionCodec::Snappy => {
             #[cfg(feature = "snappy")]
             {
-                snap::raw::Decoder::new().decompress_vec(data).map_err(|e| {
-                    Error::CompressionError {
+                let decoded_size =
+                    snap::raw::decompress_len(data).map_err(|e| Error::CompressionError {
+                        message: format!("snappy header decode failed: {e}"),
+                    })?;
+                let mut output = ParseBudget::default().zeroed(
+                    u64::try_from(decoded_size).map_err(|_| Error::Overflow)?,
+                    "decompressed output",
+                )?;
+                let written = snap::raw::Decoder::new()
+                    .decompress(data, &mut output)
+                    .map_err(|e| Error::CompressionError {
                         message: format!("snappy decompress failed: {e}"),
-                    }
-                })
+                    })?;
+                output.truncate(written);
+                Ok(output)
             }
             #[cfg(not(feature = "snappy"))]
             {
@@ -244,10 +254,9 @@ pub fn decompress_page_values(
         CompressionCodec::Zstd => {
             #[cfg(feature = "zstd")]
             {
-                zrip::decompress_with_limit(data, uncompressed_size).map_err(|e| {
-                    Error::CompressionError {
-                        message: format!("zstd decompress failed: {e}"),
-                    }
+                let limit = checked_output_size(uncompressed_size)?;
+                zrip::decompress_with_limit(data, limit).map_err(|e| Error::CompressionError {
+                    message: format!("zstd decompress failed: {e}"),
                 })
             }
             #[cfg(not(feature = "zstd"))]
@@ -264,9 +273,18 @@ pub fn decompress_page_values(
         CompressionCodec::Lz4Raw => {
             #[cfg(feature = "lz4")]
             {
-                lz4_flex::decompress(data, uncompressed_size).map_err(|e| Error::CompressionError {
-                    message: format!("lz4_raw decompress failed: {e}"),
-                })
+                let output_size = checked_output_size(uncompressed_size)?;
+                let mut output = ParseBudget::default().zeroed(
+                    u64::try_from(output_size).map_err(|_| Error::Overflow)?,
+                    "decompressed output",
+                )?;
+                let written = lz4_flex::block::decompress_into(data, &mut output).map_err(|e| {
+                    Error::CompressionError {
+                        message: format!("lz4_raw decompress failed: {e}"),
+                    }
+                })?;
+                output.truncate(written);
+                Ok(output)
             }
             #[cfg(not(feature = "lz4"))]
             {
@@ -282,9 +300,24 @@ pub fn decompress_page_values(
         CompressionCodec::Lz4 => {
             #[cfg(feature = "lz4")]
             {
-                lz4_flex::decompress_size_prepended(data).map_err(|e| Error::CompressionError {
-                    message: format!("lz4 decompress failed: {e}"),
-                })
+                let (decoded_size, payload) =
+                    lz4_flex::block::uncompressed_size(data).map_err(|e| {
+                        Error::CompressionError {
+                            message: format!("lz4 header decode failed: {e}"),
+                        }
+                    })?;
+                let mut output = ParseBudget::default().zeroed(
+                    u64::try_from(decoded_size).map_err(|_| Error::Overflow)?,
+                    "decompressed output",
+                )?;
+                let written =
+                    lz4_flex::block::decompress_into(payload, &mut output).map_err(|e| {
+                        Error::CompressionError {
+                            message: format!("lz4 decompress failed: {e}"),
+                        }
+                    })?;
+                output.truncate(written);
+                Ok(output)
             }
             #[cfg(not(feature = "lz4"))]
             {
@@ -313,15 +346,31 @@ pub fn decompress_page_values(
 #[cfg(feature = "gzip")]
 fn decompress_deflate(data: &[u8], uncompressed_size: usize) -> Result<Vec<u8>> {
     use flate2::read::DeflateDecoder;
-    use std::io::Read;
 
     let mut decoder = DeflateDecoder::new(data);
-    let mut output = Vec::with_capacity(uncompressed_size);
-    decoder
-        .read_to_end(&mut output)
-        .map_err(|e| Error::CompressionError {
-            message: format!("deflate decompress failed: {e}"),
-        })?;
+    ParseBudget::default()
+        .read_bounded(&mut decoder, uncompressed_size, "decompressed output")
+        .map_err(|error| match error {
+            Error::Io(error) => Error::CompressionError {
+                message: format!("deflate decompress failed: {error}"),
+            },
+            error => error,
+        })
+}
+
+fn checked_output_size(size: usize) -> Result<usize> {
+    ParseBudget::default().checked_bytes(
+        u64::try_from(size).map_err(|_| Error::Overflow)?,
+        "decompressed output",
+    )
+}
+
+fn copy_bounded(data: &[u8]) -> Result<Vec<u8>> {
+    let mut output = ParseBudget::default().zeroed(
+        u64::try_from(data.len()).map_err(|_| Error::Overflow)?,
+        "decompressed output",
+    )?;
+    output.copy_from_slice(data);
     Ok(output)
 }
 
@@ -360,6 +409,13 @@ mod tests {
         let out = decompress_page_values(&data, CompressionCodec::Uncompressed, data.len())
             .expect("uncompressed must succeed");
         assert_eq!(out, data);
+    }
+
+    #[test]
+    fn shared_output_budget_rejects_untrusted_size_hints() {
+        let error = checked_output_size(usize::MAX)
+            .expect_err("a hostile decompressed-size hint must be rejected");
+        assert!(matches!(error, Error::ResourceLimit { .. }));
     }
 
     #[test]

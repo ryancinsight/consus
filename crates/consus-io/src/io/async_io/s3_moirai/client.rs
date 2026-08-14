@@ -9,7 +9,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use consus_core::{Error, Result};
+use consus_core::{Error, ParseBudget, Result};
 use moirai_http::{HttpClient, Response};
 
 use super::sigv4::{
@@ -167,8 +167,10 @@ impl S3Client {
 
     /// `GetObject` with a byte range `[pos, pos+len)`.
     pub async fn get_range(&self, key: &str, pos: u64, len: usize) -> Result<Vec<u8>> {
+        let Some(range) = byte_range(pos, len)? else {
+            return Ok(Vec::new());
+        };
         let (url, cu) = self.object_paths(key);
-        let range = format!("bytes={}-{}", pos, pos + len as u64 - 1);
         let resp = self
             .send(
                 "GET",
@@ -296,8 +298,41 @@ impl S3Client {
                     resp.status
                 )));
             }
+            let budget = ParseBudget::default();
+            if resp.body.len() > budget.max_alloc_bytes {
+                return Err(Error::ResourceLimit {
+                    what: "S3 listing response",
+                    requested: resp.body.len() as u64,
+                    limit: budget.max_alloc_bytes as u64,
+                });
+            }
             let xml = String::from_utf8_lossy(&resp.body);
             let (page_keys, next) = parse_list_v2(&xml)?;
+            let next_key_count = keys
+                .len()
+                .checked_add(page_keys.len())
+                .ok_or(Error::Overflow)?;
+            budget.checked_elements(
+                u64::try_from(next_key_count).map_err(|_| Error::Overflow)?,
+                core::mem::size_of::<String>(),
+                "S3 object keys",
+            )?;
+            let page_key_bytes = page_keys.iter().try_fold(0usize, |total, key| {
+                total.checked_add(key.len()).ok_or(Error::Overflow)
+            })?;
+            let key_bytes = keys.iter().try_fold(page_key_bytes, |total, key| {
+                total.checked_add(key.len()).ok_or(Error::Overflow)
+            })?;
+            budget.checked_bytes(
+                u64::try_from(key_bytes).map_err(|_| Error::Overflow)?,
+                "S3 object-key bytes",
+            )?;
+            keys.try_reserve(page_keys.len())
+                .map_err(|_| Error::ResourceLimit {
+                    what: "S3 object keys",
+                    requested: next_key_count as u64,
+                    limit: budget.max_elements as u64,
+                })?;
             keys.extend(page_keys);
             match next {
                 Some(token) => continuation = Some(token),
@@ -319,6 +354,8 @@ fn parse_list_v2(xml: &str) -> Result<(Vec<String>, Option<String>)> {
     let mut next_token: Option<String> = None;
     let mut truncated = false;
     let mut current: Vec<u8> = Vec::new();
+    let budget = ParseBudget::default();
+    let mut key_bytes = 0usize;
 
     loop {
         match reader.read_event() {
@@ -330,7 +367,25 @@ fn parse_list_v2(xml: &str) -> Result<(Vec<String>, Option<String>)> {
                     .map_err(|e| io_error(format!("ListObjectsV2 XML decode: {e}")))?
                     .into_owned();
                 match current.as_slice() {
-                    b"Key" => keys.push(text),
+                    b"Key" => {
+                        let key_count = keys.len().checked_add(1).ok_or(Error::Overflow)?;
+                        budget.checked_elements(
+                            u64::try_from(key_count).map_err(|_| Error::Overflow)?,
+                            core::mem::size_of::<String>(),
+                            "S3 object keys",
+                        )?;
+                        key_bytes = key_bytes.checked_add(text.len()).ok_or(Error::Overflow)?;
+                        budget.checked_bytes(
+                            u64::try_from(key_bytes).map_err(|_| Error::Overflow)?,
+                            "S3 object-key bytes",
+                        )?;
+                        keys.try_reserve(1).map_err(|_| Error::ResourceLimit {
+                            what: "S3 object keys",
+                            requested: key_count as u64,
+                            limit: budget.max_elements as u64,
+                        })?;
+                        keys.push(text);
+                    }
                     b"NextContinuationToken" => next_token = Some(text),
                     b"IsTruncated" => truncated = text.trim().eq_ignore_ascii_case("true"),
                     _ => {}
@@ -342,6 +397,15 @@ fn parse_list_v2(xml: &str) -> Result<(Vec<String>, Option<String>)> {
         }
     }
     Ok((keys, if truncated { next_token } else { None }))
+}
+
+fn byte_range(pos: u64, len: usize) -> Result<Option<String>> {
+    let Some(last_offset) = len.checked_sub(1) else {
+        return Ok(None);
+    };
+    let last_offset = u64::try_from(last_offset).map_err(|_| Error::Overflow)?;
+    let last = pos.checked_add(last_offset).ok_or(Error::Overflow)?;
+    Ok(Some(format!("bytes={pos}-{last}")))
 }
 
 /// Current UTC time as SigV4 `(amz_date = YYYYMMDDTHHMMSSZ, date_stamp = YYYYMMDD)`.
@@ -376,7 +440,7 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 
 #[cfg(test)]
 mod tests {
-    use super::{civil_from_days, parse_list_v2};
+    use super::{byte_range, civil_from_days, parse_list_v2};
 
     #[test]
     fn civil_from_days_matches_known_dates() {
@@ -414,5 +478,15 @@ mod tests {
         let (keys, next) = parse_list_v2(xml).expect("parse");
         assert_eq!(keys, vec!["k".to_string()]);
         assert_eq!(next, None, "non-truncated listing has no next token");
+    }
+
+    #[test]
+    fn byte_range_handles_empty_and_overflowing_ranges() {
+        assert_eq!(byte_range(12, 0).expect("empty range"), None);
+        assert_eq!(
+            byte_range(12, 4).expect("valid range").as_deref(),
+            Some("bytes=12-15")
+        );
+        assert!(byte_range(u64::MAX, 2).is_err());
     }
 }

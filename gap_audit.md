@@ -1,5 +1,17 @@
 # Consus - Gap Audit
 
+## ATLAS-CONSUS-RESOURCE-BOUNDARY-097 — Bounded external-input expansion (2026-08-14)
+
+The previous blanket statement that all Consus gaps were closed was false for
+resource exhaustion at external-input boundaries. This slice closes the
+identified S3 and decompression paths in source and tests: checked half-open
+ranges reject empty/overflowing requests; `ListObjectsV2` rejects oversized
+responses and aggregate key growth; and the shared `ParseBudget` now provides
+fallible bounded stream reads used by deflate and Parquet page decompression.
+LZ4 and Snappy inspect their encoded output length before allocating, while
+Zstandard receives the validated limit. Hosted and full focused-gate evidence
+is pending on the final provider head.
+
 ## Pages-disabled documentation CI (2026-07-22)
 
 Documentation run `29941230671` proved that Rustdoc and redirect generation

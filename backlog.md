@@ -1,5 +1,25 @@
 # Consus — Backlog
 
+## ATLAS-CONSUS-RESOURCE-BOUNDARY-097 — Bounded external-input expansion [major] — in progress
+
+- Owner: current Atlas safety audit; scope is the Consus core parse budget,
+  native compression codecs, Parquet page decompression, and the Moirai S3
+  client. The generated `Cargo.lock` remains peer-owned and is excluded from
+  this increment.
+- Finding: S3 range construction underflowed for zero-length reads and could
+  overflow at the end offset; listing responses and accumulated object keys
+  had no aggregate resource ceiling; deflate, LZ4, Snappy, and Parquet page
+  expansion could allocate from attacker-controlled output sizes.
+- Delivered in the working increment: `ParseBudget::read_bounded` provides one
+  fallible, byte-capped stream reader; codec paths validate encoded output
+  sizes before allocation; S3 ranges are checked and listings cap response,
+  key-count, and key-byte growth; value-semantic regressions cover the range
+  arithmetic and shared output-budget contract.
+- Acceptance: focused `cargo nextest` passes for core, compression, Parquet,
+  and IO with deflate/LZ4/Snappy/Zstd/GZIP coverage; locked metadata, strict
+  Clippy, doctests, and provider hosted gates pass at the final head. No
+  decompressor can reserve or grow beyond the shared parse budget.
+
 ## ATLAS-CONSUS-GATE-FIX-001 — Atlas gate fixes and audit record [patch] — done 2026-08-12
 
 - Owner: foundation audit (ATLAS-FOUNDATION-PLANNING-002); scope: canonical
