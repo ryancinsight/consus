@@ -33,8 +33,8 @@
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
-use super::types::datatype::{ByteOrder, Datatype};
 use super::Error;
+use super::types::datatype::{ByteOrder, Datatype};
 
 /// Read a `u16` from a slice given a byte order.
 ///
@@ -209,7 +209,10 @@ pub fn decode_to_f64(raw: &[u8], dtype: &Datatype) -> Result<Vec<f64>, Error> {
                 }),
             }
         }
-        Datatype::Boolean => Ok(raw.iter().map(|&v| if v != 0 { 1.0 } else { 0.0 }).collect()),
+        Datatype::Boolean => Ok(raw
+            .iter()
+            .map(|&v| if v != 0 { 1.0 } else { 0.0 })
+            .collect()),
         other => Err(Error::UnsupportedFeature {
             feature: alloc::format!("decode_to_f64: unsupported datatype {other:?}"),
         }),
