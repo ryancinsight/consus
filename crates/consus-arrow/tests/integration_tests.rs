@@ -1,3 +1,5 @@
+#![cfg(feature = "alloc")]
+
 //! Integration tests for Arrow ↔ Parquet ↔ Core schema conversions.
 //!
 //! ## Scope

@@ -1,5 +1,3 @@
-#![cfg_attr(not(feature = "std"), no_std)]
-
 //! Parquet field identifier and schema model.
 //!
 //! ## Specification
@@ -42,17 +40,23 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+#[cfg(feature = "alloc")]
 pub mod arrow;
+#[cfg(feature = "alloc")]
 pub mod evolution;
+#[cfg(feature = "alloc")]
 pub mod field;
 pub mod logical;
 pub mod physical;
 
+#[cfg(feature = "alloc")]
 pub use arrow::{ArrowBridge, ArrowBridgeMode, ArrowFieldDescriptor, ArrowIntegrationPlan};
+#[cfg(feature = "alloc")]
 pub use evolution::{
     SchemaEvolution, SchemaEvolutionStep, SchemaMergeError, SchemaMergeMode, SchemaProjection,
     SchemaProjectionError,
 };
+#[cfg(feature = "alloc")]
 pub use field::{FieldDescriptor, FieldId, SchemaDescriptor};
 pub use logical::{LogicalType, Nullability, Repetition, TimeUnit, TypeAnnotation};
 pub use physical::ParquetPhysicalType;
@@ -64,6 +68,7 @@ pub use physical::ParquetPhysicalWidth;
 mod tests {
     use super::*;
 
+    #[cfg(feature = "alloc")]
     #[test]
     fn schema_module_exports_are_available() {
         let physical = ParquetPhysicalType::Boolean;
@@ -73,6 +78,19 @@ mod tests {
             FieldDescriptor::required(FieldId::new(1), "temperature", ParquetPhysicalType::Double);
         assert_eq!(field.name(), "temperature");
         assert!(field.is_required());
+    }
+
+    #[cfg(not(feature = "alloc"))]
+    #[test]
+    fn no_alloc_exports_physical_and_logical_types() {
+        assert_eq!(ParquetPhysicalType::Boolean.width(), Some(1));
+        assert!(
+            LogicalType::Timestamp {
+                unit: TimeUnit::Nanoseconds,
+                is_adjusted_to_utc: true,
+            }
+            .is_temporal()
+        );
     }
 
     #[cfg(feature = "alloc")]

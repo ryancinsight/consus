@@ -142,7 +142,8 @@ fn parse_fields(
 ///    - `row_count`: taken from `meta_data.num_values as usize`
 ///    - `byte_len`: taken from `meta_data.total_compressed_size as usize`
 /// 4. Column chunks are matched to schema fields by their position in the
-///    `RowGroupMetadata.columns` list (i.e. columns[i] maps to schema.fields()[i]).
+///    `RowGroupMetadata.columns` list (i.e. `columns\[i\]` maps to
+///    `schema.fields()\[i\]`).
 ///
 /// ## Constraints
 ///

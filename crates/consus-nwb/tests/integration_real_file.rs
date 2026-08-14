@@ -1,3 +1,5 @@
+#![cfg(feature = "alloc")]
+
 //! Integration tests against the h5py-generated NWB 2.7 fixture.
 //!
 //! ## Fixture
@@ -196,17 +198,9 @@ fn real_file_nwb_v2_7_fixture_verification() {
 
     // ── 10. Subject metadata ─────────────────────────────────────────────
     let subj = file.subject().expect("subject must succeed");
-    assert_eq!(
-        subj.subject_id().as_deref(),
-        Some("mouse_001"),
-        "subject_id"
-    );
-    assert_eq!(subj.species().as_deref(), Some("Mus musculus"), "species");
-    assert_eq!(subj.sex().as_deref(), Some("M"), "sex");
-    assert_eq!(subj.age().as_deref(), Some("P60D"), "age");
-    assert_eq!(
-        subj.description().as_deref(),
-        Some("Test mouse"),
-        "description"
-    );
+    assert_eq!(subj.subject_id(), Some("mouse_001"), "subject_id");
+    assert_eq!(subj.species(), Some("Mus musculus"), "species");
+    assert_eq!(subj.sex(), Some("M"), "sex");
+    assert_eq!(subj.age(), Some("P60D"), "age");
+    assert_eq!(subj.description(), Some("Test mouse"), "description");
 }

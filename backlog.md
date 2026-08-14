@@ -19,6 +19,93 @@
   and IO with deflate/LZ4/Snappy/Zstd/GZIP coverage; locked metadata, strict
   Clippy, doctests, and provider hosted gates pass at the final head. No
   decompressor can reserve or grow beyond the shared parse budget.
+## CONSUS-TEST-API-001 — Migrate cross-format tests to provider-owned APIs [patch] — done 2026-08-13
+
+- Owner: Atlas integration. Scope: `tests/cross_format_interop.rs` only;
+  no provider facade or compatibility layer was added.
+- Delivered: HDF5 tests now use `Hdf5FileBuilder`, `list_root_group`,
+  `dataset_at`, and the contiguous/chunked read APIs; Zarr tests use the
+  canonical `ArrayMetadata` plus `write_chunk`/`read_chunk`; NetCDF tests use
+  `NetcdfWriter` and `read_model` over deterministic in-memory HDF5 images.
+  The absent-file skip paths and stale Arrow/Parquet call signatures are gone.
+- Acceptance: all nine cross-format scenarios execute with value-semantic
+  assertions; no test depends on an aspirational `ZarrArray`, `ArrayMetadataV3`,
+  `NcFile`, `build_writer`, or `MemCursor::new(buffer)` surface.
+- Evidence: focused all-format Nextest 8/8; all-format plus compression 9/9;
+  integration-test package all-features Nextest 42/42; warning-denied Clippy
+  for the touched target and workspace all-targets/all-features; workspace
+  no-default locked check; warning-denied workspace Rustdoc; formatting and
+  diff checks. PR #24 source head `a5b9cfdde4c789c237652e0d62c42ce8372005f5`
+  merged at `33c2df06b0209f21755462fe44bec85e6a979253`; hosted run
+  `31683877253` passed all 68 repository-owned jobs at the exact source head.
+
+## CONSUS-NODEF-FITS-003 — Close FITS no-default cfg boundary [patch] — done 2026-08-13
+
+- Owner: Atlas integration. Scope: `consus-fits` module, re-export, test, and
+  format-mapping feature boundaries plus the shared `consus-core` error
+  constructor required by workspace feature unification.
+- Acceptance: `consus-fits --no-default-features` compiles and tests its
+  retained value-semantic descriptors without warnings; default and all-feature
+  FITS behavior remains green; alloc-only parsing, HDU, image, table, file, and
+  validation APIs are not exposed or compiled in the no-alloc build.
+- Current evidence: the no-default package check, strict Clippy, and Nextest
+  16/16 pass after gating. Default package check, strict Clippy, Nextest
+  170/170, all-features check/Clippy, doctests, and warning-denied Rustdoc pass;
+  the workspace no-default check now passes after the shared Error constructor
+  and NWB re-export closure, and the workspace Clippy run exposed and fixed a
+  Copy-value clone in `tests/property_integration.rs`, stale NWB Option
+  assertions, and an approximate-PI fixture literal.
+- Completion: the provider workspace no-default check and strict Clippy pass;
+  `consus-nwb` and its HDF5 dependency are closed in the companion items
+  below. Remaining Consus work is limited to separately tracked test/API audit.
+
+## CONSUS-NODEF-NWB-004 — Close NWB no-default cfg boundary [patch] — done 2026-08-13
+
+- Owner: Atlas integration. Scope: `consus-nwb` module, re-export, version,
+  namespace, and alloc-only integration-test boundaries.
+- Acceptance: no-default builds retain the conventions/version surface without
+  compiling alloc-backed NWB APIs; default behavior remains value-semantically
+  tested; the workspace no-default feature graph remains warning-clean.
+- Delivered: alloc-only NWB modules, re-exports, and integration tests are
+  gated; no-default version matching is exhaustive; the shared workspace
+  `Error::invalid_format` constructor prevents dependency-feature shape from
+  leaking into FITS consumers.
+- Evidence: workspace no-default check and strict Clippy pass; default
+  `consus-nwb` Nextest 278/278 passes; no-default `consus-nwb` has no compiled
+  tests by contract and passes the explicit no-test gate.
+
+## CONSUS-NODEF-HDF5-005 — Close HDF5 no-default cfg boundary [patch] — done 2026-08-13
+
+- Owner: Atlas integration. Scope: `consus-hdf5` alloc-backed module,
+  re-export, test, benchmark, B-tree, and superblock error boundaries.
+- Acceptance: no-default HDF5 retains only its allocation-free structural
+  modules and compiles warning-cleanly; default HDF5 behavior remains covered
+  by its full value-semantic suite.
+- Delivered: alloc-backed HDF5 modules and test/bench targets are gated by the
+  `alloc` feature; no-default superblock errors use `consus-core`'s shared
+  constructor; default B-tree exports remain complete.
+- Evidence: no-default check, strict Clippy, and explicit no-test Nextest pass;
+  default strict Clippy passes and default HDF5 Nextest passes 405/405.
+
+## CONSUS-NODEF-ARROW-PARQUET-002 — Close Arrow/Parquet no-default cfg boundary [patch] — done 2026-08-13
+
+- Owner: Atlas foundation audit; scope: `consus-arrow` and `consus-parquet`
+  no-default module, test, and benchmark surfaces.
+- Delivered: alloc-only Parquet schema, bridge, conversion, wire, hybrid, and
+  Arrow facade modules are feature-gated at their module boundaries; the
+  no-alloc Arrow array descriptor retains a value-semantic shape API; alloc-only
+  integration tests and benchmarks declare their `alloc` requirement.
+- Acceptance: both crates compile with `--no-default-features`; their
+  no-default tests execute real retained surfaces; default behavior remains
+  covered by the complete package suites; warning-denied Clippy is clean in
+  both feature modes.
+- Evidence: `consus-parquet` no-default Nextest 10/10 and default 215/215;
+  `consus-arrow` no-default Nextest 2/2 and default 79/79; strict Clippy in
+  both modes; focused rustfmt check; workspace no-default sweep reaches the
+  next pre-existing `consus-fits` cfg boundary.
+- Residual: `CONSUS-NODEF-GATE-001` remains open for `consus-fits`,
+  `consus-nwb`, and downstream workspace feature edges; `CONSUS-TEST-API-001`
+  remains separate.
 
 ## ATLAS-CONSUS-GATE-FIX-001 — Atlas gate fixes and audit record [patch] — done 2026-08-12
 
@@ -28,16 +115,16 @@
   groups, bridge/schema/conversion alloc gating), Clippy lint fixes in
   `consus-nwb` (`report.rs`) and `consus-hdmf` (`tests/integration.rs`), and
   `consus-hdf5` root re-exports for the `Hdf5File`/`Hdf5FileBuilder` facades.
-- Verified: default + all-features checks and doctests pass; `consus-arrow`
-  no-default is partially closed (re-export E0432s fixed; ~27 errors remain
-  in `field/mod.rs`, `memory/mod.rs`, `array/mod.rs` — see
-  CONSUS-NODEF-GATE-001).
+- Verified: default + all-features checks and doctests pass. The initial
+  `consus-arrow` no-default re-export closure was completed by the follow-on
+  `CONSUS-NODEF-ARROW-PARQUET-002` item; the wider workspace cfg debt remains
+  under `CONSUS-NODEF-GATE-001`.
 - Remaining (tracked, not part of this patch): `--no-default-features`
   workspace cfg debt (CONSUS-NODEF-GATE-001) and the integration-test
   aspirational I/O API (CONSUS-TEST-API-001); both are inventoried in
   `gap_audit.md`.
 
-## ATLAS-CONSUS-001 — Themis topology partition sizing [minor] — review
+## ATLAS-CONSUS-001 — Themis topology partition sizing [minor] — done
 
 - Owner: Codex; scope: the `consus` facade's default parallel-I/O policy and
   the no-alloc feature boundary in the compression/facade crates.
@@ -48,9 +135,10 @@
 - Evidence: `cargo fmt --all -- --check`; default `consus` check, Clippy,
   Nextest 7/7, doctests, and rustdoc pass; no-default `consus` check and
   no-default `consus-compression` Clippy pass.
-- Delivery blocker: the Atlas overlay rewrites this checkout's `Cargo.lock`,
-  and the branch is one commit behind `origin/main`; the lock must be
-  reconciled from a clean standalone resolution before the Atlas gitlink moves.
+- Delivery: merged as `005d0a7` and present on the current default `3610b45`.
+  Hosted CI `31645404672`, Documentation `31645404702`, and Pages deployment
+  `31645405182` all passed at the exact default head. The Atlas gitlink is
+  advanced separately by the root integration item.
 
 ## CRATES-REL-003 — Facade package documentation [patch] — done
 

@@ -1,3 +1,5 @@
+#![cfg(feature = "alloc")]
+
 //! Integration tests: verify consus-hdf5 writer output with `h5dump`.
 //!
 //! ## Purpose

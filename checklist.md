@@ -1,5 +1,73 @@
 # Consus — Implementation Checklist
 
+## CONSUS-TEST-API-001 — Migrate cross-format tests to provider-owned APIs — done 2026-08-13
+
+- [x] Verify the residual at exact `origin/main` `b3ca01c21b2e9bad4c7b7dc23c47083ca79a3307`;
+      preserve the peer checkout and work in a fresh lane.
+- [x] Replace the stale HDF5, Zarr, NetCDF, and in-memory I/O calls directly
+      against the provider-owned contracts; add no wrapper or fallback path.
+- [x] Replace absent-file skip behavior with deterministic in-memory NetCDF/HDF5
+      fixtures and preserve value-semantic assertions.
+- [x] Pass focused cross-format 8/8, compression-inclusive 9/9, and package
+      all-features 42/42 Nextest; pass warning-denied Clippy, workspace
+      no-default check, formatting, and diff checks.
+- [x] Commit the provider slice as `a5b9cfd`; hosted run `31683877253` passed
+      all 68 repository-owned jobs at the exact source head, and PR #24 merged
+      to provider default at `33c2df0`.
+
+## CONSUS-NODEF-FITS-003 — Close FITS no-default cfg boundary — done 2026-08-13
+
+- [x] Gate alloc-only FITS image, table, file, facade, validation, HDU, header
+      parser/value/card, and datatype-construction surfaces at their module or
+      item boundaries.
+- [x] Retain the no-alloc FITS type, block, span, and index descriptors with
+      value-semantic unit coverage; remove nested `no_std` attributes and
+      feature-induced warnings.
+- [x] Pass no-default check, strict Clippy, and Nextest 16/16.
+- [x] Pass default check, strict Clippy, and Nextest 170/170; pass all-features
+      check/Clippy, doctests, warning-denied Rustdoc, and formatting.
+- [x] Close the workspace feature-unification error constructor, gate the
+      no-default NWB re-exports/version path, and remove the workspace
+      integration-test `Copy` clone, stale Option assertions, and approximate
+      PI fixture literal caught by strict Clippy.
+- [x] Close the workspace feature-unification constructor and the downstream
+      `consus-nwb` no-default module, re-export, version, and test boundaries.
+- [x] Close the transitive `consus-hdf5` no-default module, error, test, and
+      benchmark boundaries required by the NWB library build.
+- [ ] Commit the provider slice and run hosted exact-head gates.
+
+## CONSUS-NODEF-NWB-004 — Close NWB no-default cfg boundary — done 2026-08-13
+
+- [x] Gate alloc-only NWB modules, re-exports, namespace helpers, and
+      integration/property tests at their ownership boundaries.
+- [x] Preserve the no-alloc conventions/version surface and exhaustive unknown
+      version behavior.
+- [x] Pass workspace no-default check and strict Clippy; pass default NWB
+      Nextest 278/278 and the explicit no-default no-tests gate.
+- [ ] Commit the provider slice and run hosted exact-head gates with the FITS
+      item above.
+
+## CONSUS-NODEF-HDF5-005 — Close HDF5 no-default cfg boundary — done 2026-08-13
+
+- [x] Gate alloc-backed HDF5 modules and preserve the allocation-free address,
+      constants, primitives, and superblock surface.
+- [x] Gate alloc-backed unit/integration tests and the HDF5 benchmark target;
+      retain the default test suite unchanged.
+- [x] Pass no-default check, strict Clippy, explicit no-test Nextest, default
+      strict Clippy, and default Nextest 405/405.
+
+## CONSUS-NODEF-ARROW-PARQUET-002 — Close Arrow/Parquet no-default cfg boundary
+
+- [x] Gate alloc-only `consus-parquet` schema, bridge, conversion, wire, and
+      hybrid modules and re-exports at their ownership boundaries.
+- [x] Gate alloc-only `consus-arrow` facade modules and re-exports while
+      retaining the no-alloc array shape descriptor.
+- [x] Gate alloc-only integration tests and benchmarks with `alloc` feature
+      requirements.
+- [x] Pass no-default and default Nextest suites for both crates.
+- [x] Pass warning-denied Clippy for both crates in both feature modes.
+- [x] Record the remaining workspace no-default blockers in `gap_audit.md`.
+
 ## ATLAS-CONSUS-001 — Themis topology partition sizing [minor]
 
 - [x] Make the standard `consus` feature set use Themis CPU topology for the
@@ -10,8 +78,8 @@
       preserving compact no-alloc error construction in compression parsing.
 - [x] Pass formatting, default and no-default package checks, warning-denied
       Clippy for the affected packages, Nextest 7/7, doctests, and rustdoc.
-- [ ] Reconcile the standalone Git-source lock, merge current `origin/main`,
-      and advance the Atlas Consus gitlink.
+- [x] Reconcile the standalone Git-source lock and merge current `origin/main`
+      in `005d0a7`; root Atlas records the exact provider head separately.
 
 ## CRATES-REL-003 — Facade package documentation [patch]
 

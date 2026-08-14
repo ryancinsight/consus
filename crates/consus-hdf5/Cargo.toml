@@ -43,6 +43,7 @@ tokio = { version = "1", features = ["macros", "rt"] }
 [[bench]]
 name = "hdf5_read"
 harness = false
+required-features = ["alloc"]
 [[test]]
 name = "async_hdf5"
 path = "tests/async_hdf5.rs"

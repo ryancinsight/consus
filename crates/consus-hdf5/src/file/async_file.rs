@@ -7,7 +7,7 @@
 //!
 //! Async pre-fetching: each method issues one or more `await`-ed positioned
 //! reads to collect the bytes needed by a structure, then delegates to the
-//! existing sync parsers operating on a [`MultiRegionBuffer`]. Format logic
+//! existing sync parsers operating on a `MultiRegionBuffer`. Format logic
 //! is not duplicated; only the I/O coordination layer is async.
 //!
 //! ## Invariant
@@ -42,9 +42,7 @@ use consus_core::Error;
 ///
 /// Parameterized over the I/O source to support both file and object-store
 /// backends. All read operations are async; format parsing is delegated to
-/// the sync parsers via [`MultiRegionBuffer`].
-///
-/// [`MultiRegionBuffer`]: super::async_reader::MultiRegionBuffer
+/// the sync parsers via the internal `MultiRegionBuffer` representation.
 #[cfg(feature = "async-io")]
 #[cfg(feature = "alloc")]
 pub struct AsyncHdf5File<R>

@@ -48,29 +48,40 @@
 extern crate alloc;
 
 pub mod array;
+#[cfg(feature = "alloc")]
 pub mod bridge;
+#[cfg(feature = "alloc")]
 pub mod compute;
+#[cfg(feature = "alloc")]
 pub mod conversion;
+#[cfg(feature = "alloc")]
 pub mod datatype;
+#[cfg(feature = "alloc")]
 pub mod field;
+#[cfg(feature = "alloc")]
 pub mod ipc;
+#[cfg(feature = "alloc")]
 pub mod memory;
+#[cfg(feature = "alloc")]
 pub mod schema;
 
 #[cfg(feature = "alloc")]
 pub use array::{ArrayData, ArrowArray, column_values_to_arrow};
 #[cfg(feature = "alloc")]
 pub use bridge::{ArrowBridge, ArrowBridgePlan, ArrowFieldDescriptor};
+#[cfg(feature = "alloc")]
 pub use bridge::{ArrowBridgeMode, ArrowDataTypeHint, ArrowSchemaMapping, ArrowZeroCopyConstraint};
 pub use datatype::{
     ArrowDataType, DecimalType, DurationType, FixedSizeBinaryType, IntSign, TimeUnit, TimestampType,
 };
 #[cfg(feature = "alloc")]
 pub use datatype::{DictionaryType, ListType, MapType, StructType, UnionType};
+#[cfg(feature = "alloc")]
 pub use field::{
     ArrowField, ArrowFieldBuilder, ArrowFieldId, ArrowFieldKind, ArrowFieldMultiplicity,
     ArrowFieldSemantics, ArrowNullability, field_from_datatype, kind_from_datatype,
 };
+#[cfg(feature = "alloc")]
 pub use ipc::{BatchKind, BufferOwnership, IpcFraming, IpcMaterializationPolicy, IpcPlanError};
 #[cfg(feature = "alloc")]
 pub use ipc::{DictionaryBatchDescriptor, IpcPlan, RecordBatchDescriptor};
@@ -82,6 +93,7 @@ pub use schema::{
     ArrowSchema, ArrowSchemaError, ArrowSchemaMergePlan, ArrowSchemaMergeStep, SchemaProjectionPlan,
 };
 
+#[cfg(feature = "alloc")]
 pub use conversion::{
     ConversionCompatibility, ConversionMode, analyze_conversion_compatibility,
     arrow_datatype_to_core, core_datatype_to_arrow_hint,
@@ -90,7 +102,7 @@ pub use conversion::{
 #[cfg(feature = "alloc")]
 pub use conversion::{ArrowFieldFromCoreBuilder, arrow_schema_to_core_pairs};
 
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
 
@@ -100,5 +112,18 @@ mod tests {
         let schema = schema::ArrowSchema::empty();
         assert_eq!(schema.field_count(), 0);
         assert!(schema.is_empty());
+    }
+}
+
+#[cfg(all(test, not(feature = "alloc")))]
+mod no_alloc_tests {
+    use super::{ArrayData, ArrowArray};
+
+    #[test]
+    fn no_alloc_array_surface_preserves_shape() {
+        let array = ArrowArray::new(ArrayData::fixed_width(3, 4));
+        assert_eq!(array.len(), 3);
+        assert_eq!(array.null_count(), 0);
+        assert!(array.is_all_valid());
     }
 }

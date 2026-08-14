@@ -26,14 +26,13 @@
 //! This module is the SSOT for FITS keyword semantics. Parsing code should not
 //! duplicate reserved-keyword tables or mandatory-keyword logic.
 
-#![cfg_attr(not(feature = "std"), no_std)]
-
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
 #[cfg(feature = "alloc")]
 use alloc::{string::String, vec::Vec};
 
+#[cfg(feature = "alloc")]
 use core::fmt;
 
 /// Canonical FITS keyword representation.
@@ -324,6 +323,7 @@ pub enum ReservedKeywordClass {
 
 /// Keyword parsing and normalization errors.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg(feature = "alloc")]
 pub enum KeywordError {
     /// The keyword field is empty after trimming.
     EmptyKeyword,
@@ -350,6 +350,7 @@ pub enum KeywordError {
     },
 }
 
+#[cfg(feature = "alloc")]
 impl fmt::Display for KeywordError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -437,7 +438,7 @@ pub fn is_valid_hierarchical_segment(segment: &str) -> bool {
             .all(|byte| matches!(byte, b'!'..=b'<' | b'>'..=b'~'))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
 

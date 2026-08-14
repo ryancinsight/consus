@@ -19,8 +19,11 @@
 #[cfg(feature = "alloc")]
 use alloc::string::String;
 
+#[cfg(feature = "alloc")]
 use consus_core::{AttributeValue, Error, Result};
+#[cfg(feature = "alloc")]
 use consus_hdf5::file::Hdf5File;
+#[cfg(feature = "alloc")]
 use consus_io::ReadAt;
 
 /// NWB 2.x specification version.
@@ -94,7 +97,19 @@ impl NwbVersion {
     /// `Unknown` variants return `false` regardless of content.
     #[must_use]
     pub fn is_supported(&self) -> bool {
-        !matches!(self, NwbVersion::Unknown(_))
+        match self {
+            Self::V2_0
+            | Self::V2_1
+            | Self::V2_2
+            | Self::V2_3
+            | Self::V2_4
+            | Self::V2_5
+            | Self::V2_6
+            | Self::V2_7
+            | Self::V2_8 => true,
+            #[cfg(feature = "alloc")]
+            Self::Unknown(_) => false,
+        }
     }
 
     /// Returns the canonical two-component version string for display purposes.

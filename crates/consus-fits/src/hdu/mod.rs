@@ -24,21 +24,24 @@
 //! FITS keyword parsing, image metadata extraction, table metadata extraction,
 //! or 2880-byte blocking math.
 
-#![cfg_attr(not(feature = "std"), no_std)]
-
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+#[cfg(feature = "alloc")]
 mod descriptor;
 mod index;
+#[cfg(feature = "alloc")]
 mod kind;
+#[cfg(feature = "alloc")]
 mod payload;
+#[cfg(feature = "alloc")]
 mod sequence;
+#[cfg(feature = "alloc")]
 mod support;
-
 #[cfg(feature = "alloc")]
 pub use descriptor::FitsHdu;
 pub use index::FitsHduIndex;
+#[cfg(feature = "alloc")]
 pub use kind::FitsHduKind;
 #[cfg(feature = "alloc")]
 pub use payload::FitsHduPayload;

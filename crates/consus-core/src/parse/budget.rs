@@ -240,7 +240,6 @@ impl ParseBudget {
             })?;
         Ok(collection)
     }
-
     /// Read a stream into a bounded buffer without trusting its declared size.
     ///
     /// The initial capacity is only a hint from the format metadata. Every
@@ -397,7 +396,6 @@ mod tests {
                 .is_err()
         );
     }
-
     #[cfg(feature = "std")]
     #[test]
     fn read_bounded_rejects_output_above_budget() {

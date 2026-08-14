@@ -11,6 +11,86 @@ fallible bounded stream reads used by deflate and Parquet page decompression.
 LZ4 and Snappy inspect their encoded output length before allocating, while
 Zstandard receives the validated limit. Hosted and full focused-gate evidence
 is pending on the final provider head.
+## Cross-format integration test API closure (2026-08-13)
+
+The former `CONSUS-TEST-API-001` residual was real at the merged default
+`b3ca01c21b2e9bad4c7b7dc23c47083ca79a3307`: the test target used absent
+`ZarrArray`, `ArrayMetadataV3`, and `NcFile` facades, stale HDF5 builder and
+dataset methods, an invalid `MemCursor` constructor, and skip-on-missing-file
+fixtures. `tests/cross_format_interop.rs` now consumes the provider's current
+contracts directly. HDF5 roundtrips use the builder/list/dataset APIs, Zarr
+roundtrips use canonical metadata and chunk operations, and NetCDF compatibility
+uses `NetcdfWriter` plus `read_model` over in-memory HDF5 images.
+
+Verification at the implementation head: focused all-format Nextest 8/8;
+compression-inclusive 9/9; package all-features Nextest 42/42; warning-denied
+Clippy for the target and workspace all-targets/all-features; workspace
+no-default locked check; warning-denied workspace Rustdoc; formatting and diff
+checks. Source head `a5b9cfdde4c789c237652e0d62c42ce8372005f5` merged as
+`33c2df06b0209f21755462fe44bec85e6a979253`; hosted run `31683877253` passed
+all 68 repository-owned jobs at that exact source head. The residual is closed.
+
+## FITS and NWB no-default closure (2026-08-13, implementation complete; hosted verification pending)
+
+The initial `consus-fits --no-default-features` check failed with 45 errors and
+36 warnings because alloc-only FITS parsing, HDU, image, table, file, and
+validation modules were still compiled, while their re-exports were only
+partially gated. The current slice gates those boundaries and the alloc-only
+header parser/value model and datatype construction functions. The retained
+no-alloc surface is `Bitpix`, `HduType`, `BinaryFormatCode` parsing and element
+size, `FitsHduIndex`, and FITS block/span descriptors.
+
+Evidence after the implementation pass: no-default check, strict Clippy, and
+Nextest 16/16 pass; default check, strict Clippy, and Nextest 170/170 pass;
+all-features check/Clippy, doctests, warning-denied Rustdoc, and workspace
+formatting pass. The workspace no-default check and strict Clippy now pass after
+closing the shared `Error::invalid_format` feature-unification boundary, the NWB
+re-export/version/test boundary, and the transitive HDF5 module/test boundary.
+The NWB default suite passes 278/278, the HDF5 default suite passes 405/405,
+and the explicit no-default no-tests gates pass. Hosted exact-head verification
+is the only remaining gate for this provider slice.
+
+## HDF5 no-default closure (2026-08-13)
+
+The NWB no-default library gate originally failed in `consus-hdf5` because
+alloc-backed file APIs and B-tree re-exports were compiled without `alloc`, and
+superblock errors constructed heap-backed payloads unconditionally. The HDF5
+root now retains only its allocation-free structural modules in no-default
+builds; alloc-backed modules, tests, and the benchmark are feature-gated. The
+shared `Error::invalid_format` constructor preserves the error category in
+no-alloc builds and retains detailed messages in alloc builds.
+
+Evidence: HDF5 no-default check, strict Clippy, and explicit no-test Nextest
+pass; default strict Clippy and Nextest 405/405 pass. The workspace no-default
+check and strict Clippy pass after this closure.
+
+## Arrow/Parquet no-default closure (2026-08-13)
+
+`consus-arrow` and `consus-parquet` now honor their declared `alloc` boundary.
+Alloc-bearing schema, bridge, conversion, wire, hybrid, reader, writer, and
+materialization surfaces are not compiled in a no-default build. The retained
+no-alloc surface is the physical/logical Parquet model plus an Arrow fixed-width
+shape descriptor; its tests assert value semantics rather than existence only.
+Alloc-only integration tests and Criterion benches declare `alloc` as a
+required feature, so no-default `--all-targets` checks do not compile APIs that
+the feature contract intentionally removes.
+
+Evidence: `consus-parquet` no-default Nextest 10/10 and default 215/215;
+`consus-arrow` no-default Nextest 2/2 and default 79/79; strict Clippy passes
+for both packages in both modes. A workspace no-default check proceeds through
+these two providers and stops at the pre-existing `consus-fits` cfg boundary.
+
+## Themis topology partition closure (2026-08-12)
+
+The Themis-backed default partition sizing implementation is present on the
+current Consus default at `005d0a7`. The standard facade derives its default
+parallel-I/O partition count from Themis CPU topology; no-default builds keep
+the alloc-free boundary and compact parse errors. The focused implementation
+and hosted evidence are complete: CI `31645404672`, Documentation
+`31645404702`, and Pages deployment `31645405182` all passed at exact head
+`3610b45`. This closes `ATLAS-CONSUS-001`; the remaining Python trusted
+publisher registration is an external release prerequisite, not an
+implementation gap in this item.
 
 ## Pages-disabled documentation CI (2026-07-22)
 
@@ -733,13 +813,9 @@ owns the cross-repository matrix.
 - `cargo check` (default): pass.
 - `cargo check --all-features`: pass.
 - Doctests (`--all-features`): pass.
-- `consus-arrow` `--no-default-features`: **partially closed** by this
-  audit's cfg-gating fixes (lib.rs re-export groups, `bridge/mod.rs`
-  alloc-gated schema/field imports, `schema/mod.rs`
-  `ArrowSchemaError`/`ArrowSchemaMergeStep` gating, `conversion/convert.rs`
-  Complex-arm gating). The re-export E0432 surface is closed, but the crate
-  still fails no-default with ~27 errors in `field/mod.rs`, `memory/mod.rs`,
-  and `array/mod.rs` — see CONSUS-NODEF-GATE-001 below.
+- `consus-arrow` and `consus-parquet` no-default cfg closure is complete under
+  `CONSUS-NODEF-ARROW-PARQUET-002`; default and no-default package gates are
+  green. The remaining workspace debt is outside these two providers.
 - Clippy lint fixes landed: `consus-nwb/src/validation/report.rs` redundant
   borrow; `consus-hdmf/tests/integration.rs` `approx_constant` (2 sites).
 - `consus-hdf5` root re-exports added for the `Hdf5File` and `Hdf5FileBuilder`
@@ -747,14 +823,14 @@ owns the cross-repository matrix.
 
 ### Open — CONSUS-NODEF-GATE-001 (--no-default-features cfg debt)
 
-`cargo check --workspace --no-default-features` fails across the format crates
-with systematic alloc/feature-gating debt: unconditional re-exports of
-alloc-gated items and un-gated `alloc::`/`vec!` references in no-std mode.
-Inventory at this audit: `consus-arrow` (~27 errors; the re-export E0432s
-were closed by the fixes above, the remaining sites are in `field/mod.rs`,
-`memory/mod.rs`, and `array/mod.rs`), `consus-parquet` (~10),
-`consus-fits` (~50), `consus-nwb` (4), plus downstream surfaced during
-iterated checks. Closure is a dedicated cfg-hygiene slice.
+`cargo check --workspace --no-default-features` still fails across the
+remaining format crates with systematic alloc/feature-gating debt:
+unconditional re-exports of alloc-gated items and un-gated `alloc::`/`vec!`
+references in no-std mode. `consus-arrow` and `consus-parquet` are closed by
+`CONSUS-NODEF-ARROW-PARQUET-002`; the next deterministic blocker is
+`consus-fits` (50 errors in the current sweep), followed by `consus-nwb` and
+downstream feature edges. Closure remains a dependency-ordered cfg-hygiene
+sequence.
 
 ### Open — CONSUS-TEST-API-001 (integration-test aspirational I/O API)
 

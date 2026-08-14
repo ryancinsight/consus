@@ -1,3 +1,5 @@
+#![cfg(feature = "alloc")]
+
 //! HDF5 reference file validation tests.
 //!
 //! ## Specification Reference

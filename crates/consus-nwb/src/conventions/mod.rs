@@ -20,8 +20,11 @@
 mod neurodata_type;
 mod timeseries;
 
+#[cfg(feature = "alloc")]
 pub use neurodata_type::{classify_neurodata_type, NeuroDataType};
-pub use timeseries::{is_timeseries_type, is_timeseries_type_with_specs, TIMESERIES_SUBTYPES};
+#[cfg(feature = "alloc")]
+pub use timeseries::is_timeseries_type_with_specs;
+pub use timeseries::{is_timeseries_type, TIMESERIES_SUBTYPES};
 
 #[cfg(all(test, feature = "alloc"))]
 mod tests;
