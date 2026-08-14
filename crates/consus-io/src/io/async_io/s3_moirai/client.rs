@@ -320,9 +320,11 @@ impl S3Client {
             let page_key_bytes = page_keys.iter().try_fold(0usize, |total, key| {
                 total.checked_add(key.len()).ok_or(Error::Overflow)
             })?;
-            let key_bytes = keys.iter().try_fold(page_key_bytes, |total, key| {
-                total.checked_add(key.len()).ok_or(Error::Overflow)
-            })?;
+            let key_bytes = keys
+                .iter()
+                .try_fold(page_key_bytes, |total, key: &String| {
+                    total.checked_add(key.len()).ok_or(Error::Overflow)
+                })?;
             budget.checked_bytes(
                 u64::try_from(key_bytes).map_err(|_| Error::Overflow)?,
                 "S3 object-key bytes",

@@ -358,6 +358,7 @@ fn decompress_deflate(data: &[u8], uncompressed_size: usize) -> Result<Vec<u8>> 
         })
 }
 
+#[cfg(feature = "lz4")]
 fn checked_output_size(size: usize) -> Result<usize> {
     ParseBudget::default().checked_bytes(
         u64::try_from(size).map_err(|_| Error::Overflow)?,
