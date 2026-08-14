@@ -10,7 +10,7 @@ use super::rle_dict::decode_rle_dict_indices;
 use crate::schema::physical::ParquetPhysicalType;
 use crate::wire::page::DictionaryPageHeader;
 use alloc::{format, string::String, vec::Vec};
-use consus_core::{Error, Result};
+use consus_core::{Error, ParseBudget, Result};
 
 const ENCODING_PLAIN: i32 = 0;
 const ENCODING_PLAIN_DICTIONARY: i32 = 2;
@@ -134,7 +134,10 @@ fn decode_plain_column(bytes: &[u8], n: usize, pt: ParquetPhysicalType) -> Resul
 }
 
 fn lookup_indices<T: Clone>(dict: &[T], indices: &[i32]) -> Result<Vec<T>> {
-    let mut out = Vec::with_capacity(indices.len());
+    let mut out = ParseBudget::default().vec_with_capacity::<T>(
+        u64::try_from(indices.len()).map_err(|_| Error::Overflow)?,
+        "parquet dictionary output count",
+    )?;
     for &idx in indices {
         if idx < 0 {
             return Err(Error::InvalidFormat {
@@ -180,7 +183,15 @@ pub fn decode_dictionary_page(
     header: &DictionaryPageHeader,
     physical_type: ParquetPhysicalType,
 ) -> Result<ColumnValues> {
-    decode_plain_column(data, header.num_values as usize, physical_type)
+    let count = usize::try_from(header.num_values).map_err(|_| Error::InvalidFormat {
+        message: String::from("parquet: dictionary num_values must be non-negative"),
+    })?;
+    let count = ParseBudget::default().checked_elements(
+        u64::try_from(count).map_err(|_| Error::Overflow)?,
+        core::mem::size_of::<i32>(),
+        "parquet dictionary value count",
+    )?;
+    decode_plain_column(data, count, physical_type)
 }
 
 /// Decode a data page values section into typed ColumnValues.

@@ -3,7 +3,12 @@
 //! Reference: <https://github.com/apache/parquet-format/blob/master/Encodings.md>
 
 use alloc::vec::Vec;
-use consus_core::{Error, Result};
+use consus_core::{Error, ParseBudget, Result};
+
+fn value_capacity<T>(count: usize, what: &'static str) -> Result<Vec<T>> {
+    ParseBudget::default()
+        .vec_with_capacity(u64::try_from(count).map_err(|_| Error::Overflow)?, what)
+}
 
 /// Decode count boolean values from PLAIN-encoded bytes.
 ///
@@ -21,7 +26,7 @@ pub fn decode_plain_boolean(bytes: &[u8], count: usize) -> Result<Vec<bool>> {
             provided: bytes.len(),
         });
     }
-    let mut out = Vec::with_capacity(count);
+    let mut out = value_capacity(count, "parquet boolean value count")?;
     for i in 0..count {
         out.push((bytes[i / 8] >> (i % 8)) & 1 != 0);
     }
@@ -43,7 +48,7 @@ pub fn decode_plain_i32(bytes: &[u8], count: usize) -> Result<Vec<i32>> {
             provided: bytes.len(),
         });
     }
-    let mut out = Vec::with_capacity(count);
+    let mut out = value_capacity(count, "parquet int32 value count")?;
     for i in 0..count {
         let b = i * 4;
         out.push(i32::from_le_bytes([
@@ -71,7 +76,7 @@ pub fn decode_plain_i64(bytes: &[u8], count: usize) -> Result<Vec<i64>> {
             provided: bytes.len(),
         });
     }
-    let mut out = Vec::with_capacity(count);
+    let mut out = value_capacity(count, "parquet int64 value count")?;
     for i in 0..count {
         let b = i * 8;
         out.push(i64::from_le_bytes([
@@ -103,7 +108,7 @@ pub fn decode_plain_i96(bytes: &[u8], count: usize) -> Result<Vec<[u8; 12]>> {
             provided: bytes.len(),
         });
     }
-    let mut out = Vec::with_capacity(count);
+    let mut out = value_capacity(count, "parquet int96 value count")?;
     for i in 0..count {
         let b = i * 12;
         let mut arr = [0u8; 12];
@@ -128,7 +133,7 @@ pub fn decode_plain_f32(bytes: &[u8], count: usize) -> Result<Vec<f32>> {
             provided: bytes.len(),
         });
     }
-    let mut out = Vec::with_capacity(count);
+    let mut out = value_capacity(count, "parquet float value count")?;
     for i in 0..count {
         let b = i * 4;
         out.push(f32::from_le_bytes([
@@ -156,7 +161,7 @@ pub fn decode_plain_f64(bytes: &[u8], count: usize) -> Result<Vec<f64>> {
             provided: bytes.len(),
         });
     }
-    let mut out = Vec::with_capacity(count);
+    let mut out = value_capacity(count, "parquet double value count")?;
     for i in 0..count {
         let b = i * 8;
         out.push(f64::from_le_bytes([
@@ -177,7 +182,7 @@ pub fn decode_plain_f64(bytes: &[u8], count: usize) -> Result<Vec<f64>> {
 ///
 /// Each value is prefixed by a 4-byte LE unsigned length, followed by that many bytes.
 pub fn decode_plain_byte_array(bytes: &[u8], count: usize) -> Result<Vec<Vec<u8>>> {
-    let mut out = Vec::with_capacity(count);
+    let mut out = value_capacity(count, "parquet byte-array value count")?;
     let mut pos = 0usize;
     for _ in 0..count {
         let after_prefix = pos.checked_add(4).ok_or(Error::Overflow)?;
@@ -214,7 +219,9 @@ pub fn decode_plain_fixed_byte_array(
     fixed_len: usize,
 ) -> Result<Vec<Vec<u8>>> {
     if fixed_len == 0 {
-        return Ok((0..count).map(|_| Vec::new()).collect());
+        let mut out = value_capacity(count, "parquet fixed-byte-array value count")?;
+        out.resize_with(count, Vec::new);
+        return Ok(out);
     }
     let required = count.checked_mul(fixed_len).ok_or(Error::Overflow)?;
     if bytes.len() < required {
@@ -223,7 +230,7 @@ pub fn decode_plain_fixed_byte_array(
             provided: bytes.len(),
         });
     }
-    let mut out = Vec::with_capacity(count);
+    let mut out = value_capacity(count, "parquet fixed-byte-array value count")?;
     for i in 0..count {
         let b = i * fixed_len;
         out.push(bytes[b..b + fixed_len].to_vec());
@@ -376,6 +383,12 @@ mod tests {
     fn decode_plain_byte_array_truncated_length_errors() {
         let err = decode_plain_byte_array(&[0x05, 0x00, 0x00], 1).unwrap_err();
         assert!(matches!(err, consus_core::Error::BufferTooSmall { .. }));
+    }
+
+    #[test]
+    fn decode_plain_byte_array_rejects_hostile_count_before_allocation() {
+        let err = decode_plain_byte_array(&[], usize::MAX).unwrap_err();
+        assert!(matches!(err, Error::ResourceLimit { .. }));
     }
 
     // Test 14: boolean count=0 returns empty

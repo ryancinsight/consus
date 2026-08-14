@@ -358,7 +358,6 @@ fn decompress_deflate(data: &[u8], uncompressed_size: usize) -> Result<Vec<u8>> 
         })
 }
 
-#[cfg(feature = "lz4")]
 fn checked_output_size(size: usize) -> Result<usize> {
     ParseBudget::default().checked_bytes(
         u64::try_from(size).map_err(|_| Error::Overflow)?,
@@ -367,8 +366,9 @@ fn checked_output_size(size: usize) -> Result<usize> {
 }
 
 fn copy_bounded(data: &[u8]) -> Result<Vec<u8>> {
+    let len = checked_output_size(data.len())?;
     let mut output = ParseBudget::default().zeroed(
-        u64::try_from(data.len()).map_err(|_| Error::Overflow)?,
+        u64::try_from(len).map_err(|_| Error::Overflow)?,
         "decompressed output",
     )?;
     output.copy_from_slice(data);

@@ -13,7 +13,16 @@
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use consus_core::{Error, Result};
+use consus_core::{Error, ParseBudget, Result};
+
+fn zero_levels(count: usize) -> Result<Vec<i32>> {
+    let mut out = ParseBudget::default().vec_with_capacity::<i32>(
+        u64::try_from(count).map_err(|_| Error::Overflow)?,
+        "parquet level values",
+    )?;
+    out.resize(count, 0);
+    Ok(out)
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -56,12 +65,20 @@ pub fn decode_levels(bytes: &[u8], bit_width: u8, count: usize) -> Result<Vec<i3
             message: String::from("bit_width exceeds 32"),
         });
     }
+    let count = ParseBudget::default().checked_elements(
+        u64::try_from(count).map_err(|_| Error::Overflow)?,
+        core::mem::size_of::<i32>(),
+        "parquet level count",
+    )?;
     if bit_width == 0 || count == 0 {
-        return Ok(alloc::vec![0i32; count]);
+        return zero_levels(count);
     }
 
     let mut pos: usize = 0;
-    let mut out: Vec<i32> = Vec::with_capacity(count);
+    let mut out = ParseBudget::default().vec_with_capacity::<i32>(
+        u64::try_from(count).map_err(|_| Error::Overflow)?,
+        "parquet level values",
+    )?;
 
     while out.len() < count {
         let header = read_rle_varint(bytes, &mut pos)?;
@@ -69,9 +86,10 @@ pub fn decode_levels(bytes: &[u8], bit_width: u8, count: usize) -> Result<Vec<i3
             // RLE run: run_length copies of a single LE value.
             let run_len = (header >> 1) as usize;
             let value_bytes = (bit_width as usize).div_ceil(8);
-            if pos + value_bytes > bytes.len() {
+            let end = pos.checked_add(value_bytes).ok_or(Error::Overflow)?;
+            if end > bytes.len() {
                 return Err(Error::BufferTooSmall {
-                    required: pos + value_bytes,
+                    required: end,
                     provided: bytes.len(),
                 });
             }
@@ -79,7 +97,7 @@ pub fn decode_levels(bytes: &[u8], bit_width: u8, count: usize) -> Result<Vec<i3
             for k in 0..value_bytes {
                 val |= (bytes[pos + k] as u64) << (k * 8);
             }
-            pos += value_bytes;
+            pos = end;
             let to_emit = run_len.min(count - out.len());
             for _ in 0..to_emit {
                 #[allow(clippy::cast_possible_truncation)]
@@ -92,14 +110,15 @@ pub fn decode_levels(bytes: &[u8], bit_width: u8, count: usize) -> Result<Vec<i3
             let group_bytes = bit_width as usize;
             let mut group_out = [0i32; 8];
             for _ in 0..num_groups {
-                if pos + group_bytes > bytes.len() {
+                let end = pos.checked_add(group_bytes).ok_or(Error::Overflow)?;
+                if end > bytes.len() {
                     return Err(Error::BufferTooSmall {
-                        required: pos + group_bytes,
+                        required: end,
                         provided: bytes.len(),
                     });
                 }
-                unpack_8_values(&bytes[pos..pos + group_bytes], bit_width, &mut group_out);
-                pos += group_bytes;
+                unpack_8_values(&bytes[pos..end], bit_width, &mut group_out);
+                pos = end;
                 let to_emit = 8usize.min(count - out.len());
                 out.extend_from_slice(&group_out[..to_emit]);
             }
@@ -125,11 +144,19 @@ pub fn decode_bit_packed_raw(bytes: &[u8], bit_width: u8, count: usize) -> Resul
             message: String::from("bit_width exceeds 32"),
         });
     }
+    let count = ParseBudget::default().checked_elements(
+        u64::try_from(count).map_err(|_| Error::Overflow)?,
+        core::mem::size_of::<i32>(),
+        "parquet level count",
+    )?;
     if bit_width == 0 || count == 0 {
-        return Ok(alloc::vec![0i32; count]);
+        return zero_levels(count);
     }
 
-    let required = (count * bit_width as usize).div_ceil(8);
+    let required = count
+        .checked_mul(bit_width as usize)
+        .ok_or(Error::Overflow)?
+        .div_ceil(8);
     if bytes.len() < required {
         return Err(Error::BufferTooSmall {
             required,
@@ -146,7 +173,10 @@ pub fn decode_bit_packed_raw(bytes: &[u8], bit_width: u8, count: usize) -> Resul
     let mut acc: u64 = 0;
     let mut acc_bits: u32 = 0;
     let mut byte_idx: usize = 0;
-    let mut out: Vec<i32> = Vec::with_capacity(count);
+    let mut out = ParseBudget::default().vec_with_capacity::<i32>(
+        u64::try_from(count).map_err(|_| Error::Overflow)?,
+        "parquet level values",
+    )?;
 
     for _ in 0..count {
         while acc_bits < bit_width as u32 {
@@ -259,6 +289,12 @@ mod tests {
     fn decode_levels_zero_count_returns_empty() {
         let levels = decode_levels(&[], 1, 0).unwrap();
         assert_eq!(levels, alloc::vec![0i32; 0]);
+    }
+
+    #[test]
+    fn decode_levels_rejects_hostile_count_before_allocation() {
+        let error = decode_levels(&[], 1, usize::MAX).unwrap_err();
+        assert!(matches!(error, Error::ResourceLimit { .. }));
     }
 
     #[test]

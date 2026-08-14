@@ -40,7 +40,7 @@
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use consus_core::{Error, Result};
+use consus_core::{Error, ParseBudget, Result};
 
 use super::page::{DataPageHeader, DataPageHeaderV2};
 use crate::encoding::levels::{decode_bit_packed_raw, decode_levels, level_bit_width};
@@ -48,6 +48,23 @@ use crate::encoding::levels::{decode_bit_packed_raw, decode_levels, level_bit_wi
 /// Parquet encoding discriminant constants (parquet.thrift Encoding enum).
 const ENCODING_RLE: i32 = 3;
 const ENCODING_BIT_PACKED: i32 = 4;
+
+fn checked_page_count(value: i32) -> Result<usize> {
+    let count = usize::try_from(value).map_err(|_| Error::InvalidFormat {
+        message: String::from("parquet: page num_values must be non-negative"),
+    })?;
+    ParseBudget::default().checked_elements(
+        u64::try_from(count).map_err(|_| Error::Overflow)?,
+        core::mem::size_of::<i32>(),
+        "parquet page value count",
+    )
+}
+
+fn checked_page_length(value: i32, name: &'static str) -> Result<usize> {
+    usize::try_from(value).map_err(|_| Error::InvalidFormat {
+        message: alloc::format!("parquet: {name} must be non-negative"),
+    })
+}
 
 /// Decoded components of a Parquet data page payload.
 ///
@@ -77,9 +94,10 @@ fn decode_levels_v1(
     match encoding {
         ENCODING_RLE => {
             // 4-byte LE uint32 length prefix.
-            if *pos + 4 > bytes.len() {
+            let prefix_end = (*pos).checked_add(4).ok_or(Error::Overflow)?;
+            if prefix_end > bytes.len() {
                 return Err(Error::BufferTooSmall {
-                    required: *pos + 4,
+                    required: prefix_end,
                     provided: bytes.len(),
                 });
             }
@@ -89,29 +107,34 @@ fn decode_levels_v1(
                 bytes[*pos + 2],
                 bytes[*pos + 3],
             ]) as usize;
-            *pos += 4;
-            if *pos + len > bytes.len() {
+            *pos = prefix_end;
+            let end = (*pos).checked_add(len).ok_or(Error::Overflow)?;
+            if end > bytes.len() {
                 return Err(Error::BufferTooSmall {
-                    required: *pos + len,
+                    required: end,
                     provided: bytes.len(),
                 });
             }
-            let level_bytes = &bytes[*pos..*pos + len];
-            *pos += len;
+            let level_bytes = &bytes[*pos..end];
+            *pos = end;
             decode_levels(level_bytes, bit_width, count)
         }
         ENCODING_BIT_PACKED => {
             // Raw bit-packed, no length prefix.
             // Byte count = ceil(count * bit_width / 8).
-            let required_bytes = (count * bit_width as usize).div_ceil(8);
-            if *pos + required_bytes > bytes.len() {
+            let required_bytes = count
+                .checked_mul(bit_width as usize)
+                .ok_or(Error::Overflow)?
+                .div_ceil(8);
+            let end = (*pos).checked_add(required_bytes).ok_or(Error::Overflow)?;
+            if end > bytes.len() {
                 return Err(Error::BufferTooSmall {
-                    required: *pos + required_bytes,
+                    required: end,
                     provided: bytes.len(),
                 });
             }
-            let level_bytes = &bytes[*pos..*pos + required_bytes];
-            *pos += required_bytes;
+            let level_bytes = &bytes[*pos..end];
+            *pos = end;
             decode_bit_packed_raw(level_bytes, bit_width, count)
         }
         _ => Err(Error::InvalidFormat {
@@ -134,7 +157,7 @@ pub fn split_data_page_v1<'a>(
     max_rep_level: i32,
     max_def_level: i32,
 ) -> Result<PagePayload<'a>> {
-    let count = header.num_values as usize;
+    let count = checked_page_count(header.num_values)?;
     let mut pos: usize = 0;
 
     let rep_levels = if max_rep_level == 0 {
@@ -183,20 +206,27 @@ pub fn split_data_page_v2<'a>(
     max_rep_level: i32,
     max_def_level: i32,
 ) -> Result<PagePayload<'a>> {
-    let count = header.num_values as usize;
-    let rep_len = header.repetition_levels_byte_length as usize;
-    let def_len = header.definition_levels_byte_length as usize;
+    let count = checked_page_count(header.num_values)?;
+    let rep_len = checked_page_length(
+        header.repetition_levels_byte_length,
+        "repetition_levels_byte_length",
+    )?;
+    let def_len = checked_page_length(
+        header.definition_levels_byte_length,
+        "definition_levels_byte_length",
+    )?;
     let mut pos: usize = 0;
 
     let rep_levels = {
-        if pos + rep_len > bytes.len() {
+        let end = pos.checked_add(rep_len).ok_or(Error::Overflow)?;
+        if end > bytes.len() {
             return Err(Error::BufferTooSmall {
-                required: pos + rep_len,
+                required: end,
                 provided: bytes.len(),
             });
         }
-        let level_bytes = &bytes[pos..pos + rep_len];
-        pos += rep_len;
+        let level_bytes = &bytes[pos..end];
+        pos = end;
         if max_rep_level == 0 || rep_len == 0 {
             Vec::new()
         } else {
@@ -206,14 +236,15 @@ pub fn split_data_page_v2<'a>(
     };
 
     let def_levels = {
-        if pos + def_len > bytes.len() {
+        let end = pos.checked_add(def_len).ok_or(Error::Overflow)?;
+        if end > bytes.len() {
             return Err(Error::BufferTooSmall {
-                required: pos + def_len,
+                required: end,
                 provided: bytes.len(),
             });
         }
-        let level_bytes = &bytes[pos..pos + def_len];
-        pos += def_len;
+        let level_bytes = &bytes[pos..end];
+        pos = end;
         if max_def_level == 0 || def_len == 0 {
             Vec::new()
         } else {
@@ -280,6 +311,25 @@ mod tests {
         assert_eq!(payload.def_levels, vec![]);
         assert_eq!(payload.values_bytes, values);
         assert_eq!(payload.num_values, 5);
+    }
+
+    #[test]
+    fn split_v1_rejects_negative_value_count_before_level_allocation() {
+        let header = make_data_page_header(-1, 0, 0, 3);
+        let error = split_data_page_v1(&[0; 8], &header, 1, 0).unwrap_err();
+        assert!(
+            matches!(error, Error::InvalidFormat { message } if message.contains("num_values"))
+        );
+    }
+
+    #[test]
+    fn split_v2_rejects_negative_level_lengths() {
+        let mut header = make_data_page_header_v2(1, 0, 0);
+        header.repetition_levels_byte_length = -1;
+        let error = split_data_page_v2(&[], &header, 1, 0).unwrap_err();
+        assert!(
+            matches!(error, Error::InvalidFormat { message } if message.contains("repetition_levels"))
+        );
     }
 
     /// Optional column: max_rep=0, max_def=1.
