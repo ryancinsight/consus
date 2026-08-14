@@ -102,6 +102,14 @@ fn v5_truncated_element_returns_error() {
 }
 
 #[test]
+fn v5_dimension_product_overflow_returns_error() {
+    let payload = matrix_payload(6, 0, 0, &[2_000_000_000, 2_000_000_000, 10], b"x", &[]);
+    let data = v5_file(&[matrix_element(payload)]);
+    let error = loadmat_bytes(&data).expect_err("overflowing dimensions must be rejected");
+    assert!(matches!(error, consus_mat::MatError::ShapeError(_)));
+}
+
+#[test]
 fn v5_invalid_endian_indicator_returns_error() {
     let mut data = [0u8; 128];
     data[124] = 0x00;

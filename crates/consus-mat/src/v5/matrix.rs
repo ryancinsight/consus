@@ -86,7 +86,14 @@ pub fn parse_matrix(
     let numel: usize = if shape.is_empty() {
         1
     } else {
-        shape.iter().product()
+        shape
+            .iter()
+            .try_fold(1usize, |count, &dimension| count.checked_mul(dimension))
+            .ok_or_else(|| {
+                MatError::ShapeError(String::from(
+                    "miMATRIX dimensions exceed the addressable element count",
+                ))
+            })?
     };
     let array = match mx_class {
         code if mx_class_to_numeric(code).is_some() => {
@@ -100,7 +107,12 @@ pub fn parse_matrix(
                 let esz = nc.element_size();
                 let (_rt, rr): (MiType, Vec<u8>) =
                     read_subelement_bytes(payload, &mut pos, big_endian)?;
-                if rr.len() != numel * esz {
+                let expected_bytes = numel.checked_mul(esz).ok_or_else(|| {
+                    MatError::ShapeError(String::from(
+                        "miMATRIX dimensions exceed the addressable byte count",
+                    ))
+                })?;
+                if rr.len() != expected_bytes {
                     return Err(MatError::ShapeError(alloc::format!(
                         "real {} != numel {}*esz {}",
                         rr.len(),
