@@ -134,7 +134,8 @@ pub fn read_i64(c: &[u8], bo: ByteOrder) -> i64 {
 #[cfg(feature = "alloc")]
 pub fn decode_to_f64(raw: &[u8], dtype: &Datatype) -> Result<Vec<f64>, Error> {
     if let Some(size) = dtype.element_size() {
-        if !raw.len().is_multiple_of(size) {
+        // `is_multiple_of` is stable only since 1.87; the MSRV is 1.85.
+        if raw.len() % size != 0 {
             return Err(Error::InvalidFormat {
                 message: alloc::format!(
                     "decode_to_f64: buffer length {} is not a multiple of element size {}",
@@ -245,22 +246,20 @@ pub fn decode_bytes_to_f64(
                 .chunks_exact(4)
                 .map(|c| {
                     let arr = [c[0], c[1], c[2], c[3]];
-                    let v = match byte_order {
-                        ByteOrder::LittleEndian => f32::from_le_bytes(arr),
-                        ByteOrder::BigEndian => f32::from_be_bytes(arr),
-                    };
-                    v as f64
+                    match byte_order {
+                        ByteOrder::LittleEndian => f32::from_le_bytes(arr) as f64,
+                        ByteOrder::BigEndian => f32::from_be_bytes(arr) as f64,
+                    }
                 })
                 .collect()),
             8 => Ok(bytes
                 .chunks_exact(8)
                 .map(|c| {
                     let arr = [c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]];
-                    let v = match byte_order {
+                    match byte_order {
                         ByteOrder::LittleEndian => f64::from_le_bytes(arr),
                         ByteOrder::BigEndian => f64::from_be_bytes(arr),
-                    };
-                    v
+                    }
                 })
                 .collect()),
             other => Err(Error::UnsupportedFeature {
