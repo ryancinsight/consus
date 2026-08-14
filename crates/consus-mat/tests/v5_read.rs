@@ -118,6 +118,23 @@ fn v5_cell_dimension_allocation_is_bounded_by_payload() {
 }
 
 #[test]
+fn v5_empty_struct_does_not_reserve_shape_elements() {
+    let field_name_length = element(5, &1u32.to_le_bytes());
+    let field_names = element(1, &[]);
+    let payload = matrix_payload(
+        2,
+        0,
+        0,
+        &[33_554_433, 3],
+        b"x",
+        &[field_name_length, field_names],
+    );
+    let data = v5_file(&[matrix_element(payload)]);
+    let file = loadmat_bytes(&data).expect("zero-field struct must not reserve its shape");
+    assert_eq!(file.variables.len(), 1);
+}
+
+#[test]
 fn v5_invalid_endian_indicator_returns_error() {
     let mut data = [0u8; 128];
     data[124] = 0x00;

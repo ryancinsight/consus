@@ -266,7 +266,8 @@ pub fn parse_matrix(
                 let nul = slot.iter().position(|&b| b == 0).unwrap_or(fnl);
                 field_names.push(String::from_utf8_lossy(&slot[..nul]).into_owned());
             }
-            let mut field_data: Vec<Vec<MatArray>> = vec![Vec::with_capacity(numel); nfields];
+            let mut field_data: Vec<Vec<MatArray>> =
+                (0..nfields).map(|_| Vec::with_capacity(numel)).collect();
             for f in 0..nfields {
                 for _ in 0..numel {
                     let ftag = read_tag(payload, &mut pos, big_endian)?;
