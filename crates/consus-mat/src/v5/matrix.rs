@@ -48,6 +48,24 @@ pub fn parse_matrix(
     payload: &[u8],
     big_endian: bool,
 ) -> Result<Option<(String, MatArray)>, MatError> {
+    parse_matrix_depth(payload, big_endian, 0, &consus_core::ParseBudget::DEFAULT)
+}
+
+/// Depth-bounded recursive miMATRIX parser.
+///
+/// mxCELL/mxSTRUCT arrays nest arbitrary sub-matrices, each of which is a
+/// self-similar payload; a hostile file can chain ~40-50 input bytes per
+/// level. Rust performs no tail-call elimination, so unbounded recursion
+/// overflows the stack — an abort no `Result` can express. `depth` counts the
+/// levels already entered and is checked against the [`ParseBudget`] ceiling
+/// before recursing.
+#[cfg(feature = "alloc")]
+fn parse_matrix_depth(
+    payload: &[u8],
+    big_endian: bool,
+    depth: u16,
+    budget: &consus_core::ParseBudget,
+) -> Result<Option<(String, MatArray)>, MatError> {
     if payload.is_empty() {
         return Ok(None);
     }
@@ -219,7 +237,10 @@ pub fn parse_matrix(
                     )));
                 }
                 let cp = read_element_bytes(payload, &mut pos, &ctag)?;
-                let arr = match parse_matrix(&cp, big_endian)? {
+                let next_depth = budget
+                    .descend(depth, "mat v5 cell-array nesting")
+                    .map_err(|e| MatError::InvalidFormat(e.to_string()))?;
+                let arr = match parse_matrix_depth(&cp, big_endian, next_depth, budget)? {
                     Some((_, a)) => a,
                     None => MatArray::Numeric(MatNumericArray {
                         class: MatNumericClass::Double,
@@ -277,7 +298,10 @@ pub fn parse_matrix(
                         )));
                     }
                     let fp = read_element_bytes(payload, &mut pos, &ftag)?;
-                    let arr = match parse_matrix(&fp, big_endian)? {
+                    let next_depth = budget
+                        .descend(depth, "mat v5 struct-array nesting")
+                        .map_err(|e| MatError::InvalidFormat(e.to_string()))?;
+                    let arr = match parse_matrix_depth(&fp, big_endian, next_depth, budget)? {
                         Some((_, a)) => a,
                         None => MatArray::Numeric(MatNumericArray {
                             class: MatNumericClass::Double,
@@ -304,4 +328,94 @@ pub fn parse_matrix(
         other => return Err(MatError::InvalidClass(other)),
     };
     Ok(Some((name, array)))
+}
+
+#[cfg(all(test, feature = "alloc"))]
+mod tests {
+    use super::*;
+
+    fn u32le(buf: &mut Vec<u8>, v: u32) {
+        buf.extend_from_slice(&v.to_le_bytes());
+    }
+
+    fn element(mi_type: u32, data: &[u8]) -> Vec<u8> {
+        let mut e = Vec::with_capacity(8 + data.len() + 7);
+        u32le(&mut e, mi_type);
+        u32le(&mut e, data.len() as u32);
+        e.extend_from_slice(data);
+        let pad = (8 - (data.len() % 8)) % 8;
+        e.resize(e.len() + pad, 0u8);
+        e
+    }
+
+    /// One `mxCELL_CLASS` matrix content wrapping a single child miMATRIX
+    /// element. The child is the *content* of an inner matrix (no outer
+    /// `miMATRIX` tag), matching what `read_element_bytes` yields at each
+    /// recursion level.
+    fn cell_wrapping(child: &[u8]) -> Vec<u8> {
+        let mut p = Vec::new();
+        // Flags: class 1 (mxCELL_CLASS), no flags bits.
+        let mut fdata = [0u8; 8];
+        fdata[0..4].copy_from_slice(&(1u32).to_le_bytes());
+        p.extend(element(6, &fdata));
+        // Dims: 1x1 cell array.
+        let ddata = [1i32, 1i32];
+        let mut dims = Vec::new();
+        for &d in &ddata {
+            dims.extend_from_slice(&d.to_le_bytes());
+        }
+        p.extend(element(5, &dims));
+        p.extend(element(1, b""));
+        // One cell: the child matrix as a miMATRIX element.
+        p.extend(element(14, child));
+        p
+    }
+
+    /// A deeply nested chain of cell arrays must be rejected by the depth
+    /// ceiling, not recurse until the stack overflows (an uncatchable abort).
+    #[test]
+    fn deeply_nested_cell_chain_is_rejected_by_the_depth_ceiling() {
+        // Build a chain ~5x the default depth ceiling (64): each level wraps
+        // the previous one in a 1x1 cell matrix.
+        let mut payload = scalar_double_leaf();
+        for _ in 0..(5 * consus_core::ParseBudget::DEFAULT.max_depth) {
+            payload = cell_wrapping(&payload);
+        }
+        let result = parse_matrix(&payload, false);
+        match result {
+            Err(MatError::InvalidFormat(message)) if message.contains("nesting") => {}
+            other => panic!(
+                "a deep cell chain must be rejected as a nesting resource limit, got {other:?}"
+            ),
+        }
+    }
+
+    /// A shallow cell chain (well within the ceiling) still parses.
+    #[test]
+    fn shallow_cell_chain_still_parses() {
+        let payload = cell_wrapping(&scalar_double_leaf());
+        let result = parse_matrix(&payload, false);
+        assert!(
+            result.is_ok() && result.as_ref().unwrap().is_some(),
+            "a shallow cell chain must parse, got {result:?}"
+        );
+    }
+
+    /// Minimal `mxDOUBLE_CLASS` matrix content (no outer `miMATRIX` tag).
+    fn scalar_double_leaf() -> Vec<u8> {
+        let re_el = element(9, &1.0f64.to_le_bytes());
+        let mut p = Vec::new();
+        let mut fdata = [0u8; 8];
+        fdata[0..4].copy_from_slice(&(6u32).to_le_bytes()); // mxDOUBLE_CLASS
+        p.extend(element(6, &fdata));
+        let ddata = [1i32, 1i32];
+        let mut dims = Vec::new();
+        for &d in &ddata {
+            dims.extend_from_slice(&d.to_le_bytes());
+        }
+        p.extend(element(5, &dims));
+        p.extend(element(1, b""));
+        p.extend(re_el);
+        p
+    }
 }

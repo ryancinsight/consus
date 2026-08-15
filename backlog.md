@@ -35,75 +35,88 @@
   (2539/2539), and `cargo test --doc` all pass.
 
 
-## ATLAS-CONSUS-PARSE-LIMITS-036 â€” Bound remaining HDF5 heap and dataset allocations [minor] â€” todo
+## ATLAS-CONSUS-PARSE-LIMITS-036 — Bound remaining HDF5 heap and dataset allocations [minor] — verified already bounded 2026-08-15
 
-- Scope: `consus-hdf5`. Not started; found by an exhaustive sweep during -035.
-- Sites, each a file-declared length sizing an allocation with no ceiling:
-  `heap/global.rs:122` (`collection_size` from the GCOL header â€” also an
-  unchecked `- header_size` that underflows below the header size; reachable
-  from `resolve_vl_references`, i.e. any variable-length dataset read);
-  `file/mod.rs:679,696` (`nelmts` from a Fixed Array `FAHD` header, unchecked
-  `nelmts * entry_size`); `file/mod.rs:401` and `:204` (dataspace element
-  product times element size â€” `:204` has `checked_mul` but no ceiling, so
-  `2^40 * 8` still requests 8 TiB); `heap/fractal.rs:480,572,726,761`
-  (`length` from a decoded heap ID or a HUGE-object record);
-  `heap/fractal.rs:539` (`table_width` and `root_indirect_rows`, both `u16`
-  from FRHP, multiplied unchecked).
-- Acceptance: each site routed through `ParseBudget`, with an adversarial test
-  in `tests/adversarial_input.rs` that fails with the bound removed.
+- Scope: `consus-hdf5`. The sweep during -037 re-verified every site named in
+  the original brief against the current tree.
+- Premise correction (same class as -035): all named sites are already
+  bounded at the implementation head: `heap/global.rs` `collection_size` →
+  `ParseBudget::checked_bytes` + `checked_sub` + `budget.zeroed`;
+  Fixed-Array `nelmts` → `checked_elements`; dataspace products →
+  `checked_*_size` via `checked_elements` (footprint bounded); fractal-heap
+  `length` → `read_bounded_bytes` → `budget.zeroed`; v2 chunk sizes →
+  `MAX_CHUNK_BYTES`; filter counts are single-byte (≤255) and symbol counts
+  `u16` (≤65535), both inherently bounded.
+- Acceptance: a fresh exhaustive allocation sweep (all production
+  `vec!`/`with_capacity` sites in consus-hdf5) found no unbound
+  attacker-chosen length; no code change required. Closed as verified.
 
-
-## ATLAS-CONSUS-PARSE-LIMITS-037 â€” Bound consus-mat, consus-parquet, consus-zarr parse paths [minor] â€” todo
+## ATLAS-CONSUS-PARSE-LIMITS-037 — Bound consus-mat, consus-parquet, consus-zarr parse paths [minor] — in progress 2026-08-15
 
 - Scope: three crates outside the -035/-036 HDF5 and FITS surface.
-- `consus-mat`: `v5/matrix.rs:222,280` (`parse_matrix` recurses through
-  mxCELL/mxSTRUCT with no depth parameter and no budget anywhere in the crate;
-  ~40-50 input bytes per level), amplified by `v5/mod.rs:70-79`
-  (`decompress_zlib` reads a `miCOMPRESSED` element to end with no bound â€” a
-  decompression bomb; `ParseBudget::read_bounded` exists for exactly this).
-- `consus-parquet`: `wire/thrift.rs:288-297` (`ThriftReader::skip` recurses on
-  struct/list/map fields with no depth bound â€” one input byte per frame);
-  `dataset/schema.rs:107` (`parse_fields` recursion bounded only by element
-  count); `wire/metadata.rs:233,272,285` (list headers bounded against
-  remaining bytes but not element footprint â€” a 1 MiB footer reserves 100+ MiB).
-- `consus-zarr`: `chunk/ops.rs:415,465,833-835,1131` (chunk shape times element
-  size from attacker-controlled `.zarray`/`zarr.json`, unchecked multiply; the
-  `expand_fill_value` path is the default for a sparse array).
+- Delivered (this pass):
+  - `consus-mat::v5::matrix::parse_matrix` now descends through a
+    `ParseBudget` ceiling for mxCELL/mxSTRUCT nesting (was unbounded, ~40-50
+    input bytes per level) with deep-chain + shallow-chain tests.
+  - `consus-mat::v5::decompress_zlib` uses `ParseBudget::read_bounded`,
+    capping a zlib decompression bomb at the byte ceiling (was
+    `read_to_end`, unbounded).
+  - `consus-parquet::wire::thrift::ThriftReader::skip` carries the descent
+    ceiling for nested struct/list/map skips (was one frame per input byte)
+    with an adversarial depth test.
+  - `consus-parquet::dataset::schema::parse_fields` carries the descent
+    ceiling for single-child group chains (was bounded only by element
+    count) with deep-chain + shallow-chain tests.
+  - Verified: `consus-mat` all-feature Nextest 90/90 (incl. compressed-read
+    integration); `consus-parquet` lib tests pass; strict Clippy clean.
+- Remaining:
+  - `consus-parquet::wire::metadata` list headers bounded against remaining
+    bytes but not element footprint (a 1 MiB footer reserves 100+ MiB).
+  - `consus-zarr::chunk::ops` chunk shape times element size from
+    attacker-controlled `.zarray`/`zarr.json`, unchecked multiply
+    (`expand_fill_value` path is the default for a sparse array).
 - Acceptance: as -036, per crate.
 
-## ATLAS-CONSUS-PARSE-LIMITS-036 — Bound remaining HDF5 heap and dataset allocations [minor] — todo
+## ATLAS-CONSUS-PARSE-LIMITS-036 — Bound remaining HDF5 heap and dataset allocations [minor] — verified already bounded 2026-08-15
 
-- Scope: `consus-hdf5`. Not started; found by an exhaustive sweep during -035.
-- Sites, each a file-declared length sizing an allocation with no ceiling:
-  `heap/global.rs:122` (`collection_size` from the GCOL header — also an
-  unchecked `- header_size` that underflows below the header size; reachable
-  from `resolve_vl_references`, i.e. any variable-length dataset read);
-  `file/mod.rs:679,696` (`nelmts` from a Fixed Array `FAHD` header, unchecked
-  `nelmts * entry_size`); `file/mod.rs:401` and `:204` (dataspace element
-  product times element size — `:204` has `checked_mul` but no ceiling, so
-  `2^40 * 8` still requests 8 TiB); `heap/fractal.rs:480,572,726,761`
-  (`length` from a decoded heap ID or a HUGE-object record);
-  `heap/fractal.rs:539` (`table_width` and `root_indirect_rows`, both `u16`
-  from FRHP, multiplied unchecked).
-- Acceptance: each site routed through `ParseBudget`, with an adversarial test
-  in `tests/adversarial_input.rs` that fails with the bound removed.
+- Scope: `consus-hdf5`. The sweep during -037 re-verified every site named in
+  the original brief against the current tree.
+- Premise correction (same class as -035): all named sites are already
+  bounded at the implementation head: `heap/global.rs` `collection_size` →
+  `ParseBudget::checked_bytes` + `checked_sub` + `budget.zeroed`;
+  Fixed-Array `nelmts` → `checked_elements`; dataspace products →
+  `checked_*_size` via `checked_elements` (footprint bounded); fractal-heap
+  `length` → `read_bounded_bytes` → `budget.zeroed`; v2 chunk sizes →
+  `MAX_CHUNK_BYTES`; filter counts are single-byte (≤255) and symbol counts
+  `u16` (≤65535), both inherently bounded.
+- Acceptance: a fresh exhaustive allocation sweep (all production
+  `vec!`/`with_capacity` sites in consus-hdf5) found no unbound
+  attacker-chosen length; no code change required. Closed as verified.
 
-## ATLAS-CONSUS-PARSE-LIMITS-037 — Bound consus-mat, consus-parquet, consus-zarr parse paths [minor] — todo
+## ATLAS-CONSUS-PARSE-LIMITS-037 — Bound consus-mat, consus-parquet, consus-zarr parse paths [minor] — in progress 2026-08-15
 
 - Scope: three crates outside the -035/-036 HDF5 and FITS surface.
-- `consus-mat`: `v5/matrix.rs:222,280` (`parse_matrix` recurses through
-  mxCELL/mxSTRUCT with no depth parameter and no budget anywhere in the crate;
-  ~40-50 input bytes per level), amplified by `v5/mod.rs:70-79`
-  (`decompress_zlib` reads a `miCOMPRESSED` element to end with no bound — a
-  decompression bomb; `ParseBudget::read_bounded` exists for exactly this).
-- `consus-parquet`: `wire/thrift.rs:288-297` (`ThriftReader::skip` recurses on
-  struct/list/map fields with no depth bound — one input byte per frame);
-  `dataset/schema.rs:107` (`parse_fields` recursion bounded only by element
-  count); `wire/metadata.rs:233,272,285` (list headers bounded against
-  remaining bytes but not element footprint — a 1 MiB footer reserves 100+ MiB).
-- `consus-zarr`: `chunk/ops.rs:415,465,833-835,1131` (chunk shape times element
-  size from attacker-controlled `.zarray`/`zarr.json`, unchecked multiply; the
-  `expand_fill_value` path is the default for a sparse array).
+- Delivered (this pass):
+  - `consus-mat::v5::matrix::parse_matrix` now descends through a
+    `ParseBudget` ceiling for mxCELL/mxSTRUCT nesting (was unbounded, ~40-50
+    input bytes per level) with deep-chain + shallow-chain tests.
+  - `consus-mat::v5::decompress_zlib` uses `ParseBudget::read_bounded`,
+    capping a zlib decompression bomb at the byte ceiling (was
+    `read_to_end`, unbounded).
+  - `consus-parquet::wire::thrift::ThriftReader::skip` carries the descent
+    ceiling for nested struct/list/map skips (was one frame per input byte)
+    with an adversarial depth test.
+  - `consus-parquet::dataset::schema::parse_fields` carries the descent
+    ceiling for single-child group chains (was bounded only by element
+    count) with deep-chain + shallow-chain tests.
+  - Verified: `consus-mat` all-feature Nextest 90/90 (incl. compressed-read
+    integration); `consus-parquet` lib tests pass; strict Clippy clean.
+- Remaining:
+  - `consus-parquet::wire::metadata` list headers bounded against remaining
+    bytes but not element footprint (a 1 MiB footer reserves 100+ MiB).
+  - `consus-zarr::chunk::ops` chunk shape times element size from
+    attacker-controlled `.zarray`/`zarr.json`, unchecked multiply
+    (`expand_fill_value` path is the default for a sparse array).
 - Acceptance: as -036, per crate.
 
 ## ATLAS-CONSUS-PARQUET-058 — Consolidate PLAIN scalar decoders [major][arch] — done 2026-08-15

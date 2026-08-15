@@ -71,11 +71,11 @@ pub fn read_mat_v5(data: &[u8]) -> Result<Vec<(String, MatArray)>, MatError> {
 }
 #[cfg(feature = "compress")]
 fn decompress_zlib(data: &[u8]) -> Result<Vec<u8>, MatError> {
-    use std::io::Read as _;
     let mut decoder = flate2::read::ZlibDecoder::new(data);
-    let mut out = Vec::new();
-    decoder.read_to_end(&mut out).map_err(|e| {
-        MatError::CompressionError(alloc::format!("zlib decompression failed: {}", e))
-    })?;
-    Ok(out)
+    // The compressed payload is attacker-chosen; `read_to_end` would grow the
+    // output without bound (a decompression bomb). `ParseBudget::read_bounded`
+    // caps the expansion and makes allocator exhaustion a typed error.
+    consus_core::ParseBudget::DEFAULT
+        .read_bounded(&mut decoder, 0, "mat v5 zlib decompression")
+        .map_err(|e| MatError::CompressionError(alloc::format!("zlib decompression failed: {e}")))
 }

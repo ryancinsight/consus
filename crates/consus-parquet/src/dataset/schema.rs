@@ -43,7 +43,7 @@ pub fn schema_elements_to_schema(
         });
     }
     let mut id_seq: u32 = 1;
-    let (fields, _consumed) = parse_fields(elements, 1, num_children, &mut id_seq)?;
+    let (fields, _consumed) = parse_fields(elements, 1, num_children, &mut id_seq, 0)?;
     Ok(SchemaDescriptor::new(fields))
 }
 
@@ -58,12 +58,17 @@ pub fn schema_elements_to_schema(
 /// - `pos`: index of the first element to consume in this call
 /// - `count`: number of fields to parse at this nesting level
 /// - `id_seq`: auto-increment counter used when `field_id` is absent
+/// - `depth`: nesting level already entered; a hostile schema can chain
+///   single-child group nodes arbitrarily deep (each ~1 input element), so the
+///   descent is bounded against the [`ParseBudget`] ceiling before recursing.
 fn parse_fields(
     elements: &[crate::wire::metadata::SchemaElement],
     mut pos: usize,
     count: usize,
     id_seq: &mut u32,
+    depth: u16,
 ) -> Result<(Vec<FieldDescriptor>, usize)> {
+    let depth = consus_core::ParseBudget::DEFAULT.descend(depth, "parquet schema group depth")?;
     let available = elements.len().saturating_sub(pos);
     if count > available {
         return Err(Error::InvalidFormat {
@@ -104,7 +109,8 @@ fn parse_fields(
 
         let child_count = elem.num_children.unwrap_or(0) as usize;
         if child_count > 0 {
-            let (children, children_consumed) = parse_fields(elements, pos, child_count, id_seq)?;
+            let (children, children_consumed) =
+                parse_fields(elements, pos, child_count, id_seq, depth)?;
             pos += children_consumed;
             total_consumed += children_consumed;
             fields.push(FieldDescriptor::group(field_id, name, repetition, children));
@@ -344,5 +350,69 @@ mod tests {
         assert_eq!(dataset.total_rows(), 5);
         assert_eq!(dataset.column_count(), 1);
         assert_eq!(dataset.columns()[0].name(), "x");
+    }
+
+    fn group_element(name: &str, num_children: i32) -> SchemaElement {
+        SchemaElement {
+            name: name.into(),
+            num_children: Some(num_children),
+            type_: None,
+            repetition_type: None,
+            field_id: None,
+            type_length: None,
+            converted_type: None,
+            scale: None,
+            precision: None,
+        }
+    }
+
+    fn leaf_element(name: &str) -> SchemaElement {
+        SchemaElement {
+            name: name.into(),
+            num_children: None,
+            type_: Some(6),
+            repetition_type: Some(0),
+            field_id: Some(1),
+            type_length: None,
+            converted_type: None,
+            scale: None,
+            precision: None,
+        }
+    }
+
+    /// A schema whose group nodes chain single children beyond the depth
+    /// ceiling must be rejected, not recursed until the stack overflows.
+    #[test]
+    fn deeply_nested_group_chain_is_rejected_by_the_depth_ceiling() {
+        let depth = usize::from(consus_core::ParseBudget::DEFAULT.max_depth);
+        // Root + a chain of single-child groups, then one leaf.
+        let mut elements = vec![group_element("root", 1)];
+        for i in 0..depth {
+            elements.push(group_element(&format!("g{i}"), 1));
+        }
+        elements.push(leaf_element("leaf"));
+        let result = schema_elements_to_schema(&elements);
+        assert!(
+            matches!(
+                result,
+                Err(Error::ResourceLimit {
+                    what: "parquet schema group depth",
+                    ..
+                })
+            ),
+            "a deep group chain must be rejected as a depth resource limit, got {result:?}"
+        );
+    }
+
+    /// A shallow group nesting (well within the ceiling) still parses.
+    #[test]
+    fn shallow_group_nesting_still_parses() {
+        let elements = vec![
+            group_element("root", 1),
+            group_element("mid", 1),
+            leaf_element("leaf"),
+        ];
+        let schema = schema_elements_to_schema(&elements).unwrap();
+        assert_eq!(schema.field_count(), 1);
     }
 }
