@@ -10,8 +10,9 @@ Consus-core exposes one generic `read_integer<T>` operation for fixed-width
 signed and unsigned scalar values. The scalar seam owns its byte width and
 little-/big-endian conversion through an associated compile-time contract.
 Each supported scalar implementation monomorphizes to the same native byte
-conversion that the former type-specific functions used. Direct consumers
-select `T` at the call site; no type-named compatibility functions remain.
+conversion that the former type-specific functions used. Direct HDMF and NWB
+consumers select `T` at the call site; no type-named compatibility functions
+remain.
 
 ## Constraints
 

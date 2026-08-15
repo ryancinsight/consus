@@ -2,7 +2,7 @@
 
 ## ATLAS-CONSUS-TYPES-057 — Consolidate endian scalar reads
 
-- [x] Claim only the `consus-core` endian-reading seam and direct HDMF
+- [x] Claim only the `consus-core` endian-reading seam and direct HDMF/NWB
       consumers; preserve peer-owned FITS/HDF5 work and unrelated residuals.
 - [x] Replace the six type-named readers with one generic const-sized seam and
       migrate every direct caller without compatibility aliases.
