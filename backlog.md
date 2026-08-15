@@ -1,6 +1,6 @@
 # Consus — Backlog
 
-## ATLAS-CONSUS-PARQUET-058 — Consolidate PLAIN scalar decoders [major][arch] — in progress
+## ATLAS-CONSUS-PARQUET-058 — Consolidate PLAIN scalar decoders [major][arch] — done 2026-08-15
 
 - Owner: Atlas provider integration. Scope: `consus-parquet::encoding::plain`
   and its in-repository callers/export modules only; peer-owned FITS/HDF5 work,
@@ -21,6 +21,11 @@
   Nextest 249/249, strict Clippy, all-feature and no-default checks, doctests,
   and warning-denied Rustdoc pass. `cargo semver-checks` classifies the four
   removed entry points as a required major release.
+- Delivery evidence: implementation commit `e99a73a` merged as provider
+  `b20d419`; the required hosted matrix passed at `31880062463`, and exact
+  post-merge provider CI, Documentation, and Pages passed at `31880314888`,
+  `31880314874`, and `31880314709`. Atlas integrated the exact provider head
+  in root commit `1b225ea`.
 
 ## ATLAS-CONSUS-TYPES-057 — Consolidate endian scalar reads [arch] — done 2026-08-15
 

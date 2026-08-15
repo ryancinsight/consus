@@ -8,9 +8,14 @@
       `PlainValue` seam and remove the old public names and re-exports.
 - [x] Preserve value semantics and ParseBudget/bounds behavior with generic
       tests for INT32, INT64, FLOAT, and DOUBLE.
-- [ ] Pass the exact-head hosted CI before Atlas integration; local focused
+- [x] Pass the exact-head hosted CI before Atlas integration; local focused
       tests, strict Clippy, formatting, doctests, semver analysis, and provider
       scan are green.
+
+  Hosted matrix `31880062463` passed at implementation head `e99a73a`; merged
+  provider head `b20d419` passed CI `31880314888`, Documentation `31880314874`,
+  and Pages `31880314709`. Atlas root commit `1b225ea` advances the Consus
+  gitlink to that exact verified head.
 
 ## ATLAS-CONSUS-TYPES-057 — Consolidate endian scalar reads
 

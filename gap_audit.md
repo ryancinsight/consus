@@ -19,7 +19,11 @@ now reports `type_suffixed_fns=81` with no increase in the other tracked debt
 classes. Local evidence is 249/249 Parquet Nextest tests, strict Clippy,
 all-feature and no-default checks, doctests, warning-denied Rustdoc, and
 `cargo semver-checks` identifying the required major release classification.
-Hosted exact-head checks remain the delivery gate.
+The implementation head `e99a73a` passed the required hosted matrix
+`31880062463`, merged as provider head `b20d419`. Exact post-merge provider CI,
+Documentation, and Pages passed at `31880314888`, `31880314874`, and
+`31880314709`; Atlas integrated that head in root commit `1b225ea`. This gap is
+closed.
 
 ## ATLAS-CONSUS-TYPES-057 — Generic endian scalar reads (2026-08-15)
 
