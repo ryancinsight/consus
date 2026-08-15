@@ -98,11 +98,10 @@ pub use writer::{
 
 #[cfg(feature = "alloc")]
 pub use encoding::{
-    ColumnValues, CompressionCodec, decode_bit_packed_raw, decode_column_values,
-    decode_compressed_column_values, decode_dictionary_page, decode_levels, decode_plain_boolean,
-    decode_plain_byte_array, decode_plain_f32, decode_plain_f64, decode_plain_fixed_byte_array,
-    decode_plain_i32, decode_plain_i64, decode_plain_i96, decode_rle_dict_indices,
-    decompress_page_values, level_bit_width,
+    ColumnValues, CompressionCodec, PlainValue, decode_bit_packed_raw, decode_column_values,
+    decode_compressed_column_values, decode_dictionary_page, decode_levels, decode_plain,
+    decode_plain_boolean, decode_plain_byte_array, decode_plain_fixed_byte_array, decode_plain_i96,
+    decode_rle_dict_indices, decompress_page_values, level_bit_width,
 };
 
 #[cfg(feature = "alloc")]

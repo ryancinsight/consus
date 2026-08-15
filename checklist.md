@@ -1,5 +1,17 @@
 # Consus — Implementation Checklist
 
+## ATLAS-CONSUS-PARQUET-058 — Consolidate PLAIN scalar decoders
+
+- [x] Claim only `consus-parquet::encoding::plain` and its direct exports,
+      callers, tests, and ADR/PM records; preserve peer-owned provider work.
+- [x] Replace the four duplicated scalar decoders with one sealed const-width
+      `PlainValue` seam and remove the old public names and re-exports.
+- [x] Preserve value semantics and ParseBudget/bounds behavior with generic
+      tests for INT32, INT64, FLOAT, and DOUBLE.
+- [ ] Pass the exact-head hosted CI before Atlas integration; local focused
+      tests, strict Clippy, formatting, doctests, semver analysis, and provider
+      scan are green.
+
 ## ATLAS-CONSUS-TYPES-057 — Consolidate endian scalar reads
 
 - [x] Claim only the `consus-core` endian-reading seam and direct HDMF/NWB
@@ -567,15 +579,15 @@ test encoding::plain::tests::decode_plain_boolean_ten_values ... ok
 test encoding::plain::tests::decode_plain_boolean_zero_count ... ok
 test encoding::plain::tests::decode_plain_byte_array_truncated_length_errors ... ok
 test encoding::plain::tests::decode_plain_byte_array_two_values ... ok
-test encoding::plain::tests::decode_plain_f32_two_values ... ok
-test encoding::plain::tests::decode_plain_f64_two_values ... ok
+test encoding::plain::tests::decode_plain_two_float_values ... ok
+test encoding::plain::tests::decode_plain_two_double_values ... ok
 test encoding::plain::tests::decode_plain_fixed_byte_array_two_values ... ok
 test encoding::plain::tests::decode_plain_fixed_byte_array_zero_len ... ok
-test encoding::plain::tests::decode_plain_i32_three_values ... ok
-test encoding::plain::tests::decode_plain_i32_truncated_errors ... ok
-test encoding::plain::tests::decode_plain_i32_zero_count ... ok
-test encoding::plain::tests::decode_plain_i64_empty_errors ... ok
-test encoding::plain::tests::decode_plain_i64_two_values ... ok
+test encoding::plain::tests::decode_plain_three_signed_32_bit_values ... ok
+test encoding::plain::tests::decode_plain_truncated_scalar_errors ... ok
+test encoding::plain::tests::decode_plain_zero_count_is_empty ... ok
+test encoding::plain::tests::decode_plain_empty_input_errors ... ok
+test encoding::plain::tests::decode_plain_two_signed_64_bit_values ... ok
 test encoding::plain::tests::decode_plain_i96_one_value ... ok
 test encoding::rle_dict::tests::decode_rle_dict_indices_bit_packed_four_values ... ok
 test encoding::rle_dict::tests::decode_rle_dict_indices_empty_input_errors ... ok
@@ -912,10 +924,10 @@ test result: ok. 136 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fi
 - [x] `prop_lz4_raw_compress_decompress_identity` (`#[cfg(feature="lz4")]`)
 - [x] `prop_lz4_compress_decompress_identity` (`#[cfg(feature="lz4")]`)
 - [x] `#[cfg(test)] mod plain_proptest;` declared in `encoding/mod.rs`; `encoding/plain_proptest.rs` created
-- [x] `prop_i32_plain_roundtrip`: ∀ v ∈ i32: decode_plain_i32(v.to_le_bytes(), 1) == [v]
-- [x] `prop_i64_plain_roundtrip`: ∀ v ∈ i64: decode_plain_i64(v.to_le_bytes(), 1) == [v]
-- [x] `prop_f32_plain_roundtrip_bits`: ∀ bits ∈ u32: decode_plain_f32(f32::from_bits(bits).to_le_bytes(), 1)[0].to_bits() == bits (covers NaN)
-- [x] `prop_f64_plain_roundtrip_bits`: ∀ bits ∈ u64: same for f64 (covers NaN, ±Inf)
+- [x] `prop_i32_plain_roundtrip`: ∀ v ∈ i32: decode_plain::<i32>(v.to_le_bytes(), 1) == [v]
+- [x] `prop_i64_plain_roundtrip`: ∀ v ∈ i64: decode_plain::<i64>(v.to_le_bytes(), 1) == [v]
+- [x] `prop_f32_plain_roundtrip_bits`: ∀ bits ∈ u32: decode_plain::<f32>(f32::from_bits(bits).to_le_bytes(), 1)[0].to_bits() == bits (covers NaN)
+- [x] `prop_f64_plain_roundtrip_bits`: ∀ bits ∈ u64: same for decode_plain::<f64> (covers NaN, ±Inf)
 - [x] `prop_i96_plain_roundtrip`: ∀ raw ∈ [u8; 12]: decode_plain_i96(raw, 1) == [raw]
 - [x] `prop_byte_array_plain_roundtrip`: ∀ data ∈ Vec<u8> [0..256]: decode_plain_byte_array(4-byte-LE-len || data, 1) == [data]
 - [x] `prop_fixed_len_byte_array_plain_roundtrip`: ∀ data ∈ Vec<u8> [1..16]: decode_plain_fixed_byte_array(data, 1, |data|) == [data]

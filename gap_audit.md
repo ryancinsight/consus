@@ -1,5 +1,26 @@
 # Consus - Gap Audit
 
+## ATLAS-CONSUS-PARQUET-058 — Generic PLAIN scalar decoder (2026-08-15)
+
+The Parquet PLAIN decoder repeats the same count validation, checked byte
+product, fallible capacity reservation, and fixed-width iteration in four
+public functions whose names encode the physical scalar type. Replace that
+family with one sealed `PlainValue` trait carrying compile-time byte width and
+native little-endian conversion, plus `decode_plain<T>`. The public migration
+deletes the four old names rather than retaining forwarding aliases. The
+acceptance oracle is value-semantic equivalence for signed integers and IEEE
+754 bit patterns, including zero-count, truncation, and allocation-budget
+failures; no debt baseline increase is authorized.
+
+Implementation is complete on the provider branch: `PlainValue` is sealed to
+`i32`, `i64`, `f32`, and `f64`; all direct callers and historical PM references
+use `decode_plain::<T>`, and the old public entry points are deleted. The scan
+now reports `type_suffixed_fns=81` with no increase in the other tracked debt
+classes. Local evidence is 249/249 Parquet Nextest tests, strict Clippy,
+all-feature and no-default checks, doctests, warning-denied Rustdoc, and
+`cargo semver-checks` identifying the required major release classification.
+Hosted exact-head checks remain the delivery gate.
+
 ## ATLAS-CONSUS-TYPES-057 — Generic endian scalar reads (2026-08-15)
 
 The core decoder had six duplicated public readers whose names encoded the

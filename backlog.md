@@ -1,6 +1,28 @@
 # Consus — Backlog
 
-## ATLAS-CONSUS-TYPES-057 — Consolidate endian scalar reads [arch] — in progress
+## ATLAS-CONSUS-PARQUET-058 — Consolidate PLAIN scalar decoders [major][arch] — in progress
+
+- Owner: Atlas provider integration. Scope: `consus-parquet::encoding::plain`
+  and its in-repository callers/export modules only; peer-owned FITS/HDF5 work,
+  generated lock state, and unrelated type-suffix findings are excluded.
+- Acceptance: replace the four duplicated public `decode_plain_*` scalar
+  decoders for INT32, INT64, FLOAT, and DOUBLE with one sealed, const-width
+  `PlainValue`/`decode_plain<T>` seam; migrate every caller and test without
+  compatibility aliases; preserve truncation, overflow, allocation-budget,
+  bit-pattern, and value semantics.
+- Verification: generic conformance coverage for all four scalar types,
+  focused Parquet Nextest, strict Clippy, formatting, doctests, package
+  semver analysis, and the exact provider hosted matrix.
+- Dependency: ADR 0002 records the breaking public replacement and its
+  migration path. The provider scan must reduce `type_suffixed_fns` from 85
+  without increasing any other debt class.
+- Local evidence: `type_suffixed_fns=81`, with `oversized_files=83`,
+  `unwrap_production=383`, `allow_sites=16`, and `orphan_modules=0`; Parquet
+  Nextest 249/249, strict Clippy, all-feature and no-default checks, doctests,
+  and warning-denied Rustdoc pass. `cargo semver-checks` classifies the four
+  removed entry points as a required major release.
+
+## ATLAS-CONSUS-TYPES-057 — Consolidate endian scalar reads [arch] — done 2026-08-15
 
 - Owner: Atlas provider integration. Scope: the `consus-core` byte-decoding
   seam and its direct `consus-hdmf`/`consus-nwb` consumers only; peer-owned FITS/HDF5,
