@@ -129,6 +129,18 @@
   aspirational I/O API (CONSUS-TEST-API-001); both are inventoried in
   `gap_audit.md`.
 
+## CONSUS-NODEF-GATE-001 — Close the next workspace no-default blocker [patch] — in progress 2026-08-14
+
+- Owner: current session. Scope: the next reproducible workspace
+  `--no-default-features` blocker and its provider-local gate evidence; no
+  changes to the peer-owned HDF5 worktree scope.
+- Entry evidence: `consus-arrow` unconditionally re-exports the alloc-gated
+  `datatype` module from `src/lib.rs:74`, so the workspace no-default check
+  fails before it can reach the next format provider.
+- Acceptance: the no-default workspace check reaches the next blocker or
+  passes; the affected package's no-default and default value-semantic gates
+  are green; the residual record names the exact remaining blocker.
+
 ## ATLAS-CONSUS-001 — Themis topology partition sizing [minor] — done
 
 - Owner: Codex; scope: the `consus` facade's default parallel-I/O policy and
