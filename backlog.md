@@ -1,5 +1,17 @@
 # Consus — Backlog
 
+## ATLAS-CONSUS-HIERARCHY-055 — Isolate Arrow datatype descriptors [patch] — in progress
+
+- Owner: Atlas provider integration. Scope: `consus-arrow::datatype` only;
+  peer-owned FITS/HDF5 changes, generated lock state, and unrelated conformance
+  classes are excluded.
+- Acceptance: move the descriptor families into a named vertical child module
+  without changing the public `consus-arrow` exports; the parent module falls
+  below the 500-line hierarchy target; value-semantic Arrow tests, strict
+  Clippy, formatting, and the provider hosted gates pass at the exact head.
+- Method: preserve the public re-export closure, compile-time feature
+  boundaries, and conversion behavior; no adapter or duplicate API is allowed.
+
 ## ATLAS-CONSUS-RESOURCE-BOUNDARY-097 — Bounded external-input expansion [major] — done 2026-08-14
 
 - Owner: current Atlas safety audit; scope is the Consus core parse budget,
