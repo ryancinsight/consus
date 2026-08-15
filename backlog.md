@@ -1,5 +1,17 @@
 # Consus — Backlog
 
+## ATLAS-CONSUS-UNWRAP-056 — Harden decode test diagnostics [patch] — in progress
+
+- Owner: Atlas provider integration. Scope: `consus-core::decode` test
+  diagnostics only; peer-owned FITS/HDF5 work and type-suffix cleanup are
+  excluded.
+- Acceptance: remove all bare test unwraps from the decode module using
+  invariant-bearing `expect` messages; preserve value-semantic coverage and
+  return the provider conformance `unwrap_production` count to its committed
+  baseline without weakening assertions.
+- Verification: focused core Nextest, no-default check, strict Clippy,
+  formatting, diff check, and the exact provider hosted matrix.
+
 ## ATLAS-CONSUS-HIERARCHY-055 — Isolate Arrow datatype descriptors [patch] — done 2026-08-15
 
 - Owner: Atlas provider integration. Scope: `consus-arrow::datatype` only;
