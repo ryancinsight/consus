@@ -65,10 +65,9 @@ pub use parse::ParseBudget;
 // Re-export byte-decoding helpers at the crate root for convenience.
 // ---------------------------------------------------------------------------
 
+pub use decode::{EndianScalar, read_integer};
 #[cfg(feature = "alloc")]
 pub use decode::{decode_bytes_to_f64, decode_to_f64};
-#[cfg(feature = "alloc")]
-pub use decode::{read_i16, read_i32, read_i64, read_u16, read_u32, read_u64};
 
 // ---------------------------------------------------------------------------
 // Re-export abstract traits at the crate root.

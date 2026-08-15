@@ -1,5 +1,26 @@
 # Consus — Backlog
 
+## ATLAS-CONSUS-TYPES-057 — Consolidate endian scalar reads [arch] — in progress
+
+- Owner: Atlas provider integration. Scope: the `consus-core` byte-decoding
+  seam and its direct `consus-hdmf`/`consus-nwb` consumers only; peer-owned FITS/HDF5,
+  generated lock state, and unrelated type-suffix findings are excluded.
+- Acceptance: replace the six duplicated type-named endian readers with one
+  generic, const-sized, zero-cost scalar-reading seam; migrate all direct
+  callers without compatibility aliases; preserve byte-order and value
+  semantics; reduce the provider `type_suffixed_fns` count by the six removed
+  reader definitions.
+- Verification: generic reader conformance tests for every supported signed
+  and unsigned width, focused Consus-core, Consus-HDMF, and Consus-NWB Nextest,
+  strict
+  Clippy, formatting, doctests, and the exact provider hosted matrix.
+- Evidence to date: the six type-named readers now have one
+  `EndianScalar`/`read_integer<T>` implementation in `consus-core`; direct
+  HDMF and NWB callers are migrated with no aliases. The provider scan reports
+  `type_suffixed_fns=85` (91 before this slice). Local focused gates pass:
+  313/313 core+HDMF Nextest tests plus 278/278 NWB tests, strict Clippy,
+  all affected crate checks, and three doctests.
+
 ## ATLAS-CONSUS-UNWRAP-056 — Harden decode test diagnostics [patch] — done 2026-08-15
 
 - Owner: Atlas provider integration. Scope: `consus-core::decode` test

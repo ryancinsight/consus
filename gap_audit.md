@@ -1,5 +1,22 @@
 # Consus - Gap Audit
 
+## ATLAS-CONSUS-TYPES-057 — Generic endian scalar reads (2026-08-15)
+
+The core decoder had six duplicated public readers whose names encoded the
+scalar type and width. They now share one `EndianScalar` trait and generic
+`read_integer<T>` entry point in `decode/endian.rs`. The associated byte width
+is compile-time data, the conversion is monomorphized per supported scalar,
+and the borrowed input remains allocation-free. Direct HDMF call sites select
+the concrete scalar at the decode boundary; no forwarding aliases remain.
+
+The new conformance test instantiates all supported signed and unsigned
+16/32/64-bit scalars in both byte orders and checks short-input rejection. The
+provider scan drops `type_suffixed_fns` from 91 to 85. Local evidence is
+313/313 Consus-core+HDMF Nextest tests, 278/278 Consus-NWB tests, strict
+Clippy for all affected crates, all-target checks, and three passing doctests.
+Hosted provider checks remain the merge gate; no conformance baseline change
+is authorized.
+
 ## ATLAS-CONSUS-UNWRAP-056 — Decode test diagnostics (2026-08-15)
 
 The conformance scan classified 14 bare unwraps in the test-only decode
