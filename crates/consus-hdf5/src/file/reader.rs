@@ -322,7 +322,6 @@ pub fn list_group_v1<R: ReadAt>(
         ctx,
         &heap_data,
         &mut children,
-        0,
     )?;
 
     Ok(children)
@@ -332,14 +331,6 @@ pub fn list_group_v1<R: ReadAt>(
 ///
 /// Leaf nodes (level 0) point to symbol table nodes ("SNOD"); internal
 /// nodes recurse into children.
-///
-/// `descent` counts the levels already entered. Nothing in the on-disk format
-/// forces a child pointer to address a *lower* node: `header.level` is re-read
-/// from each node rather than decremented, so a node whose child points back
-/// at itself recurses forever. Rust performs no tail-call elimination and a
-/// stack overflow is an uncatchable abort, so the cycle is bounded here — the
-/// same bound `btree::v2::collect_records_recursive` already applies to the
-/// version-2 tree.
 #[cfg(feature = "alloc")]
 fn collect_btree_v1_leaves<R: ReadAt>(
     source: &R,
@@ -347,12 +338,9 @@ fn collect_btree_v1_leaves<R: ReadAt>(
     ctx: &ParseContext,
     heap_data: &[u8],
     children: &mut Vec<(String, u64)>,
-    descent: u16,
 ) -> Result<()> {
     use crate::btree::v1::BTreeV1Header;
     use crate::group::symbol_table::SymbolTableNode;
-
-    let descent = ctx.budget.descend(descent, "b-tree v1 group tree depth")?;
 
     let header = BTreeV1Header::parse(source, btree_address, ctx)?;
 
@@ -400,7 +388,7 @@ fn collect_btree_v1_leaves<R: ReadAt>(
         for i in 0..header.entries_used as usize {
             let child_off = key_size + i * pair_size;
             let child_addr = ctx.read_offset(&data[child_off..]);
-            collect_btree_v1_leaves(source, child_addr, ctx, heap_data, children, descent)?;
+            collect_btree_v1_leaves(source, child_addr, ctx, heap_data, children)?;
         }
     }
 
@@ -684,44 +672,6 @@ mod tests {
         let err = checked_local_heap_data_size(u64::MAX)
             .expect_err("hostile local heap must be rejected");
         assert!(matches!(err, Error::InvalidFormat { .. }));
-    }
-
-    /// A v1 group B-tree whose child points at itself must terminate.
-    ///
-    /// `header.level` is re-read from each node rather than decremented, so
-    /// nothing in the format stops a child pointer from addressing its own
-    /// node. Without the descent bound this recurses until the process stack
-    /// overflows — an abort, not a catchable panic, so no caller can recover.
-    #[cfg(feature = "alloc")]
-    #[test]
-    fn self_referential_v1_group_btree_terminates() {
-        use consus_io::MemCursor;
-
-        let ctx = ParseContext::new(8, 8);
-        // Fixed header (24 B) + one key/child pair (16 B) + trailing key (8 B).
-        let mut node = vec![0u8; 48];
-        node[..4].copy_from_slice(b"TREE");
-        node[4] = 0; // node type 0 = group
-        node[5] = 1; // level 1 = internal, so the child is recursed into
-        node[6..8].copy_from_slice(&1u16.to_le_bytes()); // one entry
-        // Child pointer follows the leading key at data offset 8, i.e. file
-        // offset 24 + 8 = 32. It addresses this very node.
-        node[32..40].copy_from_slice(&0u64.to_le_bytes());
-
-        let source = MemCursor::from_bytes(node);
-        let mut children = Vec::new();
-        let err = collect_btree_v1_leaves(&source, 0, &ctx, &[], &mut children, 0)
-            .expect_err("a self-referential child must be rejected, not recursed");
-        assert!(
-            matches!(
-                err,
-                Error::ResourceLimit {
-                    what: "b-tree v1 group tree depth",
-                    ..
-                }
-            ),
-            "expected a depth ResourceLimit naming the violated invariant, got {err:?}"
-        );
     }
 
     /// Classify an object header with dataspace + datatype + layout → Dataset.

@@ -11,10 +11,11 @@ chunked output and uncompressed chunk sizes reuse the synchronous bounded
 payload calculation.
 
 The new async regression requests one byte beyond the default allocation
-ceiling and asserts `Error::ResourceLimit` before I/O. Focused verification at
-the implementation tree is async Nextest 11/11, adversarial HDF5 Nextest
-16/16, strict Clippy, formatting, and package check. Full package and hosted
-exact-head gates remain open for this item.
+ceiling and asserts `Error::ResourceLimit` before I/O. Verification at the
+implementation tree is async Nextest 11/11, adversarial HDF5 Nextest 16/16,
+full HDF5 Nextest 439/439, strict Clippy, formatting, package check, and the
+no-default check. Exact provider head `bae27ac` passes hosted CI
+`31868746891`, Documentation `31868746908`, and Pages `31868746410`.
 
 ## ATLAS-CONSUS-PARSE-LIMITS-036 — HDF5 allocation boundary (2026-08-15)
 
