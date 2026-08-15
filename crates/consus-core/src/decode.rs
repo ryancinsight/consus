@@ -35,6 +35,7 @@ use alloc::vec::Vec;
 
 #[cfg(feature = "alloc")]
 use super::Error;
+#[cfg(feature = "alloc")]
 use super::types::datatype::ByteOrder;
 #[cfg(feature = "alloc")]
 use super::types::datatype::Datatype;
