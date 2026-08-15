@@ -1,7 +1,7 @@
 #[cfg(feature = "alloc")]
 use alloc::{format, string::String, vec::Vec};
 
-use consus_core::decode::{read_i16, read_i32, read_i64, read_u16, read_u32, read_u64};
+use consus_core::decode::read_integer;
 use consus_core::{Datatype, Error, Result};
 use consus_hdf5::dataset::StorageLayout;
 use consus_hdf5::file::Hdf5File;
@@ -238,24 +238,37 @@ fn decode_raw_as_u64(raw: &[u8], dtype: &Datatype) -> Result<Vec<u64>> {
                 (8, true) => raw.iter().map(|&v| (v as i8) as u64).collect(),
                 (16, false) => raw
                     .chunks_exact(2)
-                    .map(|c| read_u16(c, bo) as u64)
+                    .map(|c| {
+                        read_integer::<u16>(c, bo).expect("chunks_exact supplies a scalar") as u64
+                    })
                     .collect(),
                 (16, true) => raw
                     .chunks_exact(2)
-                    .map(|c| read_i16(c, bo) as u64)
+                    .map(|c| {
+                        read_integer::<i16>(c, bo).expect("chunks_exact supplies a scalar") as u64
+                    })
                     .collect(),
                 (32, false) => raw
                     .chunks_exact(4)
-                    .map(|c| read_u32(c, bo) as u64)
+                    .map(|c| {
+                        read_integer::<u32>(c, bo).expect("chunks_exact supplies a scalar") as u64
+                    })
                     .collect(),
                 (32, true) => raw
                     .chunks_exact(4)
-                    .map(|c| read_i32(c, bo) as u64)
+                    .map(|c| {
+                        read_integer::<i32>(c, bo).expect("chunks_exact supplies a scalar") as u64
+                    })
                     .collect(),
-                (64, false) => raw.chunks_exact(8).map(|c| read_u64(c, bo)).collect(),
+                (64, false) => raw
+                    .chunks_exact(8)
+                    .map(|c| read_integer::<u64>(c, bo).expect("chunks_exact supplies a scalar"))
+                    .collect(),
                 (64, true) => raw
                     .chunks_exact(8)
-                    .map(|c| read_i64(c, bo) as u64)
+                    .map(|c| {
+                        read_integer::<i64>(c, bo).expect("chunks_exact supplies a scalar") as u64
+                    })
                     .collect(),
                 (b, _) => {
                     return Err(Error::UnsupportedFeature {

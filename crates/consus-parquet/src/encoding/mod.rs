@@ -21,8 +21,8 @@ pub use column::{
 pub use compression::{CompressionCodec, decompress_page_values};
 pub use levels::{decode_bit_packed_raw, decode_levels, level_bit_width};
 pub use plain::{
-    decode_plain_boolean, decode_plain_byte_array, decode_plain_f32, decode_plain_f64,
-    decode_plain_fixed_byte_array, decode_plain_i32, decode_plain_i64, decode_plain_i96,
+    PlainValue, decode_plain, decode_plain_boolean, decode_plain_byte_array,
+    decode_plain_fixed_byte_array, decode_plain_i96,
 };
 pub use rle_dict::decode_rle_dict_indices;
 

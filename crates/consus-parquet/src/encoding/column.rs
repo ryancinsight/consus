@@ -3,8 +3,8 @@
 
 use super::compression::{CompressionCodec, decompress_page_values};
 use super::plain::{
-    decode_plain_boolean, decode_plain_byte_array, decode_plain_f32, decode_plain_f64,
-    decode_plain_fixed_byte_array, decode_plain_i32, decode_plain_i64, decode_plain_i96,
+    decode_plain, decode_plain_boolean, decode_plain_byte_array, decode_plain_fixed_byte_array,
+    decode_plain_i96,
 };
 use super::rle_dict::decode_rle_dict_indices;
 use crate::schema::physical::ParquetPhysicalType;
@@ -118,11 +118,11 @@ impl ColumnValuesWithLevels {
 fn decode_plain_column(bytes: &[u8], n: usize, pt: ParquetPhysicalType) -> Result<ColumnValues> {
     match pt {
         ParquetPhysicalType::Boolean => Ok(ColumnValues::Boolean(decode_plain_boolean(bytes, n)?)),
-        ParquetPhysicalType::Int32 => Ok(ColumnValues::Int32(decode_plain_i32(bytes, n)?)),
-        ParquetPhysicalType::Int64 => Ok(ColumnValues::Int64(decode_plain_i64(bytes, n)?)),
+        ParquetPhysicalType::Int32 => Ok(ColumnValues::Int32(decode_plain::<i32>(bytes, n)?)),
+        ParquetPhysicalType::Int64 => Ok(ColumnValues::Int64(decode_plain::<i64>(bytes, n)?)),
         ParquetPhysicalType::Int96 => Ok(ColumnValues::Int96(decode_plain_i96(bytes, n)?)),
-        ParquetPhysicalType::Float => Ok(ColumnValues::Float(decode_plain_f32(bytes, n)?)),
-        ParquetPhysicalType::Double => Ok(ColumnValues::Double(decode_plain_f64(bytes, n)?)),
+        ParquetPhysicalType::Float => Ok(ColumnValues::Float(decode_plain::<f32>(bytes, n)?)),
+        ParquetPhysicalType::Double => Ok(ColumnValues::Double(decode_plain::<f64>(bytes, n)?)),
         ParquetPhysicalType::ByteArray => {
             Ok(ColumnValues::ByteArray(decode_plain_byte_array(bytes, n)?))
         }

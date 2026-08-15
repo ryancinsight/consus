@@ -2,12 +2,75 @@
 //!
 //! Reference: <https://github.com/apache/parquet-format/blob/master/Encodings.md>
 
-use alloc::vec::Vec;
+use alloc::{format, vec::Vec};
 use consus_core::{Error, ParseBudget, Result};
+use core::convert::TryInto;
 
 fn value_capacity<T>(count: usize, what: &'static str) -> Result<Vec<T>> {
     ParseBudget::default()
         .vec_with_capacity(u64::try_from(count).map_err(|_| Error::Overflow)?, what)
+}
+
+mod sealed {
+    pub trait Sealed {}
+
+    impl Sealed for i32 {}
+    impl Sealed for i64 {}
+    impl Sealed for f32 {}
+    impl Sealed for f64 {}
+}
+
+/// Describes a scalar supported by Parquet PLAIN fixed-width decoding.
+///
+/// Implementations are sealed to the four scalar types represented by the
+/// corresponding Parquet physical types. The width is compile-time data, so
+/// [`decode_plain`] monomorphizes to one direct little-endian loop per scalar
+/// without runtime type dispatch or numeric widening.
+pub trait PlainValue: sealed::Sealed + Sized {
+    /// Number of bytes in one little-endian encoded value.
+    const BYTE_WIDTH: usize;
+
+    /// Label used for the parser allocation budget diagnostic.
+    const VALUE_LABEL: &'static str;
+
+    /// Converts one exact-width little-endian byte slice to the scalar.
+    fn from_little_endian(bytes: &[u8]) -> Option<Self>;
+}
+
+impl PlainValue for i32 {
+    const BYTE_WIDTH: usize = 4;
+    const VALUE_LABEL: &'static str = "parquet int32 value count";
+
+    fn from_little_endian(bytes: &[u8]) -> Option<Self> {
+        Some(Self::from_le_bytes(bytes.try_into().ok()?))
+    }
+}
+
+impl PlainValue for i64 {
+    const BYTE_WIDTH: usize = 8;
+    const VALUE_LABEL: &'static str = "parquet int64 value count";
+
+    fn from_little_endian(bytes: &[u8]) -> Option<Self> {
+        Some(Self::from_le_bytes(bytes.try_into().ok()?))
+    }
+}
+
+impl PlainValue for f32 {
+    const BYTE_WIDTH: usize = 4;
+    const VALUE_LABEL: &'static str = "parquet float value count";
+
+    fn from_little_endian(bytes: &[u8]) -> Option<Self> {
+        Some(Self::from_le_bytes(bytes.try_into().ok()?))
+    }
+}
+
+impl PlainValue for f64 {
+    const BYTE_WIDTH: usize = 8;
+    const VALUE_LABEL: &'static str = "parquet double value count";
+
+    fn from_little_endian(bytes: &[u8]) -> Option<Self> {
+        Some(Self::from_le_bytes(bytes.try_into().ok()?))
+    }
 }
 
 /// Decode count boolean values from PLAIN-encoded bytes.
@@ -33,62 +96,32 @@ pub fn decode_plain_boolean(bytes: &[u8], count: usize) -> Result<Vec<bool>> {
     Ok(out)
 }
 
-/// Decode count INT32 values from PLAIN-encoded bytes.
+/// Decode fixed-width scalar values from PLAIN-encoded bytes.
 ///
-/// Each value is a 4-byte little-endian signed integer.
-/// Required bytes: count * 4.
-pub fn decode_plain_i32(bytes: &[u8], count: usize) -> Result<Vec<i32>> {
+/// The supported `T` implementations are `i32`, `i64`, `f32`, and `f64`.
+/// Each value is decoded in its native precision from little-endian bytes.
+/// The count-to-byte product is checked before the allocation budget is
+/// charged, and no heap buffer is allocated for byte conversion.
+pub fn decode_plain<T: PlainValue>(bytes: &[u8], count: usize) -> Result<Vec<T>> {
     if count == 0 {
         return Ok(Vec::new());
     }
-    let required = count.checked_mul(4).ok_or(Error::Overflow)?;
+    let required = count.checked_mul(T::BYTE_WIDTH).ok_or(Error::Overflow)?;
     if bytes.len() < required {
         return Err(Error::BufferTooSmall {
             required,
             provided: bytes.len(),
         });
     }
-    let mut out = value_capacity(count, "parquet int32 value count")?;
-    for i in 0..count {
-        let b = i * 4;
-        out.push(i32::from_le_bytes([
-            bytes[b],
-            bytes[b + 1],
-            bytes[b + 2],
-            bytes[b + 3],
-        ]));
-    }
-    Ok(out)
-}
-
-/// Decode count INT64 values from PLAIN-encoded bytes.
-///
-/// Each value is an 8-byte little-endian signed integer.
-/// Required bytes: count * 8.
-pub fn decode_plain_i64(bytes: &[u8], count: usize) -> Result<Vec<i64>> {
-    if count == 0 {
-        return Ok(Vec::new());
-    }
-    let required = count.checked_mul(8).ok_or(Error::Overflow)?;
-    if bytes.len() < required {
-        return Err(Error::BufferTooSmall {
-            required,
-            provided: bytes.len(),
-        });
-    }
-    let mut out = value_capacity(count, "parquet int64 value count")?;
-    for i in 0..count {
-        let b = i * 8;
-        out.push(i64::from_le_bytes([
-            bytes[b],
-            bytes[b + 1],
-            bytes[b + 2],
-            bytes[b + 3],
-            bytes[b + 4],
-            bytes[b + 5],
-            bytes[b + 6],
-            bytes[b + 7],
-        ]));
+    let mut out = value_capacity(count, T::VALUE_LABEL)?;
+    for chunk in bytes[..required].chunks_exact(T::BYTE_WIDTH) {
+        let value = T::from_little_endian(chunk).ok_or_else(|| Error::InvalidFormat {
+            message: format!(
+                "Parquet PLAIN {} value has an invalid fixed width",
+                T::VALUE_LABEL
+            ),
+        })?;
+        out.push(value);
     }
     Ok(out)
 }
@@ -114,66 +147,6 @@ pub fn decode_plain_i96(bytes: &[u8], count: usize) -> Result<Vec<[u8; 12]>> {
         let mut arr = [0u8; 12];
         arr.copy_from_slice(&bytes[b..b + 12]);
         out.push(arr);
-    }
-    Ok(out)
-}
-
-/// Decode count FLOAT values from PLAIN-encoded bytes.
-///
-/// Each value is a 4-byte little-endian IEEE 754 single-precision float.
-/// Required bytes: count * 4.
-pub fn decode_plain_f32(bytes: &[u8], count: usize) -> Result<Vec<f32>> {
-    if count == 0 {
-        return Ok(Vec::new());
-    }
-    let required = count.checked_mul(4).ok_or(Error::Overflow)?;
-    if bytes.len() < required {
-        return Err(Error::BufferTooSmall {
-            required,
-            provided: bytes.len(),
-        });
-    }
-    let mut out = value_capacity(count, "parquet float value count")?;
-    for i in 0..count {
-        let b = i * 4;
-        out.push(f32::from_le_bytes([
-            bytes[b],
-            bytes[b + 1],
-            bytes[b + 2],
-            bytes[b + 3],
-        ]));
-    }
-    Ok(out)
-}
-
-/// Decode count DOUBLE values from PLAIN-encoded bytes.
-///
-/// Each value is an 8-byte little-endian IEEE 754 double-precision float.
-/// Required bytes: count * 8.
-pub fn decode_plain_f64(bytes: &[u8], count: usize) -> Result<Vec<f64>> {
-    if count == 0 {
-        return Ok(Vec::new());
-    }
-    let required = count.checked_mul(8).ok_or(Error::Overflow)?;
-    if bytes.len() < required {
-        return Err(Error::BufferTooSmall {
-            required,
-            provided: bytes.len(),
-        });
-    }
-    let mut out = value_capacity(count, "parquet double value count")?;
-    for i in 0..count {
-        let b = i * 8;
-        out.push(f64::from_le_bytes([
-            bytes[b],
-            bytes[b + 1],
-            bytes[b + 2],
-            bytes[b + 3],
-            bytes[b + 4],
-            bytes[b + 5],
-            bytes[b + 6],
-            bytes[b + 7],
-        ]));
     }
     Ok(out)
 }
@@ -244,11 +217,11 @@ mod tests {
 
     // Test 1: [1, -1, i32::MAX] -> 01000000 FFFFFFFF FFFFFF7F
     #[test]
-    fn decode_plain_i32_three_values() {
+    fn decode_plain_three_signed_32_bit_values() {
         let bytes = [
             0x01u8, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F,
         ];
-        let result = decode_plain_i32(&bytes, 3).unwrap();
+        let result = decode_plain::<i32>(&bytes, 3).unwrap();
         assert_eq!(result, alloc::vec![1i32, -1i32, i32::MAX]);
     }
 
@@ -256,12 +229,12 @@ mod tests {
     // 100  LE: 64 00 00 00 00 00 00 00
     // -200 LE: 38 FF FF FF FF FF FF FF
     #[test]
-    fn decode_plain_i64_two_values() {
+    fn decode_plain_two_signed_64_bit_values() {
         let bytes = [
             0x64u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x38, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
             0xFF, 0xFF,
         ];
-        let result = decode_plain_i64(&bytes, 2).unwrap();
+        let result = decode_plain::<i64>(&bytes, 2).unwrap();
         assert_eq!(result, alloc::vec![100i64, -200i64]);
     }
 
@@ -269,12 +242,12 @@ mod tests {
     // 1.0  = 3FF0000000000000 LE: 00 00 00 00 00 00 F0 3F
     // -0.5 = BFE0000000000000 LE: 00 00 00 00 00 00 E0 BF
     #[test]
-    fn decode_plain_f64_two_values() {
+    fn decode_plain_two_double_values() {
         let bytes = [
             0x00u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0xE0, 0xBF,
         ];
-        let result = decode_plain_f64(&bytes, 2).unwrap();
+        let result = decode_plain::<f64>(&bytes, 2).unwrap();
         assert_eq!(result, alloc::vec![1.0f64, -0.5f64]);
     }
 
@@ -282,9 +255,9 @@ mod tests {
     // 0.0 = 00000000 LE: 00 00 00 00
     // 1.0 = 3F800000 LE: 00 00 80 3F
     #[test]
-    fn decode_plain_f32_two_values() {
+    fn decode_plain_two_float_values() {
         let bytes = [0x00u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x3F];
-        let result = decode_plain_f32(&bytes, 2).unwrap();
+        let result = decode_plain::<f32>(&bytes, 2).unwrap();
         assert_eq!(result, alloc::vec![0.0f32, 1.0f32]);
     }
 
@@ -332,15 +305,15 @@ mod tests {
 
     // Test 9: count=0 returns empty vec
     #[test]
-    fn decode_plain_i32_zero_count() {
-        let result = decode_plain_i32(&[], 0).unwrap();
+    fn decode_plain_zero_count_is_empty() {
+        let result = decode_plain::<i32>(&[], 0).unwrap();
         assert_eq!(result, alloc::vec![]);
     }
 
     // Test 10: 3-byte input for 1 i32 -> BufferTooSmall{required:4, provided:3}
     #[test]
-    fn decode_plain_i32_truncated_errors() {
-        let err = decode_plain_i32(&[0x01, 0x02, 0x03], 1).unwrap_err();
+    fn decode_plain_truncated_scalar_errors() {
+        let err = decode_plain::<i32>(&[0x01, 0x02, 0x03], 1).unwrap_err();
         assert!(matches!(
             err,
             consus_core::Error::BufferTooSmall {
@@ -352,8 +325,8 @@ mod tests {
 
     // Test 11: empty input for 1 i64 -> BufferTooSmall{required:8, provided:0}
     #[test]
-    fn decode_plain_i64_empty_errors() {
-        let err = decode_plain_i64(&[], 1).unwrap_err();
+    fn decode_plain_empty_input_errors() {
+        let err = decode_plain::<i64>(&[], 1).unwrap_err();
         assert!(matches!(
             err,
             consus_core::Error::BufferTooSmall {

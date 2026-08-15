@@ -1,5 +1,6 @@
 # Consus — Backlog
 
+
 ## ATLAS-CONSUS-PARSE-LIMITS-035 — Bound remaining untrusted length/depth sites [minor] — in progress 2026-08-14
 
 - Owner: Atlas safety audit. Scope: `consus-hdf5/src/file/reader.rs`
@@ -32,6 +33,43 @@
   `capacity overflow` panic. Restored, then `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, `cargo nextest run`
   (2539/2539), and `cargo test --doc` all pass.
+
+
+## ATLAS-CONSUS-PARSE-LIMITS-036 â€” Bound remaining HDF5 heap and dataset allocations [minor] â€” todo
+
+- Scope: `consus-hdf5`. Not started; found by an exhaustive sweep during -035.
+- Sites, each a file-declared length sizing an allocation with no ceiling:
+  `heap/global.rs:122` (`collection_size` from the GCOL header â€” also an
+  unchecked `- header_size` that underflows below the header size; reachable
+  from `resolve_vl_references`, i.e. any variable-length dataset read);
+  `file/mod.rs:679,696` (`nelmts` from a Fixed Array `FAHD` header, unchecked
+  `nelmts * entry_size`); `file/mod.rs:401` and `:204` (dataspace element
+  product times element size â€” `:204` has `checked_mul` but no ceiling, so
+  `2^40 * 8` still requests 8 TiB); `heap/fractal.rs:480,572,726,761`
+  (`length` from a decoded heap ID or a HUGE-object record);
+  `heap/fractal.rs:539` (`table_width` and `root_indirect_rows`, both `u16`
+  from FRHP, multiplied unchecked).
+- Acceptance: each site routed through `ParseBudget`, with an adversarial test
+  in `tests/adversarial_input.rs` that fails with the bound removed.
+
+
+## ATLAS-CONSUS-PARSE-LIMITS-037 â€” Bound consus-mat, consus-parquet, consus-zarr parse paths [minor] â€” todo
+
+- Scope: three crates outside the -035/-036 HDF5 and FITS surface.
+- `consus-mat`: `v5/matrix.rs:222,280` (`parse_matrix` recurses through
+  mxCELL/mxSTRUCT with no depth parameter and no budget anywhere in the crate;
+  ~40-50 input bytes per level), amplified by `v5/mod.rs:70-79`
+  (`decompress_zlib` reads a `miCOMPRESSED` element to end with no bound â€” a
+  decompression bomb; `ParseBudget::read_bounded` exists for exactly this).
+- `consus-parquet`: `wire/thrift.rs:288-297` (`ThriftReader::skip` recurses on
+  struct/list/map fields with no depth bound â€” one input byte per frame);
+  `dataset/schema.rs:107` (`parse_fields` recursion bounded only by element
+  count); `wire/metadata.rs:233,272,285` (list headers bounded against
+  remaining bytes but not element footprint â€” a 1 MiB footer reserves 100+ MiB).
+- `consus-zarr`: `chunk/ops.rs:415,465,833-835,1131` (chunk shape times element
+  size from attacker-controlled `.zarray`/`zarr.json`, unchecked multiply; the
+  `expand_fill_value` path is the default for a sparse array).
+- Acceptance: as -036, per crate.
 
 ## ATLAS-CONSUS-PARSE-LIMITS-036 — Bound remaining HDF5 heap and dataset allocations [minor] — todo
 
@@ -67,6 +105,90 @@
   size from attacker-controlled `.zarray`/`zarr.json`, unchecked multiply; the
   `expand_fill_value` path is the default for a sparse array).
 - Acceptance: as -036, per crate.
+
+## ATLAS-CONSUS-PARQUET-058 — Consolidate PLAIN scalar decoders [major][arch] — done 2026-08-15
+
+- Owner: Atlas provider integration. Scope: `consus-parquet::encoding::plain`
+  and its in-repository callers/export modules only; peer-owned FITS/HDF5 work,
+  generated lock state, and unrelated type-suffix findings are excluded.
+- Acceptance: replace the four duplicated public `decode_plain_*` scalar
+  decoders for INT32, INT64, FLOAT, and DOUBLE with one sealed, const-width
+  `PlainValue`/`decode_plain<T>` seam; migrate every caller and test without
+  compatibility aliases; preserve truncation, overflow, allocation-budget,
+  bit-pattern, and value semantics.
+- Verification: generic conformance coverage for all four scalar types,
+  focused Parquet Nextest, strict Clippy, formatting, doctests, package
+  semver analysis, and the exact provider hosted matrix.
+- Dependency: ADR 0002 records the breaking public replacement and its
+  migration path. The provider scan must reduce `type_suffixed_fns` from 85
+  without increasing any other debt class.
+- Local evidence: `type_suffixed_fns=81`, with `oversized_files=83`,
+  `unwrap_production=383`, `allow_sites=16`, and `orphan_modules=0`; Parquet
+  Nextest 249/249, strict Clippy, all-feature and no-default checks, doctests,
+  and warning-denied Rustdoc pass. `cargo semver-checks` classifies the four
+  removed entry points as a required major release.
+- Delivery evidence: implementation commit `e99a73a` merged as provider
+  `b20d419`; the required hosted matrix passed at `31880062463`, and exact
+  post-merge provider CI, Documentation, and Pages passed at `31880314888`,
+  `31880314874`, and `31880314709`. Atlas integrated the exact provider head
+  in root commit `1b225ea`.
+
+## ATLAS-CONSUS-TYPES-057 — Consolidate endian scalar reads [arch] — done 2026-08-15
+
+- Owner: Atlas provider integration. Scope: the `consus-core` byte-decoding
+  seam and its direct `consus-hdmf`/`consus-nwb` consumers only; peer-owned FITS/HDF5,
+  generated lock state, and unrelated type-suffix findings are excluded.
+- Acceptance: replace the six duplicated type-named endian readers with one
+  generic, const-sized, zero-cost scalar-reading seam; migrate all direct
+  callers without compatibility aliases; preserve byte-order and value
+  semantics; reduce the provider `type_suffixed_fns` count by the six removed
+  reader definitions.
+- Verification: generic reader conformance tests for every supported signed
+  and unsigned width, focused Consus-core, Consus-HDMF, and Consus-NWB Nextest,
+  strict
+  Clippy, formatting, doctests, and the exact provider hosted matrix.
+- Evidence to date: the six type-named readers now have one
+  `EndianScalar`/`read_integer<T>` implementation in `consus-core`; direct
+  HDMF and NWB callers are migrated with no aliases. The provider scan reports
+  `type_suffixed_fns=85` (91 before this slice). Local focused gates pass:
+  313/313 core+HDMF Nextest tests plus 278/278 NWB tests, strict Clippy,
+  all affected crate checks, and three doctests.
+
+## ATLAS-CONSUS-UNWRAP-056 — Harden decode test diagnostics [patch] — done 2026-08-15
+
+- Owner: Atlas provider integration. Scope: `consus-core::decode` test
+  diagnostics only; peer-owned FITS/HDF5 work and type-suffix cleanup are
+  excluded.
+- Acceptance: remove all bare test unwraps from the decode module using
+  invariant-bearing `expect` messages; preserve value-semantic coverage and
+  return the provider conformance `unwrap_production` count to its committed
+  baseline without weakening assertions.
+- Verification: focused core Nextest, no-default check, strict Clippy,
+  formatting, diff check, and the exact provider hosted matrix.
+- Evidence: local `cargo fmt --check`, all-target/all-feature check, strict
+  Clippy, all-feature Consus-core Nextest, and the no-default-feature check
+  passed; the provider scan reports `unwrap_production=383` and no bare
+  unwraps remain in `decode.rs`.
+
+## ATLAS-CONSUS-HIERARCHY-055 — Isolate Arrow datatype descriptors [patch] — done 2026-08-15
+
+- Owner: Atlas provider integration. Scope: `consus-arrow::datatype` only;
+  peer-owned FITS/HDF5 changes, generated lock state, and unrelated conformance
+  classes are excluded.
+- Acceptance: move the descriptor families into a named vertical child module
+  without changing the public `consus-arrow` exports; the parent module falls
+  below the 500-line hierarchy target; value-semantic Arrow tests, strict
+  Clippy, formatting, and the provider hosted gates pass at the exact head.
+- Method: preserve the public re-export closure, compile-time feature
+  boundaries, and conversion behavior; no adapter or duplicate API is allowed.
+- Delivered: moved temporal, scalar metadata, and alloc-backed nested
+  descriptors into `datatype/descriptors.rs`; `datatype/mod.rs` is 330 lines
+  and public `consus-arrow` exports remain unchanged. The provider scan drops
+  `oversized_files` from 84 to 83; the separate stale unwrap/type-suffix
+  residuals remain tracked for a later scope.
+- Local evidence: all-feature Arrow Nextest 81/81, no-default Nextest 2/2,
+  strict Clippy/checks, doctests, warning-denied Rustdoc, formatting, and diff
+  checks pass.
 
 ## ATLAS-CONSUS-RESOURCE-BOUNDARY-097 — Bounded external-input expansion [major] — done 2026-08-14
 

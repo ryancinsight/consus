@@ -1,5 +1,78 @@
 # Consus - Gap Audit
 
+## ATLAS-CONSUS-PARQUET-058 — Generic PLAIN scalar decoder (2026-08-15)
+
+The Parquet PLAIN decoder repeats the same count validation, checked byte
+product, fallible capacity reservation, and fixed-width iteration in four
+public functions whose names encode the physical scalar type. Replace that
+family with one sealed `PlainValue` trait carrying compile-time byte width and
+native little-endian conversion, plus `decode_plain<T>`. The public migration
+deletes the four old names rather than retaining forwarding aliases. The
+acceptance oracle is value-semantic equivalence for signed integers and IEEE
+754 bit patterns, including zero-count, truncation, and allocation-budget
+failures; no debt baseline increase is authorized.
+
+Implementation is complete on the provider branch: `PlainValue` is sealed to
+`i32`, `i64`, `f32`, and `f64`; all direct callers and historical PM references
+use `decode_plain::<T>`, and the old public entry points are deleted. The scan
+now reports `type_suffixed_fns=81` with no increase in the other tracked debt
+classes. Local evidence is 249/249 Parquet Nextest tests, strict Clippy,
+all-feature and no-default checks, doctests, warning-denied Rustdoc, and
+`cargo semver-checks` identifying the required major release classification.
+The implementation head `e99a73a` passed the required hosted matrix
+`31880062463`, merged as provider head `b20d419`. Exact post-merge provider CI,
+Documentation, and Pages passed at `31880314888`, `31880314874`, and
+`31880314709`; Atlas integrated that head in root commit `1b225ea`. This gap is
+closed.
+
+## ATLAS-CONSUS-TYPES-057 — Generic endian scalar reads (2026-08-15)
+
+The core decoder had six duplicated public readers whose names encoded the
+scalar type and width. They now share one `EndianScalar` trait and generic
+`read_integer<T>` entry point in `decode/endian.rs`. The associated byte width
+is compile-time data, the conversion is monomorphized per supported scalar,
+and the borrowed input remains allocation-free. Direct HDMF call sites select
+the concrete scalar at the decode boundary; no forwarding aliases remain.
+
+The new conformance test instantiates all supported signed and unsigned
+16/32/64-bit scalars in both byte orders and checks short-input rejection. The
+provider scan drops `type_suffixed_fns` from 91 to 85. Local evidence is
+313/313 Consus-core+HDMF Nextest tests, 278/278 Consus-NWB tests, strict
+Clippy for all affected crates, all-target checks, and three passing doctests.
+Hosted provider checks remain the merge gate; no conformance baseline change
+is authorized.
+
+## ATLAS-CONSUS-UNWRAP-056 — Decode test diagnostics (2026-08-15)
+
+The conformance scan classified 14 bare unwraps in the test-only decode
+module as production debt because the module uses a feature-qualified test
+configuration. The sites were replaced with invariant-bearing `expect`
+messages: non-zero test bit widths and valid decode results. Runtime decode
+logic and value-semantic assertions are unchanged.
+
+At the provider worktree, the exact focused gates passed: formatting, all-
+target/all-feature check, strict Clippy, all-feature Consus-core Nextest, and
+the no-default-feature check. The provider conformance scan now reports
+`unwrap_production=383` (397 before the slice) and `type_suffixed_fns=91`;
+the latter remains a separate cleanup item. Hosted provider checks are the
+merge gate before advancing the Atlas gitlink.
+
+## ATLAS-CONSUS-HIERARCHY-055 — Arrow datatype hierarchy (2026-08-15)
+
+The `consus-arrow::datatype` manifest mixed the canonical `ArrowDataType` enum
+with temporal/scalar metadata and alloc-backed nested descriptor definitions.
+At the exact provider head `419b114b`, that file was 535 lines and contributed
+one stale 500-line hierarchy count. The descriptor families now have one named
+home in `datatype/descriptors.rs`; `datatype/mod.rs` retains the enum,
+conversion, and tests and is 330 lines. Public exports and `alloc` feature
+boundaries are unchanged, so consumers do not need a migration or adapter.
+
+Evidence: provider conformance scan `oversized_files=83`, all-feature Arrow
+Nextest 81/81, no-default Nextest 2/2, strict Clippy/checks, doctests,
+warning-denied Rustdoc, formatting, and diff checks. The provider's separate
+`unwrap_production=397` and `type_suffixed_fns=91` residuals are not hidden by
+this structural slice and remain open for a later owner-local cleanup.
+
 ## ATLAS-CONSUS-BTREE-RESOURCE-039 — v1 chunk B-tree allocation boundary (2026-08-15)
 
 The synchronous and asynchronous v1 raw-data chunk B-tree readers derived the
