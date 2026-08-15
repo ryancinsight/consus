@@ -444,6 +444,70 @@ mod tests {
         bytes
     }
 
+    /// A hostile `TFIELDS` must not size the column reservation.
+    ///
+    /// The value is a header card, so a 20-digit integer parses to a `usize`
+    /// and reached `Vec::with_capacity` before a single `TFORMn` card was
+    /// read. `FitsTableColumn` is on the order of 200 bytes, so this is an
+    /// allocator abort for large values and a capacity-overflow panic for
+    /// `usize::MAX`-scale ones. The header's own card count is the exact
+    /// bound: every column needs a `TFORMn` card of its own.
+    #[test]
+    fn hostile_tfields_is_rejected_against_the_card_count() {
+        let bytes = header_bytes(&[
+            "XTENSION= 'TABLE   '",
+            "BITPIX  = 8",
+            "NAXIS   = 2",
+            "NAXIS1  = 24",
+            "NAXIS2  = 3",
+            "PCOUNT  = 0",
+            "GCOUNT  = 1",
+            // 13 cards in this header; 2^62 columns are not describable by it.
+            "TFIELDS = 4611686018427387904",
+            "END",
+        ]);
+        let header = parse_extension_header_bytes(&bytes).unwrap();
+        let err = FitsAsciiTableDescriptor::from_header(&header)
+            .expect_err("a TFIELDS beyond the card count must be rejected");
+        assert!(
+            matches!(
+                err,
+                Error::ResourceLimit {
+                    what: "FITS TFIELDS column count",
+                    ..
+                }
+            ),
+            "expected a ResourceLimit naming the violated invariant, got {err:?}"
+        );
+    }
+
+    /// The card-count bound admits every honest table.
+    ///
+    /// A real header always carries more cards than columns, so the bound
+    /// rejects hostile counts without constraining legitimate data.
+    #[test]
+    fn tfields_within_the_card_count_still_parses() {
+        let bytes = header_bytes(&[
+            "XTENSION= 'TABLE   '",
+            "BITPIX  = 8",
+            "NAXIS   = 2",
+            "NAXIS1  = 24",
+            "NAXIS2  = 3",
+            "PCOUNT  = 0",
+            "GCOUNT  = 1",
+            "TFIELDS = 2",
+            "TTYPE1  = 'NAME    '",
+            "TFORM1  = 'A8      '",
+            "TTYPE2  = 'VALUE   '",
+            "TFORM2  = 'E16.7   '",
+            "END",
+        ]);
+        let header = parse_extension_header_bytes(&bytes).unwrap();
+        let descriptor = FitsAsciiTableDescriptor::from_header(&header)
+            .expect("an honest two-column table must parse");
+        assert_eq!(descriptor.columns().len(), 2);
+    }
+
     #[test]
     fn parses_ascii_table_descriptor() {
         let bytes = header_bytes(&[
