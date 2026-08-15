@@ -10,7 +10,8 @@
       the v1 record region.
 - [x] Pass strict Clippy, formatting, package check, no-default check, the
       focused budget Nextest, async 11/11, and full HDF5 Nextest 440/440.
-      Hosted exact-head gates remain before provider closure.
+      Exact provider head `6bb060b` passes CI `31869739418`, Documentation
+      `31869739408`, and manually dispatched Pages `31869947774`.
 
 ## ATLAS-CONSUS-ASYNC-RESOURCE-038 — Bound async HDF5 reads — done 2026-08-15
 
