@@ -110,7 +110,7 @@ where
 
     /// Read raw bytes from the source at the given offset.
     pub async fn read_bytes(&self, offset: u64, len: usize) -> Result<Vec<u8>> {
-        async_reader::read_region(&self.source, offset, len).await
+        async_reader::read_region(&self.source, offset, len, &self.ctx).await
     }
 
     /// Classify the object at `address` as Group, Dataset, or NamedDatatype.
@@ -161,7 +161,10 @@ where
         let chunk_dims_u32 = layout.chunk_dims.ok_or_else(|| Error::InvalidFormat {
             message: alloc::string::String::from("chunked dataset missing chunk dimensions"),
         })?;
-        let chunk_dims: Vec<usize> = chunk_dims_u32.iter().map(|&d| d as usize).collect();
+        let chunk_dims: Vec<usize> = chunk_dims_u32
+            .iter()
+            .map(|&d| usize::try_from(d).map_err(|_| Error::Overflow))
+            .collect::<Result<Vec<_>>>()?;
 
         let element_size =
             dataset
@@ -173,12 +176,12 @@ where
                     ),
                 })?;
         let dataset_dims = dataset.shape.current_dims();
-        let total_bytes = dataset
-            .shape
-            .num_elements()
-            .checked_mul(element_size)
-            .ok_or(Error::Overflow)?;
-        let mut out = vec![0u8; total_bytes];
+        let total_bytes =
+            super::checked_dataset_byte_count(&self.ctx, &dataset.shape, element_size)?;
+        let mut out = self.ctx.budget.zeroed(
+            u64::try_from(total_bytes).map_err(|_| Error::Overflow)?,
+            "async chunked dataset output",
+        )?;
 
         let fill_value = reader::read_fill_value(&header);
         let filter_ids = dataset.filters;
@@ -221,8 +224,12 @@ where
                     .async_read_v1_chunk_btree_leaf_entries(chunk_btree_address, chunk_dims.len())
                     .await?;
                 for entry in entries {
-                    let chunk_uncompressed_size =
-                        chunk_dims.iter().product::<usize>() * element_size;
+                    let chunk_uncompressed_size = super::checked_element_payload_byte_count(
+                        &self.ctx,
+                        &chunk_dims,
+                        element_size,
+                        "async chunk uncompressed size",
+                    )?;
                     let chunk = crate::dataset::chunk::async_read_chunk_raw(
                         &self.source,
                         &crate::dataset::chunk::ChunkLocation {
@@ -240,8 +247,8 @@ where
                     let chunk_coords: Vec<usize> = entry
                         .dimension_offsets
                         .iter()
-                        .map(|&o| o as usize)
-                        .collect();
+                        .map(|&o| usize::try_from(o).map_err(|_| Error::Overflow))
+                        .collect::<Result<Vec<_>>>()?;
 
                     // Same layout copy logic as sync.
                     // This could be optimized later.
@@ -289,7 +296,12 @@ where
                 let entries = self
                     .async_read_v4_chunk_btree_entries(index_address)
                     .await?;
-                let chunk_uncompressed_size = chunk_dims.iter().product::<usize>() * element_size;
+                let chunk_uncompressed_size = super::checked_element_payload_byte_count(
+                    &self.ctx,
+                    &chunk_dims,
+                    element_size,
+                    "async chunk uncompressed size",
+                )?;
 
                 for entry in entries {
                     let chunk = crate::dataset::chunk::async_read_chunk_raw(
@@ -309,8 +321,8 @@ where
                     let chunk_coords: Vec<usize> = entry
                         .dimension_offsets
                         .iter()
-                        .map(|&o| o as usize)
-                        .collect();
+                        .map(|&o| usize::try_from(o).map_err(|_| Error::Overflow))
+                        .collect::<Result<Vec<_>>>()?;
                     let mut chunk_pos = 0;
                     let mut dataset_pos = vec![0usize; dataset_dims.len()];
 

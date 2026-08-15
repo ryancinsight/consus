@@ -14,7 +14,7 @@
 
 use core::num::NonZeroUsize;
 
-use consus_core::{ByteOrder, Datatype, NodeType, Shape};
+use consus_core::{ByteOrder, Datatype, Error, NodeType, ParseBudget, Shape};
 use consus_hdf5::dataset::StorageLayout;
 use consus_hdf5::file::Hdf5File;
 use consus_hdf5::file::async_file::AsyncHdf5File;
@@ -115,6 +115,23 @@ async fn async_read_bytes_returns_hdf5_magic() {
         b"\x89HDF\r\n\x1a\n",
         "first 8 bytes must be HDF5 magic"
     );
+}
+
+#[tokio::test]
+async fn async_read_bytes_rejects_region_beyond_budget() {
+    let bytes = build_scalar_hdf5();
+    let cursor = AsyncMemCursor::from_bytes(bytes);
+    let file = AsyncHdf5File::open(cursor).await.expect("must open");
+    let result = file
+        .read_bytes(0, ParseBudget::DEFAULT.max_alloc_bytes + 1)
+        .await;
+    assert!(matches!(
+        result,
+        Err(Error::ResourceLimit {
+            what: "async HDF5 read region",
+            ..
+        })
+    ));
 }
 
 #[tokio::test]

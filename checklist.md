@@ -1,5 +1,16 @@
 # Consus — Implementation Checklist
 
+## ATLAS-CONSUS-ASYNC-RESOURCE-038 — Bound async HDF5 reads — in progress 2026-08-15
+
+- [x] Thread the `ParseContext` budget through async region and object-header
+      reads; replace direct zeroed allocation and unchecked continuation-length
+      conversions with typed resource-limit errors.
+- [x] Reuse the synchronous bounded dataset-payload helper for async chunked
+      output and chunk-size products; add no parallel allocation policy.
+- [x] Add the async oversized-region regression; focused async Nextest passes
+      11/11, adversarial HDF5 Nextest passes 16/16, and strict Clippy/checks
+      pass. Full package and hosted exact-head gates remain before closure.
+
 ## ATLAS-CONSUS-PARSE-LIMITS-036 — Bound HDF5 allocation surfaces — done 2026-08-15
 
 - [x] Route global-heap collections and objects, contiguous/chunked dataset

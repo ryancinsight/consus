@@ -55,6 +55,48 @@ pub struct Hdf5File<R: ReadAt> {
     ctx: ParseContext,
 }
 
+/// Calculate a dataset payload size without trusting a file-supplied shape.
+///
+/// `Shape::num_elements` is intentionally a plain value operation for
+/// already-validated in-memory shapes. HDF5 shapes cross an untrusted file
+/// boundary, so this path must detect multiplication overflow and apply
+/// the parser's byte and element ceilings before allocating output.
+#[cfg(feature = "alloc")]
+pub(crate) fn checked_dataset_byte_count(
+    ctx: &ParseContext,
+    shape: &consus_core::Shape,
+    element_size: usize,
+) -> Result<usize> {
+    checked_element_payload_byte_count(
+        ctx,
+        &shape.current_dims(),
+        element_size,
+        "dataset element count",
+    )
+}
+
+/// Calculate a bounded byte payload from file-supplied element extents.
+#[cfg(feature = "alloc")]
+pub(crate) fn checked_element_payload_byte_count(
+    ctx: &ParseContext,
+    extents: &[usize],
+    element_size: usize,
+    what: &'static str,
+) -> Result<usize> {
+    let element_count = extents
+        .iter()
+        .try_fold(1usize, |count, &extent| count.checked_mul(extent))
+        .ok_or(Error::Overflow)?;
+    let bounded_count = ctx.budget.checked_elements(
+        u64::try_from(element_count).map_err(|_| Error::Overflow)?,
+        element_size,
+        what,
+    )?;
+    bounded_count
+        .checked_mul(element_size)
+        .ok_or(Error::Overflow)
+}
+
 impl<R: ReadAt + Sync> Hdf5File<R> {
     /// Open an HDF5 file from a positioned I/O source.
     ///
@@ -196,7 +238,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                 .ok_or_else(|| Error::UnsupportedFeature {
                     feature: String::from("chunked full read requires fixed-size element datatype"),
                 })?;
-        let total_bytes = self.checked_dataset_byte_count(&dataset.shape, element_size)?;
+        let total_bytes = checked_dataset_byte_count(&self.ctx, &dataset.shape, element_size)?;
         let mut out = self.ctx.budget.zeroed(
             u64::try_from(total_bytes).map_err(|_| Error::Overflow)?,
             "chunked dataset output",
@@ -390,7 +432,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                     }
                     other => other.element_size().unwrap_or(0),
                 };
-                let n_bytes = self.checked_dataset_byte_count(&dataset.shape, element_size)?;
+                let n_bytes = checked_dataset_byte_count(&self.ctx, &dataset.shape, element_size)?;
                 if n_bytes == 0 {
                     return Ok(Vec::new());
                 }
@@ -414,33 +456,6 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                 feature: String::from("virtual dataset layout is not supported"),
             }),
         }
-    }
-
-    /// Calculate a dataset payload size without trusting a file-supplied shape.
-    ///
-    /// `Shape::num_elements` is intentionally a plain value operation for
-    /// already-validated in-memory shapes. HDF5 shapes cross an untrusted file
-    /// boundary, so this path must detect multiplication overflow and apply
-    /// the parser's byte and element ceilings before allocating output.
-    #[cfg(feature = "alloc")]
-    fn checked_dataset_byte_count(
-        &self,
-        shape: &consus_core::Shape,
-        element_size: usize,
-    ) -> Result<usize> {
-        let element_count = shape
-            .current_dims()
-            .iter()
-            .try_fold(1usize, |count, &extent| count.checked_mul(extent))
-            .ok_or(Error::Overflow)?;
-        let bounded_count = self.ctx.budget.checked_elements(
-            u64::try_from(element_count).map_err(|_| Error::Overflow)?,
-            element_size,
-            "dataset element count",
-        )?;
-        bounded_count
-            .checked_mul(element_size)
-            .ok_or(Error::Overflow)
     }
 
     /// Read raw bytes from a specific file offset.

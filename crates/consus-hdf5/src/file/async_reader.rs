@@ -14,7 +14,7 @@
 //! bounded by the continuation chain depth limit of 256 hops.
 
 #[cfg(feature = "alloc")]
-use alloc::{vec, vec::Vec};
+use alloc::vec::Vec;
 
 #[cfg(feature = "alloc")]
 use byteorder::{ByteOrder, LittleEndian};
@@ -141,11 +141,15 @@ pub(crate) async fn read_region<R: AsyncReadAt>(
     source: &R,
     offset: u64,
     len: usize,
+    ctx: &ParseContext,
 ) -> Result<Vec<u8>> {
     if len == 0 {
-        return Ok(vec![]);
+        return Ok(Vec::new());
     }
-    let mut buf = vec![0u8; len];
+    let mut buf = ctx.budget.zeroed(
+        u64::try_from(len).map_err(|_| Error::Overflow)?,
+        "async HDF5 read region",
+    )?;
     source.read_at(offset, &mut buf).await?;
     Ok(buf)
 }
@@ -272,16 +276,17 @@ pub(crate) fn scan_v1_continuations(
 ///   HDF5 superblock at any expected offset.
 #[cfg(all(feature = "async-io", feature = "alloc"))]
 pub async fn async_read_superblock<R: AsyncReadAt + AsyncLength>(source: &R) -> Result<Superblock> {
-    let file_len = AsyncLength::len(source).await? as usize;
+    let file_len = AsyncLength::len(source).await?;
     // 2048 (last valid search offset) + 64 (max superblock size) = 2112
-    let window = file_len.min(2112);
+    let window = usize::try_from(file_len.min(2112)).map_err(|_| Error::Overflow)?;
     if window == 0 {
         return Err(Error::InvalidFormat {
             #[cfg(feature = "alloc")]
             message: alloc::string::String::from("empty source"),
         });
     }
-    let data = read_region(source, 0, window).await?;
+    let ctx = ParseContext::new(8, 8);
+    let data = read_region(source, 0, window, &ctx).await?;
     let buf = MultiRegionBuffer::from_single(0, data);
     Superblock::read_from(&buf)
 }
@@ -313,7 +318,7 @@ async fn async_read_ohdr_v2<R: AsyncReadAt>(
     };
 
     // -- Preamble: signature(4) + version(1) + flags(1) -------------------
-    let preamble = read_region(source, address, OHDR_PREAMBLE_LEN).await?;
+    let preamble = read_region(source, address, OHDR_PREAMBLE_LEN, ctx).await?;
     if preamble[0..4] != OHDR_SIGNATURE {
         return Err(Error::InvalidFormat {
             #[cfg(feature = "alloc")]
@@ -344,13 +349,19 @@ async fn async_read_ohdr_v2<R: AsyncReadAt>(
     }
     let variable_len = vlen;
 
-    let var_data = read_region(source, address + OHDR_PREAMBLE_LEN as u64, variable_len).await?;
+    let var_data = read_region(
+        source,
+        address + OHDR_PREAMBLE_LEN as u64,
+        variable_len,
+        ctx,
+    )
+    .await?;
     // Chunk data-size field occupies the last `size_width` bytes of the variable region.
     let size_field_offset = variable_len - size_width;
     let chunk_data_size =
         crate::object_header::v2::read_chunk_data_size(&var_data[size_field_offset..], size_width)?;
 
-    if chunk_data_size as usize > MAX_CHUNK_BYTES {
+    if chunk_data_size > MAX_CHUNK_BYTES as u64 {
         return Err(Error::InvalidFormat {
             #[cfg(feature = "alloc")]
             message: alloc::format!(
@@ -360,10 +371,11 @@ async fn async_read_ohdr_v2<R: AsyncReadAt>(
             ),
         });
     }
+    let chunk_data_size = usize::try_from(chunk_data_size).map_err(|_| Error::Overflow)?;
 
     // -- Full first chunk -------------------------------------------------
     let total = OHDR_PREAMBLE_LEN + variable_len + chunk_data_size as usize + CHECKSUM_LEN;
-    let ohdr_data = read_region(source, address, total).await?;
+    let ohdr_data = read_region(source, address, total, ctx).await?;
 
     // -- Scan initial continuations ---------------------------------------
     let msg_start = OHDR_PREAMBLE_LEN + variable_len;
@@ -390,10 +402,13 @@ async fn async_read_ohdr_v2<R: AsyncReadAt>(
                 message: alloc::string::String::from("continuation chain exceeded 256 hops"),
             });
         }
-        let ochk_data = read_region(source, cont_addr, cont_len as usize).await?;
+        let cont_len = ctx
+            .budget
+            .checked_bytes(cont_len, "async object-header continuation")?;
+        let ochk_data = read_region(source, cont_addr, cont_len, ctx).await?;
         if ochk_data.len() >= 4 && ochk_data[0..4] == OCHK_SIGNATURE {
             let ochk_msg_start = OCHK_PREAMBLE_LEN;
-            let ochk_msg_end = (cont_len as usize).saturating_sub(CHECKSUM_LEN);
+            let ochk_msg_end = cont_len.saturating_sub(CHECKSUM_LEN);
             if ochk_msg_end > ochk_msg_start {
                 let more =
                     scan_v2_continuations(&ochk_data[ochk_msg_start..ochk_msg_end], flags, ctx)?;
@@ -433,7 +448,7 @@ async fn async_read_ohdr_v1<R: AsyncReadAt>(
     const V1_HEADER_PADDING: usize = 4;
     const V1_MESSAGES_START: usize = V1_HEADER_PREFIX_SIZE + V1_HEADER_PADDING; // = 16
 
-    let prefix = read_region(source, address, V1_HEADER_PREFIX_SIZE).await?;
+    let prefix = read_region(source, address, V1_HEADER_PREFIX_SIZE, ctx).await?;
     if prefix[0] != 1 {
         return Err(Error::InvalidFormat {
             #[cfg(feature = "alloc")]
@@ -441,9 +456,10 @@ async fn async_read_ohdr_v1<R: AsyncReadAt>(
         });
     }
 
-    let header_data_size = LittleEndian::read_u32(&prefix[8..12]) as usize;
+    let header_data_size =
+        usize::try_from(LittleEndian::read_u32(&prefix[8..12])).map_err(|_| Error::Overflow)?;
     let initial_len = V1_MESSAGES_START + header_data_size;
-    let initial_data = read_region(source, address, initial_len).await?;
+    let initial_data = read_region(source, address, initial_len, ctx).await?;
 
     let continuations = scan_v1_continuations(&initial_data[V1_MESSAGES_START..], ctx)?;
 
@@ -463,7 +479,10 @@ async fn async_read_ohdr_v1<R: AsyncReadAt>(
                 ),
             });
         }
-        let cont_data = read_region(source, cont_addr, cont_len as usize).await?;
+        let cont_len = ctx
+            .budget
+            .checked_bytes(cont_len, "async object-header continuation")?;
+        let cont_data = read_region(source, cont_addr, cont_len, ctx).await?;
         let more = scan_v1_continuations(&cont_data, ctx)?;
         multi_buf.add_region(cont_addr, cont_data);
         pending.extend(more);
@@ -492,7 +511,7 @@ pub async fn async_read_object_header<R: AsyncReadAt>(
     address: u64,
     ctx: &ParseContext,
 ) -> Result<crate::object_header::ObjectHeader> {
-    let peek = read_region(source, address, 4).await?;
+    let peek = read_region(source, address, 4, ctx).await?;
     if peek[0..4] == OHDR_SIGNATURE {
         async_read_ohdr_v2(source, address, ctx).await
     } else {

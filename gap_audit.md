@@ -1,5 +1,21 @@
 # Consus - Gap Audit
 
+## ATLAS-CONSUS-ASYNC-RESOURCE-038 — Async HDF5 allocation boundary (2026-08-15)
+
+The async HDF5 I/O layer allocated `read_region` buffers directly from caller
+or file-derived lengths, and async chunked reads recomputed dataset and chunk
+payload products outside the shared budget helper. The region helper now
+receives the `ParseContext`, uses its fallible byte ceiling, and validates
+object-header continuation lengths before converting them for slicing. Async
+chunked output and uncompressed chunk sizes reuse the synchronous bounded
+payload calculation.
+
+The new async regression requests one byte beyond the default allocation
+ceiling and asserts `Error::ResourceLimit` before I/O. Focused verification at
+the implementation tree is async Nextest 11/11, adversarial HDF5 Nextest
+16/16, strict Clippy, formatting, and package check. Full package and hosted
+exact-head gates remain open for this item.
+
 ## ATLAS-CONSUS-PARSE-LIMITS-036 — HDF5 allocation boundary (2026-08-15)
 
 The HDF5 parser still had file-controlled allocations outside the shared
