@@ -1,5 +1,14 @@
 # Consus — Implementation Checklist
 
+## ATLAS-CONSUS-UNWRAP-056 — Harden decode test diagnostics
+
+- [x] Claim only `consus-core::decode` test diagnostics; preserve peer-owned
+      FITS/HDF5 work and the separate type-suffix residual.
+- [x] Replace bare unwraps with invariant-bearing `expect` messages without
+      changing the decode implementation or weakening value assertions.
+- [x] Pass focused core tests, strict Clippy, formatting, diff checks, and
+      exact provider hosted CI before Atlas integration.
+
 ## ATLAS-CONSUS-HIERARCHY-055 — Isolate Arrow datatype descriptors
 
 - [x] Claim the provider-owned `consus-arrow::datatype` scope; do not touch

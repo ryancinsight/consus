@@ -1,5 +1,20 @@
 # Consus - Gap Audit
 
+## ATLAS-CONSUS-UNWRAP-056 — Decode test diagnostics (2026-08-15)
+
+The conformance scan classified 14 bare unwraps in the test-only decode
+module as production debt because the module uses a feature-qualified test
+configuration. The sites were replaced with invariant-bearing `expect`
+messages: non-zero test bit widths and valid decode results. Runtime decode
+logic and value-semantic assertions are unchanged.
+
+At the provider worktree, the exact focused gates passed: formatting, all-
+target/all-feature check, strict Clippy, all-feature Consus-core Nextest, and
+the no-default-feature check. The provider conformance scan now reports
+`unwrap_production=383` (397 before the slice) and `type_suffixed_fns=91`;
+the latter remains a separate cleanup item. Hosted provider checks are the
+merge gate before advancing the Atlas gitlink.
+
 ## ATLAS-CONSUS-HIERARCHY-055 — Arrow datatype hierarchy (2026-08-15)
 
 The `consus-arrow::datatype` manifest mixed the canonical `ArrowDataType` enum

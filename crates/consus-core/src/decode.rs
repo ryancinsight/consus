@@ -317,7 +317,7 @@ mod tests {
 
     fn le_int(bits: usize, signed: bool) -> Datatype {
         Datatype::Integer {
-            bits: NonZeroUsize::new(bits).unwrap(),
+            bits: NonZeroUsize::new(bits).expect("test bit width is non-zero"),
             signed,
             byte_order: ByteOrder::LittleEndian,
         }
@@ -325,7 +325,7 @@ mod tests {
 
     fn be_float(bits: usize) -> Datatype {
         Datatype::Float {
-            bits: NonZeroUsize::new(bits).unwrap(),
+            bits: NonZeroUsize::new(bits).expect("test bit width is non-zero"),
             byte_order: ByteOrder::BigEndian,
         }
     }
@@ -333,28 +333,28 @@ mod tests {
     #[test]
     fn f32_le_widens_exactly() {
         let raw = 1.5f32.to_le_bytes().to_vec();
-        let out = decode_to_f64(&raw, &le_float(32)).unwrap();
+        let out = decode_to_f64(&raw, &le_float(32)).expect("valid f32 decodes");
         assert_eq!(out, vec![1.5_f64]);
     }
 
     #[test]
     fn f64_be_roundtrips() {
         let raw = 3.25f64.to_be_bytes().to_vec();
-        let out = decode_to_f64(&raw, &be_float(64)).unwrap();
+        let out = decode_to_f64(&raw, &be_float(64)).expect("valid f64 decodes");
         assert_eq!(out, vec![3.25_f64]);
     }
 
     #[test]
     fn i8_signed_preserves_negative() {
         let raw = vec![0xFFu8, 0x01];
-        let out = decode_to_f64(&raw, &le_int(8, true)).unwrap();
+        let out = decode_to_f64(&raw, &le_int(8, true)).expect("valid i8 decodes");
         assert_eq!(out, vec![-1.0, 1.0]);
     }
 
     #[test]
     fn u16_le_value() {
         let raw = 0x1234u16.to_le_bytes().to_vec();
-        let out = decode_to_f64(&raw, &le_int(16, false)).unwrap();
+        let out = decode_to_f64(&raw, &le_int(16, false)).expect("valid u16 decodes");
         assert_eq!(out, vec![4660.0_f64]); // 0x1234
     }
 
@@ -364,26 +364,26 @@ mod tests {
         let out = decode_to_f64(
             &raw,
             &Datatype::Integer {
-                bits: NonZeroUsize::new(32).unwrap(),
+                bits: NonZeroUsize::new(32).expect("test bit width is non-zero"),
                 signed: false,
                 byte_order: ByteOrder::BigEndian,
             },
         )
-        .unwrap();
+        .expect("valid u32 decodes");
         assert_eq!(out, vec![3_405_691_582.0_f64]); // 0xCAFEBABE
     }
 
     #[test]
     fn i64_le_negative() {
         let raw = (-9_223_372_036_854_775_807i64).to_le_bytes().to_vec();
-        let out = decode_to_f64(&raw, &le_int(64, true)).unwrap();
+        let out = decode_to_f64(&raw, &le_int(64, true)).expect("valid i64 decodes");
         assert_eq!(out, vec![-9_223_372_036_854_775_807_f64]);
     }
 
     #[test]
     fn boolean_maps_to_zero_one() {
         let raw = vec![0u8, 5u8, 0u8];
-        let out = decode_to_f64(&raw, &Datatype::Boolean).unwrap();
+        let out = decode_to_f64(&raw, &Datatype::Boolean).expect("valid boolean decodes");
         assert_eq!(out, vec![0.0, 1.0, 0.0]);
     }
 
@@ -406,21 +406,22 @@ mod tests {
     fn decode_bytes_tuple_matches_datatype_path() {
         // f32 LE via the tuple path vs the datatype path
         let raw = vec![0x00, 0x00, 0xC0, 0x3F]; // 1.5f32 LE
-        let tuple = decode_bytes_to_f64(&raw, 4, true, true, ByteOrder::LittleEndian).unwrap();
+        let tuple = decode_bytes_to_f64(&raw, 4, true, true, ByteOrder::LittleEndian)
+            .expect("valid tuple decodes");
         let dtype = decode_to_f64(
             &raw,
             &Datatype::Float {
-                bits: NonZeroUsize::new(32).unwrap(),
+                bits: NonZeroUsize::new(32).expect("test bit width is non-zero"),
                 byte_order: ByteOrder::LittleEndian,
             },
         )
-        .unwrap();
+        .expect("valid datatype decodes");
         assert_eq!(tuple, dtype);
     }
 
     fn le_float(bits: usize) -> Datatype {
         Datatype::Float {
-            bits: NonZeroUsize::new(bits).unwrap(),
+            bits: NonZeroUsize::new(bits).expect("test bit width is non-zero"),
             byte_order: ByteOrder::LittleEndian,
         }
     }
