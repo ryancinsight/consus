@@ -939,7 +939,10 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
             };
 
         // Scaled dimension offsets (rank x 8 bytes)
-        let mut dimension_offsets = Vec::with_capacity(rank);
+        let mut dimension_offsets = self.ctx.budget.vec_with_capacity(
+            u64::try_from(rank).map_err(|_| Error::Overflow)?,
+            "HDF5 v4 chunk rank",
+        )?;
         for _ in 0..rank {
             dimension_offsets.push(LittleEndian::read_u64(&data[pos..pos + 8]));
             pos += 8;

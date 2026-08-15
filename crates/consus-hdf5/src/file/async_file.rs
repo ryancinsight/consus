@@ -486,7 +486,10 @@ where
 
         for record in &records {
             let data = &record.data;
-            let mut dimension_offsets = Vec::with_capacity(rank);
+            let mut dimension_offsets = self.ctx.budget.vec_with_capacity(
+                u64::try_from(rank).map_err(|_| Error::Overflow)?,
+                "HDF5 v4 chunk rank",
+            )?;
             let mut pos = 4; // Skip dimensional chunk size (size of chunk in elements scaled)
 
             let is_filtered = header.record_type == btree_v2_record_type::CHUNK_V4_FILTERED;

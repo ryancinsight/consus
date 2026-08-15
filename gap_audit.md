@@ -6,8 +6,8 @@ The synchronous and asynchronous v1 raw-data chunk B-tree readers derived the
 record region with unchecked `usize` arithmetic, allocated it with `vec!`, and
 reserved decoded entry and rank vectors without the shared parser budget. The
 record-size calculation is now shared, checked for overflow and the byte
-ceiling before I/O, and all three allocation classes use fallible
-`ParseBudget` reservations.
+ceiling before I/O, and all v1/v4 entry and rank-vector allocations use
+fallible `ParseBudget` reservations.
 
 The value-semantic regression rejects a record region beyond a constrained
 budget before any read. Local verification is strict Clippy, formatting,

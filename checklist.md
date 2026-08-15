@@ -5,9 +5,9 @@
 - [x] Share checked record-size arithmetic between synchronous and asynchronous
       v1 raw-data chunk B-tree readers; reject arithmetic overflow and byte
       budgets before issuing the file read.
-- [x] Route record, entry, and rank-vector reservations through `ParseBudget`
-      fallible allocation helpers; add a budget regression for the record
-      region.
+- [x] Route v1/v4 record, entry, and rank-vector reservations through
+      `ParseBudget` fallible allocation helpers; add a budget regression for
+      the v1 record region.
 - [x] Pass strict Clippy, formatting, package check, no-default check, the
       focused budget Nextest, async 11/11, and full HDF5 Nextest 440/440.
       Hosted exact-head gates remain before provider closure.
