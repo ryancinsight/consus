@@ -245,6 +245,20 @@ impl<'a> ThriftReader<'a> {
     /// Bool (0x01/0x02): 0 bytes (value in header). UUID: 16 fixed bytes.
     /// Structs, lists, sets, maps are recursively skipped.
     pub fn skip(&mut self, type_code: u8) -> Result<()> {
+        self.skip_depth(type_code, 0)
+    }
+
+    /// Depth-bounded variant of [`Self::skip`].
+    ///
+    /// Thrift structs/list/maps nest self-similarly: a struct containing a
+    /// list of structs containing a list of structs... recurses one frame per
+    /// input byte with no format-enforced lower bound. Rust performs no
+    /// tail-call elimination, so unbounded recursion overflows the stack — an
+    /// abort no `Result` can express. The [`ParseBudget`] descent ceiling
+    /// bounds it here, matching the HDF5 B-tree and MAT v5 fixes.
+    fn skip_depth(&mut self, type_code: u8, depth: u16) -> Result<()> {
+        let depth =
+            consus_core::ParseBudget::DEFAULT.descend(depth, "thrift nested-type skip depth")?;
         match type_code {
             0x01 | 0x02 => Ok(()),
             0x03 => {
@@ -275,15 +289,15 @@ impl<'a> ThriftReader<'a> {
             0x09 | 0x0A => {
                 let (et, n) = self.read_list_header()?;
                 for _ in 0..n {
-                    self.skip(et)?;
+                    self.skip_depth(et, depth)?;
                 }
                 Ok(())
             }
             0x0B => {
                 let (kt, vt, n) = self.read_map_header()?;
                 for _ in 0..n {
-                    self.skip(kt)?;
-                    self.skip(vt)?;
+                    self.skip_depth(kt, depth)?;
+                    self.skip_depth(vt, depth)?;
                 }
                 Ok(())
             }
@@ -292,7 +306,7 @@ impl<'a> ThriftReader<'a> {
                 loop {
                     match self.read_field_header(&mut id)? {
                         None => return Ok(()),
-                        Some((_, ft)) => self.skip(ft)?,
+                        Some((_, ft)) => self.skip_depth(ft, depth)?,
                     }
                 }
             }
