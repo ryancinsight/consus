@@ -1,5 +1,15 @@
 # Consus — Implementation Checklist
 
+## ATLAS-CONSUS-TYPES-057 — Consolidate endian scalar reads
+
+- [x] Claim only the `consus-core` endian-reading seam and direct HDMF
+      consumers; preserve peer-owned FITS/HDF5 work and unrelated residuals.
+- [x] Replace the six type-named readers with one generic const-sized seam and
+      migrate every direct caller without compatibility aliases.
+- [x] Add value-semantic little/big-endian coverage for all supported widths,
+      then pass focused tests, strict Clippy, formatting, doctests, and exact
+      provider hosted CI before Atlas integration.
+
 ## ATLAS-CONSUS-UNWRAP-056 — Harden decode test diagnostics
 
 - [x] Claim only `consus-core::decode` test diagnostics; preserve peer-owned

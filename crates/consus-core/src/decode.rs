@@ -5,7 +5,7 @@
 //! Decoding converts a raw byte buffer into typed scalars according to a
 //! [`Datatype`] (or an equivalent `(element size, signedness, floatness,
 //! byte order)` parameter pack). Every format backend maps its native type
-//! system onto the canonical [`Datatype`] (see [`super::datatype`]), so this
+//! system onto the canonical [`Datatype`] (see [`super::types::datatype`]), so this
 //! module is the single place where byte representation becomes numeric
 //! values.
 //!
@@ -39,89 +39,9 @@ use super::types::datatype::ByteOrder;
 #[cfg(feature = "alloc")]
 use super::types::datatype::Datatype;
 
-/// Read a `u16` from a slice given a byte order.
-///
-/// # Panics
-///
-/// Panics if `c.len() < 2`.
-#[inline]
-pub fn read_u16(c: &[u8], bo: ByteOrder) -> u16 {
-    let arr = [c[0], c[1]];
-    match bo {
-        ByteOrder::LittleEndian => u16::from_le_bytes(arr),
-        ByteOrder::BigEndian => u16::from_be_bytes(arr),
-    }
-}
+mod endian;
 
-/// Read an `i16` from a slice given a byte order.
-///
-/// # Panics
-///
-/// Panics if `c.len() < 2`.
-#[inline]
-pub fn read_i16(c: &[u8], bo: ByteOrder) -> i16 {
-    let arr = [c[0], c[1]];
-    match bo {
-        ByteOrder::LittleEndian => i16::from_le_bytes(arr),
-        ByteOrder::BigEndian => i16::from_be_bytes(arr),
-    }
-}
-
-/// Read a `u32` from a slice given a byte order.
-///
-/// # Panics
-///
-/// Panics if `c.len() < 4`.
-#[inline]
-pub fn read_u32(c: &[u8], bo: ByteOrder) -> u32 {
-    let arr = [c[0], c[1], c[2], c[3]];
-    match bo {
-        ByteOrder::LittleEndian => u32::from_le_bytes(arr),
-        ByteOrder::BigEndian => u32::from_be_bytes(arr),
-    }
-}
-
-/// Read an `i32` from a slice given a byte order.
-///
-/// # Panics
-///
-/// Panics if `c.len() < 4`.
-#[inline]
-pub fn read_i32(c: &[u8], bo: ByteOrder) -> i32 {
-    let arr = [c[0], c[1], c[2], c[3]];
-    match bo {
-        ByteOrder::LittleEndian => i32::from_le_bytes(arr),
-        ByteOrder::BigEndian => i32::from_be_bytes(arr),
-    }
-}
-
-/// Read a `u64` from a slice given a byte order.
-///
-/// # Panics
-///
-/// Panics if `c.len() < 8`.
-#[inline]
-pub fn read_u64(c: &[u8], bo: ByteOrder) -> u64 {
-    let arr = [c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]];
-    match bo {
-        ByteOrder::LittleEndian => u64::from_le_bytes(arr),
-        ByteOrder::BigEndian => u64::from_be_bytes(arr),
-    }
-}
-
-/// Read an `i64` from a slice given a byte order.
-///
-/// # Panics
-///
-/// Panics if `c.len() < 8`.
-#[inline]
-pub fn read_i64(c: &[u8], bo: ByteOrder) -> i64 {
-    let arr = [c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]];
-    match bo {
-        ByteOrder::LittleEndian => i64::from_le_bytes(arr),
-        ByteOrder::BigEndian => i64::from_be_bytes(arr),
-    }
-}
+pub use endian::{EndianScalar, read_integer};
 
 /// Decode a raw buffer of fixed-size numeric elements into `Vec<f64>`.
 ///
@@ -186,27 +106,39 @@ pub fn decode_to_f64(raw: &[u8], dtype: &Datatype) -> Result<Vec<f64>, Error> {
                 (8, true) => Ok(raw.iter().map(|&v| (v as i8) as f64).collect()),
                 (16, false) => Ok(raw
                     .chunks_exact(2)
-                    .map(|c| read_u16(c, bo) as f64)
+                    .map(|c| {
+                        read_integer::<u16>(c, bo).expect("chunks_exact supplies a scalar") as f64
+                    })
                     .collect()),
                 (16, true) => Ok(raw
                     .chunks_exact(2)
-                    .map(|c| read_i16(c, bo) as f64)
+                    .map(|c| {
+                        read_integer::<i16>(c, bo).expect("chunks_exact supplies a scalar") as f64
+                    })
                     .collect()),
                 (32, false) => Ok(raw
                     .chunks_exact(4)
-                    .map(|c| read_u32(c, bo) as f64)
+                    .map(|c| {
+                        read_integer::<u32>(c, bo).expect("chunks_exact supplies a scalar") as f64
+                    })
                     .collect()),
                 (32, true) => Ok(raw
                     .chunks_exact(4)
-                    .map(|c| read_i32(c, bo) as f64)
+                    .map(|c| {
+                        read_integer::<i32>(c, bo).expect("chunks_exact supplies a scalar") as f64
+                    })
                     .collect()),
                 (64, false) => Ok(raw
                     .chunks_exact(8)
-                    .map(|c| read_u64(c, bo) as f64)
+                    .map(|c| {
+                        read_integer::<u64>(c, bo).expect("chunks_exact supplies a scalar") as f64
+                    })
                     .collect()),
                 (64, true) => Ok(raw
                     .chunks_exact(8)
-                    .map(|c| read_i64(c, bo) as f64)
+                    .map(|c| {
+                        read_integer::<i64>(c, bo).expect("chunks_exact supplies a scalar") as f64
+                    })
                     .collect()),
                 (b, _) => Err(Error::UnsupportedFeature {
                     feature: alloc::format!("decode_to_f64: {b}-bit integer"),
@@ -227,7 +159,7 @@ pub fn decode_to_f64(raw: &[u8], dtype: &Datatype) -> Result<Vec<f64>, Error> {
 /// by format readers that translate type-name strings into a single
 /// `(element size, signedness, floatness, byte order)` tuple.
 ///
-/// This is the [`ritk-codecs`]-style entry point: `elem_size` is 1, 2, 4, or
+/// This is the `ritk-codecs`-style entry point: `elem_size` is 1, 2, 4, or
 /// 8 bytes; `signed` applies to the integer path; `is_float` selects the
 /// float path. Float `elem_size` must be 4 or 8.
 ///
@@ -276,27 +208,27 @@ pub fn decode_bytes_to_f64(
             (1, true) => bytes.iter().map(|&v| (v as i8) as f64).collect(),
             (2, false) => bytes
                 .chunks_exact(2)
-                .map(|c| read_u16(c, bo) as f64)
+                .map(|c| read_integer::<u16>(c, bo).expect("chunks_exact supplies a scalar") as f64)
                 .collect(),
             (2, true) => bytes
                 .chunks_exact(2)
-                .map(|c| read_i16(c, bo) as f64)
+                .map(|c| read_integer::<i16>(c, bo).expect("chunks_exact supplies a scalar") as f64)
                 .collect(),
             (4, false) => bytes
                 .chunks_exact(4)
-                .map(|c| read_u32(c, bo) as f64)
+                .map(|c| read_integer::<u32>(c, bo).expect("chunks_exact supplies a scalar") as f64)
                 .collect(),
             (4, true) => bytes
                 .chunks_exact(4)
-                .map(|c| read_i32(c, bo) as f64)
+                .map(|c| read_integer::<i32>(c, bo).expect("chunks_exact supplies a scalar") as f64)
                 .collect(),
             (8, false) => bytes
                 .chunks_exact(8)
-                .map(|c| read_u64(c, bo) as f64)
+                .map(|c| read_integer::<u64>(c, bo).expect("chunks_exact supplies a scalar") as f64)
                 .collect(),
             (8, true) => bytes
                 .chunks_exact(8)
-                .map(|c| read_i64(c, bo) as f64)
+                .map(|c| read_integer::<i64>(c, bo).expect("chunks_exact supplies a scalar") as f64)
                 .collect(),
             (other, _) => {
                 return Err(Error::UnsupportedFeature {
