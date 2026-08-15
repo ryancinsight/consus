@@ -391,15 +391,24 @@ where
         }
 
         let s = self.ctx.offset_bytes();
-        let key_size = 4 + 4 + 8 * (rank + 1);
-        let header_size = 8 + 2 * s;
-        let data_size = key_size + header.entries_used as usize * (s + key_size);
-        let mut data = vec![0u8; data_size];
-        self.source
-            .read_at(btree_address + header_size as u64, &mut data)
-            .await?;
+        let header_size = 8usize
+            .checked_add(s.checked_mul(2).ok_or(Error::Overflow)?)
+            .ok_or(Error::Overflow)?;
+        let data_size =
+            super::checked_v1_chunk_btree_data_size(&self.ctx, rank, header.entries_used)?;
+        let read_offset = btree_address
+            .checked_add(u64::try_from(header_size).map_err(|_| Error::Overflow)?)
+            .ok_or(Error::Overflow)?;
+        let mut data = self.ctx.budget.zeroed(
+            u64::try_from(data_size).map_err(|_| Error::Overflow)?,
+            "HDF5 v1 chunk B-tree records",
+        )?;
+        self.source.read_at(read_offset, &mut data).await?;
 
-        let mut entries = Vec::with_capacity(header.entries_used as usize);
+        let mut entries = self.ctx.budget.vec_with_capacity(
+            u64::from(header.entries_used),
+            "HDF5 v1 chunk B-tree entries",
+        )?;
         use byteorder::{ByteOrder, LittleEndian};
         // Per HDF5 spec §IV.A.2.b: node layout is key[i] before addr[i].
         let mut pos = 0;
@@ -409,7 +418,10 @@ where
             pos += 4;
             let filter_mask = LittleEndian::read_u32(&data[pos..pos + 4]);
             pos += 4;
-            let mut dimension_offsets = Vec::with_capacity(rank);
+            let mut dimension_offsets = self.ctx.budget.vec_with_capacity(
+                u64::try_from(rank).map_err(|_| Error::Overflow)?,
+                "HDF5 v1 chunk rank",
+            )?;
             for _ in 0..rank {
                 dimension_offsets.push(LittleEndian::read_u64(&data[pos..pos + 8]));
                 pos += 8;

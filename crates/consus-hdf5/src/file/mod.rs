@@ -97,6 +97,36 @@ pub(crate) fn checked_element_payload_byte_count(
         .ok_or(Error::Overflow)
 }
 
+/// Calculate the bounded record region of a v1 raw-data chunk B-tree leaf.
+#[cfg(feature = "alloc")]
+pub(crate) fn checked_v1_chunk_btree_data_size(
+    ctx: &ParseContext,
+    rank: usize,
+    entries_used: u16,
+) -> Result<usize> {
+    let key_size = 4usize
+        .checked_add(4)
+        .and_then(|size| {
+            rank.checked_add(1)
+                .and_then(|dimensions| dimensions.checked_mul(8))
+                .and_then(|dimensions| size.checked_add(dimensions))
+        })
+        .ok_or(Error::Overflow)?;
+    let pair_size = ctx
+        .offset_bytes()
+        .checked_add(key_size)
+        .ok_or(Error::Overflow)?;
+    let entry_count = usize::from(entries_used);
+    let data_size = entry_count
+        .checked_mul(pair_size)
+        .and_then(|size| size.checked_add(key_size))
+        .ok_or(Error::Overflow)?;
+    ctx.budget.checked_bytes(
+        u64::try_from(data_size).map_err(|_| Error::Overflow)?,
+        "HDF5 v1 chunk B-tree records",
+    )
+}
+
 impl<R: ReadAt + Sync> Hdf5File<R> {
     /// Open an HDF5 file from a positioned I/O source.
     ///
@@ -657,14 +687,23 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
         }
 
         let s = self.ctx.offset_bytes();
-        let key_size = 4 + 4 + 8 * (rank + 1);
-        let header_size = 8 + 2 * s;
-        let data_size = key_size + header.entries_used as usize * (s + key_size);
-        let mut data = vec![0u8; data_size];
-        self.source
-            .read_at(btree_address + header_size as u64, &mut data)?;
+        let header_size = 8usize
+            .checked_add(s.checked_mul(2).ok_or(Error::Overflow)?)
+            .ok_or(Error::Overflow)?;
+        let data_size = checked_v1_chunk_btree_data_size(&self.ctx, rank, header.entries_used)?;
+        let read_offset = btree_address
+            .checked_add(u64::try_from(header_size).map_err(|_| Error::Overflow)?)
+            .ok_or(Error::Overflow)?;
+        let mut data = self.ctx.budget.zeroed(
+            u64::try_from(data_size).map_err(|_| Error::Overflow)?,
+            "HDF5 v1 chunk B-tree records",
+        )?;
+        self.source.read_at(read_offset, &mut data)?;
 
-        let mut entries = Vec::with_capacity(header.entries_used as usize);
+        let mut entries = self.ctx.budget.vec_with_capacity(
+            u64::from(header.entries_used),
+            "HDF5 v1 chunk B-tree entries",
+        )?;
         // Per HDF5 spec §IV.A.2.b (B-tree v1 raw-data chunk leaf node):
         // The node layout is key[0] | addr[0] | key[1] | addr[1] | ... | key[N-1] | addr[N-1] | key[N]
         // where key[i] describes the chunk at addr[i].  Read key first, then address.
@@ -675,7 +714,10 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
             pos += 4;
             let filter_mask = LittleEndian::read_u32(&data[pos..pos + 4]);
             pos += 4;
-            let mut dimension_offsets = Vec::with_capacity(rank);
+            let mut dimension_offsets = self.ctx.budget.vec_with_capacity(
+                u64::try_from(rank).map_err(|_| Error::Overflow)?,
+                "HDF5 v1 chunk rank",
+            )?;
             for _ in 0..rank {
                 dimension_offsets.push(LittleEndian::read_u64(&data[pos..pos + 8]));
                 pos += 8;
@@ -1234,6 +1276,14 @@ mod tests {
         let error = file
             .read_v4_chunk_farray_entries(128, &[1], &[1])
             .expect_err("u64::MAX FAHD element count must not be allocated");
+        assert!(matches!(error, consus_core::Error::ResourceLimit { .. }));
+    }
+
+    #[test]
+    fn v1_chunk_btree_record_region_is_budgeted_before_read() {
+        let ctx = ParseContext::with_budget(8, 8, consus_core::ParseBudget::new(32, 4, 8));
+        let error = checked_v1_chunk_btree_data_size(&ctx, 1, 1)
+            .expect_err("record region beyond byte budget must be rejected");
         assert!(matches!(error, consus_core::Error::ResourceLimit { .. }));
     }
 }

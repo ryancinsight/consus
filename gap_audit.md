@@ -1,5 +1,20 @@
 # Consus - Gap Audit
 
+## ATLAS-CONSUS-BTREE-RESOURCE-039 — v1 chunk B-tree allocation boundary (2026-08-15)
+
+The synchronous and asynchronous v1 raw-data chunk B-tree readers derived the
+record region with unchecked `usize` arithmetic, allocated it with `vec!`, and
+reserved decoded entry and rank vectors without the shared parser budget. The
+record-size calculation is now shared, checked for overflow and the byte
+ceiling before I/O, and all three allocation classes use fallible
+`ParseBudget` reservations.
+
+The value-semantic regression rejects a record region beyond a constrained
+budget before any read. Local verification is strict Clippy, formatting,
+package check, no-default check, the focused budget test, async Nextest 11/11,
+and full HDF5 Nextest 440/440. Hosted exact-head gates remain open for this
+item.
+
 ## ATLAS-CONSUS-ASYNC-RESOURCE-038 — Async HDF5 allocation boundary (2026-08-15)
 
 The async HDF5 I/O layer allocated `read_region` buffers directly from caller

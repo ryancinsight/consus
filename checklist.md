@@ -1,5 +1,17 @@
 # Consus — Implementation Checklist
 
+## ATLAS-CONSUS-BTREE-RESOURCE-039 — Bound v1 chunk B-tree reads — done 2026-08-15
+
+- [x] Share checked record-size arithmetic between synchronous and asynchronous
+      v1 raw-data chunk B-tree readers; reject arithmetic overflow and byte
+      budgets before issuing the file read.
+- [x] Route record, entry, and rank-vector reservations through `ParseBudget`
+      fallible allocation helpers; add a budget regression for the record
+      region.
+- [x] Pass strict Clippy, formatting, package check, no-default check, the
+      focused budget Nextest, async 11/11, and full HDF5 Nextest 440/440.
+      Hosted exact-head gates remain before provider closure.
+
 ## ATLAS-CONSUS-ASYNC-RESOURCE-038 — Bound async HDF5 reads — done 2026-08-15
 
 - [x] Thread the `ParseContext` budget through async region and object-header
