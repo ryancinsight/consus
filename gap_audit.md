@@ -10,8 +10,9 @@ Hosted fuzz run `31848757905` found a panic in the HDF5 link-message parser at
 The remaining-range guard now uses checked addition, link-name lengths use a
 fallible `u64`→`usize` conversion, and a regression test asserts that an
 oversized name length returns `InvalidFormat` without panicking. Local HDF5
-nextest (431/431) and strict Clippy pass. The exact-head hosted rerun is
-required before PR merge.
+nextest (431/431) and strict Clippy pass. Exact default head
+`c3afb406993f6b92e11963100621438064928383` is covered by hosted CI run
+`31851240758`, which passed the repository-owned matrix.
 
 ## ATLAS-CONSUS-RESOURCE-BOUNDARY-097 — Bounded external-input expansion (2026-08-14)
 
@@ -22,8 +23,10 @@ ranges reject empty/overflowing requests; `ListObjectsV2` rejects oversized
 responses and aggregate key growth; and the shared `ParseBudget` now provides
 fallible bounded stream reads used by deflate and Parquet page decompression.
 LZ4 and Snappy inspect their encoded output length before allocating, while
-Zstandard receives the validated limit. Hosted and full focused-gate evidence
-is pending on the final provider head.
+Zstandard receives the validated limit. Exact default head
+`c3afb406993f6b92e11963100621438064928383` is covered by hosted CI run
+`31851240758`, which passed the repository-owned matrix, including the
+compression, Parquet, and Moirai S3 paths.
 
 ## Dataset read + decode consolidation (2026-08-14)
 
@@ -66,7 +69,7 @@ checks. Source head `a5b9cfdde4c789c237652e0d62c42ce8372005f5` merged as
 `33c2df06b0209f21755462fe44bec85e6a979253`; hosted run `31683877253` passed
 all 68 repository-owned jobs at that exact source head. The residual is closed.
 
-## FITS and NWB no-default closure (2026-08-13, implementation complete; hosted verification pending)
+## FITS and NWB no-default closure (2026-08-13, hosted verification complete)
 
 The initial `consus-fits --no-default-features` check failed with 45 errors and
 36 warnings because alloc-only FITS parsing, HDU, image, table, file, and
@@ -84,7 +87,7 @@ closing the shared `Error::invalid_format` feature-unification boundary, the NWB
 re-export/version/test boundary, and the transitive HDF5 module/test boundary.
 The NWB default suite passes 278/278, the HDF5 default suite passes 405/405,
 and the explicit no-default no-tests gates pass. Hosted exact-head verification
-is the only remaining gate for this provider slice.
+passes at `c3afb406993f6b92e11963100621438064928383` in run `31851240758`.
 
 ## HDF5 no-default closure (2026-08-13)
 

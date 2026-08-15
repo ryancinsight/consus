@@ -34,7 +34,8 @@
       `consus-nwb` no-default module, re-export, version, and test boundaries.
 - [x] Close the transitive `consus-hdf5` no-default module, error, test, and
       benchmark boundaries required by the NWB library build.
-- [ ] Commit the provider slice and run hosted exact-head gates.
+- [x] Commit the provider slice and run hosted exact-head gates at default
+      `c3afb406`; CI run `31851240758` passed all repository-owned jobs.
 
 ## CONSUS-NODEF-NWB-004 — Close NWB no-default cfg boundary — done 2026-08-13
 
@@ -44,8 +45,8 @@
       version behavior.
 - [x] Pass workspace no-default check and strict Clippy; pass default NWB
       Nextest 278/278 and the explicit no-default no-tests gate.
-- [ ] Commit the provider slice and run hosted exact-head gates with the FITS
-      item above.
+- [x] Commit the provider slice and run hosted exact-head gates with the FITS
+      item above; CI run `31851240758` passed all repository-owned jobs.
 
 ## CONSUS-NODEF-HDF5-005 — Close HDF5 no-default cfg boundary — done 2026-08-13
 

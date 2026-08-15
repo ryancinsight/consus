@@ -1,6 +1,6 @@
 # Consus — Backlog
 
-## ATLAS-CONSUS-RESOURCE-BOUNDARY-097 — Bounded external-input expansion [major] — in progress
+## ATLAS-CONSUS-RESOURCE-BOUNDARY-097 — Bounded external-input expansion [major] — done 2026-08-14
 
 - Owner: current Atlas safety audit; scope is the Consus core parse budget,
   native compression codecs, Parquet page decompression, and the Moirai S3
@@ -15,6 +15,11 @@
   sizes before allocation; S3 ranges are checked and listings cap response,
   key-count, and key-byte growth; value-semantic regressions cover the range
   arithmetic and shared output-budget contract.
+- Evidence: exact default head `c3afb406993f6b92e11963100621438064928383`; hosted
+  CI run `31851240758` passed every repository-owned check, including the
+  Ubuntu, macOS, and Windows package matrices, MSRV jobs, MinIO S3 tests,
+  fuzz-target build, and feature checks. Documentation run `31851240739`
+  passed its build job.
 - Acceptance: focused `cargo nextest` passes for core, compression, Parquet,
   and IO with deflate/LZ4/Snappy/Zstd/GZIP coverage; locked metadata, strict
   Clippy, doctests, and provider hosted gates pass at the final head. No
