@@ -1,5 +1,21 @@
 # Consus - Gap Audit
 
+## ATLAS-CONSUS-HIERARCHY-055 — Arrow datatype hierarchy (2026-08-15)
+
+The `consus-arrow::datatype` manifest mixed the canonical `ArrowDataType` enum
+with temporal/scalar metadata and alloc-backed nested descriptor definitions.
+At the exact provider head `419b114b`, that file was 535 lines and contributed
+one stale 500-line hierarchy count. The descriptor families now have one named
+home in `datatype/descriptors.rs`; `datatype/mod.rs` retains the enum,
+conversion, and tests and is 330 lines. Public exports and `alloc` feature
+boundaries are unchanged, so consumers do not need a migration or adapter.
+
+Evidence: provider conformance scan `oversized_files=83`, all-feature Arrow
+Nextest 81/81, no-default Nextest 2/2, strict Clippy/checks, doctests,
+warning-denied Rustdoc, formatting, and diff checks. The provider's separate
+`unwrap_production=397` and `type_suffixed_fns=91` residuals are not hidden by
+this structural slice and remain open for a later owner-local cleanup.
+
 ## ATLAS-CONSUS-BTREE-RESOURCE-039 — v1 chunk B-tree allocation boundary (2026-08-15)
 
 The synchronous and asynchronous v1 raw-data chunk B-tree readers derived the
