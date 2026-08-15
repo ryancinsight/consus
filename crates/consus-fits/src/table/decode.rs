@@ -108,7 +108,13 @@ pub fn decode_binary_column(row: &[u8], column: &FitsTableColumn) -> Result<Fits
     if repeat == 1 {
         decode_scalar_binary(code, cell)
     } else {
-        let mut values = alloc::vec::Vec::with_capacity(repeat);
+        // `repeat` is the count from the `TFORMn` card, bounded only by what a
+        // 20-digit card can express. Each element must be backed by
+        // `elem_size` real bytes inside `cell`, which is already materialized,
+        // so the cell's own length is the exact bound on the reservation. The
+        // loop below still reports the shortfall as `BufferTooSmall`; clamping
+        // here only stops the count from choosing the allocation.
+        let mut values = alloc::vec::Vec::with_capacity(repeat.min(cell.len() / elem_size.max(1)));
         for i in 0..repeat {
             let start = i.checked_mul(elem_size).ok_or(Error::Overflow)?;
             let stop = start.checked_add(elem_size).ok_or(Error::Overflow)?;
