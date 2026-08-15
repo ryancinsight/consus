@@ -69,6 +69,15 @@
 - [x] Pass warning-denied Clippy for both crates in both feature modes.
 - [x] Record the remaining workspace no-default blockers in `gap_audit.md`.
 
+## CONSUS-NODEF-GATE-001 — Close the next workspace no-default blocker
+
+- [x] Correct the alloc-gated `consus-arrow::datatype` re-export and the
+      no-alloc test import in `fa314cb`.
+- [x] Pass package no-default check, strict Clippy, and no-default Nextest
+      2/2; pass default strict Clippy and Nextest 79/79.
+- [ ] Re-run the workspace no-default and hosted exact-head gates after the
+      peer-owned HDF5/FITS parser changes land in a clean provider commit.
+
 ## ATLAS-CONSUS-001 — Themis topology partition sizing [minor]
 
 - [x] Make the standard `consus` feature set use Themis CPU topology for the

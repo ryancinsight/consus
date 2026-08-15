@@ -860,16 +860,17 @@ owns the cross-repository matrix.
 - `consus-hdf5` root re-exports added for the `Hdf5File` and `Hdf5FileBuilder`
   facades (mirroring the `consus-fits` facade pattern).
 
-### Open — CONSUS-NODEF-GATE-001 (--no-default-features cfg debt)
+### Partial — CONSUS-NODEF-GATE-001 (--no-default-features cfg debt)
 
-`cargo check --workspace --no-default-features` still fails across the
-remaining format crates with systematic alloc/feature-gating debt:
-unconditional re-exports of alloc-gated items and un-gated `alloc::`/`vec!`
-references in no-std mode. `consus-arrow` and `consus-parquet` are closed by
-`CONSUS-NODEF-ARROW-PARQUET-002`; the next deterministic blocker is
-`consus-fits` (50 errors in the current sweep), followed by `consus-nwb` and
-downstream feature edges. Closure remains a dependency-ordered cfg-hygiene
-sequence.
+The previous residual was stale: the current `consus-fits` package no-default
+check passes, and the next reproducible failure was the unconditional
+`consus-arrow` `datatype` re-export at `src/lib.rs:74`. Commit `fa314cb` gates
+that export and fixes the no-alloc test import. Package no-default check,
+strict Clippy, no-default Nextest 2/2, default strict Clippy, and default
+Nextest 79/79 pass. The current worktree `cargo check --workspace
+--no-default-features` also passes, but that result includes peer-owned,
+uncommitted HDF5/FITS parser changes; clean exact-head hosted verification is
+still required before this gate can close.
 
 ### Open — CONSUS-TEST-API-001 (integration-test aspirational I/O API)
 
