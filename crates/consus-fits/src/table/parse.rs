@@ -25,6 +25,20 @@ pub(super) fn parse_table_core(
     } else {
         0
     };
+    // `TFIELDS` is a header card, so it is attacker-chosen: a 20-digit value
+    // parses to a `usize` and would size this reservation before a single
+    // column was read. The header itself supplies the exact bound — every
+    // column requires its own `TFORMn` card (`parse_column` demands one), so a
+    // header of `N` cards cannot describe more than `N` columns. A larger
+    // `TFIELDS` is malformed, not merely large.
+    let available_cards = header.len();
+    if fields > available_cards {
+        return Err(Error::ResourceLimit {
+            what: "FITS TFIELDS column count",
+            requested: fields as u64,
+            limit: available_cards as u64,
+        });
+    }
     let mut columns = Vec::with_capacity(fields);
     for index in 1..=fields {
         columns.push(parse_column(header, index, binary)?);
