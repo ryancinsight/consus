@@ -71,6 +71,7 @@ pub use array::{ArrayData, ArrowArray, column_values_to_arrow};
 pub use bridge::{ArrowBridge, ArrowBridgePlan, ArrowFieldDescriptor};
 #[cfg(feature = "alloc")]
 pub use bridge::{ArrowBridgeMode, ArrowDataTypeHint, ArrowSchemaMapping, ArrowZeroCopyConstraint};
+#[cfg(feature = "alloc")]
 pub use datatype::{
     ArrowDataType, DecimalType, DurationType, FixedSizeBinaryType, IntSign, TimeUnit, TimestampType,
 };
@@ -117,7 +118,7 @@ mod tests {
 
 #[cfg(all(test, not(feature = "alloc")))]
 mod no_alloc_tests {
-    use super::{ArrayData, ArrowArray};
+    use crate::array::{ArrayData, ArrowArray};
 
     #[test]
     fn no_alloc_array_surface_preserves_shape() {
