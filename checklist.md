@@ -14,8 +14,9 @@
       marker, so no compatibility shim was retained.
 - [x] Pass package formatting, strict Clippy, all-features Nextest (Consus
       8/8; HDF5 438/438), HDF5 adversarial allocation coverage, doctests, and
-      the Consus no-default check. Hosted exact-head verification remains a
-      delivery gate after the provider commit.
+      the Consus no-default check. Exact provider head `9e11ba7` passed hosted
+      CI run `31867893038`, Documentation run `31867893068`, and Pages run
+      `31867892530`.
 
 ## CONSUS-TEST-API-001 — Migrate cross-format tests to provider-owned APIs — done 2026-08-13
 

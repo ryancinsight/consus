@@ -18,7 +18,8 @@ continues to live in the provider-owned backend crates.
 Verification at the implementation tree: strict Clippy for `consus-hdf5` and
 `consus`, HDF5 Nextest 438/438, Consus Nextest 8/8, both package doctest
 commands, `consus --no-default-features` check, formatting, and diff checks.
-The provider commit and hosted exact-head run remain the delivery evidence.
+Provider head `9e11ba7` passed exact-head hosted CI run `31867893038`,
+Documentation run `31867893068`, and Pages run `31867892530`.
 
 ## ATLAS-CONSUS-HDF5-LINK-098 — Reject overflowing link ranges (2026-08-14)
 
