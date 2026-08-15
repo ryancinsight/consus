@@ -1,5 +1,15 @@
 # Consus — Implementation Checklist
 
+## ATLAS-CONSUS-HIERARCHY-055 — Isolate Arrow datatype descriptors
+
+- [x] Claim the provider-owned `consus-arrow::datatype` scope; do not touch
+      peer-owned FITS/HDF5/parser or generated lockfile changes.
+- [x] Move descriptor families into a named vertical child module while
+      preserving public exports, feature gates, and value semantics.
+- [x] Pass focused Arrow tests 81/81 plus no-default 2/2, strict Clippy,
+      formatting, doctests, and warning-denied Rustdoc. Hosted exact-head CI
+      and Atlas integration remain the delivery gate for this provider slice.
+
 ## ATLAS-CONSUS-BTREE-RESOURCE-039 — Bound v1 chunk B-tree reads — done 2026-08-15
 
 - [x] Share checked record-size arithmetic between synchronous and asynchronous
