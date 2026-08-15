@@ -160,7 +160,7 @@ pub struct FractalHeapHeader {
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "alloc")]
-use alloc::{string::String, vec, vec::Vec};
+use alloc::{string::String, vec::Vec};
 
 #[cfg(feature = "alloc")]
 use consus_core::{Error, Result};
@@ -477,9 +477,13 @@ pub fn read_managed_object<R: ReadAt>(
             .root_block_address
             .checked_add(offset)
             .ok_or(Error::Overflow)?;
-        let mut buf = vec![0u8; length as usize];
-        source.read_at(data_address, &mut buf)?;
-        return Ok(buf);
+        return read_bounded_bytes(
+            source,
+            data_address,
+            length,
+            ctx,
+            "fractal heap managed object",
+        );
     }
 
     // Root is an indirect block: traverse the table to find the containing
@@ -531,13 +535,30 @@ fn find_in_indirect_block<R: ReadAt>(
     } else {
         0
     };
-    let n_direct_children = (nrows_u.min(max_dblock_rows)) * width;
-    let n_indirect_children = nrows_u.saturating_sub(max_dblock_rows) * width;
-    let buf_size =
-        iblock_overhead + n_direct_children * (o + filter_extra) + n_indirect_children * o + 4; // checksum
+    let direct_entry_size = o.checked_add(filter_extra).ok_or(Error::Overflow)?;
+    let n_direct_children = nrows_u.min(max_dblock_rows);
+    let n_indirect_children = nrows_u.saturating_sub(max_dblock_rows);
+    let direct_bytes = n_direct_children
+        .checked_mul(width)
+        .and_then(|children| children.checked_mul(direct_entry_size))
+        .ok_or(Error::Overflow)?;
+    let indirect_bytes = n_indirect_children
+        .checked_mul(width)
+        .and_then(|children| children.checked_mul(o))
+        .ok_or(Error::Overflow)?;
+    let buf_size = iblock_overhead
+        .checked_add(direct_bytes)
+        .and_then(|size| size.checked_add(indirect_bytes))
+        .and_then(|size| size.checked_add(4)) // checksum
+        .ok_or(Error::Overflow)?;
 
-    let mut ibuf = vec![0u8; buf_size];
-    source.read_at(iblock_addr, &mut ibuf)?;
+    let ibuf = read_bounded_bytes(
+        source,
+        iblock_addr,
+        u64::try_from(buf_size).map_err(|_| Error::Overflow)?,
+        ctx,
+        "fractal heap indirect block",
+    )?;
 
     if ibuf[0..4] != *b"FHIB" {
         return Err(Error::InvalidFormat {
@@ -549,7 +570,7 @@ fn find_in_indirect_block<R: ReadAt>(
     let mut heap_off = base_offset;
 
     for row in 0..nrows_u {
-        let bsize = row_block_size(row, header);
+        let bsize = row_block_size(row, header)?;
 
         for _col in 0..width {
             let child_addr = ctx.read_offset(&ibuf[pos..]);
@@ -561,7 +582,7 @@ fn find_in_indirect_block<R: ReadAt>(
                     pos += ctx.length_bytes() + 4; // skip filtered_size + filter_mask
                 }
 
-                let child_end = heap_off.saturating_add(bsize);
+                let child_end = heap_off.checked_add(bsize).ok_or(Error::Overflow)?;
                 if target >= heap_off && target < child_end {
                     let local_offset = target - heap_off;
                     // managed_off (target) encodes the absolute byte offset
@@ -569,17 +590,23 @@ fn find_in_indirect_block<R: ReadAt>(
                     let data_addr = child_addr
                         .checked_add(local_offset)
                         .ok_or(Error::Overflow)?;
-                    let mut out = vec![0u8; length as usize];
-                    source.read_at(data_addr, &mut out)?;
-                    return Ok(out);
+                    return read_bounded_bytes(
+                        source,
+                        data_addr,
+                        length,
+                        ctx,
+                        "fractal heap managed object",
+                    );
                 }
                 heap_off = child_end;
             } else {
                 // Indirect block child: compute its total heap coverage and
                 // recurse if the target falls within it.
-                let child_nrows = indirect_child_nrows(row, header);
-                let child_coverage = indirect_block_coverage(child_nrows, header);
-                let child_end = heap_off.saturating_add(child_coverage);
+                let child_nrows = indirect_child_nrows(row, header)?;
+                let child_coverage = indirect_block_coverage(child_nrows, header)?;
+                let child_end = heap_off
+                    .checked_add(child_coverage)
+                    .ok_or(Error::Overflow)?;
                 if target >= heap_off && target < child_end {
                     return find_in_indirect_block(
                         source,
@@ -609,18 +636,23 @@ fn find_in_indirect_block<R: ReadAt>(
 /// Rows `0..starting_rows` all have `starting_block_size`; row
 /// `starting_rows + k` has `starting_block_size << (k + 1)`.
 #[cfg(feature = "alloc")]
-fn row_block_size(row: usize, header: &FractalHeapHeader) -> u64 {
+fn row_block_size(row: usize, header: &FractalHeapHeader) -> Result<u64> {
     let start = header.starting_rows as usize;
     if row < start {
-        header.starting_block_size
+        Ok(header.starting_block_size)
     } else {
-        // Saturating shift: if shift ≥ 64 the result is 0, but that would
-        // be an invalid heap configuration.
         let shift = row - start;
         if shift >= 64 {
-            u64::MAX
+            Err(Error::ResourceLimit {
+                what: "fractal heap block row",
+                requested: shift as u64,
+                limit: 63,
+            })
         } else {
-            header.starting_block_size.wrapping_shl(shift as u32)
+            header
+                .starting_block_size
+                .checked_shl(shift as u32)
+                .ok_or(Error::Overflow)
         }
     }
 }
@@ -643,19 +675,26 @@ fn max_direct_block_rows(header: &FractalHeapHeader) -> usize {
 /// Child indirect blocks that appear at rows ≥ `max_dblock_rows` of the
 /// parent each have `max_dblock_rows` rows.
 #[cfg(feature = "alloc")]
-fn indirect_child_nrows(_parent_row: usize, header: &FractalHeapHeader) -> u16 {
-    max_direct_block_rows(header) as u16
+fn indirect_child_nrows(_parent_row: usize, header: &FractalHeapHeader) -> Result<u16> {
+    u16::try_from(max_direct_block_rows(header)).map_err(|_| Error::ResourceLimit {
+        what: "fractal heap indirect row count",
+        requested: max_direct_block_rows(header) as u64,
+        limit: u16::MAX as u64,
+    })
 }
 
 /// Total heap-address-space coverage of an indirect block with `nrows` rows.
 ///
 /// Sums `table_width * row_block_size(r)` for each row `r`.
 #[cfg(feature = "alloc")]
-fn indirect_block_coverage(nrows: u16, header: &FractalHeapHeader) -> u64 {
+fn indirect_block_coverage(nrows: u16, header: &FractalHeapHeader) -> Result<u64> {
     let width = header.table_width as u64;
-    (0..nrows as usize)
-        .map(|r| width * row_block_size(r, header))
-        .sum()
+    (0..nrows as usize).try_fold(0u64, |coverage, row| {
+        let row_bytes = width
+            .checked_mul(row_block_size(row, header)?)
+            .ok_or(Error::Overflow)?;
+        coverage.checked_add(row_bytes).ok_or(Error::Overflow)
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -723,9 +762,13 @@ pub fn read_huge_object<R: ReadAt>(
             message: String::from("huge object record not found in B-tree"),
         })?;
 
-        let mut buf = vec![0u8; location.length as usize];
-        source.read_at(location.address, &mut buf)?;
-        return Ok(buf);
+        return read_bounded_bytes(
+            source,
+            location.address,
+            location.length,
+            ctx,
+            "fractal heap huge object",
+        );
     }
 
     // Case 2: B-tree lookup mode (flag bit 0 clear)
@@ -758,9 +801,29 @@ pub fn read_huge_object<R: ReadAt>(
         message: String::from("huge object record not found in B-tree"),
     })?;
 
-    let mut buf = vec![0u8; location.length as usize];
-    source.read_at(location.address, &mut buf)?;
-    Ok(buf)
+    read_bounded_bytes(
+        source,
+        location.address,
+        location.length,
+        ctx,
+        "fractal heap huge object",
+    )
+}
+
+/// Read a file region only after applying the parser byte ceiling and a
+/// fallible allocation. All managed and huge heap objects use this boundary;
+/// no file-supplied length reaches `vec![0; length]` directly.
+#[cfg(feature = "alloc")]
+fn read_bounded_bytes<R: ReadAt>(
+    source: &R,
+    address: u64,
+    length: u64,
+    ctx: &ParseContext,
+    what: &'static str,
+) -> Result<Vec<u8>> {
+    let mut buffer = ctx.budget.zeroed(length, what)?;
+    source.read_at(address, &mut buffer)?;
+    Ok(buffer)
 }
 
 // ---------------------------------------------------------------------------

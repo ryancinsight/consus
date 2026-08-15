@@ -196,12 +196,11 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                 .ok_or_else(|| Error::UnsupportedFeature {
                     feature: String::from("chunked full read requires fixed-size element datatype"),
                 })?;
-        let total_bytes = dataset
-            .shape
-            .num_elements()
-            .checked_mul(element_size)
-            .ok_or(Error::Overflow)?;
-        let mut out = vec![0u8; total_bytes];
+        let total_bytes = self.checked_dataset_byte_count(&dataset.shape, element_size)?;
+        let mut out = self.ctx.budget.zeroed(
+            u64::try_from(total_bytes).map_err(|_| Error::Overflow)?,
+            "chunked dataset output",
+        )?;
 
         let fill_value = reader::read_fill_value(&header);
         let filter_ids = dataset.filters;
@@ -391,14 +390,17 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                     }
                     other => other.element_size().unwrap_or(0),
                 };
-                let n_bytes = dataset.shape.num_elements() * element_size;
+                let n_bytes = self.checked_dataset_byte_count(&dataset.shape, element_size)?;
                 if n_bytes == 0 {
                     return Ok(Vec::new());
                 }
                 let data_addr = dataset.data_address.ok_or_else(|| Error::InvalidFormat {
                     message: String::from("contiguous dataset has no data address"),
                 })?;
-                let mut buf = vec![0u8; n_bytes];
+                let mut buf = self.ctx.budget.zeroed(
+                    u64::try_from(n_bytes).map_err(|_| Error::Overflow)?,
+                    "contiguous dataset output",
+                )?;
                 self.read_contiguous_dataset_bytes(data_addr, 0, &mut buf)?;
                 Ok(buf)
             }
@@ -412,6 +414,33 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                 feature: String::from("virtual dataset layout is not supported"),
             }),
         }
+    }
+
+    /// Calculate a dataset payload size without trusting a file-supplied shape.
+    ///
+    /// `Shape::num_elements` is intentionally a plain value operation for
+    /// already-validated in-memory shapes. HDF5 shapes cross an untrusted file
+    /// boundary, so this path must detect multiplication overflow and apply
+    /// the parser's byte and element ceilings before allocating output.
+    #[cfg(feature = "alloc")]
+    fn checked_dataset_byte_count(
+        &self,
+        shape: &consus_core::Shape,
+        element_size: usize,
+    ) -> Result<usize> {
+        let element_count = shape
+            .current_dims()
+            .iter()
+            .try_fold(1usize, |count, &extent| count.checked_mul(extent))
+            .ok_or(Error::Overflow)?;
+        let bounded_count = self.ctx.budget.checked_elements(
+            u64::try_from(element_count).map_err(|_| Error::Overflow)?,
+            element_size,
+            "dataset element count",
+        )?;
+        bounded_count
+            .checked_mul(element_size)
+            .ok_or(Error::Overflow)
     }
 
     /// Read raw bytes from a specific file offset.
@@ -669,14 +698,28 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
             });
         }
         let entry_size = fahd[6] as usize; // bytes per chunk record (= offset_size for no-filter)
-        let nelmts = LittleEndian::read_u64(&fahd[8..16]) as usize;
+        if entry_size == 0 {
+            return Err(Error::InvalidFormat {
+                message: String::from("Fixed Array entry size must be non-zero"),
+            });
+        }
+        let nelmts = self.ctx.budget.checked_elements(
+            LittleEndian::read_u64(&fahd[8..16]),
+            entry_size,
+            "fixed-array chunk entry count",
+        )?;
         let fadb_addr = self.ctx.read_offset(&fahd[16..]);
 
         // Read FADB (Fixed Array Data Block).
         // Layout: sig(4) + ver(1) + cid(1) + hdr_addr(8) + nelmts*entry_size + checksum(4)
-        let content_size = 14 + nelmts * entry_size;
-        let fadb_size = content_size + 4; // include checksum
-        let mut fadb = vec![0u8; fadb_size];
+        let content_size = 14usize
+            .checked_add(nelmts.checked_mul(entry_size).ok_or(Error::Overflow)?)
+            .ok_or(Error::Overflow)?;
+        let fadb_size = content_size.checked_add(4).ok_or(Error::Overflow)?; // include checksum
+        let mut fadb = self.ctx.budget.zeroed(
+            u64::try_from(fadb_size).map_err(|_| Error::Overflow)?,
+            "fixed-array data block",
+        )?;
         self.source.read_at(fadb_addr, &mut fadb)?;
         if &fadb[0..4] != b"FADB" {
             return Err(Error::InvalidFormat {
@@ -688,8 +731,24 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
         let grid_dims: Vec<usize> = dataset_dims
             .iter()
             .zip(chunk_dims.iter())
-            .map(|(&ds, &cs)| ds.div_ceil(cs))
-            .collect();
+            .map(|(&ds, &cs)| {
+                if cs == 0 {
+                    Err(Error::InvalidFormat {
+                        message: String::from("Fixed Array chunk dimension must be non-zero"),
+                    })
+                } else {
+                    Ok(ds.div_ceil(cs))
+                }
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        if nelmts != 0 && grid_dims.contains(&0) {
+            return Err(Error::InvalidFormat {
+                message: String::from(
+                    "Fixed Array contains entries for a dataset with an empty chunk grid",
+                ),
+            });
+        }
 
         // Entries are stored in row-major (C) order: decompose linear index i
         // into grid coordinates using row-major decomposition.
@@ -1142,5 +1201,24 @@ mod tests {
     fn reject_non_hdf5() {
         let cursor = MemCursor::from_bytes(vec![0u8; 4096]);
         assert!(Hdf5File::open(cursor).is_err());
+    }
+
+    #[test]
+    fn fixed_array_entry_count_beyond_budget_is_rejected() {
+        let mut data = make_minimal_hdf5();
+        data.resize(512, 0);
+
+        // FAHD at offset 128: an 8-byte entry size and a hostile element
+        // count. The count must be rejected before the FADB read/allocation.
+        data[128..132].copy_from_slice(b"FAHD");
+        data[134] = 8;
+        data[136..144].copy_from_slice(&u64::MAX.to_le_bytes());
+        data[144..152].copy_from_slice(&256u64.to_le_bytes());
+
+        let file = Hdf5File::open(MemCursor::from_bytes(data)).unwrap();
+        let error = file
+            .read_v4_chunk_farray_entries(128, &[1], &[1])
+            .expect_err("u64::MAX FAHD element count must not be allocated");
+        assert!(matches!(error, consus_core::Error::ResourceLimit { .. }));
     }
 }

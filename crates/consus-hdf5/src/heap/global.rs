@@ -109,9 +109,20 @@ impl GlobalHeapCollection {
         }
 
         let collection_size = ctx.read_length(&header_buf[8..]);
+        let collection_size_usize = ctx
+            .budget
+            .checked_bytes(collection_size, "global heap collection size")?;
 
         // Read the entire collection body
-        let body_size = collection_size as usize - header_size;
+        let body_size = collection_size_usize
+            .checked_sub(header_size)
+            .ok_or_else(|| Error::InvalidFormat {
+                message: alloc::format!(
+                    "global heap collection size {} is smaller than its {}-byte header",
+                    collection_size,
+                    header_size
+                ),
+            })?;
         if body_size == 0 {
             return Ok(Self {
                 collection_size,
@@ -119,8 +130,14 @@ impl GlobalHeapCollection {
             });
         }
 
-        let mut body = vec![0u8; body_size];
-        source.read_at(address + header_size as u64, &mut body)?;
+        let mut body = ctx.budget.zeroed(
+            u64::try_from(body_size).map_err(|_| Error::Overflow)?,
+            "global heap collection body",
+        )?;
+        let body_address = address
+            .checked_add(u64::try_from(header_size).map_err(|_| Error::Overflow)?)
+            .ok_or(Error::Overflow)?;
+        source.read_at(body_address, &mut body)?;
 
         // Parse objects
         let mut objects = Vec::new();
@@ -129,7 +146,10 @@ impl GlobalHeapCollection {
         // Object header: index(2) + ref_count(2) + reserved(4) + size(L) = 8 + L bytes
         let obj_header_size = 8 + l;
 
-        while cursor + obj_header_size <= body.len() {
+        while cursor
+            .checked_add(obj_header_size)
+            .is_some_and(|end| end <= body.len())
+        {
             let index = u16::from_le_bytes([body[cursor], body[cursor + 1]]);
 
             // Index 0 marks end of objects (free-space marker)
@@ -140,11 +160,15 @@ impl GlobalHeapCollection {
             let reference_count = u16::from_le_bytes([body[cursor + 2], body[cursor + 3]]) as u32;
             // bytes [cursor+4..cursor+8] are reserved
 
-            let object_size = ctx.read_length(&body[cursor + 8..]) as usize;
-            cursor += obj_header_size;
+            let object_size = ctx.budget.checked_bytes(
+                ctx.read_length(&body[cursor + 8..]),
+                "global heap object size",
+            )?;
+            cursor = cursor.checked_add(obj_header_size).ok_or(Error::Overflow)?;
 
             // Read object data
-            if cursor + object_size > body.len() {
+            let object_end = cursor.checked_add(object_size).ok_or(Error::Overflow)?;
+            if object_end > body.len() {
                 return Err(Error::InvalidFormat {
                     message: alloc::format!(
                         "global heap object {} truncated: need {} bytes at offset {}, have {}",
@@ -156,7 +180,7 @@ impl GlobalHeapCollection {
                 });
             }
 
-            let data = Vec::from(&body[cursor..cursor + object_size]);
+            let data = Vec::from(&body[cursor..object_end]);
             objects.push(GlobalHeapObject {
                 index,
                 reference_count,
@@ -164,8 +188,10 @@ impl GlobalHeapCollection {
             });
 
             // Advance past object data, padded to 8-byte boundary
-            let padded_size = (object_size + 7) & !7;
-            cursor += padded_size;
+            let padded_size = object_size.checked_add(7).ok_or(Error::Overflow)? & !7;
+            cursor = object_end
+                .checked_add(padded_size - object_size)
+                .ok_or(Error::Overflow)?;
         }
 
         Ok(Self {
@@ -265,12 +291,12 @@ pub fn resolve_vl_references<R: ReadAt>(
     };
 
     let n = raw_data.len() / ref_size;
-    let mut result = Vec::with_capacity(n);
+    let mut result = ctx.budget.vec_with_capacity::<Vec<u8>>(
+        u64::try_from(n).map_err(|_| Error::Overflow)?,
+        "variable-length reference count",
+    )?;
 
-    for i in 0..n {
-        let base = i * ref_size;
-        let chunk = &raw_data[base..base + ref_size];
-
+    for (i, chunk) in raw_data.chunks_exact(ref_size).enumerate() {
         let sequence_length = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
         let heap_collection_address = ctx.read_offset(&chunk[4..]);
         let idx_base = 4 + offset_bytes;

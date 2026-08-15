@@ -1,5 +1,22 @@
 # Consus — Implementation Checklist
 
+## ATLAS-CONSUS-PARSE-LIMITS-036 — Bound HDF5 allocation surfaces — done 2026-08-15
+
+- [x] Route global-heap collections and objects, contiguous/chunked dataset
+      output, fixed-array data blocks, and managed/huge/indirect fractal-heap
+      reads through `ParseBudget` checked arithmetic and fallible allocation.
+- [x] Reject zero fixed-array entry sizes, empty chunk-grid inconsistencies,
+      overflowing heap offsets, and unrepresentable fractal-heap row/coverage
+      calculations with typed format, resource, or overflow errors.
+- [x] Remove the empty `consus::async::AsyncFacadeUnavailable` placeholder and
+      its public re-export; real async implementations remain owned by the
+      backend crates (`consus-hdf5` and `consus-io`). No consumer referenced the
+      marker, so no compatibility shim was retained.
+- [x] Pass package formatting, strict Clippy, all-features Nextest (Consus
+      8/8; HDF5 438/438), HDF5 adversarial allocation coverage, doctests, and
+      the Consus no-default check. Hosted exact-head verification remains a
+      delivery gate after the provider commit.
+
 ## CONSUS-TEST-API-001 — Migrate cross-format tests to provider-owned APIs — done 2026-08-13
 
 - [x] Verify the residual at exact `origin/main` `b3ca01c21b2e9bad4c7b7dc23c47083ca79a3307`;

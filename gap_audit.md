@@ -1,5 +1,25 @@
 # Consus - Gap Audit
 
+## ATLAS-CONSUS-PARSE-LIMITS-036 — HDF5 allocation boundary (2026-08-15)
+
+The HDF5 parser still had file-controlled allocations outside the shared
+`ParseBudget`: global-heap collection/object payloads, contiguous and chunked
+dataset output, fixed-array data blocks, and direct, indirect, managed, and
+huge fractal-heap reads. The slice now checks element and byte products before
+allocation, uses fallible zeroed buffers, checks address and row-coverage
+arithmetic, and rejects impossible fixed-array metadata.
+
+Five adversarial tests cover the collection, dataset, managed-object,
+indirect-block, and huge-object limits; the fixed-array limit has an additional
+unit regression. The empty `AsyncFacadeUnavailable` marker module was removed
+because it was not an implementation or consumer contract; async behavior
+continues to live in the provider-owned backend crates.
+
+Verification at the implementation tree: strict Clippy for `consus-hdf5` and
+`consus`, HDF5 Nextest 438/438, Consus Nextest 8/8, both package doctest
+commands, `consus --no-default-features` check, formatting, and diff checks.
+The provider commit and hosted exact-head run remain the delivery evidence.
+
 ## ATLAS-CONSUS-HDF5-LINK-098 — Reject overflowing link ranges (2026-08-14)
 
 Hosted fuzz run `31848757905` found a panic in the HDF5 link-message parser at

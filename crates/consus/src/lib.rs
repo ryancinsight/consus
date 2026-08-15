@@ -98,9 +98,6 @@ pub mod hybrid;
 #[cfg(feature = "alloc")]
 pub mod sync;
 
-#[cfg(feature = "async-io")]
-pub mod r#async;
-
 pub use consus_core::{
     ByteOrder, ChunkShape, Compression, Datatype, Error, Extent, Hyperslab, HyperslabDim, Layout,
     LinkType, NodeType, PointSelection, ReferenceType, Result, Selection, Shape, StringEncoding,
@@ -153,9 +150,6 @@ pub mod prelude {
     pub use crate::{
         Dataset, DatasetBuilder, File, FileBuilder, FileOpenOptions, Group, GroupBuilder,
     };
-
-    #[cfg(all(feature = "alloc", feature = "async-io"))]
-    pub use crate::r#async::AsyncFacadeUnavailable;
 
     #[cfg(feature = "alloc")]
     pub use crate::sync::{ByteView, IoRange, ZeroCopyRead};

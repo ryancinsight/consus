@@ -24,6 +24,8 @@ use consus_hdf5::address::ParseContext;
 use consus_hdf5::btree::v2::{BTreeV2Header, collect_all_records, find_huge_object_record};
 use consus_hdf5::dataset::chunk::{ChunkLocation, read_chunk_raw};
 use consus_hdf5::datatype::compound::parse_datatype;
+use consus_hdf5::heap::fractal::{FractalHeapHeader, read_huge_object, read_managed_object};
+use consus_hdf5::heap::global::GlobalHeapCollection;
 use consus_io::MemCursor;
 
 /// A resource-limit rejection, as opposed to any other typed failure.
@@ -33,6 +35,32 @@ fn assert_resource_limit(error: &Error, what: &str) {
         matches!(error, Error::ResourceLimit { .. }),
         "{what}: expected Error::ResourceLimit, got {error:?}"
     );
+}
+
+fn fractal_header(root_indirect_rows: u16, table_width: u16) -> FractalHeapHeader {
+    FractalHeapHeader {
+        heap_id_length: 7,
+        io_filter_size: 0,
+        flags: 0,
+        max_managed_object_size: 1024,
+        huge_object_btree_address: 0,
+        free_managed_space: 0,
+        free_space_manager_address: 0,
+        managed_space: 256,
+        allocated_managed_space: 256,
+        managed_object_count: 1,
+        huge_object_size: 0,
+        huge_object_count: 0,
+        tiny_object_size: 0,
+        tiny_object_count: 0,
+        table_width,
+        starting_rows: 1,
+        starting_block_size: 256,
+        max_direct_block_size: 65_536,
+        max_heap_size_bits: 16,
+        root_block_address: 0,
+        root_indirect_rows,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +174,108 @@ fn chunk_uncompressed_size_beyond_budget_is_rejected() {
     let error = read_chunk_raw(&source, &location, usize::MAX, &[], &registry, None)
         .expect_err("usize::MAX uncompressed size must not be zero-filled");
     assert_resource_limit(&error, "chunk uncompressed_size");
+}
+
+/// A global-heap collection size is a file-supplied byte count and must be
+/// checked before the body allocation or address arithmetic.
+#[test]
+fn global_heap_collection_size_beyond_budget_is_rejected() {
+    let mut image = vec![0u8; 16];
+    image[0..4].copy_from_slice(b"GCOL");
+    image[4] = 1;
+    image[8..16].copy_from_slice(&u64::MAX.to_le_bytes());
+
+    let error =
+        GlobalHeapCollection::parse(&MemCursor::from_bytes(image), 0, &ParseContext::new(8, 8))
+            .expect_err("u64::MAX global heap size must not be allocated");
+    assert_resource_limit(&error, "global heap collection size");
+}
+
+/// A contiguous dataset shape must be checked before its output buffer is
+/// allocated; the shape product itself must not overflow first.
+#[test]
+fn contiguous_dataset_shape_beyond_budget_is_rejected() {
+    let mut image = vec![0u8; 4096];
+    image[0..8].copy_from_slice(&consus_hdf5::constants::HDF5_MAGIC);
+    image[8] = 2;
+    image[9] = 8;
+    image[10] = 8;
+    image[28..36].copy_from_slice(&4096u64.to_le_bytes());
+    image[36..44].copy_from_slice(&96u64.to_le_bytes());
+    let file = consus_hdf5::file::Hdf5File::open(MemCursor::from_bytes(image))
+        .expect("minimal superblock must parse");
+    let dataset = consus_hdf5::dataset::Hdf5Dataset {
+        path: String::from("/hostile"),
+        object_header_address: 0,
+        datatype: consus_core::Datatype::Boolean,
+        shape: consus_core::Shape::fixed(&[ParseBudget::DEFAULT.max_elements + 1, 1]),
+        layout: consus_hdf5::dataset::StorageLayout::Contiguous,
+        chunk_shape: None,
+        data_address: Some(0),
+        filters: Vec::new(),
+    };
+
+    let error = file
+        .read_dataset_raw(&dataset, None)
+        .expect_err("hostile dataset shape must not be allocated");
+    assert_resource_limit(&error, "dataset element count");
+}
+
+/// Managed fractal-heap object lengths are external input, not allocation
+/// permissions.
+#[test]
+fn managed_heap_object_length_beyond_budget_is_rejected() {
+    let error = read_managed_object(
+        &MemCursor::from_bytes(Vec::new()),
+        &fractal_header(0, 4),
+        0,
+        u64::MAX,
+        &ParseContext::new(8, 8),
+    )
+    .expect_err("u64::MAX managed-object length must not be allocated");
+    assert_resource_limit(&error, "fractal heap managed object");
+}
+
+/// Indirect-block dimensions must be bounded before the table buffer is
+/// materialized; a hostile width/row pair must return a typed resource error.
+#[test]
+fn fractal_indirect_block_size_beyond_budget_is_rejected() {
+    let error = read_managed_object(
+        &MemCursor::from_bytes(Vec::new()),
+        &fractal_header(u16::MAX, u16::MAX),
+        0,
+        1,
+        &ParseContext::new(8, 8),
+    )
+    .expect_err("hostile indirect-block dimensions must not be allocated");
+    assert_resource_limit(&error, "fractal heap indirect block");
+}
+
+/// A HUGE-object B-tree record can carry an arbitrary length; the final heap
+/// read applies the same byte ceiling as managed objects.
+#[test]
+fn huge_heap_object_length_beyond_budget_is_rejected() {
+    let mut image = vec![0u8; 128];
+    image[0..4].copy_from_slice(b"BTHD");
+    image[6..10].copy_from_slice(&64u32.to_le_bytes());
+    image[10..12].copy_from_slice(&24u16.to_le_bytes());
+    image[16..24].copy_from_slice(&64u64.to_le_bytes());
+    image[24..26].copy_from_slice(&1u16.to_le_bytes());
+    image[26..34].copy_from_slice(&1u64.to_le_bytes());
+    image[64..68].copy_from_slice(b"BTLF");
+    image[69] = consus_hdf5::btree::v2::record_type::HUGE_OBJECT;
+    image[70..78].copy_from_slice(&7u64.to_le_bytes());
+    image[78..86].copy_from_slice(&96u64.to_le_bytes());
+    image[86..94].copy_from_slice(&u64::MAX.to_le_bytes());
+
+    let error = read_huge_object(
+        &MemCursor::from_bytes(image),
+        &fractal_header(0, 4),
+        7,
+        &ParseContext::new(8, 8),
+    )
+    .expect_err("u64::MAX HUGE-object length must not be allocated");
+    assert_resource_limit(&error, "fractal heap huge object");
 }
 
 // ---------------------------------------------------------------------------
