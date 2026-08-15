@@ -75,8 +75,10 @@
       no-alloc test import in `fa314cb`.
 - [x] Pass package no-default check, strict Clippy, and no-default Nextest
       2/2; pass default strict Clippy and Nextest 79/79.
-- [ ] Re-run the workspace no-default and hosted exact-head gates after the
-      peer-owned HDF5/FITS parser changes land in a clean provider commit.
+- [ ] **Blocked:** re-run the workspace no-default and hosted exact-head gates
+      after the peer-owned HDF5/FITS parser changes land in a clean provider
+      commit; the current worktree-only gate passes and focused HDF5/FITS
+      Nextest passes 594/594.
 
 ## ATLAS-CONSUS-001 — Themis topology partition sizing [minor]
 
