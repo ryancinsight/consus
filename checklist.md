@@ -1,5 +1,17 @@
 # Consus — Implementation Checklist
 
+## ATLAS-CONSUS-PARSE-LIMITS-035 — Bound remaining untrusted length/depth sites
+
+- [x] Reconcile the stale brief against the current provider default and keep
+      the scope limited to the v1 HDF5 descent and FITS table count/repeat
+      boundaries.
+- [x] Verify the shared `ParseBudget::descend` ceiling, exact FITS header-card
+      bound, and materialized-cell repeat bound with adversarial value/error
+      evidence; no compatibility path or fallback is required.
+- [x] Confirm the current provider default `0ed341c` passes hosted CI
+      `31919441650`, Documentation `31919441619`, and Pages `31919441097`.
+      This PM-only closure does not change provider source.
+
 ## ATLAS-CONSUS-PARQUET-058 — Consolidate PLAIN scalar decoders
 
 - [x] Claim only `consus-parquet::encoding::plain` and its direct exports,

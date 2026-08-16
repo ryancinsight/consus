@@ -1,7 +1,7 @@
 # Consus — Backlog
 
 
-## ATLAS-CONSUS-PARSE-LIMITS-035 — Bound remaining untrusted length/depth sites [minor] — in progress 2026-08-14
+## ATLAS-CONSUS-PARSE-LIMITS-035 — Bound remaining untrusted length/depth sites [minor] — done 2026-08-16
 
 - Owner: Atlas safety audit. Scope: `consus-hdf5/src/file/reader.rs`
   (v1 group B-tree descent) and `consus-fits/src/table/{parse,decode}.rs`
@@ -33,6 +33,10 @@
   `capacity overflow` panic. Restored, then `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, `cargo nextest run`
   (2539/2539), and `cargo test --doc` all pass.
+- Delivery evidence: current provider default `0ed341c` passes hosted CI
+  `31919441650`, Documentation `31919441619`, and Pages
+  `31919441097`. The implementation and its adversarial coverage are already
+  merged; this closure synchronizes the PM state without changing source.
 
 
 ## ATLAS-CONSUS-PARSE-LIMITS-036 — Bound remaining HDF5 heap and dataset allocations [minor] — verified already bounded 2026-08-15
