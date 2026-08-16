@@ -1,5 +1,21 @@
 # Consus - Gap Audit
 
+## ATLAS-CONSUS-PARSE-LIMITS-035 — Closed at provider scope (2026-08-16)
+
+The original sweep was stale: the named HDF5 v2, dataset, compound-datatype,
+and FITS data sites were already bounded by the earlier parser hardening. The
+current tree also contained three missed attacker-controlled boundaries: v1
+HDF5 group B-tree descent, FITS `TFIELDS`, and FITS `TFORMn` repeat counts.
+Those bounds are implemented and covered by adversarial tests. The v1 descent
+uses the shared `ParseBudget::descend` ceiling; `TFIELDS` is bounded by the
+materialized header-card count; and `TFORMn` is bounded by the materialized
+cell width divided by element size.
+
+The current provider default `0ed341c` passes hosted CI `31919441650`,
+Documentation `31919441619`, and Pages `31919441097`. Local evidence already
+recorded for the implementation is formatting, strict Clippy, 2539/2539
+Nextest, and doctests. No provider source changed in this PM closure.
+
 ## ATLAS-CONSUS-PARQUET-058 — Generic PLAIN scalar decoder (2026-08-15)
 
 The Parquet PLAIN decoder repeats the same count validation, checked byte
