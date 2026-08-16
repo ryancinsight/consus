@@ -409,10 +409,36 @@ pub fn write_chunk<S: Store>(
 }
 
 /// Expands a fill value to a byte vector of the specified length.
+///
+/// The caller must have already bounded `num_elements`; this helper trusts it.
+/// Production chunk-read paths use [`try_expand_fill_value`] instead, which
+/// bounds the resulting byte size before allocating.
 #[cfg(feature = "alloc")]
 pub fn expand_fill_value(fill_value: &FillValue, dtype: &str, num_elements: u64) -> Vec<u8> {
+    try_expand_fill_value(fill_value, dtype, num_elements)
+        .expect("fill-value expansion must fit the parser byte ceiling")
+}
+
+/// Bounded variant of [`expand_fill_value`].
+///
+/// `num_elements` comes from an attacker-chosen `.zarray`/`zarr.json` chunk
+/// shape, so `num_elements × element_size` is checked against the
+/// [`ParseBudget`] byte ceiling before the allocation, and the allocation
+/// itself is fallible — a hostile shape is a typed error, not an
+/// allocation abort or a multiply overflow panic.
+#[cfg(feature = "alloc")]
+pub fn try_expand_fill_value(
+    fill_value: &FillValue,
+    dtype: &str,
+    num_elements: u64,
+) -> Result<Vec<u8>, ChunkError> {
     let element_size = crate::metadata::dtype_to_element_size(dtype).unwrap_or(8);
-    let total_size = (num_elements as usize) * element_size;
+    let total_size = consus_core::ParseBudget::DEFAULT
+        .checked_bytes(
+            num_elements.saturating_mul(element_size as u64),
+            "zarr fill-value expansion",
+        )
+        .map_err(|e| ChunkError::StoreError(e.to_string()))?;
 
     let fill_bytes: Vec<u8> = match fill_value {
         FillValue::Default => vec![0u8; element_size],
@@ -462,11 +488,36 @@ pub fn expand_fill_value(fill_value: &FillValue, dtype: &str, num_elements: u64)
         }
     };
 
-    let mut result = vec![0u8; total_size];
+    let mut result = consus_core::ParseBudget::DEFAULT
+        .zeroed(total_size as u64, "zarr fill-value buffer")
+        .map_err(|e| ChunkError::StoreError(e.to_string()))?;
     for i in (0..total_size).step_by(element_size) {
         result[i..i + element_size].copy_from_slice(&fill_bytes);
     }
-    result
+    Ok(result)
+}
+
+/// Compute `chunk_elements × element_size` under the parser byte ceiling.
+///
+/// Both operands derive from attacker-chosen `.zarray`/`zarr.json` shapes, so
+/// the product is checked for overflow and against the [`ParseBudget`] byte
+/// ceiling before it is used to validate or allocate chunk buffers — a hostile
+/// shape is a typed error, not a multiply-overflow panic.
+#[cfg(feature = "alloc")]
+fn checked_chunk_bytes(chunk_elements: usize, element_size: usize) -> Result<usize, ChunkError> {
+    consus_core::ParseBudget::DEFAULT
+        .checked_bytes(
+            u64::try_from(chunk_elements)
+                .map_err(|_| {
+                    ChunkError::StoreError(String::from("zarr chunk element count overflow"))
+                })?
+                .checked_mul(element_size as u64)
+                .ok_or_else(|| {
+                    ChunkError::StoreError(String::from("zarr chunk byte size overflow"))
+                })?,
+            "zarr chunk byte size",
+        )
+        .map_err(|e| ChunkError::StoreError(e.to_string()))
 }
 
 /// Reads data from an array using a selection.
@@ -491,7 +542,7 @@ pub fn read_array<S: Store>(
     };
 
     let element_size = crate::metadata::dtype_to_element_size(&meta.dtype).unwrap_or(8);
-    let mut output = expand_fill_value(&meta.fill_value, &meta.dtype, num_elements as u64);
+    let mut output = try_expand_fill_value(&meta.fill_value, &meta.dtype, num_elements as u64)?;
 
     let chunk_grid: Vec<u64> = meta
         .shape
@@ -581,13 +632,13 @@ pub fn read_array<S: Store>(
                 } else {
                     meta.chunks.iter().product()
                 };
-                let padded_chunk_bytes = padded_chunk_elements * element_size;
+                let padded_chunk_bytes = checked_chunk_bytes(padded_chunk_elements, element_size)?;
                 let chunk_elements = if chunk_extent.is_empty() {
                     1
                 } else {
                     chunk_extent.iter().product()
                 };
-                let expected_chunk_bytes = chunk_elements * element_size;
+                let expected_chunk_bytes = checked_chunk_bytes(chunk_elements, element_size)?;
                 if chunk_data.len() != expected_chunk_bytes
                     && chunk_data.len() != padded_chunk_bytes
                 {
@@ -688,7 +739,7 @@ pub fn write_array_selection<S: Store>(
     };
 
     let element_size = crate::metadata::dtype_to_element_size(&meta.dtype).unwrap_or(8);
-    let expected_len = num_elements * element_size;
+    let expected_len = checked_chunk_bytes(num_elements, element_size)?;
     if data.len() != expected_len {
         return Err(ChunkError::UnexpectedLength);
     }
@@ -721,13 +772,13 @@ pub fn write_array_selection<S: Store>(
             } else {
                 chunk_extent.iter().product()
             };
-            let chunk_bytes = chunk_elements * element_size;
+            let chunk_bytes = checked_chunk_bytes(chunk_elements, element_size)?;
             let padded_chunk_elements = if meta.chunks.is_empty() {
                 1
             } else {
                 meta.chunks.iter().product()
             };
-            let padded_chunk_bytes = padded_chunk_elements * element_size;
+            let padded_chunk_bytes = checked_chunk_bytes(padded_chunk_elements, element_size)?;
 
             let mut chunk_data = match read_chunk(store, array_key, &chunk_indices, meta) {
                 Ok(existing) => {
@@ -737,9 +788,11 @@ pub fn write_array_selection<S: Store>(
                         return Err(ChunkError::UnexpectedLength);
                     }
                 }
-                Err(ChunkError::Uninitialized) => {
-                    expand_fill_value(&meta.fill_value, &meta.dtype, padded_chunk_elements as u64)
-                }
+                Err(ChunkError::Uninitialized) => try_expand_fill_value(
+                    &meta.fill_value,
+                    &meta.dtype,
+                    padded_chunk_elements as u64,
+                )?,
                 Err(e) => return Err(e),
             };
 
@@ -830,9 +883,11 @@ pub fn write_array<S: Store>(
         } else {
             chunk_extent.iter().product()
         };
-        let chunk_bytes = chunk_elements * element_size;
+        let chunk_bytes = checked_chunk_bytes(chunk_elements, element_size)?;
         let chunk_strides = compute_strides(&chunk_extent);
-        let mut chunk_data = vec![0u8; chunk_bytes];
+        let mut chunk_data = consus_core::ParseBudget::DEFAULT
+            .zeroed(chunk_bytes as u64, "zarr shard chunk buffer")
+            .map_err(|e| ChunkError::StoreError(e.to_string()))?;
 
         if chunk_extent.is_empty() {
             chunk_data.copy_from_slice(&data[..element_size]);
@@ -918,7 +973,7 @@ fn read_array_sharded<S: Store>(
         selection_steps.iter().map(|s| s.count as usize).product()
     };
     let element_size = crate::metadata::dtype_to_element_size(&meta.dtype).unwrap_or(8);
-    let mut output = expand_fill_value(&meta.fill_value, &meta.dtype, num_elements as u64);
+    let mut output = try_expand_fill_value(&meta.fill_value, &meta.dtype, num_elements as u64)?;
 
     let shard_grid: Vec<u64> = meta
         .shape
@@ -1479,6 +1534,19 @@ mod tests {
         let fill = FillValue::Float("1.0".to_string());
         let expanded = expand_fill_value(&fill, "<f8", 1);
         assert_eq!(expanded, 1.0f64.to_le_bytes().to_vec());
+    }
+
+    /// A hostile element count must be a typed error, not an allocation abort
+    /// or a multiply-overflow panic: `num_elements × element_size` is bounded
+    /// by the parser byte ceiling.
+    #[test]
+    fn hostile_fill_value_element_count_is_a_typed_error() {
+        let fill = FillValue::Float("42.0".to_string());
+        let result = try_expand_fill_value(&fill, "<f8", u64::MAX);
+        assert!(
+            matches!(result, Err(ChunkError::StoreError(_))),
+            "a hostile element count must be rejected, got {result:?}"
+        );
     }
 
     #[test]
