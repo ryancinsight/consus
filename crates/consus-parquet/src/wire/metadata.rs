@@ -230,7 +230,15 @@ fn decode_row_group(r: &mut ThriftReader<'_>) -> Result<RowGroupMetadata> {
             None => break,
             Some((1, 0x09)) => {
                 let (et, n) = r.read_list_header()?;
-                let mut v = Vec::with_capacity(n);
+                // `n` is bounded against the remaining bytes, but each element
+                // is a struct far larger than one byte; an attacker can spend a
+                // small footer declaring a count whose `n × size_of<T>`
+                // reservation is huge. Bound the footprint too.
+                let mut v = consus_core::ParseBudget::DEFAULT
+                    .vec_with_capacity::<ColumnChunkMetadata>(
+                        u64::try_from(n).map_err(|_| Error::Overflow)?,
+                        "parquet row-group column-chunk list",
+                    )?;
                 for _ in 0..n {
                     if et == 0x0C {
                         v.push(decode_column_chunk(r)?)
@@ -269,7 +277,10 @@ fn decode_file_metadata_inner(r: &mut ThriftReader<'_>) -> Result<FileMetadata> 
             Some((1, 0x05)) => ver = Some(r.read_i32()?),
             Some((2, 0x09)) => {
                 let (et, n) = r.read_list_header()?;
-                let mut v = Vec::with_capacity(n);
+                let mut v = consus_core::ParseBudget::DEFAULT.vec_with_capacity::<SchemaElement>(
+                    u64::try_from(n).map_err(|_| Error::Overflow)?,
+                    "parquet file-metadata schema list",
+                )?;
                 for _ in 0..n {
                     if et == 0x0C {
                         v.push(decode_schema_element(r)?)
@@ -282,7 +293,11 @@ fn decode_file_metadata_inner(r: &mut ThriftReader<'_>) -> Result<FileMetadata> 
             Some((3, 0x06)) => nr = Some(r.read_i64()?),
             Some((4, 0x09)) => {
                 let (et, n) = r.read_list_header()?;
-                let mut v = Vec::with_capacity(n);
+                let mut v = consus_core::ParseBudget::DEFAULT
+                    .vec_with_capacity::<RowGroupMetadata>(
+                        u64::try_from(n).map_err(|_| Error::Overflow)?,
+                        "parquet file-metadata row-group list",
+                    )?;
                 for _ in 0..n {
                     if et == 0x0C {
                         v.push(decode_row_group(r)?)

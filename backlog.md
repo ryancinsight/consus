@@ -51,7 +51,7 @@
   `vec!`/`with_capacity` sites in consus-hdf5) found no unbound
   attacker-chosen length; no code change required. Closed as verified.
 
-## ATLAS-CONSUS-PARSE-LIMITS-037 — Bound consus-mat, consus-parquet, consus-zarr parse paths [minor] — in progress 2026-08-15
+## ATLAS-CONSUS-PARSE-LIMITS-037 — Bound consus-mat, consus-parquet, consus-zarr parse paths [minor] — done 2026-08-15
 
 - Scope: three crates outside the -035/-036 HDF5 and FITS surface.
 - Delivered (this pass):
@@ -69,12 +69,18 @@
     count) with deep-chain + shallow-chain tests.
   - Verified: `consus-mat` all-feature Nextest 90/90 (incl. compressed-read
     integration); `consus-parquet` lib tests pass; strict Clippy clean.
-- Remaining:
-  - `consus-parquet::wire::metadata` list headers bounded against remaining
-    bytes but not element footprint (a 1 MiB footer reserves 100+ MiB).
-  - `consus-zarr::chunk::ops` chunk shape times element size from
-    attacker-controlled `.zarray`/`zarr.json`, unchecked multiply
-    (`expand_fill_value` path is the default for a sparse array).
+- Delivered (follow-up pass, 2026-08-15):
+  - `consus-parquet::wire::metadata` schema / row-group / column-chunk list
+    reservations now use `ParseBudget::vec_with_capacity`, bounding
+    `count × size_of<T>` (a small footer can no longer reserve 100+ MiB).
+  - `consus-zarr::chunk::ops`: `try_expand_fill_value` bounds
+    `num_elements × element_size` against the byte ceiling with a fallible
+    allocation; `checked_chunk_bytes` bounds the chunk / padded-chunk /
+    shard-chunk byte products at every validation and allocation site; a
+    hostile-shape test proves the typed rejection.
+  - Verified: `consus-parquet` lib Nextest 227/227, `consus-zarr` lib
+    Nextest 110/110 (incl. the hostile fill-value test), strict Clippy,
+    formatting. -037 is closed.
 - Acceptance: as -036, per crate.
 
 ## ATLAS-CONSUS-PARSE-LIMITS-036 — Bound remaining HDF5 heap and dataset allocations [minor] — verified already bounded 2026-08-15
@@ -93,7 +99,7 @@
   `vec!`/`with_capacity` sites in consus-hdf5) found no unbound
   attacker-chosen length; no code change required. Closed as verified.
 
-## ATLAS-CONSUS-PARSE-LIMITS-037 — Bound consus-mat, consus-parquet, consus-zarr parse paths [minor] — in progress 2026-08-15
+## ATLAS-CONSUS-PARSE-LIMITS-037 — Bound consus-mat, consus-parquet, consus-zarr parse paths [minor] — done 2026-08-15
 
 - Scope: three crates outside the -035/-036 HDF5 and FITS surface.
 - Delivered (this pass):
@@ -111,12 +117,18 @@
     count) with deep-chain + shallow-chain tests.
   - Verified: `consus-mat` all-feature Nextest 90/90 (incl. compressed-read
     integration); `consus-parquet` lib tests pass; strict Clippy clean.
-- Remaining:
-  - `consus-parquet::wire::metadata` list headers bounded against remaining
-    bytes but not element footprint (a 1 MiB footer reserves 100+ MiB).
-  - `consus-zarr::chunk::ops` chunk shape times element size from
-    attacker-controlled `.zarray`/`zarr.json`, unchecked multiply
-    (`expand_fill_value` path is the default for a sparse array).
+- Delivered (follow-up pass, 2026-08-15):
+  - `consus-parquet::wire::metadata` schema / row-group / column-chunk list
+    reservations now use `ParseBudget::vec_with_capacity`, bounding
+    `count × size_of<T>` (a small footer can no longer reserve 100+ MiB).
+  - `consus-zarr::chunk::ops`: `try_expand_fill_value` bounds
+    `num_elements × element_size` against the byte ceiling with a fallible
+    allocation; `checked_chunk_bytes` bounds the chunk / padded-chunk /
+    shard-chunk byte products at every validation and allocation site; a
+    hostile-shape test proves the typed rejection.
+  - Verified: `consus-parquet` lib Nextest 227/227, `consus-zarr` lib
+    Nextest 110/110 (incl. the hostile fill-value test), strict Clippy,
+    formatting. -037 is closed.
 - Acceptance: as -036, per crate.
 
 ## ATLAS-CONSUS-PARQUET-058 — Consolidate PLAIN scalar decoders [major][arch] — done 2026-08-15
