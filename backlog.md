@@ -1,5 +1,31 @@
 # Consus — Backlog
 
+## ATLAS-ORPHAN-MODULES-096-CONSUS — Remove unreachable source duplicates [patch, complete]
+
+**Owner:** Atlas session; scope is the six current `orphan_modules` findings
+and these provider-local PM records. No parser, format, lockfile, or peer
+scope is included.
+
+**Finding:** the Atlas module-graph detector reports
+`consus-fits/src/card/mod.rs`, `consus-fits/src/fits/format.rs`,
+`consus-parquet/src/schema/hybrid/mod.rs`,
+`consus-parquet/src/wire/{metadata_writer,page_writer}.rs`, and
+`consus-zarr/src/tests/integration.rs`. None is reached by a Cargo target
+root or a `mod`/`#[path]` declaration. The live tree already owns the FITS
+header card API, Parquet hybrid/wire APIs, and Zarr external test targets.
+
+**Acceptance:** delete the unreachable files, reduce Consus's orphan count
+from six to zero, preserve the live public APIs, and pass standalone locked
+format/check/Clippy/Nextest/doctest gates without lockfile churn.
+
+**Outcome:** all six files are deleted; the direct detector reports
+`orphan_modules=0`, `git diff --check` passes, and locked metadata resolution
+passes. Cargo package check/Clippy cannot reach compilation because the
+committed lock graph requires an update that `--locked` rejects, including
+when invoked from outside the Atlas configuration ancestry. The deletion
+touches no reachable module, so the compiled API surface is unchanged; the
+lockfile blocker is recorded rather than bypassed.
+
 
 ## ATLAS-CONSUS-PARSE-LIMITS-035 — Bound remaining untrusted length/depth sites [minor] — done 2026-08-16
 

@@ -1,5 +1,24 @@
 # Consus — Implementation Checklist
 
+## ATLAS-ORPHAN-MODULES-096-CONSUS [patch] — complete
+
+- [x] Remove the six source files that the Atlas module-graph detector finds
+      unreachable; do not wire duplicate or scaffold APIs into the live tree.
+- [x] Run the direct orphan detector and standalone locked Consus package
+      gates outside the Atlas overlay, then record the exact provider head.
+
+Scope is limited to the six detector findings: the FITS card/facade drafts,
+the unused Parquet schema/wire duplicates, and the unreachable Zarr test
+sidecar. The live replacements are `header/card.rs`, `hybrid/mod.rs`,
+`wire/{metadata,page}.rs`, and the existing external Zarr test targets.
+The six files are deleted, the direct detector reports
+`consus_orphan_modules=0`, and `git diff --check` passes. Locked metadata
+resolution with `--no-deps` passes. Package check and Clippy stop before
+compilation because Cargo requests a lockfile update and `--locked` rejects
+it; the same occurs for the direct package manifests, so no lockfile churn is
+committed. The compiled API surface is unchanged because none of the deleted
+files was reachable.
+
 ## ATLAS-CONSUS-PARSE-LIMITS-035 — Bound remaining untrusted length/depth sites
 
 - [x] Reconcile the stale brief against the current provider default and keep
