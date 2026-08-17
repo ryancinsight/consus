@@ -168,6 +168,8 @@ pub fn decode_to_f64(raw: &[u8], dtype: &Datatype) -> Result<Vec<f64>, Error> {
 ///
 /// - `is_float` and `elem_size` is not 4 or 8.
 /// - `!is_float` and `elem_size` is not 1, 2, 4, or 8.
+/// - The buffer length is not a multiple of `elem_size` →
+///   [`Error::InvalidFormat`].
 #[cfg(feature = "alloc")]
 pub fn decode_bytes_to_f64(
     bytes: &[u8],
@@ -176,6 +178,20 @@ pub fn decode_bytes_to_f64(
     is_float: bool,
     byte_order: ByteOrder,
 ) -> Result<Vec<f64>, Error> {
+    // Reject ragged buffers up front instead of letting `chunks_exact` drop
+    // the trailing bytes, matching `decode_to_f64` and the module invariant
+    // (a non-multiple length is `InvalidFormat`, not silent truncation).
+    // `elem_size == 0` cannot divide and falls through to
+    // `UnsupportedFeature` below, so guard the modulo.
+    if elem_size != 0 && bytes.len() % elem_size != 0 {
+        return Err(Error::InvalidFormat {
+            message: alloc::format!(
+                "decode_bytes_to_f64: buffer length {} is not a multiple of element size {}",
+                bytes.len(),
+                elem_size
+            ),
+        });
+    }
     if is_float {
         match elem_size {
             4 => Ok(bytes
@@ -244,6 +260,7 @@ pub fn decode_bytes_to_f64(
 
 #[cfg(all(test, feature = "alloc"))]
 mod tests {
+    use super::super::Error;
     use super::super::types::datatype::{ByteOrder, Datatype};
     use super::{decode_bytes_to_f64, decode_to_f64};
     use core::num::NonZeroUsize;
@@ -350,6 +367,63 @@ mod tests {
         )
         .expect("valid datatype decodes");
         assert_eq!(tuple, dtype);
+    }
+
+    #[test]
+    fn empty_buffer_decodes_to_empty_vec() {
+        // The exact-size iterator contract (`chunks_exact`/`iter` report
+        // `len == 0`) must produce an empty, zero-allocation result rather
+        // than erroring or emitting a sentinel element.
+        assert_eq!(
+            decode_to_f64(&[], &le_float(64)).expect("empty f64 buffer decodes"),
+            Vec::<f64>::new()
+        );
+        assert_eq!(
+            decode_to_f64(&[], &le_int(32, false)).expect("empty u32 buffer decodes"),
+            Vec::<f64>::new()
+        );
+        assert_eq!(
+            decode_to_f64(&[], &Datatype::Boolean).expect("empty boolean buffer decodes"),
+            Vec::<f64>::new()
+        );
+        assert_eq!(
+            decode_bytes_to_f64(&[], 8, false, true, ByteOrder::LittleEndian)
+                .expect("empty tuple buffer decodes"),
+            Vec::<f64>::new()
+        );
+    }
+
+    #[test]
+    fn single_element_buffer_decodes() {
+        // Boundary: one element — the smallest non-trivial exact-size decode.
+        let raw = 42u16.to_le_bytes();
+        let out = decode_bytes_to_f64(&raw, 2, false, false, ByteOrder::LittleEndian)
+            .expect("one u16 decodes");
+        assert_eq!(out, vec![42.0_f64]);
+    }
+
+    #[test]
+    fn tuple_path_rejects_non_multiple_buffer_length() {
+        // 4 bytes of f32 data + 1 trailing byte must fail closed instead of
+        // silently truncating the ragged tail via `chunks_exact`.
+        let raw = vec![0u8; 5];
+        let err = decode_bytes_to_f64(&raw, 4, false, true, ByteOrder::LittleEndian)
+            .expect_err("ragged buffer must fail");
+        assert!(matches!(err, Error::InvalidFormat { .. }));
+        // The datatype path is the SSOT: both entries must agree.
+        let dtype_err = decode_to_f64(&raw, &le_float(32)).expect_err("ragged buffer must fail");
+        assert!(matches!(dtype_err, Error::InvalidFormat { .. }));
+
+        // Even lengths are still accepted on the tuple path (u16: 3 elements).
+        let ok = decode_bytes_to_f64(
+            &[1, 0, 2, 0, 3, 0],
+            2,
+            false,
+            false,
+            ByteOrder::LittleEndian,
+        )
+        .expect("multiple-of-2 buffer decodes");
+        assert_eq!(ok, vec![1.0, 2.0, 3.0]);
     }
 
     fn le_float(bits: usize) -> Datatype {
