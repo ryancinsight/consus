@@ -375,7 +375,7 @@ so the compiled API surface is unchanged.
   aspirational I/O API (CONSUS-TEST-API-001); both are inventoried in
   `gap_audit.md`.
 
-## CONSUS-NODEF-GATE-001 — Close the next workspace no-default blocker [patch] — in progress 2026-08-17
+## CONSUS-NODEF-GATE-001 — Close the next workspace no-default blocker [patch] — done 2026-08-17
 
 - Owner: Codex. Scope: the next reproducible workspace
   `--no-default-features` blocker and its provider-local gate evidence; no
@@ -400,8 +400,7 @@ so the compiled API surface is unchanged.
   package documentation failure.
 - Cleanup delivered in this slice: the provider CI and documentation jobs now
   carry explicit job timeouts, and the documentation job enforces
-  warning-denied Rustdoc. These workflow changes require the exact pushed head
-  and hosted CI/Documentation results before this item can close.
+  warning-denied Rustdoc.
 - Hosted Documentation run `32017157627` at `57a4e66` correctly failed on
   warning-denied rustdoc: an optional `zerocopy` link in Arrow and three Zarr
   links (a module-private helper and an unqualified `ParseBudget`) were
@@ -415,13 +414,13 @@ so the compiled API surface is unchanged.
 - The next hosted Documentation run `32017799064` at `0b5505a` found three
   more Parquet documentation links: two unqualified `ParseBudget` references
   and a prose index variable parsed as an intra-doc link. They are corrected;
-  local warning-denied Parquet rustdoc and formatting pass, and the next
-  hosted result is pending.
-- Residual: the Atlas umbrella still cannot collect the locked gate because
-  its development overlay reports unused local patches and requests a
-  `Cargo.lock` rewrite before compilation. No lockfile was changed. Push the
-  provider head, collect the exact hosted CI and Documentation runs, and close
-  this item only if those gates pass or record their precise failure.
+  local warning-denied Parquet rustdoc and formatting pass.
+- Final exact-head evidence: CI `32017963837` passed all 80 jobs at
+  `65a7b28`; Documentation `32017963800` and Pages deployment `32017962556`
+  also passed at that head. The Atlas umbrella overlay still requests a
+  `Cargo.lock` rewrite and reports unused local patches before compilation,
+  but that is a separate development-environment boundary and not a provider
+  gate residual.
 - Acceptance: the no-default workspace check reaches the next blocker or
   passes; the affected package's no-default and default value-semantic gates
   are green; the residual record names the exact remaining blocker.

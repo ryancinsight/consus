@@ -198,7 +198,7 @@ none of the deleted files was reachable.
       no-alloc test import in `fa314cb`.
 - [x] Pass package no-default check, strict Clippy, and no-default Nextest
       2/2; pass default strict Clippy and Nextest 79/79.
-- [ ] Re-run the locked workspace no-default and hosted exact-head gates from
+- [x] Re-run the locked workspace no-default and hosted exact-head gates from
       a standalone provider checkout. The standalone no-default check and
       warning-denied Clippy pass; no-default Nextest is `2031/2031`, default
       Nextest is `2553/2553`, and locked doctests pass. All 17 packages pass
@@ -206,10 +206,12 @@ none of the deleted files was reachable.
       exceeds the bounded local collection window after those package-level
       passes. The provider CI and Documentation jobs now have explicit
       timeouts, with Documentation enforcing `RUSTDOCFLAGS=-Dwarnings`.
-- [ ] Collect the exact hosted CI and Documentation results for the pushed
+- [x] Collect the exact hosted CI and Documentation results for the pushed
       provider head. The Atlas umbrella invocation remains an environment
       boundary: its development overlay requests a `Cargo.lock` rewrite and
       reports unused local patches before compilation. No lockfile was changed.
+      Exact head `65a7b28` passed CI `32017963837` (80 jobs), Documentation
+      `32017963800`, and Pages `32017962556`.
 - [x] Fix the exact hosted rustdoc failures from Documentation run
       `32017157627`: remove the unresolved optional-dependency link in Arrow;
       use the public `consus_core::ParseBudget` path in Zarr; and keep the

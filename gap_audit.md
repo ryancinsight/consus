@@ -1003,7 +1003,7 @@ owns the cross-repository matrix.
 - `consus-hdf5` root re-exports added for the `Hdf5File` and `Hdf5FileBuilder`
   facades (mirroring the `consus-fits` facade pattern).
 
-### In progress — CONSUS-NODEF-GATE-001 (--no-default-features cfg debt)
+### Verified green — CONSUS-NODEF-GATE-001 (--no-default-features cfg debt)
 
 The previous residual was stale: the current `consus-fits` package no-default
 check passes, and the next reproducible failure was the unconditional
@@ -1036,8 +1036,14 @@ for both affected packages; the next hosted Documentation result remains open.
 Documentation run `32017799064` at `0b5505a` found three further Parquet
 links: two unqualified `ParseBudget` references and the `value[i]` prose index
 expression. They now use `consus_core::ParseBudget` and inline code for the
-expression. Local warning-denied Parquet Rustdoc passes; the next hosted
-Documentation result remains open.
+expression. They now use `consus_core::ParseBudget` and inline code for the
+expression. Local warning-denied Parquet Rustdoc passes.
+
+Final exact-head evidence: CI `32017963837` passed all 80 jobs at `65a7b28`;
+Documentation `32017963800` and Pages deployment `32017962556` also passed at
+that head. The Atlas development overlay still reports unused local patches
+and requests a `Cargo.lock` rewrite before compilation; it remains an
+environment-boundary note, not a provider source or hosted-gate residual.
 
 The Atlas umbrella still stops the locked invocation before compilation because
 the development overlay reports unused local patches and requests a
