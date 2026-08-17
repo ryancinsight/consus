@@ -85,7 +85,7 @@ impl NwbConformanceReport {
         &self.violations
     }
 
-    /// Record one violation.  Use [`NwbFile::validate_conformance`] to
+    /// Record one violation.  Use [`crate::file::NwbFile::validate_conformance`] to
     /// trigger full multi-layer validation instead of calling this directly.
     pub(crate) fn push(&mut self, v: ConformanceViolation) {
         self.violations.push(v);

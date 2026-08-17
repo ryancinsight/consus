@@ -215,6 +215,10 @@ none of the deleted files was reachable.
       use the public `consus_core::ParseBudget` path in Zarr; and keep the
       module-private helper reference as code prose. Both affected packages
       pass local warning-denied rustdoc and formatting.
+- [x] Fix the two additional exact hosted rustdoc failures from
+      Documentation run `32017590806`: qualify `NwbFile` from the NWB
+      validation module and qualify `ParseBudget` in MAT. Both affected
+      packages pass local warning-denied rustdoc and formatting.
 
 ## ATLAS-CONSUS-001 — Themis topology partition sizing [minor]
 

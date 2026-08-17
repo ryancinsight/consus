@@ -57,7 +57,7 @@ pub fn parse_matrix(
 /// self-similar payload; a hostile file can chain ~40-50 input bytes per
 /// level. Rust performs no tail-call elimination, so unbounded recursion
 /// overflows the stack — an abort no `Result` can express. `depth` counts the
-/// levels already entered and is checked against the [`ParseBudget`] ceiling
+/// levels already entered and is checked against the [`consus_core::ParseBudget`] ceiling
 /// before recursing.
 #[cfg(feature = "alloc")]
 fn parse_matrix_depth(

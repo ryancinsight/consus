@@ -1026,6 +1026,13 @@ the two public references use `consus_core::ParseBudget`. Local warning-denied
 Rustdoc passes for `consus-arrow` and `consus-zarr`; the replacement hosted
 Documentation result remains open.
 
+Replacement Documentation run `32017590806` at `22294b5` found two more
+unresolved links that the first run did not reach: `NwbFile` from the NWB
+validation module and `ParseBudget` in MAT. They now use
+`crate::file::NwbFile::validate_conformance` and
+`consus_core::ParseBudget`, respectively. Local warning-denied Rustdoc passes
+for both affected packages; the next hosted Documentation result remains open.
+
 The Atlas umbrella still stops the locked invocation before compilation because
 the development overlay reports unused local patches and requests a
 `Cargo.lock` rewrite. No lockfile change was kept. Collect the exact hosted CI

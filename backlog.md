@@ -407,6 +407,11 @@ so the compiled API surface is unchanged.
   links (a module-private helper and an unqualified `ParseBudget`) were
   unresolved. Those links are corrected and the affected packages pass local
   `RUSTDOCFLAGS=-Dwarnings` rustdoc; the replacement hosted result is pending.
+- Replacement Documentation run `32017590806` at `22294b5` found two further
+  unresolved links in NWB and MAT (`NwbFile::validate_conformance` was not
+  qualified from the validation module, and `ParseBudget` was unqualified).
+  Both are corrected and the affected packages pass local warning-denied
+  rustdoc; the next hosted result is pending.
 - Residual: the Atlas umbrella still cannot collect the locked gate because
   its development overlay reports unused local patches and requests a
   `Cargo.lock` rewrite before compilation. No lockfile was changed. Push the
