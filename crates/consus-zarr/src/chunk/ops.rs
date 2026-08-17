@@ -411,7 +411,7 @@ pub fn write_chunk<S: Store>(
 /// Expands a fill value to a byte vector of the specified length.
 ///
 /// The caller must have already bounded `num_elements`; this helper trusts it.
-/// Production chunk-read paths use [`try_expand_fill_value`] instead, which
+/// Production chunk-read paths use `try_expand_fill_value` instead, which
 /// bounds the resulting byte size before allocating.
 #[cfg(feature = "alloc")]
 pub fn expand_fill_value(fill_value: &FillValue, dtype: &str, num_elements: u64) -> Vec<u8> {
@@ -423,7 +423,7 @@ pub fn expand_fill_value(fill_value: &FillValue, dtype: &str, num_elements: u64)
 ///
 /// `num_elements` comes from an attacker-chosen `.zarray`/`zarr.json` chunk
 /// shape, so `num_elements × element_size` is checked against the
-/// [`ParseBudget`] byte ceiling before the allocation, and the allocation
+/// [`consus_core::ParseBudget`] byte ceiling before the allocation, and the allocation
 /// itself is fallible — a hostile shape is a typed error, not an
 /// allocation abort or a multiply overflow panic.
 #[cfg(feature = "alloc")]
@@ -500,7 +500,7 @@ pub fn try_expand_fill_value(
 /// Compute `chunk_elements × element_size` under the parser byte ceiling.
 ///
 /// Both operands derive from attacker-chosen `.zarray`/`zarr.json` shapes, so
-/// the product is checked for overflow and against the [`ParseBudget`] byte
+/// the product is checked for overflow and against the [`consus_core::ParseBudget`] byte
 /// ceiling before it is used to validate or allocate chunk buffers — a hostile
 /// shape is a typed error, not a multiply-overflow panic.
 #[cfg(feature = "alloc")]

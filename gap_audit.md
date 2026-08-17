@@ -1018,6 +1018,14 @@ workspace documentation orchestration rather than a package documentation
 failure. Provider CI and Documentation jobs now have explicit timeouts, and
 Documentation enforces `RUSTDOCFLAGS=-Dwarnings`.
 
+The first exact hosted Documentation run at `57a4e66` (`32017157627`) then
+failed on four genuine links: the optional `zerocopy` dependency in Arrow, a
+module-private Zarr helper, and two unqualified Zarr `ParseBudget` references.
+The Arrow reference is now code prose, the private helper is code prose, and
+the two public references use `consus_core::ParseBudget`. Local warning-denied
+Rustdoc passes for `consus-arrow` and `consus-zarr`; the replacement hosted
+Documentation result remains open.
+
 The Atlas umbrella still stops the locked invocation before compilation because
 the development overlay reports unused local patches and requests a
 `Cargo.lock` rewrite. No lockfile change was kept. Collect the exact hosted CI

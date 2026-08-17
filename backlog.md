@@ -402,6 +402,11 @@ so the compiled API surface is unchanged.
   carry explicit job timeouts, and the documentation job enforces
   warning-denied Rustdoc. These workflow changes require the exact pushed head
   and hosted CI/Documentation results before this item can close.
+- Hosted Documentation run `32017157627` at `57a4e66` correctly failed on
+  warning-denied rustdoc: an optional `zerocopy` link in Arrow and three Zarr
+  links (a module-private helper and an unqualified `ParseBudget`) were
+  unresolved. Those links are corrected and the affected packages pass local
+  `RUSTDOCFLAGS=-Dwarnings` rustdoc; the replacement hosted result is pending.
 - Residual: the Atlas umbrella still cannot collect the locked gate because
   its development overlay reports unused local patches and requests a
   `Cargo.lock` rewrite before compilation. No lockfile was changed. Push the

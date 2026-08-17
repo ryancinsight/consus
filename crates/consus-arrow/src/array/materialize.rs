@@ -31,7 +31,7 @@
 //!
 //! On little-endian architectures with the `zerocopy` feature enabled, fixed-width
 //! numeric types (Int32, Int64, Float, Double) are materialized via
-//! [`zerocopy::IntoBytes::as_bytes`], which reinterprets the native-memory slice
+//! `zerocopy::IntoBytes::as_bytes`, which reinterprets the native-memory slice
 //! directly as `&[u8]` without element-by-element byte swapping.
 //!
 //! ## Correctness invariant

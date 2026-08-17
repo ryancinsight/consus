@@ -210,6 +210,11 @@ none of the deleted files was reachable.
       provider head. The Atlas umbrella invocation remains an environment
       boundary: its development overlay requests a `Cargo.lock` rewrite and
       reports unused local patches before compilation. No lockfile was changed.
+- [x] Fix the exact hosted rustdoc failures from Documentation run
+      `32017157627`: remove the unresolved optional-dependency link in Arrow;
+      use the public `consus_core::ParseBudget` path in Zarr; and keep the
+      module-private helper reference as code prose. Both affected packages
+      pass local warning-denied rustdoc and formatting.
 
 ## ATLAS-CONSUS-001 — Themis topology partition sizing [minor]
 
