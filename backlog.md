@@ -20,11 +20,12 @@ format/check/Clippy/Nextest/doctest gates without lockfile churn.
 
 **Outcome:** all six files are deleted; the direct detector reports
 `orphan_modules=0`, `git diff --check` passes, and locked metadata resolution
-passes. Cargo package check/Clippy cannot reach compilation because the
-committed lock graph requires an update that `--locked` rejects, including
-when invoked from outside the Atlas configuration ancestry. The deletion
-touches no reachable module, so the compiled API surface is unchanged; the
-lockfile blocker is recorded rather than bypassed.
+passes. The committed lock graph is refreshed from stale `zstd` entries to the
+manifest's `zrip` graph, adding four `zrip` packages and removing stale
+`jobserver`/`zstd` entries. Default locked check, warning-denied Clippy,
+Nextest `2553/2553`, and doctests pass; no-default check, Clippy, Nextest
+`2031/2031`, and doctests also pass. The deletion touches no reachable module,
+so the compiled API surface is unchanged.
 
 
 ## ATLAS-CONSUS-PARSE-LIMITS-035 — Bound remaining untrusted length/depth sites [minor] — done 2026-08-16
