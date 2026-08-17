@@ -254,7 +254,7 @@ impl<'a> ThriftReader<'a> {
     /// list of structs containing a list of structs... recurses one frame per
     /// input byte with no format-enforced lower bound. Rust performs no
     /// tail-call elimination, so unbounded recursion overflows the stack — an
-    /// abort no `Result` can express. The [`ParseBudget`] descent ceiling
+    /// abort no `Result` can express. The [`consus_core::ParseBudget`] descent ceiling
     /// bounds it here, matching the HDF5 B-tree and MAT v5 fixes.
     fn skip_depth(&mut self, type_code: u8, depth: u16) -> Result<()> {
         let depth =

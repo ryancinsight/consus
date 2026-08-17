@@ -1033,6 +1033,12 @@ validation module and `ParseBudget` in MAT. They now use
 `consus_core::ParseBudget`, respectively. Local warning-denied Rustdoc passes
 for both affected packages; the next hosted Documentation result remains open.
 
+Documentation run `32017799064` at `0b5505a` found three further Parquet
+links: two unqualified `ParseBudget` references and the `value[i]` prose index
+expression. They now use `consus_core::ParseBudget` and inline code for the
+expression. Local warning-denied Parquet Rustdoc passes; the next hosted
+Documentation result remains open.
+
 The Atlas umbrella still stops the locked invocation before compilation because
 the development overlay reports unused local patches and requests a
 `Cargo.lock` rewrite. No lockfile change was kept. Collect the exact hosted CI

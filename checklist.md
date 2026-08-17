@@ -219,6 +219,10 @@ none of the deleted files was reachable.
       Documentation run `32017590806`: qualify `NwbFile` from the NWB
       validation module and qualify `ParseBudget` in MAT. Both affected
       packages pass local warning-denied rustdoc and formatting.
+- [x] Fix the three additional exact hosted rustdoc failures from
+      Documentation run `32017799064`: qualify both Parquet `ParseBudget`
+      references and mark the boolean bit-pack index expression as code prose.
+      The Parquet package passes local warning-denied rustdoc and formatting.
 
 ## ATLAS-CONSUS-001 — Themis topology partition sizing [minor]
 

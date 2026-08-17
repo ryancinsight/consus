@@ -412,6 +412,11 @@ so the compiled API surface is unchanged.
   qualified from the validation module, and `ParseBudget` was unqualified).
   Both are corrected and the affected packages pass local warning-denied
   rustdoc; the next hosted result is pending.
+- The next hosted Documentation run `32017799064` at `0b5505a` found three
+  more Parquet documentation links: two unqualified `ParseBudget` references
+  and a prose index variable parsed as an intra-doc link. They are corrected;
+  local warning-denied Parquet rustdoc and formatting pass, and the next
+  hosted result is pending.
 - Residual: the Atlas umbrella still cannot collect the locked gate because
   its development overlay reports unused local patches and requests a
   `Cargo.lock` rewrite before compilation. No lockfile was changed. Push the

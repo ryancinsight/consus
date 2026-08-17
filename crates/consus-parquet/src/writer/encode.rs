@@ -248,7 +248,7 @@ fn encode_cell_plain(cell: &CellValue<'_>, out: &mut Vec<u8>) -> Result<()> {
 
 /// Bit-pack boolean values LSB-first per the Parquet PLAIN BOOLEAN encoding.
 ///
-/// value[i] occupies bit `i % 8` of byte `i / 8`. Returns `⌈count / 8⌉` bytes.
+/// `value[i]` occupies bit `i % 8` of byte `i / 8`. Returns `⌈count / 8⌉` bytes.
 pub(super) fn encode_bool_column_plain(bools: &[bool]) -> Vec<u8> {
     let byte_count = bools.len().saturating_add(7) / 8;
     let mut out = vec![0u8; byte_count];

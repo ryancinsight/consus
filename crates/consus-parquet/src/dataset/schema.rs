@@ -60,7 +60,7 @@ pub fn schema_elements_to_schema(
 /// - `id_seq`: auto-increment counter used when `field_id` is absent
 /// - `depth`: nesting level already entered; a hostile schema can chain
 ///   single-child group nodes arbitrarily deep (each ~1 input element), so the
-///   descent is bounded against the [`ParseBudget`] ceiling before recursing.
+///   descent is bounded against the [`consus_core::ParseBudget`] ceiling before recursing.
 fn parse_fields(
     elements: &[crate::wire::metadata::SchemaElement],
     mut pos: usize,
