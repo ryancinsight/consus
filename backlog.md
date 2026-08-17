@@ -348,9 +348,9 @@
   aspirational I/O API (CONSUS-TEST-API-001); both are inventoried in
   `gap_audit.md`.
 
-## CONSUS-NODEF-GATE-001 — Close the next workspace no-default blocker [patch] — blocked 2026-08-14
+## CONSUS-NODEF-GATE-001 — Close the next workspace no-default blocker [patch] — blocked 2026-08-17
 
-- Owner: current session. Scope: the next reproducible workspace
+- Owner: Codex. Scope: the next reproducible workspace
   `--no-default-features` blocker and its provider-local gate evidence; no
   changes to the peer-owned HDF5 worktree scope.
 - Entry evidence: `consus-arrow` unconditionally re-exports the alloc-gated
@@ -360,11 +360,14 @@
   now follow the `alloc` boundary. Package no-default check, strict Clippy,
   no-default Nextest 2/2, default strict Clippy, and default Nextest 79/79
   pass; the current worktree workspace no-default check also passes.
-- Residual: the workspace result includes peer-owned, uncommitted HDF5/FITS
-  parser changes. Exact hosted verification remains pending their clean
-  provider commit; re-open when those changes land, then run the locked
-  workspace gate and publish the provider PR. Do not claim the default branch
-  gate closed from the dirty worktree result.
+- Residual: current `origin/main` is clean at `182083f`, so the former
+  peer-owned HDF5/FITS dirty-tree blocker is no longer the active condition.
+  The exact locked gate cannot be collected from the Atlas umbrella: Cargo
+  resolves the development overlay, reports unused local patches, and then
+  requests a lockfile rewrite before compilation. No lockfile was changed.
+  Re-open from a standalone locked checkout or the exact hosted job, then
+  record the next provider blocker or close the gate. Do not treat the
+  umbrella-overlay failure as a source defect.
 - Acceptance: the no-default workspace check reaches the next blocker or
   passes; the affected package's no-default and default value-semantic gates
   are green; the residual record names the exact remaining blocker.

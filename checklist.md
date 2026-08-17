@@ -177,10 +177,12 @@
       no-alloc test import in `fa314cb`.
 - [x] Pass package no-default check, strict Clippy, and no-default Nextest
       2/2; pass default strict Clippy and Nextest 79/79.
-- [ ] **Blocked:** re-run the workspace no-default and hosted exact-head gates
-      after the peer-owned HDF5/FITS parser changes land in a clean provider
-      commit; the current worktree-only gate passes and focused HDF5/FITS
-      Nextest passes 594/594.
+- [ ] **Blocked:** re-run the locked workspace no-default and hosted exact-head
+      gates from a standalone provider checkout. `origin/main` is clean at
+      `182083f`; the Atlas umbrella invocation stops before compilation because
+      its development overlay requests a `Cargo.lock` rewrite and emits unused
+      local-patch warnings. No lockfile was changed, and this local failure is
+      not source or parser evidence.
 
 ## ATLAS-CONSUS-001 — Themis topology partition sizing [minor]
 

@@ -1003,17 +1003,22 @@ owns the cross-repository matrix.
 - `consus-hdf5` root re-exports added for the `Hdf5File` and `Hdf5FileBuilder`
   facades (mirroring the `consus-fits` facade pattern).
 
-### Partial — CONSUS-NODEF-GATE-001 (--no-default-features cfg debt)
+### Blocked — CONSUS-NODEF-GATE-001 (--no-default-features cfg debt)
 
 The previous residual was stale: the current `consus-fits` package no-default
 check passes, and the next reproducible failure was the unconditional
 `consus-arrow` `datatype` re-export at `src/lib.rs:74`. Commit `fa314cb` gates
 that export and fixes the no-alloc test import. Package no-default check,
 strict Clippy, no-default Nextest 2/2, default strict Clippy, and default
-Nextest 79/79 pass. The current worktree `cargo check --workspace
---no-default-features` also passes, but that result includes peer-owned,
-uncommitted HDF5/FITS parser changes; clean exact-head hosted verification is
-still required before this gate can close.
+Nextest 79/79 pass. The earlier worktree `cargo check --workspace
+--no-default-features` result is not a reproducible gate input because it
+included peer-owned, uncommitted HDF5/FITS parser changes. The current default
+branch is clean at `182083f`; a fresh locked invocation from the Atlas umbrella
+instead stops before compilation because the development overlay reports unused
+local patches and asks Cargo to rewrite `Cargo.lock`. No lockfile change was
+kept. Re-open from a standalone locked checkout or exact hosted run; the
+umbrella-overlay failure is an environment boundary, not evidence of a new
+provider source defect.
 
 ### Open — CONSUS-TEST-API-001 (integration-test aspirational I/O API)
 
