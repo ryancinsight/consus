@@ -375,11 +375,13 @@ so the compiled API surface is unchanged.
   aspirational I/O API (CONSUS-TEST-API-001); both are inventoried in
   `gap_audit.md`.
 
-## CONSUS-NODEF-GATE-001 — Close the next workspace no-default blocker [patch] — blocked 2026-08-17
+## CONSUS-NODEF-GATE-001 — Close the next workspace no-default blocker [patch] — in progress 2026-08-17
 
 - Owner: Codex. Scope: the next reproducible workspace
   `--no-default-features` blocker and its provider-local gate evidence; no
   changes to the peer-owned HDF5 worktree scope.
+- Claim: 2026-08-17. Re-verify the standalone locked workspace gate outside
+  the Atlas development overlay and synchronize the provider records.
 - Entry evidence: `consus-arrow` unconditionally re-exports the alloc-gated
   `datatype` module from `src/lib.rs:74`, so the workspace no-default check
   fails before it can reach the next format provider.
