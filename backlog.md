@@ -1,5 +1,19 @@
 # Consus — Backlog
 
+## ATLAS-CONSUS-UNWRAP-099 — Close parser-test ratchet delta [patch, in progress]
+
+**Owner:** Atlas session; scope is the three bare unwraps introduced by the
+feature-qualified parser regression tests in `consus-mat` and
+`consus-parquet`. The root classifier still needs an independent fix for its
+`cfg(all(test, ...))` test-region detection; this item does not edit that
+peer-owned root script or its baseline.
+
+**Acceptance:** replace the three test unwraps with invariant-bearing,
+value-semantic assertions; the provider scan returns `unwrap_production=383`
+without a baseline edit; focused parser tests, strict Clippy, formatting, and
+locked provider gates pass.
+
+
 ## ATLAS-ORPHAN-MODULES-096-CONSUS — Remove unreachable source duplicates [patch, complete]
 
 **Owner:** Atlas session; scope is the six current `orphan_modules` findings

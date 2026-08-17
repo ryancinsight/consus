@@ -1,5 +1,14 @@
 # Consus — Implementation Checklist
 
+## ATLAS-CONSUS-UNWRAP-099 [patch] — in progress
+
+- [ ] Replace the two `consus-mat` and one `consus-parquet` test unwraps that
+      the Atlas ratchet currently attributes to production.
+- [ ] Preserve value-semantic assertions, then pass the provider scan,
+      formatting, strict Clippy, focused Nextest, and locked workspace gates.
+- [ ] Record exact provider and hosted evidence before Atlas gitlink advance.
+
+
 ## ATLAS-ORPHAN-MODULES-096-CONSUS [patch] — complete
 
 - [x] Remove the six source files that the Atlas module-graph detector finds

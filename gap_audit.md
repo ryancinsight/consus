@@ -1,5 +1,17 @@
 # Consus - Gap Audit
 
+## ATLAS-CONSUS-UNWRAP-099 — Parser-test ratchet delta (in progress)
+
+The Atlas conformance scan reports `unwrap_production=386` against a baseline
+of 383. The three-count increase is not production behavior: two unwraps are
+in the feature-qualified `consus-mat` parser regression module and one is in
+the feature-qualified `consus-parquet` schema regression module. The root
+scanner recognizes only the exact `#[cfg(test)]` spelling when splitting inline
+tests, so these test modules are misclassified. Replace the three test unwraps
+with explicit invariant-bearing assertions to close the provider-visible
+ratchet without changing the baseline; repair of the root classifier remains
+a separate peer-owned Atlas item.
+
 ## ATLAS-CONSUS-PARSE-LIMITS-035 — Closed at provider scope (2026-08-16)
 
 The original sweep was stale: the named HDF5 v2, dataset, compound-datatype,
