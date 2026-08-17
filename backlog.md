@@ -1,6 +1,6 @@
 # Consus — Backlog
 
-## ATLAS-CONSUS-UNWRAP-099 — Close parser-test ratchet delta [patch, in progress]
+## ATLAS-CONSUS-UNWRAP-099 — Close parser-test ratchet delta [patch, complete]
 
 **Owner:** Atlas session; scope is the three bare unwraps introduced by the
 feature-qualified parser regression tests in `consus-mat` and
@@ -12,6 +12,19 @@ peer-owned root script or its baseline.
 value-semantic assertions; the provider scan returns `unwrap_production=383`
 without a baseline edit; focused parser tests, strict Clippy, formatting, and
 locked provider gates pass.
+
+**Outcome:** `a9a56ad` replaces both numeric match-guard unwraps with bound
+`if let` guards and serializes the NWB inheritance value through one optional
+binding. The scan returns `unwrap_production=383`; no baseline edit is made.
+Locked strict Clippy passes, default Nextest run
+`6ad69fd9-39d8-4c96-a442-f02054bc9c97` passes 2553/2553, no-default Nextest
+run `bb1c85da-f113-40a6-9eaf-7209c23e67` passes 2031/2031, and workspace
+doctests pass. Hosted exact-head CI `32020339446`, Documentation
+`32020339452`, and Pages `32020338335` all pass at `a9a56ad`.
+
+The root classifier's `cfg(all(test, ...))` test-region defect remains a
+separate peer-owned Atlas item; this provider change closes the committed
+ratchet without hiding that residual.
 
 
 ## ATLAS-ORPHAN-MODULES-096-CONSUS — Remove unreachable source duplicates [patch, complete]

@@ -1,12 +1,14 @@
 # Consus — Implementation Checklist
 
-## ATLAS-CONSUS-UNWRAP-099 [patch] — in progress
+## ATLAS-CONSUS-UNWRAP-099 [patch] — complete
 
-- [ ] Replace the two `consus-mat` and one `consus-parquet` test unwraps that
+- [x] Replace the two `consus-mat` and one `consus-parquet` test unwraps that
       the Atlas ratchet currently attributes to production.
-- [ ] Preserve value-semantic assertions, then pass the provider scan,
+- [x] Preserve value-semantic assertions, then pass the provider scan,
       formatting, strict Clippy, focused Nextest, and locked workspace gates.
-- [ ] Record exact provider and hosted evidence before Atlas gitlink advance.
+- [x] Record exact provider head `a9a56ad`, default Nextest 2553/2553,
+      no-default Nextest 2031/2031, doctests, and hosted CI
+      `32020339446`, Documentation `32020339452`, and Pages `32020338335`.
 
 
 ## ATLAS-ORPHAN-MODULES-096-CONSUS [patch] — complete
