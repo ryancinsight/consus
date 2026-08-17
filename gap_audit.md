@@ -1003,22 +1003,27 @@ owns the cross-repository matrix.
 - `consus-hdf5` root re-exports added for the `Hdf5File` and `Hdf5FileBuilder`
   facades (mirroring the `consus-fits` facade pattern).
 
-### Blocked — CONSUS-NODEF-GATE-001 (--no-default-features cfg debt)
+### In progress — CONSUS-NODEF-GATE-001 (--no-default-features cfg debt)
 
 The previous residual was stale: the current `consus-fits` package no-default
 check passes, and the next reproducible failure was the unconditional
 `consus-arrow` `datatype` re-export at `src/lib.rs:74`. Commit `fa314cb` gates
-that export and fixes the no-alloc test import. Package no-default check,
-strict Clippy, no-default Nextest 2/2, default strict Clippy, and default
-Nextest 79/79 pass. The earlier worktree `cargo check --workspace
---no-default-features` result is not a reproducible gate input because it
-included peer-owned, uncommitted HDF5/FITS parser changes. The current default
-branch is clean at `182083f`; a fresh locked invocation from the Atlas umbrella
-instead stops before compilation because the development overlay reports unused
-local patches and asks Cargo to rewrite `Cargo.lock`. No lockfile change was
-kept. Re-open from a standalone locked checkout or exact hosted run; the
-umbrella-overlay failure is an environment boundary, not evidence of a new
-provider source defect.
+that export and fixes the no-alloc test import. A standalone provider checkout
+now passes locked workspace check and warning-denied Clippy with and without
+default features; no-default Nextest passes `2031/2031`, default Nextest passes
+`2553/2553`, and locked workspace doctests pass. All 17 workspace packages pass
+isolated locked Rustdoc. The aggregate Windows workspace Rustdoc command timed
+out twice after those package-level passes, so the remaining local residual is
+workspace documentation orchestration rather than a package documentation
+failure. Provider CI and Documentation jobs now have explicit timeouts, and
+Documentation enforces `RUSTDOCFLAGS=-Dwarnings`.
+
+The Atlas umbrella still stops the locked invocation before compilation because
+the development overlay reports unused local patches and requests a
+`Cargo.lock` rewrite. No lockfile change was kept. Collect the exact hosted CI
+and Documentation results from the pushed provider head before closing this
+item; the umbrella-overlay failure is an environment boundary, not source
+evidence.
 
 ### Open — CONSUS-TEST-API-001 (integration-test aspirational I/O API)
 

@@ -389,14 +389,24 @@ so the compiled API surface is unchanged.
   now follow the `alloc` boundary. Package no-default check, strict Clippy,
   no-default Nextest 2/2, default strict Clippy, and default Nextest 79/79
   pass; the current worktree workspace no-default check also passes.
-- Residual: current `origin/main` is clean at `182083f`, so the former
-  peer-owned HDF5/FITS dirty-tree blocker is no longer the active condition.
-  The exact locked gate cannot be collected from the Atlas umbrella: Cargo
-  resolves the development overlay, reports unused local patches, and then
-  requests a lockfile rewrite before compilation. No lockfile was changed.
-  Re-open from a standalone locked checkout or the exact hosted job, then
-  record the next provider blocker or close the gate. Do not treat the
-  umbrella-overlay failure as a source defect.
+- Delivered locally: the standalone provider checkout passes locked workspace
+  check and warning-denied Clippy with and without default features. Nextest
+  passes `2031/2031` without default features and `2553/2553` with defaults;
+  locked workspace doctests pass. Every one of the 17 workspace packages also
+  passes isolated locked Rustdoc. The aggregate Windows workspace Rustdoc
+  command timed out twice after those package-level passes (at 244 seconds on
+  the bounded rerun and beyond the earlier 300-second collection window), so
+  it is retained as an orchestration residual rather than misreported as a
+  package documentation failure.
+- Cleanup delivered in this slice: the provider CI and documentation jobs now
+  carry explicit job timeouts, and the documentation job enforces
+  warning-denied Rustdoc. These workflow changes require the exact pushed head
+  and hosted CI/Documentation results before this item can close.
+- Residual: the Atlas umbrella still cannot collect the locked gate because
+  its development overlay reports unused local patches and requests a
+  `Cargo.lock` rewrite before compilation. No lockfile was changed. Push the
+  provider head, collect the exact hosted CI and Documentation runs, and close
+  this item only if those gates pass or record their precise failure.
 - Acceptance: the no-default workspace check reaches the next blocker or
   passes; the affected package's no-default and default value-semantic gates
   are green; the residual record names the exact remaining blocker.

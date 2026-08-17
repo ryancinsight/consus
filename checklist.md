@@ -198,12 +198,18 @@ none of the deleted files was reachable.
       no-alloc test import in `fa314cb`.
 - [x] Pass package no-default check, strict Clippy, and no-default Nextest
       2/2; pass default strict Clippy and Nextest 79/79.
-- [ ] **Blocked:** re-run the locked workspace no-default and hosted exact-head
-      gates from a standalone provider checkout. `origin/main` is clean at
-      `182083f`; the Atlas umbrella invocation stops before compilation because
-      its development overlay requests a `Cargo.lock` rewrite and emits unused
-      local-patch warnings. No lockfile was changed, and this local failure is
-      not source or parser evidence.
+- [ ] Re-run the locked workspace no-default and hosted exact-head gates from
+      a standalone provider checkout. The standalone no-default check and
+      warning-denied Clippy pass; no-default Nextest is `2031/2031`, default
+      Nextest is `2553/2553`, and locked doctests pass. All 17 packages pass
+      isolated locked Rustdoc. The aggregate Windows workspace Rustdoc command
+      exceeds the bounded local collection window after those package-level
+      passes. The provider CI and Documentation jobs now have explicit
+      timeouts, with Documentation enforcing `RUSTDOCFLAGS=-Dwarnings`.
+- [ ] Collect the exact hosted CI and Documentation results for the pushed
+      provider head. The Atlas umbrella invocation remains an environment
+      boundary: its development overlay requests a `Cargo.lock` rewrite and
+      reports unused local patches before compilation. No lockfile was changed.
 
 ## ATLAS-CONSUS-001 — Themis topology partition sizing [minor]
 
