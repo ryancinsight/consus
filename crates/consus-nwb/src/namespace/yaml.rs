@@ -244,16 +244,16 @@ pub fn format_nwb_spec_yaml(specs: &[NwbNamespaceSpec]) -> String {
         if !spec.neurodata_types.is_empty() {
             out.push_str("  neurodata_types:\n");
             for t in &spec.neurodata_types {
-                if t.neurodata_type_inc.is_none() {
-                    out.push_str("  - ");
-                    out.push_str(&t.name);
-                    out.push('\n');
-                } else {
+                if let Some(inc) = t.neurodata_type_inc.as_deref() {
                     out.push_str("  - name: ");
                     out.push_str(&t.name);
                     out.push('\n');
                     out.push_str("    inc: ");
-                    out.push_str(t.neurodata_type_inc.as_deref().unwrap());
+                    out.push_str(inc);
+                    out.push('\n');
+                } else {
+                    out.push_str("  - ");
+                    out.push_str(&t.name);
                     out.push('\n');
                 }
             }

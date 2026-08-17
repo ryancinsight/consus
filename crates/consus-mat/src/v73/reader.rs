@@ -211,8 +211,7 @@ mod imp {
             "sparse" => Err(MatError::UnsupportedFeature(String::from(
                 "v7.3 sparse datasets are not supported",
             ))),
-            nc_str if to_numeric(nc_str).is_some() => {
-                let nc = to_numeric(nc_str).unwrap();
+            nc_str if let Some(nc) = to_numeric(nc_str) => {
                 let (real_data, imag_data) = match &ds.datatype {
                     Datatype::Compound { fields, size } => {
                         let rf = fields.iter().find(|f| f.name == "real").map(|f| {

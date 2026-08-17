@@ -114,8 +114,7 @@ fn parse_matrix_depth(
             })?
     };
     let array = match mx_class {
-        code if mx_class_to_numeric(code).is_some() => {
-            let nc = mx_class_to_numeric(code).unwrap();
+        code if let Some(nc) = mx_class_to_numeric(code) => {
             if is_logical {
                 let (_rt, raw): (MiType, Vec<u8>) =
                     read_subelement_bytes(payload, &mut pos, big_endian)?;
