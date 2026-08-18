@@ -247,6 +247,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Test ADR-0045 throughput parser
+        run: python3 -B scripts/test_check_s3_benchmark.py
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           toolchain: stable
@@ -301,9 +303,20 @@ jobs:
         run: |
           cargo bench --locked -p consus-zarr --no-default-features \
             --features "s3,s3-moirai" --bench s3_rusoto_moirai -- --noplot
+      # Keep the raw report even when the qualification gate fails, so a
+      # threshold miss remains diagnosable from the hosted run.
       - name: Upload comparative benchmark report
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: consus-s3-comparative-benchmark
           path: target/criterion/s3_range_read
-          if-no-files-found: error
+          if-no-files-found: warn
+      # The gate compares Criterion median elapsed times for the identical byte
+      # range, which is equivalent to native/legacy throughput. P5-B requires
+      # every benchmark cell to reach at least 90%.
+      - name: Enforce ADR-0045 native throughput threshold
+        if: success()
+        run: >-
+          python3 -B scripts/check_s3_benchmark.py target/criterion/s3_range_read
+          --min-native-throughput-ratio 0.90
