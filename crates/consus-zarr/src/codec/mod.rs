@@ -16,8 +16,8 @@
 //!
 //! | Name | Direction | Description |
 //! |------|-----------|-------------|
-//! | "bytes" | Both | Raw byte transport; handles endianness |
-//! | "crc32" | Read | Checksum filter; validates integrity |
+//! | "bytes" | Both | Raw byte transport; identity when the stored byte order matches the host, `UnsupportedFeature` otherwise |
+//! | "crc32" | — | Refused in both directions: Zarr v3 specifies crc32c, and only CRC-32/IEEE is implemented here |
 //! | "gzip" | Both | Gzip compression |
 //! | "zstd" | Both | Zstandard compression |
 //! | "lz4" | Both | LZ4 block compression |
@@ -166,11 +166,9 @@ impl CodecPipeline {
         registry: &dyn CompressionRegistryTrait,
     ) -> Result<Vec<u8>> {
         match codec.name.as_str() {
-            // Identity / bytes codec: no-op
-            "bytes" => Ok(data.to_vec()),
+            "bytes" => bytes_codec_passthrough(codec, data),
 
-            // CRC32 is write-only (computed but not stored back)
-            "crc32" => Ok(data.to_vec()),
+            "crc32" => Err(unsupported_crc32()),
 
             // Compression codecs
             "gzip" | "zlib" => {
@@ -214,17 +212,83 @@ impl CodecPipeline {
         registry: &dyn CompressionRegistryTrait,
     ) -> Result<Vec<u8>> {
         match codec.name.as_str() {
-            // Identity / bytes codec: no-op
-            "bytes" => Ok(data.to_vec()),
+            "bytes" => bytes_codec_passthrough(codec, data),
 
-            // CRC32 is a checksum that validates on read; we just return data
-            "crc32" => Ok(data.to_vec()),
+            "crc32" => Err(unsupported_crc32()),
 
             // All compression codecs use the same decompress interface
             name => registry
                 .get_by_name(name)
                 .and_then(|c| c.decompress(data, 0)),
         }
+    }
+}
+
+/// The `bytes` codec, which is an identity transform exactly when the stored
+/// byte order already matches this host's.
+///
+/// Both directions share this: byte-order conversion is its own inverse, so
+/// the arm that is legal on write is the arm that is legal on read.
+///
+/// A differing byte order is rejected rather than swapped, because a swap
+/// needs the element width and this signature does not carry it — the
+/// pipeline is `(codec, bytes)` with no dtype. Returning the bytes unchanged
+/// would decode every multi-byte element reversed with no error raised, which
+/// is the defect this replaces; an honest `UnsupportedFeature` is the most
+/// this layer can say until the element width is threaded through.
+#[cfg(feature = "alloc")]
+fn bytes_codec_passthrough(codec: &Codec, data: &[u8]) -> Result<Vec<u8>> {
+    // Absent configuration means "no reordering requested". `native` is not a
+    // Zarr v3 value — the spec admits only `little` and `big` — but this crate
+    // writes it in its own pipeline constructors, and it means the host order
+    // by definition, so it is accepted here. Replacing it with a spec-legal
+    // value changes serialized metadata, so it is filed rather than folded in.
+    let host = if cfg!(target_endian = "big") {
+        "big"
+    } else {
+        "little"
+    };
+
+    match codec.bytes_endian() {
+        None | Some("native") => Ok(data.to_vec()),
+        Some(endian) if endian == host => Ok(data.to_vec()),
+        Some(endian) => Err(consus_core::Error::UnsupportedFeature {
+            feature: alloc::format!(
+                "zarr `bytes` codec with endian={endian} on a {host}-endian host: \
+                 byte-order conversion needs the element width, which the codec \
+                 pipeline does not receive"
+            ),
+        }),
+    }
+}
+
+/// Reject the `crc32` codec in both directions.
+///
+/// Two independent reasons, either sufficient:
+///
+/// 1. **Wrong algorithm for the format.** Zarr v3's checksum codec is
+///    `crc32c` (Castagnoli, reflected `0x82F63B78`). The only checksum this
+///    workspace implements is `consus_compression::Crc32`, which is CRC-32/IEEE
+///    (reflected `0xEDB88320`). Wiring that in would append checksums no
+///    conformant reader accepts, turning a silent read defect into a silent
+///    *write* defect.
+/// 2. **No length plumbing.** The codec appends four bytes on write and must
+///    strip and verify them on read. Nothing in this pipeline tracks that the
+///    payload length changed.
+///
+/// Until both are addressed, refusing is the only honest behaviour: the
+/// previous pass-through neither appended the checksum on write (so a
+/// conformant reader strips four bytes of real payload) nor stripped it on
+/// read (so a conformant writer's output comes back with four trailing
+/// garbage bytes and a length that no longer matches the chunk shape).
+#[cfg(feature = "alloc")]
+fn unsupported_crc32() -> consus_core::Error {
+    consus_core::Error::UnsupportedFeature {
+        feature: String::from(
+            "zarr `crc32` checksum codec: Zarr v3 specifies crc32c (Castagnoli) \
+             and this workspace implements only CRC-32/IEEE; the codec is \
+             refused rather than applied with the wrong polynomial",
+        ),
     }
 }
 
@@ -434,5 +498,77 @@ mod tests {
             .decompress(&compressed, registry)
             .expect("decompress must succeed");
         assert_eq!(&decompressed, input);
+    }
+
+    /// The host's own byte order is a legal no-op in both directions.
+    #[test]
+    fn bytes_codec_accepts_host_endianness() {
+        let registry = default_registry();
+        let host = if cfg!(target_endian = "big") {
+            "big"
+        } else {
+            "little"
+        };
+        let pipeline = CodecPipeline::single(Codec {
+            name: String::from("bytes"),
+            configuration: vec![(String::from("endian"), String::from(host))],
+        });
+
+        let input = b"raw bytes";
+        assert_eq!(&pipeline.compress(input, registry).unwrap(), input);
+        assert_eq!(&pipeline.decompress(input, registry).unwrap(), input);
+    }
+
+    /// The opposite byte order must fail, not pass the bytes through.
+    ///
+    /// Before this was fixed the call returned `Ok` with every multi-byte
+    /// element reversed, so the assertion that matters is that it is an
+    /// error at all — a value-returning path here is silent corruption.
+    #[test]
+    fn bytes_codec_rejects_foreign_endianness() {
+        let registry = default_registry();
+        let foreign = if cfg!(target_endian = "big") {
+            "little"
+        } else {
+            "big"
+        };
+        let pipeline = CodecPipeline::single(Codec {
+            name: String::from("bytes"),
+            configuration: vec![(String::from("endian"), String::from(foreign))],
+        });
+
+        let input = &[0x01u8, 0x02, 0x03, 0x04];
+        assert!(matches!(
+            pipeline.decompress(input, registry),
+            Err(consus_core::Error::UnsupportedFeature { .. })
+        ));
+        assert!(matches!(
+            pipeline.compress(input, registry),
+            Err(consus_core::Error::UnsupportedFeature { .. })
+        ));
+    }
+
+    /// crc32 is refused in both directions rather than silently skipped.
+    ///
+    /// The write direction matters as much as the read: pass-through there
+    /// emits a chunk with no checksum, which a conformant reader "verifies"
+    /// by stripping four bytes of real payload.
+    #[test]
+    fn crc32_codec_is_refused_in_both_directions() {
+        let registry = default_registry();
+        let pipeline = CodecPipeline::single(Codec {
+            name: String::from("crc32"),
+            configuration: vec![],
+        });
+
+        let input = b"chunk payload";
+        assert!(matches!(
+            pipeline.compress(input, registry),
+            Err(consus_core::Error::UnsupportedFeature { .. })
+        ));
+        assert!(matches!(
+            pipeline.decompress(input, registry),
+            Err(consus_core::Error::UnsupportedFeature { .. })
+        ));
     }
 }
