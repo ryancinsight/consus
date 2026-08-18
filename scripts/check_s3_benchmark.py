@@ -27,11 +27,26 @@ LEGACY_CASE = "legacy_rusoto"
 DEFAULT_THRESHOLD = 0.90
 
 
-def _cell_for(path: Path, report_dir: Path) -> str:
-    """Return the benchmark-cell directory containing a backend report."""
-    relative_backend = path.parent.relative_to(report_dir)
-    cell = relative_backend.parent
-    return "." if str(cell) == "." else cell.as_posix()
+def _report_location(path: Path, report_dir: Path) -> tuple[str, str, int]:
+    """Return cell, backend, and freshness priority for a Criterion report.
+
+    Criterion stores the current report at ``<backend>/new/estimates.json``
+    and may retain the previous run at ``<backend>/base/estimates.json``.
+    Direct ``<backend>/estimates.json`` layouts are also accepted for small
+    synthetic reports and older Criterion output.
+    """
+    relative_report = path.parent.relative_to(report_dir)
+    if relative_report.parts[-1] in ("new", "base"):
+        relative_backend = relative_report.parent
+        priority = 2 if relative_report.parts[-1] == "new" else 1
+    else:
+        relative_backend = relative_report
+        priority = 2
+
+    backend = relative_backend.parts[-1]
+    cell_path = relative_backend.parent
+    cell = "." if str(cell_path) == "." else cell_path.as_posix()
+    return cell, backend, priority
 
 
 def _median_ns(path: Path) -> float:
@@ -56,13 +71,19 @@ def _reports(report_dir: Path) -> dict[str, dict[str, Path]]:
     if not report_dir.is_dir():
         raise ValueError(f"Criterion report directory does not exist: {report_dir}")
 
-    reports: dict[str, dict[str, Path]] = {}
+    candidates: dict[str, dict[str, tuple[int, Path]]] = {}
     for path in report_dir.rglob("estimates.json"):
-        backend = path.parent.name
+        cell, backend, priority = _report_location(path, report_dir)
         if backend not in (NATIVE_CASE, LEGACY_CASE):
             continue
-        cell = _cell_for(path, report_dir)
-        reports.setdefault(cell, {})[backend] = path
+        current = candidates.setdefault(cell, {}).get(backend)
+        if current is None or priority >= current[0]:
+            candidates[cell][backend] = (priority, path)
+
+    reports = {
+        cell: {backend: report[1] for backend, report in backends.items()}
+        for cell, backends in candidates.items()
+    }
 
     if not reports:
         raise ValueError(
