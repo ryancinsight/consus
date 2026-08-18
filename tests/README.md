@@ -133,7 +133,7 @@ cargo test -p consus-hdf5 --features std
 cargo test -p consus-compression --features deflate,zstd,lz4
 
 # Run async I/O tests
-cargo test -p consus-io --features async-io
+cargo test -p consus-io --features async-traits
 ```
 
 ## Test Coverage Summary
@@ -292,7 +292,8 @@ When adding tests, follow these principles:
 Current limitations tracked for future work:
 
 1. HDF5 reader/writer incomplete (in development)
-2. Zarr S3 backend tests require `s3` feature
+2. Online object-storage integration tests are intentionally outside the
+   package test suite
 3. netCDF-4 writer API under development
 4. Compound datatype support limited to specific formats
 5. Async I/O tests require tokio runtime

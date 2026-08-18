@@ -7,7 +7,6 @@
 //!
 //! - In-memory buffers for testing
 //! - Memory-mapped I/O for performance
-//! - Object store backends (S3, GCS) via async adapters
 //! - `no_std` environments with custom I/O providers
 //!
 //! ## Trait Hierarchy
@@ -21,7 +20,7 @@
 //! Seekable          (cursor-based seeking)
 //! RandomAccess      = ReadAt + WriteAt + Length + Truncate
 //!
-//! [async-io feature]
+//! [async-traits feature]
 //! AsyncReadAt       (async positioned read)
 //! AsyncWriteAt      (async positioned write)
 //! AsyncLength       (async length query)

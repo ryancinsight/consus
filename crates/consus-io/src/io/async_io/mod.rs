@@ -1,24 +1,6 @@
 //! Asynchronous I/O implementations.
 //!
-//! This module is available only when the `async-io` feature is enabled.
-//!
-//! ## Module Hierarchy
-//!
-//! ```text
-//! async_io/
-//! ├── cursor    # AsyncMemCursor: async in-memory buffer
-//! └── s3        # S3Reader: async S3 object store backend
-//! ```
+//! This module is available only when the `async-traits` feature is enabled.
 
 pub mod cursor;
 pub use cursor::AsyncMemCursor;
-
-#[cfg(feature = "s3")]
-pub mod s3;
-#[cfg(feature = "s3")]
-pub use s3::S3Reader;
-
-#[cfg(feature = "s3-moirai")]
-pub mod s3_moirai;
-#[cfg(feature = "s3-moirai")]
-pub use s3_moirai::{S3Config, S3MoiraiReader};

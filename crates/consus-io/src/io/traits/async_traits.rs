@@ -2,7 +2,7 @@
 //!
 //! ## Feature Gate
 //!
-//! This module is available only when the `async-io` feature is enabled.
+//! This module is available only when the `async-traits` feature is enabled.
 //!
 //! ## Design
 //!
@@ -27,8 +27,8 @@ use consus_core::Result;
 
 /// Asynchronous positioned byte read.
 ///
-/// Async equivalent of [`super::read::ReadAt`]. Intended for object
-/// store backends (S3, GCS, Azure Blob) that perform range-request reads.
+/// Async equivalent of [`super::read::ReadAt`]. Intended for
+/// asynchronous transports that perform positioned reads.
 ///
 /// # Thread Safety
 ///
