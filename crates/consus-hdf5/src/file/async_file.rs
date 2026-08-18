@@ -16,12 +16,12 @@
 //! `AsyncReadAt::read_at` calls bounded by the continuation chain depth
 //! limit (256 hops).
 
-#![cfg(all(feature = "async-io", feature = "alloc"))]
+#![cfg(all(feature = "async", feature = "alloc"))]
 
 use alloc::vec::Vec;
 
 use consus_core::Result;
-use consus_io::{AsyncLength, AsyncReadAt};
+use moirai_async::io::{AsyncLength, AsyncReadAt};
 
 use crate::address::ParseContext;
 use crate::superblock::Superblock;
@@ -43,11 +43,11 @@ use consus_core::Error;
 /// Parameterized over the I/O source to support both file and object-store
 /// backends. All read operations are async; format parsing is delegated to
 /// the sync parsers via the internal `MultiRegionBuffer` representation.
-#[cfg(feature = "async-io")]
+#[cfg(feature = "async")]
 #[cfg(feature = "alloc")]
 pub struct AsyncHdf5File<R>
 where
-    R: consus_io::AsyncReadAt + consus_io::AsyncLength,
+    R: moirai_async::io::AsyncReadAt + moirai_async::io::AsyncLength,
 {
     /// Underlying I/O source.
     source: R,
@@ -57,7 +57,7 @@ where
     ctx: ParseContext,
 }
 
-#[cfg(feature = "async-io")]
+#[cfg(feature = "async")]
 #[cfg(feature = "alloc")]
 impl<R> AsyncHdf5File<R>
 where
@@ -406,7 +406,10 @@ where
             u64::try_from(data_size).map_err(|_| Error::Overflow)?,
             "HDF5 v1 chunk B-tree records",
         )?;
-        self.source.read_at(read_offset, &mut data).await?;
+        self.source
+            .read_at(read_offset, &mut data)
+            .await
+            .map_err(Error::from)?;
 
         let mut entries = self.ctx.budget.vec_with_capacity(
             u64::from(header.entries_used),

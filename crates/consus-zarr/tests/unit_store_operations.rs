@@ -4,7 +4,7 @@
 //!
 //! - InMemoryStore: set/get/delete/list/contains operations
 //! - Directory store operations (tempfile-based)
-//! - Async store operations (tokio, feature-gated)
+//! - Async store operations (runtime-owned by Moirai, feature-gated)
 //! - PrefixedStore wrapper
 //! - SplitStore wrapper
 //! - Error handling for missing keys

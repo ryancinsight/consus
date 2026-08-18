@@ -848,7 +848,7 @@ so the compiled API surface is unchanged.
 
 ### P3.3 — Production Readiness
 - [x] CI/CD pipeline (GitHub Actions)
-- [x] Async I/O path via Tokio
+- [x] Async HDF5 I/O path via Moirai's native executor and positioned-read contracts
 - [x] Memory-mapped I/O backend — `MmapReader` in `consus-io/src/io/sync/mmap.rs`; feature-gated under `mmap` feature; implements `ReadAt + Length` over `memmap2::Mmap`; `open(path)` and `from_file(&File)` constructors; `as_slice() -> &[u8]` accessor; `Send + Sync`; 8 unit tests + 3 integration tests in `tests/unit_mmap.rs`; `memmap2 = { version = "0.9" }` added to workspace deps; verified `cargo test -p consus-io --features mmap` 28+3=31 pass
 - [x] Parquet reader proptest suite — `consus-parquet/src/reader/reader_proptest.rs`: 5 proptest roundtrip properties (`prop_reader_i32_roundtrip`, `prop_reader_f64_roundtrip`, `prop_reader_bool_roundtrip`, `prop_reader_byte_array_roundtrip`, `prop_reader_two_column_i32_f64_roundtrip`); all assert computed column values with `prop_assert_eq!`; verified `cargo test -p consus-parquet --lib` 197/197 pass
 - [x] Criterion benchmark harness — `consus-parquet/benches/parquet_rw.rs`: `bench_write_i32` + `bench_read_i32` at 1K/10K/100K rows; `consus-arrow/benches/arrow_bridge.rs`: `bench_bridge_i32`, `bench_bridge_double`, `bench_bridge_byte_array`; `[[bench]]` targets added to both Cargo.toml files; verified `cargo check --bench parquet_rw` and `cargo check --bench arrow_bridge` clean

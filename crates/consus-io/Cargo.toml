@@ -6,20 +6,16 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Sync and async I/O abstractions for the Consus scientific storage library"
+description = "Synchronous I/O abstractions for the Consus scientific storage library"
 homepage.workspace = true
 readme = "README.md"
 keywords = ["io", "mmap", "storage", "positioned-io", "no-std"]
-categories = ["filesystem", "asynchronous", "no-std"]
+categories = ["filesystem", "no-std"]
 
 [features]
 default = ["std"]
 std = ["consus-core/std"]
 alloc = ["consus-core/alloc"]
-# Tokio-free async trait surface (AsyncReadAt/AsyncLength/... + AsyncMemCursor).
-async-traits = ["std", "alloc"]
-# Compatibility alias for the crate's async I/O test and facade feature names.
-async-io = ["async-traits"]
 mmap = ["dep:memmap2", "std"]
 
 [dependencies]
@@ -28,8 +24,6 @@ memmap2 = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
-# Async cursor tests use Tokio only as a test executor; production I/O is runtime-agnostic.
-tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net", "time", "io-util"] }
 tempfile = { workspace = true }
 
 

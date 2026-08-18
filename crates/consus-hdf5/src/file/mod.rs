@@ -13,9 +13,9 @@
 //! 3. Read: resolve dataset metadata, read raw data through selection
 //! 4. Close: flush and release resources
 
-#[cfg(all(feature = "async-io", feature = "alloc"))]
+#[cfg(all(feature = "async", feature = "alloc"))]
 pub mod async_file;
-#[cfg(all(feature = "async-io", feature = "alloc"))]
+#[cfg(all(feature = "async", feature = "alloc"))]
 pub mod async_reader;
 pub mod reader;
 #[cfg(feature = "alloc")]

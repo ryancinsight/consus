@@ -5,7 +5,10 @@ Pure-Rust HDF5 format implementation for the
 
 No `hdf5-sys`, no C library, no CMake or pkg-config step. The reader and writer
 are implemented directly against the HDF5 file-format specification and operate
-over the `consus-io` positioned-read traits.
+over the `consus-io` synchronous positioned-read traits. Optional asynchronous
+format reading uses Moirai's native `moirai_async::io::{AsyncReadAt,
+AsyncLength}` contracts and executor; Consus does not define a second async
+runtime or trait family.
 
 ```toml
 [dependencies]
@@ -28,7 +31,8 @@ Compressed chunked writes are tracked under the filter pipeline; full
 compression roundtrip coverage is in progress.
 
 Chunk reads can be executed in parallel through Moirai under the
-`parallel-io` feature.
+`parallel-io` feature. Async HDF5 reads are enabled with the `async` feature
+and run on Moirai's native executor.
 
 - Documentation: <https://docs.rs/consus-hdf5>
 

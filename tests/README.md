@@ -40,7 +40,7 @@ consus/
 Each crate contains unit tests for individual components:
 
 - **consus-core**: Datatype, Shape, Selection, Compression, canonical type verification
-- **consus-io**: MemCursor, ReadAt/WriteAt traits, async I/O
+- **consus-io**: MemCursor, ReadAt/WriteAt traits; async contracts are Moirai-owned
 - **consus-compression**: Checksum algorithms (CRC-32, Fletcher-32, Lookup3), codec roundtrips, filter pipelines
 - **consus-hdf5**: Header parsing, attribute encoding, dataset I/O, link resolution
 - **consus-zarr**: Metadata parsing (v2/v3), store operations, chunk I/O
@@ -133,7 +133,7 @@ cargo test -p consus-hdf5 --features std
 cargo test -p consus-compression --features deflate,zstd,lz4
 
 # Run async I/O tests
-cargo test -p consus-io --features async-traits
+cargo test -p consus-hdf5 --features async --test async_hdf5
 ```
 
 ## Test Coverage Summary
@@ -296,7 +296,7 @@ Current limitations tracked for future work:
    package test suite
 3. netCDF-4 writer API under development
 4. Compound datatype support limited to specific formats
-5. Async I/O tests require tokio runtime
+5. Async HDF5 tests use Moirai's native executor and positioned I/O contracts
 
 ## Contact
 

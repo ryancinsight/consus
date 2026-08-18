@@ -1,6 +1,6 @@
 # consus-io
 
-Sync and async I/O abstractions for the [Consus](https://github.com/ryancinsight/consus)
+Synchronous I/O abstractions for the [Consus](https://github.com/ryancinsight/consus)
 scientific storage library.
 
 This crate decouples format logic from physical I/O by defining position-aware
@@ -19,9 +19,9 @@ consus-io = { version = "0.1", default-features = false }
   `SeekFrom`, `RandomAccess`.
 - `io::sync` — `MemCursor` (in-memory), `SliceReader` (`&[u8]`), `StreamReader`
   (sequential), the `std::fs::File` implementation, and `MmapReader`.
-- `io::async_io` — asynchronous in-memory adapters over the runtime-agnostic
-  `async-traits` surface; network and object-storage integrations are outside
-  this crate.
+Asynchronous format reading is not defined in this crate. Consumers use the
+positioned `moirai-async` contracts directly; network and object-storage
+integrations remain outside Consus.
 
 ## Copy behavior
 

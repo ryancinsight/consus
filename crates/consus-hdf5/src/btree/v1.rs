@@ -31,9 +31,9 @@
 use alloc::string::String;
 
 use consus_core::{Error, Result};
-#[cfg(feature = "async-io")]
-use consus_io::AsyncReadAt;
 use consus_io::ReadAt;
+#[cfg(feature = "async")]
+use moirai_async::io::AsyncReadAt;
 
 use crate::address::ParseContext;
 
@@ -139,7 +139,7 @@ impl BTreeV1Header {
     ///
     /// Reads exactly [`Self::header_size`] bytes starting at `address`,
     /// validates the signature and node type, and returns the parsed header.
-    #[cfg(feature = "async-io")]
+    #[cfg(feature = "async")]
     pub async fn async_parse<R: AsyncReadAt>(
         source: &R,
         address: u64,
@@ -149,7 +149,10 @@ impl BTreeV1Header {
         // Maximum possible header size: 8 + 2*8 = 24 bytes.
         let mut buf = [0u8; 24];
         let buf_slice = &mut buf[..hdr_size];
-        source.read_at(address, buf_slice).await?;
+        source
+            .read_at(address, buf_slice)
+            .await
+            .map_err(Error::from)?;
 
         // Validate signature.
         if buf_slice[0..4] != BTREE_V1_SIGNATURE {

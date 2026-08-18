@@ -1,6 +1,6 @@
 //! # consus-io
 //!
-//! Sync and async I/O abstractions for the Consus storage library.
+//! Synchronous I/O abstractions for the Consus storage library.
 //!
 //! ## Architecture
 //!
@@ -24,7 +24,6 @@
 //! │   │   ├── stream   # Cursor-based sequential reader (StreamReader)
 //! │   │   ├── file     # std::fs::File positioned I/O implementation
 //! │   │   └── mmap     # Read-only memory-mapped file reader (MmapReader)
-//! │   └── async_io/    # Asynchronous positioned I/O (feature-gated)
 //! ```
 //!
 //! ### Trait Hierarchy
@@ -59,15 +58,3 @@ pub use io::sync::mmap::MmapReader;
 pub use io::sync::slice::SliceReader;
 #[cfg(feature = "alloc")]
 pub use io::sync::stream::StreamReader;
-
-// Async trait re-exports (tokio-free)
-#[cfg(feature = "async-traits")]
-pub use io::traits::{
-    AsyncLength, AsyncRandomAccess, AsyncReadAt, AsyncSeekable, AsyncTruncate, AsyncWriteAt,
-};
-
-// Async implementation re-exports
-#[cfg(feature = "async-traits")]
-pub use io::async_io::AsyncMemCursor;
-#[cfg(feature = "async-traits")]
-pub use io::sync::bounded::async_read_at_bounded;
