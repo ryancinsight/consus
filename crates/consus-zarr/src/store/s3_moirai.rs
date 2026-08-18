@@ -1,8 +1,10 @@
-//! Native S3-backed [`Store`] (ADR-015): object storage over the moirai HTTP/1.1
+//! Native S3-backed [`Store`] (atlas ADR-0045): object storage over the moirai HTTP/1.1
 //! client + SigV4, with **no tokio and no AWS SDK**. Mirrors [`super::s3::S3Store`]
 //! behaviour (prefix handling, relative-key listing) but drives the async
 //! [`S3Client`] with `moirai::global().block_on` to satisfy the synchronous
 //! [`Store`] contract.
+//!
+//! Decision record: atlas `docs/adr/0045-native-http-s3-transport-stack.md`.
 
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;

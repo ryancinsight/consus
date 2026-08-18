@@ -1,8 +1,10 @@
-//! ADR-015 P4 (correctness gate): the native moirai S3 reader must produce
+//! atlas ADR-0045 P4 (correctness gate): the native moirai S3 reader must produce
 //! byte-identical results to the legacy rusoto reader for `GetObject(Range)` and
 //! `HeadObject`. Both clients hit one in-process mock S3 endpoint, so this runs
 //! without Docker/MinIO (the comparative *performance* benchmark against MinIO is
 //! a separate CI job; this test is the functional differential).
+//!
+//! Decision record: atlas `docs/adr/0045-native-http-s3-transport-stack.md`.
 
 #![cfg(all(feature = "s3", feature = "s3-moirai"))]
 

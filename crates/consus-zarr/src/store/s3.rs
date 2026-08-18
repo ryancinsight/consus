@@ -134,8 +134,10 @@ impl Clone for S3Store {
 #[cfg(feature = "s3")]
 #[derive(Debug)]
 // Legacy rusoto backend error surface; some variants are not yet constructed.
-// Retained until the rusoto S3 backend is removed (ADR-015 P5).
-#[allow(dead_code)]
+#[expect(
+    dead_code,
+    reason = "retained until the rusoto S3 backend is removed (atlas ADR-0045 P5)"
+)]
 pub enum S3StoreError {
     /// The object was not found in the bucket.
     NotFound { key: String },
@@ -487,10 +489,18 @@ fn base64_encode(data: &[u8]) -> String {
 /// A mock store that records operations for testing without S3.
 ///
 /// Legacy testing utility for the rusoto backend; retained until that backend is
-/// removed (ADR-015 P5).
+/// removed (atlas ADR-0045 P5).
 #[cfg(feature = "alloc")]
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
+// Exercised only by this module's `#[cfg(test)]` tests, so the lint fires in the
+// library build alone; expecting it unconditionally is unfulfilled under `cfg(test)`.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "retained until the rusoto S3 backend is removed (atlas ADR-0045 P5)"
+    )
+)]
 pub struct MockS3Store {
     /// All set operations recorded in order.
     pub set_operations: alloc::vec::Vec<(String, Vec<u8>)>,

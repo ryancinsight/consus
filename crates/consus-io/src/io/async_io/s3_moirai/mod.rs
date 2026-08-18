@@ -1,8 +1,10 @@
-//! Native S3 object-store backend (ADR-015): a full async [`S3Client`]
+//! Native S3 object-store backend (atlas ADR-0045): a full async [`S3Client`]
 //! (GET/PUT/DELETE/HEAD/ListObjectsV2 with SigV4 over `moirai-http`) plus
 //! [`S3MoiraiReader`], an [`AsyncReadAt`]/[`AsyncLength`] adapter for reading a
 //! single object via ranged GET / HEAD. No tokio, no AWS SDK. Path-style
 //! addressing (AWS S3 + S3-compatible stores: MinIO, Ceph).
+//!
+//! Decision record: atlas `docs/adr/0045-native-http-s3-transport-stack.md`.
 
 mod client;
 mod sigv4;
