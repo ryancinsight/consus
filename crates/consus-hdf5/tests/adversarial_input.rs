@@ -151,7 +151,7 @@ fn chunk_disk_size_beyond_budget_is_rejected() {
     };
     let registry = consus_compression::DefaultCodecRegistry::new();
 
-    let error = read_chunk_raw(&source, &location, 64, &[], &registry, None)
+    let error = read_chunk_raw(&source, &location, 64, &[], 1, &registry, None)
         .expect_err("u64::MAX chunk size must not be zero-filled");
     assert_resource_limit(&error, "chunk location.size");
 }
@@ -171,7 +171,7 @@ fn chunk_uncompressed_size_beyond_budget_is_rejected() {
     };
     let registry = consus_compression::DefaultCodecRegistry::new();
 
-    let error = read_chunk_raw(&source, &location, usize::MAX, &[], &registry, None)
+    let error = read_chunk_raw(&source, &location, usize::MAX, &[], 1, &registry, None)
         .expect_err("usize::MAX uncompressed size must not be zero-filled");
     assert_resource_limit(&error, "chunk uncompressed_size");
 }
@@ -418,7 +418,7 @@ fn well_formed_chunk_read_is_unaffected() {
     };
     let registry = consus_compression::DefaultCodecRegistry::new();
 
-    let data = read_chunk_raw(&source, &location, payload.len(), &[], &registry, None)
+    let data = read_chunk_raw(&source, &location, payload.len(), &[], 1, &registry, None)
         .expect("a well-formed chunk read must succeed");
     assert_eq!(data, payload);
 }

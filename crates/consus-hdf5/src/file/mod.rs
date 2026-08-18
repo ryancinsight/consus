@@ -299,6 +299,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                         },
                         element_size,
                         &filter_ids,
+                        element_size,
                         &registry,
                         fill_value.as_deref(),
                     )?;
@@ -356,6 +357,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                         &self.source,
                         tasks,
                         &filter_ids,
+                        element_size,
                         &registry,
                         fill_value.as_deref(),
                     )?;
@@ -365,6 +367,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                         &self.source,
                         tasks,
                         &filter_ids,
+                        element_size,
                         &registry,
                         fill_value.as_deref(),
                     )?;
@@ -1008,7 +1011,14 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                 })
                 .collect::<Result<Vec<_>>>()?;
 
-            let results = execute_parallel(&self.source, tasks, filter_ids, registry, fill_value)?;
+            let results = execute_parallel(
+                &self.source,
+                tasks,
+                filter_ids,
+                element_size,
+                registry,
+                fill_value,
+            )?;
 
             for result in results {
                 self.copy_chunk_into_dataset(
@@ -1052,6 +1062,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                     },
                     uncompressed_size,
                     filter_ids,
+                    element_size,
                     registry,
                     fill_value,
                 )?;

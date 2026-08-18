@@ -212,6 +212,7 @@ where
                         },
                         element_size,
                         &filter_ids,
+                        element_size,
                         &registry,
                         fill_value.as_deref(),
                     )
@@ -239,6 +240,7 @@ where
                         },
                         chunk_uncompressed_size,
                         &filter_ids,
+                        element_size,
                         &registry,
                         fill_value.as_deref(),
                     )
@@ -313,6 +315,7 @@ where
                         },
                         chunk_uncompressed_size,
                         &filter_ids,
+                        element_size,
                         &registry,
                         fill_value.as_deref(),
                     )

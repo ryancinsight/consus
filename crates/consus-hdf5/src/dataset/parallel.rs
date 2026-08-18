@@ -88,6 +88,7 @@ pub fn execute_serial<R: ReadAt>(
     source: &R,
     tasks: Vec<ChunkTask>,
     filter_ids: &[u16],
+    element_size: usize,
     registry: &dyn consus_compression::CompressionRegistry,
     fill_value: Option<&[u8]>,
 ) -> Result<Vec<ChunkResult>> {
@@ -99,6 +100,7 @@ pub fn execute_serial<R: ReadAt>(
                 &task.location,
                 task.uncompressed_size,
                 filter_ids,
+                element_size,
                 registry,
                 fill_value,
             )?;
@@ -132,6 +134,7 @@ pub fn execute_parallel<R: ReadAt + Sync>(
     source: &R,
     tasks: Vec<ChunkTask>,
     filter_ids: &[u16],
+    element_size: usize,
     registry: &dyn consus_compression::CompressionRegistry,
     fill_value: Option<&[u8]>,
 ) -> Result<Vec<ChunkResult>> {
@@ -144,6 +147,7 @@ pub fn execute_parallel<R: ReadAt + Sync>(
                 &task.location,
                 task.uncompressed_size,
                 filter_ids,
+                element_size,
                 registry,
                 fill_value,
             )?;

@@ -41,7 +41,7 @@
 use alloc::{string::String, vec::Vec};
 
 #[cfg(feature = "alloc")]
-use consus_compression::Checksum;
+use consus_compression::{Checksum, Filter, FilterDirection};
 
 #[cfg(feature = "alloc")]
 use consus_core::{Error, ParseBudget, Result};
@@ -75,6 +75,8 @@ pub struct ChunkLocation {
 /// - `uncompressed_size`: expected byte count after full decompression.
 /// - `filter_ids`: ordered filter IDs from the dataset's filter pipeline
 ///   message. Index 0 is the first filter applied during writes.
+/// - `element_size`: size of one dataset element in bytes, required by the
+///   shuffle filter to locate byte planes.
 /// - `registry`: compression codec registry for decompression lookups.
 ///
 /// # Algorithm
@@ -84,9 +86,8 @@ pub struct ChunkLocation {
 /// 3. Apply filters in **reverse** order (last applied during write is
 ///    first reversed during read). For each filter:
 ///    - If the corresponding bit in `filter_mask` is set, skip it.
-///    - Filter ID 2 (shuffle): requires element size context; passed
-///      through in this implementation (caller must handle externally
-///      or provide a `ShuffleFilter` in the registry).
+///    - Filter ID 2 (shuffle): inverse byte-plane transpose over
+///      `element_size`-byte elements.
 ///    - Filter ID 3 (Fletcher32): strip the trailing 4-byte checksum.
 ///    - All other IDs: look up the codec by `FilterId` and decompress.
 ///
@@ -101,6 +102,7 @@ pub fn read_chunk_raw<R: consus_io::ReadAt>(
     location: &ChunkLocation,
     uncompressed_size: usize,
     filter_ids: &[u16],
+    element_size: usize,
     registry: &dyn consus_compression::CompressionRegistry,
     fill_value: Option<&[u8]>,
 ) -> Result<Vec<u8>> {
@@ -155,7 +157,7 @@ pub fn read_chunk_raw<R: consus_io::ReadAt>(
             continue;
         }
 
-        data = apply_reverse_filter(filter_id, data, uncompressed_size, registry)?;
+        data = apply_reverse_filter(filter_id, data, uncompressed_size, element_size, registry)?;
     }
 
     Ok(data)
@@ -170,6 +172,7 @@ pub async fn async_read_chunk_raw<R: consus_io::AsyncReadAt>(
     location: &ChunkLocation,
     uncompressed_size: usize,
     filter_ids: &[u16],
+    element_size: usize,
     registry: &dyn consus_compression::CompressionRegistry,
     fill_value: Option<&[u8]>,
 ) -> Result<Vec<u8>> {
@@ -212,7 +215,7 @@ pub async fn async_read_chunk_raw<R: consus_io::AsyncReadAt>(
             continue;
         }
 
-        data = apply_reverse_filter(filter_id, data, uncompressed_size, registry)?;
+        data = apply_reverse_filter(filter_id, data, uncompressed_size, element_size, registry)?;
     }
 
     Ok(data)
@@ -292,7 +295,7 @@ pub fn write_chunk_raw<W: consus_io::WriteAt>(
 /// | ID | Reverse Action |
 /// |----|----------------|
 /// | 1 | Deflate decompression via codec registry |
-/// | 2 | Shuffle reverse (identity pass-through here) |
+/// | 2 | Shuffle reverse (inverse byte-plane transpose) |
 /// | 3 | Fletcher32 checksum strip (remove trailing 4 bytes) |
 /// | 4 | Szip decompression via codec registry |
 /// | ≥5 | Generic codec registry lookup |
@@ -301,14 +304,12 @@ fn apply_reverse_filter(
     filter_id: u16,
     data: Vec<u8>,
     uncompressed_size: usize,
+    element_size: usize,
     registry: &dyn consus_compression::CompressionRegistry,
 ) -> Result<Vec<u8>> {
     match filter_id {
-        // Shuffle (ID 2): byte transposition.
-        // The caller must handle shuffle externally with knowledge of element size.
-        // Here we pass the data through unchanged; the higher-level reader must
-        // apply ShuffleFilter from consus_compression if needed.
-        2 => Ok(data),
+        // Shuffle (ID 2): inverse byte-plane transpose.
+        2 => apply_shuffle(FilterDirection::Reverse, &data, element_size),
 
         // Fletcher32 (ID 3): strip trailing 4-byte checksum.
         3 => {
@@ -358,7 +359,7 @@ fn apply_reverse_filter(
 /// | ID | Forward Action |
 /// |----|----------------|
 /// | 1 | Deflate compression via codec registry |
-/// | 2 | Shuffle forward (identity pass-through here) |
+/// | 2 | Shuffle forward (byte-plane transpose) |
 /// | 3 | Fletcher32 checksum append (4 bytes) |
 /// | 4 | Szip compression via codec registry |
 /// | ≥5 | Generic codec registry lookup |
@@ -366,12 +367,12 @@ fn apply_reverse_filter(
 fn apply_forward_filter(
     filter_id: u16,
     data: &[u8],
-    _element_size: usize,
+    element_size: usize,
     registry: &dyn consus_compression::CompressionRegistry,
 ) -> Result<Vec<u8>> {
     match filter_id {
-        // Shuffle (ID 2): identity pass-through (see apply_reverse_filter docs).
-        2 => Ok(data.to_vec()),
+        // Shuffle (ID 2): byte-plane transpose.
+        2 => apply_shuffle(FilterDirection::Forward, data, element_size),
 
         // Fletcher32 (ID 3): append 4-byte checksum.
         3 => {
@@ -391,6 +392,41 @@ fn apply_forward_filter(
             codec.compress(data, level)
         }
     }
+}
+
+/// Apply the HDF5 byte-shuffle transform (filter ID 2) in one direction.
+///
+/// The permutation itself is owned by [`consus_compression::ShuffleFilter`],
+/// the canonical description of the transform: for `m` elements of
+/// `element_size` bytes, byte `j` of element `i` moves to position
+/// `j * m + i`, and the reverse direction inverts it.
+///
+/// This wrapper adds the one framing rule the filter does not model: HDF5
+/// transposes only whole elements. When the buffer is not a whole multiple
+/// of `element_size`, the leading `element_size * (len / element_size)`
+/// bytes are transposed and the trailing partial element is copied verbatim
+/// at the tail, in both directions. That keeps the pair an involution on
+/// buffers of any length.
+///
+/// An `element_size` of 0 or 1 has no byte planes to transpose, so the
+/// transform is the identity.
+///
+/// # Errors
+///
+/// Propagates `Error::InvalidFormat` from the filter. The aligned prefix is
+/// divisible by `element_size` by construction, so the divisibility check
+/// cannot fire here.
+#[cfg(feature = "alloc")]
+fn apply_shuffle(direction: FilterDirection, data: &[u8], element_size: usize) -> Result<Vec<u8>> {
+    if element_size <= 1 {
+        return Ok(data.to_vec());
+    }
+
+    let aligned_len = data.len() - data.len() % element_size;
+    let filter = consus_compression::ShuffleFilter::new(element_size);
+    let mut output = filter.apply(direction, &data[..aligned_len])?;
+    output.extend_from_slice(&data[aligned_len..]);
+    Ok(output)
 }
 
 /// Compute the uncompressed size of a chunk in bytes.
@@ -532,7 +568,7 @@ mod tests {
         data.extend_from_slice(&checksum.to_le_bytes());
 
         let registry = consus_compression::DefaultCodecRegistry::new();
-        let result = apply_reverse_filter(3, data, payload.len(), &registry).unwrap();
+        let result = apply_reverse_filter(3, data, payload.len(), 1, &registry).unwrap();
         assert_eq!(result, payload);
     }
 
@@ -544,7 +580,7 @@ mod tests {
         data.extend_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF]);
 
         let registry = consus_compression::DefaultCodecRegistry::new();
-        let err = apply_reverse_filter(3, data, 11, &registry).unwrap_err();
+        let err = apply_reverse_filter(3, data, 11, 1, &registry).unwrap_err();
         match err {
             Error::Corrupted { .. } => {}
             other => panic!("expected Corrupted, got: {other:?}"),
@@ -559,7 +595,7 @@ mod tests {
         let result = apply_forward_filter(3, payload, 1, &registry).unwrap();
         assert_eq!(result.len(), payload.len() + 4);
         // Verify round-trip.
-        let round_trip = apply_reverse_filter(3, result, payload.len(), &registry).unwrap();
+        let round_trip = apply_reverse_filter(3, result, payload.len(), 1, &registry).unwrap();
         assert_eq!(round_trip, payload);
     }
 
@@ -575,7 +611,7 @@ mod tests {
             filter_mask: 0,
         };
         let registry = consus_compression::DefaultCodecRegistry::new();
-        let result = read_chunk_raw(&cursor, &loc, data.len(), &[], &registry, None).unwrap();
+        let result = read_chunk_raw(&cursor, &loc, data.len(), &[], 1, &registry, None).unwrap();
         assert_eq!(result, data);
     }
 
@@ -607,7 +643,7 @@ mod tests {
         // On-disk size should be original + 4 checksum bytes.
         assert_eq!(loc.size, data.len() as u64 + 4);
 
-        let result = read_chunk_raw(&cursor, &loc, data.len(), &[3], &registry, None).unwrap();
+        let result = read_chunk_raw(&cursor, &loc, data.len(), &[3], 1, &registry, None).unwrap();
         assert_eq!(result, data);
     }
 
@@ -624,7 +660,7 @@ mod tests {
         };
         let registry = consus_compression::DefaultCodecRegistry::new();
         // Even though filter_ids has deflate(1), the mask says it wasn't applied.
-        let result = read_chunk_raw(&cursor, &loc, data.len(), &[1], &registry, None).unwrap();
+        let result = read_chunk_raw(&cursor, &loc, data.len(), &[1], 1, &registry, None).unwrap();
         assert_eq!(result, data);
     }
     /// read_chunk_raw returns fill-value-tiled buffer for undefined address.
@@ -647,7 +683,7 @@ mod tests {
 
         // With fill_value = Some(&[0xFF, 0x00]): buffer tiled with pattern.
         let fv: &[u8] = &[0xFF, 0x00];
-        let result = read_chunk_raw(&empty_source, &loc, 8, &[], &registry, Some(fv)).unwrap();
+        let result = read_chunk_raw(&empty_source, &loc, 8, &[], 1, &registry, Some(fv)).unwrap();
         assert_eq!(
             result,
             vec![0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF, 0x00],
@@ -655,11 +691,107 @@ mod tests {
         );
 
         // With fill_value = None: buffer is all zeros.
-        let zeros = read_chunk_raw(&empty_source, &loc, 8, &[], &registry, None).unwrap();
+        let zeros = read_chunk_raw(&empty_source, &loc, 8, &[], 1, &registry, None).unwrap();
         assert_eq!(
             zeros,
             vec![0u8; 8],
             "none fill value must yield zero buffer"
         );
+    }
+
+    /// Independent oracle for the HDF5 shuffle permutation.
+    ///
+    /// Re-derived from the specification rather than from the implementation:
+    /// for `m = len / t` whole elements, `output[j * m + i] = input[i * t + j]`,
+    /// and the trailing `len - m * t` bytes are copied verbatim.
+    #[cfg(feature = "alloc")]
+    fn analytical_shuffle(data: &[u8], element_size: usize) -> Vec<u8> {
+        let m = data.len() / element_size;
+        let aligned = m * element_size;
+        let mut out = vec![0u8; data.len()];
+        for i in 0..m {
+            for j in 0..element_size {
+                out[j * m + i] = data[i * element_size + j];
+            }
+        }
+        out[aligned..].copy_from_slice(&data[aligned..]);
+        out
+    }
+
+    #[cfg(feature = "alloc")]
+    fn ramp(len: usize) -> Vec<u8> {
+        (0..len)
+            .map(|i| u8::try_from(i % 251).expect("i % 251 < 256"))
+            .collect()
+    }
+
+    /// Reading a shuffled chunk (filter ID 2) restores the original bytes for
+    /// every element size, including buffers whose length is not a whole
+    /// multiple of the element size.
+    ///
+    /// The oracle is the analytical permutation, not the implementation's own
+    /// forward pass, so a pass-through reverse filter cannot satisfy it.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn read_chunk_inverts_shuffle_over_element_sizes() {
+        use consus_io::MemCursor;
+        let registry = consus_compression::DefaultCodecRegistry::new();
+
+        for element_size in [1usize, 2, 4, 8] {
+            // A whole number of elements, plus a length that leaves a partial
+            // trailing element (no remainder is possible at element_size 1).
+            for len in [5 * element_size, 5 * element_size + element_size - 1] {
+                let original = ramp(len);
+                let on_disk = analytical_shuffle(&original, element_size);
+
+                let cursor = MemCursor::from_bytes(on_disk.clone());
+                let loc = ChunkLocation {
+                    address: 0,
+                    size: on_disk.len() as u64,
+                    filter_mask: 0,
+                };
+                let restored =
+                    read_chunk_raw(&cursor, &loc, len, &[2], element_size, &registry, None)
+                        .expect("shuffled chunk must decode");
+
+                assert_eq!(
+                    restored, original,
+                    "element_size {element_size}, len {len}: reverse shuffle must \
+                     restore the interleaved byte layout"
+                );
+            }
+        }
+    }
+
+    /// Writing with filter ID 2 lays the byte planes out on disk exactly as
+    /// the analytical permutation prescribes, and reading them back is an
+    /// involution.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn write_chunk_applies_shuffle_byte_planes() {
+        use consus_io::MemCursor;
+        let registry = consus_compression::DefaultCodecRegistry::new();
+
+        for element_size in [1usize, 2, 4, 8] {
+            for len in [5 * element_size, 5 * element_size + element_size - 1] {
+                let original = ramp(len);
+                let mut cursor = MemCursor::from_bytes(vec![0u8; len]);
+                let loc = write_chunk_raw(&mut cursor, 0, &original, &[2], element_size, &registry)
+                    .expect("shuffled write must succeed");
+
+                assert_eq!(loc.filter_mask, 0, "shuffle must not be skipped");
+                assert_eq!(
+                    &cursor.as_bytes()[..len],
+                    analytical_shuffle(&original, element_size).as_slice(),
+                    "element_size {element_size}, len {len}: on-disk bytes must be \
+                     the byte-plane transpose"
+                );
+
+                let restored =
+                    read_chunk_raw(&cursor, &loc, len, &[2], element_size, &registry, None)
+                        .expect("shuffled chunk must decode");
+                assert_eq!(restored, original, "shuffle write/read must round-trip");
+            }
+        }
     }
 }
