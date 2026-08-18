@@ -73,7 +73,6 @@ consus = { version = "0.1.0", features = ["hdf5", "zarr", "netcdf"] }
 | `netcdf` | no | netCDF-4 backend |
 | `parquet` | no | Parquet backend |
 | `arrow` | no | Arrow backend |
-| `s3` | no | S3-compatible object storage (Zarr) |
 
 ## Python Interoperability
 

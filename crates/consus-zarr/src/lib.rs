@@ -29,7 +29,6 @@
 //! │   │                    #   SplitStore, re-exports
 //! │   ├── memory.rs        # InMemoryStore (BTreeMap-backed)
 //! │   ├── filesystem.rs    # FsStore (local directory tree)
-//! │   └── s3.rs            # S3Store (rusoto_s3, feature = "s3")
 //! ├── shard/               # Zarr v3 sharding codec support
 //! │   └── mod.rs           # ShardConfig, ShardIndexReader,
 //! │                        #   read_chunk_from_shard, compute_linear_index
@@ -43,7 +42,6 @@
 //! |---------|-------------|
 //! | `std` (default) | Full functionality: JSON, compression, all stores |
 //! | `alloc` | Core without std; enables JSON and in-memory stores |
-//! | `s3` | S3-compatible object store via rusoto_s3 |
 //!
 //! ## Architecture (DIP/SSOT)
 //!
@@ -95,21 +93,6 @@
 //! }
 //! ```
 //!
-//! ## S3 Example
-//!
-//! ```ignore
-//! use consus_zarr::store::S3Store;
-//! use consus_zarr::store::Store;
-//!
-//! let store = S3Store::new("my-zarr-bucket")
-//!     .with_prefix("experiment_001.zarr")
-//!     .with_region(Region::UsEast1)
-//!     .with_md5()  // Required for Python zarr interop
-//!     .build()
-//!     .unwrap();
-//!
-//! // Now use `store` with the Zarr API...
-//! ```
 
 #![cfg_attr(not(feature = "std"), no_std)]
 // Subjective idiom/whitespace lints (rendering-neutral docs; filter_map that

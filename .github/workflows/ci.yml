@@ -9,12 +9,6 @@ on:
     # Weekly bounded fuzzing (Monday 03:17 UTC); see the fuzz-run job.
     - cron: "17 3 * * 1"
   workflow_dispatch:
-    inputs:
-      s3_only:
-        description: "Run only the hosted MinIO S3 qualification lane"
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -30,7 +24,6 @@ env:
 jobs:
   fmt:
     name: Format
-    if: github.event_name != 'workflow_dispatch' || inputs.s3_only != true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -44,7 +37,6 @@ jobs:
 
   check:
     name: Check
-    if: github.event_name != 'workflow_dispatch' || inputs.s3_only != true
     needs: fmt
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -89,7 +81,6 @@ jobs:
 
   test:
     name: Test
-    if: github.event_name != 'workflow_dispatch' || inputs.s3_only != true
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -129,7 +120,6 @@ jobs:
 
   msrv:
     name: MSRV (1.85.0)
-    if: github.event_name != 'workflow_dispatch' || inputs.s3_only != true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -165,7 +155,6 @@ jobs:
 
   test-mat-features:
     name: Test consus-mat feature matrix
-    if: github.event_name != 'workflow_dispatch' || inputs.s3_only != true
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -192,7 +181,6 @@ jobs:
   # does not fuzz.
   fuzz-build:
     name: Build fuzz targets
-    if: github.event_name != 'workflow_dispatch' || inputs.s3_only != true
     needs: fmt
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -215,7 +203,7 @@ jobs:
   # reproducer. Not on PRs — a time-boxed random search is not a merge gate.
   fuzz-run:
     name: Fuzz (${{ matrix.target }})
-    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (github.event_name != 'workflow_dispatch' || inputs.s3_only != true)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -248,87 +236,3 @@ jobs:
         with:
           name: fuzz-artifacts-${{ matrix.target }}
           path: fuzz/artifacts/
-
-  # atlas ADR-0045 (docs/adr/0045-native-http-s3-transport-stack.md): native
-  # moirai S3 backend (no tokio) against a real S3 server.
-  # The rusoto<->moirai byte-identical differential runs in-process (mock); this
-  # job additionally exercises moirai-s3 (path-style + SigV4) against live MinIO.
-  s3-minio:
-    name: S3 native backend (MinIO)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Test ADR-0045 throughput parser
-        run: python3 -B scripts/test_check_s3_benchmark.py
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
-        with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
-      - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
-        with:
-          tool: nextest@0.9.140
-      - name: Normalize lock onto current provider heads
-        shell: bash
-        run: cargo metadata --format-version 1 --all-features > /dev/null
-      - name: Start MinIO
-        run: |
-          docker run -d --name minio -p 9000:9000 \
-            -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e \
-            server /data
-          for i in $(seq 1 30); do
-            curl -sf http://127.0.0.1:9000/minio/health/ready && break
-            sleep 1
-          done
-      - name: Create test bucket
-        run: |
-          curl -fsSL \
-            https://dl.min.io/client/mc/release/linux-amd64/archive/mc.RELEASE.2025-08-13T08-35-41Z \
-            -o mc
-          echo "01f866e9c5f9b87c2b09116fa5d7c06695b106242d829a8bb32990c00312e891  mc" \
-            | sha256sum --check --strict
-          chmod +x mc
-          ./mc alias set local http://127.0.0.1:9000 minioadmin minioadmin
-          ./mc mb local/consus-test
-      - name: S3 differential + real-endpoint moirai read
-        env:
-          S3_TEST_ENDPOINT: http://127.0.0.1:9000
-          S3_TEST_BUCKET: consus-test
-          S3_TEST_KEY: object.bin
-          S3_TEST_OBJECT_LEN: "4096"
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
-          AWS_REGION: us-east-1
-        run: |
-          cargo nextest run --locked -p consus-io --no-default-features \
-            --features "s3,s3-moirai" --test s3_rusoto_moirai_differential
-      - name: Comparative S3 range-read benchmark (ADR-0045 P4)
-        env:
-          S3_TEST_ENDPOINT: http://127.0.0.1:9000
-          S3_TEST_BUCKET: consus-test
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
-          AWS_REGION: us-east-1
-          S3_BENCH_OBJECT_LEN: "1048576"
-          S3_BENCH_RANGE_LEN: "262144"
-        run: |
-          cargo bench --locked -p consus-zarr --no-default-features \
-            --features "s3,s3-moirai" --bench s3_rusoto_moirai -- --noplot
-      # Keep the raw report even when the qualification gate fails, so a
-      # threshold miss remains diagnosable from the hosted run.
-      - name: Upload comparative benchmark report
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: consus-s3-comparative-benchmark
-          path: target/criterion/s3_range_read
-          if-no-files-found: warn
-      # The gate compares Criterion median elapsed times for the identical byte
-      # range, which is equivalent to native/legacy throughput. P5-B requires
-      # every benchmark cell to reach at least 90%.
-      - name: Enforce ADR-0045 native throughput threshold
-        if: success()
-        run: >-
-          python3 -B scripts/check_s3_benchmark.py target/criterion/s3_range_read
-          --min-native-throughput-ratio 0.90

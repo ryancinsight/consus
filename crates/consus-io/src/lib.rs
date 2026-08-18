@@ -10,7 +10,6 @@
 //!
 //! - In-memory buffers for testing
 //! - Memory-mapped I/O
-//! - Object store backends (S3, GCS) via async adapters
 //! - `no_std` environments with custom I/O
 //!
 //! ## Module Hierarchy
@@ -72,10 +71,3 @@ pub use io::traits::{
 pub use io::async_io::AsyncMemCursor;
 #[cfg(feature = "async-traits")]
 pub use io::sync::bounded::async_read_at_bounded;
-
-#[cfg(all(feature = "async-io", feature = "s3"))]
-pub use io::async_io::s3::S3Reader;
-
-// Native S3 backend (ADR-015): moirai HTTP/1.1 + SigV4, no tokio.
-#[cfg(feature = "s3-moirai")]
-pub use io::async_io::s3_moirai::{S3Client, S3Config, S3MoiraiReader};

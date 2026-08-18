@@ -19,9 +19,9 @@ consus-io = { version = "0.1", default-features = false }
   `SeekFrom`, `RandomAccess`.
 - `io::sync` — `MemCursor` (in-memory), `SliceReader` (`&[u8]`), `StreamReader`
   (sequential), the `std::fs::File` implementation, and `MmapReader`.
-- `io::async_io` — asynchronous adapters, including a native S3 backend
-  (`s3-moirai` feature) built on `moirai-http` with SigV4 signing and no tokio
-  or AWS SDK dependency.
+- `io::async_io` — asynchronous in-memory adapters over the runtime-agnostic
+  `async-traits` surface; network and object-storage integrations are outside
+  this crate.
 
 ## Copy behavior
 

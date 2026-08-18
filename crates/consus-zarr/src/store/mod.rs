@@ -8,7 +8,6 @@
 //!
 //! - **Local filesystem** — directory tree with `.zarray`, `.zgroup`, chunk files
 //! - **In-memory** — `Vec<u8>`-backed, no I/O, for testing and ephemeral data
-//! - **S3-compatible** — any object store that implements the S3 API
 //!
 //! ## Key Semantics
 //!
@@ -24,9 +23,7 @@
 //! ## Python zarr Compatibility
 //!
 //! All stores use the canonical Zarr key scheme, ensuring full
-//! interoperability with zarr-python. A Zarr hierarchy produced by
-//! consus-zarr and stored in S3 is directly readable by zarr-python
-//! when served via an S3-compatible HTTP server.
+//! interoperability with zarr-python.
 //!
 //! ## Module Hierarchy
 //!
@@ -34,8 +31,7 @@
 //! store/
 //! ├── mod.rs       # Store trait and re-exports
 //! ├── memory.rs    # InMemoryStore
-//! ├── filesystem.rs # FsStore
-//! └── s3.rs        # S3Store (feature = "s3")
+//! └── filesystem.rs # FsStore
 //! ```
 
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -51,21 +47,11 @@ mod filesystem;
 #[cfg(feature = "alloc")]
 mod memory;
 
-#[cfg(feature = "s3")]
-mod s3;
-
-#[cfg(feature = "s3-moirai")]
-mod s3_moirai;
-
 // Re-export store backends at the crate root.
 #[cfg(feature = "std")]
 pub use filesystem::FsStore;
 #[cfg(feature = "alloc")]
 pub use memory::InMemoryStore;
-#[cfg(feature = "s3")]
-pub use s3::S3Store;
-#[cfg(feature = "s3-moirai")]
-pub use s3_moirai::S3MoiraiStore;
 
 // ---------------------------------------------------------------------------
 // Store trait
@@ -122,7 +108,7 @@ pub trait Store: Send + Sync {
     /// Read the values for multiple keys concurrently if supported.
     ///
     /// The default implementation fetches keys sequentially.
-    /// Backends like `S3Store` may override this to fetch chunks in parallel.
+    /// Backends may override this to fetch chunks in parallel.
     fn get_many(&self, keys: &[&str]) -> Vec<consus_core::Result<Vec<u8>>> {
         keys.iter().map(|k| self.get(k)).collect()
     }
@@ -159,8 +145,8 @@ impl<T: Store> ReadWriteStore for T {}
 
 /// A store that prefixes all keys with a given string.
 ///
-/// This is useful for namespacing: for example, a single S3 bucket can
-/// hold multiple independent Zarr hierarchies by using different prefixes.
+/// This is useful for namespacing independent Zarr hierarchies by using
+/// different prefixes.
 #[cfg(feature = "alloc")]
 #[derive(Debug)]
 pub struct PrefixedStore<S> {

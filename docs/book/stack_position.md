@@ -24,7 +24,7 @@ eunomia → aequitas → ... physics providers (helios, kwavers, CFDrs, ritk) ..
                             consus (scientific storage)
                                │
                                ▼
-                          local filesystem, S3, HPC storage
+                          local filesystem, HPC storage, external adapters
 ```
 
 Physics providers and domain solvers write their results through Consus.

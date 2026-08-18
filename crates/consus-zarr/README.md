@@ -17,10 +17,10 @@ The v3 metadata write path preserves dimension names and group attributes.
 
 ## Stores
 
-The `Store` trait abstracts chunk placement. A filesystem store is available by
-default; the `s3-moirai` feature adds `S3MoiraiStore`, an object-store backend
-over the native `moirai-http` S3 client with SigV4 signing (no tokio, no AWS
-SDK).
+The `Store` trait abstracts chunk placement. Filesystem and in-memory stores
+are available without network clients; online object-storage integrations are
+intentionally outside this crate.
+
 
 - Documentation: <https://docs.rs/consus-zarr>
 
