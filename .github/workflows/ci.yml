@@ -237,7 +237,8 @@ jobs:
           name: fuzz-artifacts-${{ matrix.target }}
           path: fuzz/artifacts/
 
-  # ADR-015: native moirai S3 backend (no tokio) against a real S3 server.
+  # atlas ADR-0045 (docs/adr/0045-native-http-s3-transport-stack.md): native
+  # moirai S3 backend (no tokio) against a real S3 server.
   # The rusoto<->moirai byte-identical differential runs in-process (mock); this
   # job additionally exercises moirai-s3 (path-style + SigV4) against live MinIO.
   s3-minio:
@@ -288,3 +289,21 @@ jobs:
         run: |
           cargo nextest run --locked -p consus-io --no-default-features \
             --features "s3,s3-moirai" --test s3_rusoto_moirai_differential
+      - name: Comparative S3 range-read benchmark (ADR-0045 P4)
+        env:
+          S3_TEST_ENDPOINT: http://127.0.0.1:9000
+          S3_TEST_BUCKET: consus-test
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_REGION: us-east-1
+          S3_BENCH_OBJECT_LEN: "1048576"
+          S3_BENCH_RANGE_LEN: "262144"
+        run: |
+          cargo bench --locked -p consus-zarr --no-default-features \
+            --features "s3,s3-moirai" --bench s3_rusoto_moirai -- --noplot
+      - name: Upload comparative benchmark report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: consus-s3-comparative-benchmark
+          path: target/criterion/s3_range_read
+          if-no-files-found: error
