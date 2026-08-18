@@ -1,5 +1,39 @@
 # Consus — Backlog
 
+## ATLAS-CONSUS-SHUFFLE-038 — HDF5 shuffle filter is a silent no-op on read [major] — todo
+
+- Owner: unclaimed. Scope: `consus-hdf5::dataset::chunk` (sync + async chunk
+  read paths) and the `read_chunked_dataset_all_bytes` caller chain.
+- Defect: `apply_reverse_filter` (`dataset/chunk.rs:311`) matches filter ID 2
+  (shuffle) and returns `Ok(data)` unchanged, with a comment deferring the
+  unshuffle to "the higher-level reader". No higher-level reader applies it.
+  Every HDF5 dataset written with the shuffle filter therefore decodes to
+  byte-transposed data and is returned **without an error** — silent
+  corruption with plausible-looking values, not a detectable failure. The
+  forward (write) direction has the same hole.
+- Evidence: `roundtrip_h5py_to_consus::h5py_shuffle_deflate_i32_readable_by_consus`
+  is the single failing test in the workspace. It reads back
+  `[50462976, 117835012, 0, 0, 0, 0, 0, 0, 185207048, ...]` for expected
+  `0..16`. Those are exactly the shuffled bytes reinterpreted as LE i32:
+  chunk one is `00 01 02 03 04 05 06 07` followed by 24 zero bytes, which is
+  the byte-0 plane of `0..8` followed by three all-zero planes. Deflate
+  decompressed correctly and the chunk B-tree returned both chunks in the
+  right order — the only missing step is the inverse transposition.
+- Not a parse-limit or B-tree-descent issue: an earlier note suspected the
+  v1 descent bound was rejecting legitimate chunked descents. It is not. The
+  descent bound is on `collect_btree_v1_leaves` (group trees) and the chunk
+  read path rejects `header.level != 0` as `UnsupportedFeature`, a distinct
+  limitation; neither is reached here, since both chunks were located and
+  assembled correctly.
+- Fix shape: `consus_compression` already documents the transform
+  (`codec/blosc.rs:41-42`); the missing input is element size, which the
+  caller has from `ds.datatype`. Thread it into the pipeline rather than
+  adding a second shuffle implementation. Until then, an unhandled
+  shuffle filter must be a typed error, never a pass-through.
+- Acceptance: the h5py shuffle+deflate roundtrip passes; a forward/inverse
+  property test over element sizes 1/2/4/8; an unsupported-filter path that
+  errors instead of silently passing data through.
+
 ## ATLAS-CONSUS-UNWRAP-099 — Close parser-test ratchet delta [patch, complete]
 
 **Owner:** Atlas session; scope is the three bare unwraps introduced by the
@@ -140,54 +174,33 @@ so the compiled API surface is unchanged.
     Nextest 110/110 (incl. the hostile fill-value test), strict Clippy,
     formatting. -037 is closed.
 - Acceptance: as -036, per crate.
-
-## ATLAS-CONSUS-PARSE-LIMITS-036 — Bound remaining HDF5 heap and dataset allocations [minor] — verified already bounded 2026-08-15
-
-- Scope: `consus-hdf5`. The sweep during -037 re-verified every site named in
-  the original brief against the current tree.
-- Premise correction (same class as -035): all named sites are already
-  bounded at the implementation head: `heap/global.rs` `collection_size` →
-  `ParseBudget::checked_bytes` + `checked_sub` + `budget.zeroed`;
-  Fixed-Array `nelmts` → `checked_elements`; dataspace products →
-  `checked_*_size` via `checked_elements` (footprint bounded); fractal-heap
-  `length` → `read_bounded_bytes` → `budget.zeroed`; v2 chunk sizes →
-  `MAX_CHUNK_BYTES`; filter counts are single-byte (≤255) and symbol counts
-  `u16` (≤65535), both inherently bounded.
-- Acceptance: a fresh exhaustive allocation sweep (all production
-  `vec!`/`with_capacity` sites in consus-hdf5) found no unbound
-  attacker-chosen length; no code change required. Closed as verified.
-
-## ATLAS-CONSUS-PARSE-LIMITS-037 — Bound consus-mat, consus-parquet, consus-zarr parse paths [minor] — done 2026-08-15
-
-- Scope: three crates outside the -035/-036 HDF5 and FITS surface.
-- Delivered (this pass):
-  - `consus-mat::v5::matrix::parse_matrix` now descends through a
-    `ParseBudget` ceiling for mxCELL/mxSTRUCT nesting (was unbounded, ~40-50
-    input bytes per level) with deep-chain + shallow-chain tests.
-  - `consus-mat::v5::decompress_zlib` uses `ParseBudget::read_bounded`,
-    capping a zlib decompression bomb at the byte ceiling (was
-    `read_to_end`, unbounded).
-  - `consus-parquet::wire::thrift::ThriftReader::skip` carries the descent
-    ceiling for nested struct/list/map skips (was one frame per input byte)
-    with an adversarial depth test.
-  - `consus-parquet::dataset::schema::parse_fields` carries the descent
-    ceiling for single-child group chains (was bounded only by element
-    count) with deep-chain + shallow-chain tests.
-  - Verified: `consus-mat` all-feature Nextest 90/90 (incl. compressed-read
-    integration); `consus-parquet` lib tests pass; strict Clippy clean.
-- Delivered (follow-up pass, 2026-08-15):
-  - `consus-parquet::wire::metadata` schema / row-group / column-chunk list
-    reservations now use `ParseBudget::vec_with_capacity`, bounding
-    `count × size_of<T>` (a small footer can no longer reserve 100+ MiB).
-  - `consus-zarr::chunk::ops`: `try_expand_fill_value` bounds
-    `num_elements × element_size` against the byte ceiling with a fallible
-    allocation; `checked_chunk_bytes` bounds the chunk / padded-chunk /
-    shard-chunk byte products at every validation and allocation site; a
-    hostile-shape test proves the typed rejection.
-  - Verified: `consus-parquet` lib Nextest 227/227, `consus-zarr` lib
-    Nextest 110/110 (incl. the hostile fill-value test), strict Clippy,
-    formatting. -037 is closed.
-- Acceptance: as -036, per crate.
+- Re-verification 2026-08-18 (third brief against the same stale tree): a
+  driving brief again named ~12 "missed" sites across -036/-037. Every one
+  resolves as already bounded at the current head, and the brief's own
+  "obvious fuzz gaps" (`consus-mat`, `consus-parquet`) are two of the four
+  targets that already exist. Site-by-site: `heap/global.rs` already uses
+  `checked_sub` with a typed `InvalidFormat` naming both operands (the
+  claimed "unchecked `- header_size`" is absent); `file/mod.rs:204,401,679`
+  are not allocation sites at all (a call, a `)?`, an error return) and
+  `:696` is `checked_add` + `budget.zeroed`; all five `heap/fractal.rs`
+  lines route through `read_bounded_bytes` → `budget.zeroed` with every
+  product `checked_mul`/`checked_add`; `consus-mat::parse_matrix` is
+  `parse_matrix_depth` under `ParseBudget::descend` and `decompress_zlib`
+  uses `read_bounded`; `ThriftReader::skip` delegates to `skip_depth` under
+  the same ceiling; `try_expand_fill_value` bounds the shape product via
+  `checked_bytes`. No source change was warranted.
+- Residuals recorded by that pass (both outside -036/-037 scope, neither a
+  parse-path defect): `consus-zarr::chunk::ops::expand_fill_value` is a
+  `pub` wrapper that `.expect()`s on an input-dependent value — a panic
+  policy violation and a prohibited sibling of `try_expand_fill_value`,
+  though no production caller reaches it (bench and unit tests only); and
+  the `write_array` paths at `ops.rs:853,1146,1186` compute
+  `total_elements * element_size` unchecked, which wraps in release. Both
+  need their own items.
+- Coverage added by that pass: `fuzz_surface_typecheck.rs` for
+  `consus-hdf5`, `consus-mat`, and `consus-parquet`, mirroring the
+  `consus-fits` pattern so a signature change in a fuzzed entry point
+  breaks the ordinary gate instead of the weekly fuzz job.
 
 ## ATLAS-CONSUS-PARQUET-058 — Consolidate PLAIN scalar decoders [major][arch] — done 2026-08-15
 

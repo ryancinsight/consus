@@ -191,6 +191,36 @@ fn global_heap_collection_size_beyond_budget_is_rejected() {
     assert_resource_limit(&error, "global heap collection size");
 }
 
+/// A global-heap collection size *below* its own header size must be a typed
+/// error, not a subtraction underflow.
+///
+/// This is the sibling of the case above and needs its own test: `u64::MAX`
+/// is rejected by the byte-ceiling check before the subtraction is reached,
+/// so that test cannot exercise this guard. A small value passes the ceiling
+/// and reaches `collection_size - header_size`, which underflows to roughly
+/// `usize::MAX` — a debug-build panic, and in release a colossal body length
+/// fed straight into the allocation. `header_size` here is `8 + length_bytes`
+/// = 16, so any declared size below 16 is the hostile case; 4 is
+/// unambiguously below it.
+#[test]
+fn global_heap_collection_size_below_header_size_is_rejected() {
+    let mut image = vec![0u8; 16];
+    image[0..4].copy_from_slice(b"GCOL");
+    image[4] = 1;
+    image[8..16].copy_from_slice(&4u64.to_le_bytes());
+
+    let error =
+        GlobalHeapCollection::parse(&MemCursor::from_bytes(image), 0, &ParseContext::new(8, 8))
+            .expect_err("a collection smaller than its header must not underflow");
+    let Error::InvalidFormat { message } = &error else {
+        panic!("expected Error::InvalidFormat naming the violated invariant, got {error:?}");
+    };
+    assert!(
+        message.contains("smaller than its") && message.contains("header"),
+        "the error must name the header-size violation and both operands, got {message:?}"
+    );
+}
+
 /// A contiguous dataset shape must be checked before its output buffer is
 /// allocated; the shape product itself must not overflow first.
 #[test]
