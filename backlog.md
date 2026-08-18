@@ -1,8 +1,9 @@
 # Consus — Backlog
 
-## ATLAS-CONSUS-SHUFFLE-038 — HDF5 shuffle filter is a silent no-op on read [major] — todo
+## ATLAS-CONSUS-SHUFFLE-038 — HDF5 shuffle filter is a silent no-op on read [major] — in progress
 
-- Owner: unclaimed. Scope: `consus-hdf5::dataset::chunk` (sync + async chunk
+- Owner: Atlas coordinator; reclaimed stale clean lane
+  `codex/consus-shuffle-038`. Scope: `consus-hdf5::dataset::chunk` (sync + async chunk
   read paths) and the `read_chunked_dataset_all_bytes` caller chain.
 - Defect: `apply_reverse_filter` (`dataset/chunk.rs:311`) matches filter ID 2
   (shuffle) and returns `Ok(data)` unchanged, with a comment deferring the
