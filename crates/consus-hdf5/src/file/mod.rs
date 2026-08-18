@@ -298,6 +298,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                             filter_mask: entry.filter_mask,
                         },
                         element_size,
+                        element_size,
                         &filter_ids,
                         &registry,
                         fill_value.as_deref(),
@@ -347,6 +348,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                                 },
                                 actual_chunk_dims,
                                 uncompressed_size,
+                                element_size,
                             })
                         })
                         .collect::<Result<Vec<_>>>()?;
@@ -1004,6 +1006,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                         },
                         actual_chunk_dims,
                         uncompressed_size,
+                        element_size,
                     })
                 })
                 .collect::<Result<Vec<_>>>()?;
@@ -1051,6 +1054,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                         filter_mask: entry.filter_mask,
                     },
                     uncompressed_size,
+                    element_size,
                     filter_ids,
                     registry,
                     fill_value,

@@ -26,9 +26,16 @@ fn contiguous_chunk_read_benchmark(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(bytes as u64));
         group.bench_with_input(BenchmarkId::from_parameter(bytes), &bytes, |b, &_size| {
             b.iter(|| {
-                let result =
-                    read_chunk_raw(&cursor, &location, bytes, selection_dims, &registry, None)
-                        .expect("contiguous chunk read must succeed");
+                let result = read_chunk_raw(
+                    &cursor,
+                    &location,
+                    bytes,
+                    1,
+                    selection_dims,
+                    &registry,
+                    None,
+                )
+                .expect("contiguous chunk read must succeed");
                 black_box(result);
             });
         });
@@ -56,6 +63,7 @@ fn undefined_chunk_fill_value_benchmark(c: &mut Criterion) {
                     &MemCursor::new(),
                     &location,
                     bytes,
+                    1,
                     selection_dims,
                     &registry,
                     Some(&fill_value),

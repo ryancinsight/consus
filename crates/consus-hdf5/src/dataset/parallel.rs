@@ -62,6 +62,8 @@ pub struct ChunkTask {
     pub actual_chunk_dims: Vec<usize>,
     /// Expected byte count after full filter-pipeline decompression.
     pub uncompressed_size: usize,
+    /// Size of one dataset element in bytes, required by the shuffle filter.
+    pub element_size: usize,
 }
 
 /// Decoded output from processing one [`ChunkTask`].
@@ -98,6 +100,7 @@ pub fn execute_serial<R: ReadAt>(
                 source,
                 &task.location,
                 task.uncompressed_size,
+                task.element_size,
                 filter_ids,
                 registry,
                 fill_value,
@@ -143,6 +146,7 @@ pub fn execute_parallel<R: ReadAt + Sync>(
                 source,
                 &task.location,
                 task.uncompressed_size,
+                task.element_size,
                 filter_ids,
                 registry,
                 fill_value,
