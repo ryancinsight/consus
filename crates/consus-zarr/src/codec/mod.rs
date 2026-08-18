@@ -60,6 +60,46 @@ impl Default for CompressionLevel {
 }
 
 // ---------------------------------------------------------------------------
+// Endianness helpers
+// ---------------------------------------------------------------------------
+
+/// Returns `true` when `configured` matches the host byte order.
+///
+/// Zarr v3 legal values are `"little"` and `"big"`. The value `"native"` is
+/// **not** a legal Zarr v3 endian specification; we treat it as matching the
+/// host to preserve existing round-trip behaviour for internally-written stores
+/// while avoiding silent corruption for cross-platform interop.
+#[cfg(feature = "alloc")]
+fn is_native_endian(configured: &str) -> bool {
+    #[cfg(target_endian = "little")]
+    let host_is_little = true;
+    #[cfg(not(target_endian = "little"))]
+    let host_is_little = false;
+
+    match configured {
+        "little" => host_is_little,
+        "big" => !host_is_little,
+        _ => true, // "native" or unknown: no swap
+    }
+}
+
+/// Byte-swap every `element_size`-byte word in `data` in place.
+///
+/// If `data.len()` is not a multiple of `element_size` the trailing partial
+/// element is left unchanged (no panic, no silent discard).
+#[cfg(feature = "alloc")]
+fn byte_swap_elements(data: &[u8], element_size: usize) -> Vec<u8> {
+    let mut out = data.to_vec();
+    let n_elements = out.len() / element_size;
+    for i in 0..n_elements {
+        let start = i * element_size;
+        let slice = &mut out[start..start + element_size];
+        slice.reverse();
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
 // Codec pipeline
 // ---------------------------------------------------------------------------
 
@@ -81,6 +121,9 @@ impl Default for CompressionLevel {
 pub struct CodecPipeline {
     /// Ordered list of codec configurations.
     codecs: Vec<Codec>,
+    /// Element size in bytes, used for endianness conversion in the `bytes` codec.
+    /// `1` disables byte-swapping (single-byte or variable-length types).
+    element_size: usize,
 }
 
 #[cfg(feature = "alloc")]
@@ -89,19 +132,30 @@ impl CodecPipeline {
     ///
     /// The codecs are applied in the order given for compression.
     pub fn new(codecs: Vec<Codec>) -> Self {
-        Self { codecs }
+        Self { codecs, element_size: 1 }
+    }
+
+    /// Set the element size (bytes per scalar element) for byte-order conversion.
+    ///
+    /// This is used when the `"bytes"` codec specifies an endianness different
+    /// from the host. Call with the result of `dtype_to_element_size(&meta.dtype)`.
+    /// A value of `1` (the default) disables byte-swapping.
+    pub fn with_element_size(mut self, element_size: usize) -> Self {
+        self.element_size = element_size.max(1);
+        self
     }
 
     /// Create a pipeline from a single codec.
     pub fn single(codec: Codec) -> Self {
         Self {
             codecs: vec![codec],
+            element_size: 1,
         }
     }
 
     /// Create an empty (identity) pipeline.
     pub fn empty() -> Self {
-        Self { codecs: Vec::new() }
+        Self { codecs: Vec::new(), element_size: 1 }
     }
 
     /// Returns the number of codecs in this pipeline.
@@ -166,11 +220,24 @@ impl CodecPipeline {
         registry: &dyn CompressionRegistryTrait,
     ) -> Result<Vec<u8>> {
         match codec.name.as_str() {
-            // Identity / bytes codec: no-op
-            "bytes" => Ok(data.to_vec()),
+            // Bytes codec: applies endian byte-swapping when the configured
+            // endianness differs from the host byte order.
+            "bytes" => {
+                let configured = codec.bytes_endian().unwrap_or("little");
+                if self.element_size > 1 && !is_native_endian(configured) {
+                    Ok(byte_swap_elements(data, self.element_size))
+                } else {
+                    Ok(data.to_vec())
+                }
+            }
 
-            // CRC32 is write-only (computed but not stored back)
-            "crc32" => Ok(data.to_vec()),
+            // CRC32 checksum: not yet implemented as a full codec.
+            // Returning pass-through is incorrect (silent corruption), so we
+            // reject it at pipeline-application time instead.
+            "crc32" => Err(consus_core::Error::UnsupportedFeature {
+                feature: "crc32 codec (not implemented; use a compression codec without crc32)"
+                    .to_string(),
+            }),
 
             // Compression codecs
             "gzip" | "zlib" => {
@@ -214,11 +281,24 @@ impl CodecPipeline {
         registry: &dyn CompressionRegistryTrait,
     ) -> Result<Vec<u8>> {
         match codec.name.as_str() {
-            // Identity / bytes codec: no-op
-            "bytes" => Ok(data.to_vec()),
+            // Bytes codec: reverse the byte-swap applied on compress (symmetric).
+            "bytes" => {
+                let configured = codec.bytes_endian().unwrap_or("little");
+                if self.element_size > 1 && !is_native_endian(configured) {
+                    Ok(byte_swap_elements(data, self.element_size))
+                } else {
+                    Ok(data.to_vec())
+                }
+            }
 
-            // CRC32 is a checksum that validates on read; we just return data
-            "crc32" => Ok(data.to_vec()),
+            // CRC32 checksum: not yet implemented.
+            // Pass-through in either direction is incorrect (strips 4 bytes of
+            // real payload on read or silently accepts corrupted data), so we
+            // reject it.
+            "crc32" => Err(consus_core::Error::UnsupportedFeature {
+                feature: "crc32 codec (not implemented; use a compression codec without crc32)"
+                    .to_string(),
+            }),
 
             // All compression codecs use the same decompress interface
             name => registry
@@ -434,5 +514,105 @@ mod tests {
             .decompress(&compressed, registry)
             .expect("decompress must succeed");
         assert_eq!(&decompressed, input);
+    }
+
+    // ── Endianness (ATLAS-CONSUS-ZARR-BYTES-ENDIAN-206) ──────────────────────
+
+    /// Native-endian `bytes` codec must not alter the data.
+    #[test]
+    fn bytes_codec_native_endian_is_identity() {
+        let registry = default_registry();
+        let codec = Codec {
+            name: String::from("bytes"),
+            configuration: vec![(String::from("endian"), String::from("little"))],
+        };
+        let pipeline = CodecPipeline::single(codec).with_element_size(4);
+        let input: Vec<u8> = vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+        #[cfg(target_endian = "little")]
+        {
+            let out = pipeline.compress(&input, registry).expect("compress");
+            assert_eq!(out, input, "native endian: data must be unchanged");
+            let back = pipeline.decompress(&input, registry).expect("decompress");
+            assert_eq!(back, input, "native endian: data must be unchanged");
+        }
+    }
+
+    /// Non-native-endian `bytes` codec must byte-swap each element.
+    #[test]
+    fn bytes_codec_non_native_endian_swaps_elements() {
+        let registry = default_registry();
+        #[cfg(target_endian = "little")]
+        let endian = "big";
+        #[cfg(target_endian = "big")]
+        let endian = "little";
+        let codec = Codec {
+            name: String::from("bytes"),
+            configuration: vec![(String::from("endian"), String::from(endian))],
+        };
+        let pipeline = CodecPipeline::single(codec).with_element_size(4);
+        let input: Vec<u8> = vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+        let swapped: Vec<u8> = vec![0x04, 0x03, 0x02, 0x01, 0x08, 0x07, 0x06, 0x05];
+        let compressed = pipeline.compress(&input, registry).expect("compress");
+        assert_eq!(compressed, swapped, "non-native endian: 4-byte elements must be swapped");
+        let back = pipeline.decompress(&compressed, registry).expect("decompress");
+        assert_eq!(back, input, "round-trip must recover original");
+    }
+
+    /// Single-byte types must not be swapped regardless of endian config.
+    #[test]
+    fn bytes_codec_element_size_1_is_identity() {
+        let registry = default_registry();
+        let codec = Codec {
+            name: String::from("bytes"),
+            configuration: vec![(String::from("endian"), String::from("big"))],
+        };
+        let pipeline = CodecPipeline::single(codec).with_element_size(1);
+        let input: Vec<u8> = vec![0x01, 0x02, 0x03, 0x04];
+        assert_eq!(pipeline.compress(&input, registry).expect("compress"), input);
+    }
+
+    /// Big-endian fixture: 1.0f32 must decode correctly on a little-endian host.
+    #[test]
+    fn bytes_codec_big_endian_f32_oracle() {
+        let registry = default_registry();
+        #[cfg(target_endian = "little")]
+        {
+            let codec = Codec {
+                name: String::from("bytes"),
+                configuration: vec![(String::from("endian"), String::from("big"))],
+            };
+            let pipeline = CodecPipeline::single(codec).with_element_size(4);
+            // 1.0f32 in big-endian: 3F 80 00 00
+            let on_disk: Vec<u8> = vec![0x3F, 0x80, 0x00, 0x00];
+            let decoded = pipeline.decompress(&on_disk, registry).expect("decompress");
+            // After swap: 00 00 80 3F = 1.0f32 on little-endian host
+            assert_eq!(decoded, vec![0x00, 0x00, 0x80, 0x3F]);
+            let val = f32::from_le_bytes([decoded[0], decoded[1], decoded[2], decoded[3]]);
+            assert_eq!(val, 1.0f32);
+        }
+    }
+
+    // ── CRC32 rejection (ATLAS-CONSUS-ZARR-CRC32-207) ────────────────────────
+
+    /// `crc32` compress must be rejected with an error, not silently pass through.
+    #[test]
+    fn crc32_codec_compress_is_rejected() {
+        let registry = default_registry();
+        let codec = Codec { name: String::from("crc32"), configuration: vec![] };
+        assert!(
+            CodecPipeline::single(codec).compress(b"payload", registry).is_err(),
+            "crc32 compress must return an error"
+        );
+    }
+
+    /// `crc32` decompress must be rejected with an error, not silently pass through.
+    #[test]
+    fn crc32_codec_decompress_is_rejected() {
+        let registry = default_registry();
+        let codec = Codec { name: String::from("crc32"), configuration: vec![] };
+        assert!(
+            CodecPipeline::single(codec).decompress(b"payload", registry).is_err(),
+            "crc32 decompress must return an error"
+        );
     }
 }
