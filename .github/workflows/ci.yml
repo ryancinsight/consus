@@ -9,6 +9,12 @@ on:
     # Weekly bounded fuzzing (Monday 03:17 UTC); see the fuzz-run job.
     - cron: "17 3 * * 1"
   workflow_dispatch:
+    inputs:
+      s3_only:
+        description: "Run only the hosted MinIO S3 qualification lane"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -24,6 +30,7 @@ env:
 jobs:
   fmt:
     name: Format
+    if: github.event_name != 'workflow_dispatch' || inputs.s3_only != true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -37,6 +44,7 @@ jobs:
 
   check:
     name: Check
+    if: github.event_name != 'workflow_dispatch' || inputs.s3_only != true
     needs: fmt
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -81,6 +89,7 @@ jobs:
 
   test:
     name: Test
+    if: github.event_name != 'workflow_dispatch' || inputs.s3_only != true
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -120,6 +129,7 @@ jobs:
 
   msrv:
     name: MSRV (1.85.0)
+    if: github.event_name != 'workflow_dispatch' || inputs.s3_only != true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -155,6 +165,7 @@ jobs:
 
   test-mat-features:
     name: Test consus-mat feature matrix
+    if: github.event_name != 'workflow_dispatch' || inputs.s3_only != true
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -181,6 +192,7 @@ jobs:
   # does not fuzz.
   fuzz-build:
     name: Build fuzz targets
+    if: github.event_name != 'workflow_dispatch' || inputs.s3_only != true
     needs: fmt
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -203,7 +215,7 @@ jobs:
   # reproducer. Not on PRs — a time-boxed random search is not a merge gate.
   fuzz-run:
     name: Fuzz (${{ matrix.target }})
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (github.event_name != 'workflow_dispatch' || inputs.s3_only != true)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
