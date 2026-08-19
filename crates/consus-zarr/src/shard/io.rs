@@ -38,12 +38,18 @@ pub fn inner_linear_index(coords: &[usize], inner_per_dim: &[usize]) -> usize {
 /// ## Returns
 ///
 /// The decompressed inner chunk bytes, or an empty `Vec` for uninitialized chunks.
+///
+/// `element_size` is required rather than defaulted because the inner codec
+/// chain runs the `bytes` codec, which needs it to swap byte order. Building
+/// the pipeline without it left every sharded read at the `1`-byte default,
+/// so a big-endian sharded array decoded unswapped with no error.
 #[cfg(feature = "alloc")]
 pub fn read_inner_chunk_from_shard(
     shard_data: &[u8],
     inner_linear_idx: usize,
     total_inner_chunks: usize,
     inner_codecs: &[Codec],
+    element_size: usize,
 ) -> Result<Vec<u8>> {
     let index_size = total_inner_chunks.saturating_mul(16);
     if shard_data.len() < index_size {
@@ -95,7 +101,9 @@ pub fn read_inner_chunk_from_shard(
         feature: alloc::string::String::from("shard_codec_requires_std"),
     });
     #[cfg(feature = "std")]
-    return CodecPipeline::new(inner_codecs.to_vec()).decompress(compressed, default_registry());
+    return CodecPipeline::new(inner_codecs.to_vec())
+        .with_element_size(element_size)
+        .decompress(compressed, default_registry());
 }
 
 /// Assemble a shard file from a map of compressed inner chunks.

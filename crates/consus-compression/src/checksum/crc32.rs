@@ -15,6 +15,7 @@
 //! The CRC-32/ISO-HDLC check value for the ASCII string `"123456789"` is
 //! `0xCBF43926`. This is verified in the unit tests below.
 
+use super::reflected::{fold, reflected_table};
 use super::traits::Checksum;
 
 /// IEEE 802.3 CRC-32 polynomial in reflected (bit-reversed) form.
@@ -26,41 +27,8 @@ const INIT: u32 = 0xFFFF_FFFF;
 /// XOR mask applied at finalization (all bits set, producing the complement).
 const XOROUT: u32 = 0xFFFF_FFFF;
 
-/// Compute the 256-entry CRC-32 lookup table at compile time.
-///
-/// For each byte value `i` in `0..256`, the entry is computed by iterating
-/// 8 bit positions. At each position, if the least-significant bit is set,
-/// the value is shifted right by 1 and XORed with the polynomial; otherwise
-/// it is simply shifted right by 1.
-///
-/// ## Proof sketch
-///
-/// Each table entry `T[i]` equals `CRC(i)` where `i` is treated as a
-/// degree-7 polynomial over GF(2), divided by the generator polynomial
-/// in reflected bit order. The 8-iteration loop is the standard
-/// bit-at-a-time division algorithm.
-const fn make_crc_table() -> [u32; 256] {
-    let mut table = [0u32; 256];
-    let mut i: usize = 0;
-    while i < 256 {
-        let mut crc = i as u32;
-        let mut j = 0;
-        while j < 8 {
-            if crc & 1 != 0 {
-                crc = (crc >> 1) ^ POLYNOMIAL;
-            } else {
-                crc >>= 1;
-            }
-            j += 1;
-        }
-        table[i] = crc;
-        i += 1;
-    }
-    table
-}
-
 /// Compile-time CRC-32 lookup table (256 entries).
-const CRC_TABLE: [u32; 256] = make_crc_table();
+const CRC_TABLE: [u32; 256] = reflected_table(POLYNOMIAL);
 
 /// CRC-32 checksum (IEEE 802.3 polynomial).
 ///
@@ -127,12 +95,7 @@ impl Checksum for Crc32 {
     /// result as `update(a ++ b)`.
     #[inline]
     fn update(&mut self, data: &[u8]) {
-        let mut crc = self.state;
-        for &byte in data {
-            let index = ((crc ^ u32::from(byte)) & 0xFF) as usize;
-            crc = CRC_TABLE[index] ^ (crc >> 8);
-        }
-        self.state = crc;
+        self.state = fold(self.state, &CRC_TABLE, data);
     }
 
     /// Return the finalized CRC-32 value.

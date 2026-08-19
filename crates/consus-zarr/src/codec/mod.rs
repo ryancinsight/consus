@@ -16,8 +16,8 @@
 //!
 //! | Name | Direction | Description |
 //! |------|-----------|-------------|
-//! | "bytes" | Both | Raw byte transport; handles endianness |
-//! | "crc32" | Read | Checksum filter; validates integrity |
+//! | "bytes" | Both | Raw byte transport; swaps byte order when the stored endianness differs from the host |
+//! | "crc32" | Both | CRC-32C (Castagnoli) checksum: appended on write, verified and stripped on read |
 //! | "gzip" | Both | Gzip compression |
 //! | "zstd" | Both | Zstandard compression |
 //! | "lz4" | Both | LZ4 block compression |
@@ -39,6 +39,9 @@ use alloc::vec::Vec;
 
 #[cfg(feature = "alloc")]
 use consus_core::Result;
+
+#[cfg(feature = "alloc")]
+use consus_compression::checksum::Crc32c;
 
 #[cfg(feature = "alloc")]
 use crate::metadata::Codec;
@@ -63,40 +66,111 @@ impl Default for CompressionLevel {
 // Endianness helpers
 // ---------------------------------------------------------------------------
 
-/// Returns `true` when `configured` matches the host byte order.
+/// Whether `configured` matches the host byte order.
 ///
-/// Zarr v3 legal values are `"little"` and `"big"`. The value `"native"` is
-/// **not** a legal Zarr v3 endian specification; we treat it as matching the
-/// host to preserve existing round-trip behaviour for internally-written stores
-/// while avoiding silent corruption for cross-platform interop.
+/// Zarr v3 admits exactly `"little"` and `"big"`. `"native"` is not a legal
+/// specification but this crate writes it from its own pipeline constructors,
+/// where it means the host order by definition, so it is accepted.
+///
+/// Anything else is an error rather than a no-swap. A typo or a value from a
+/// future revision is data this codec cannot interpret, and answering "no
+/// swap" to a question it did not understand returns wrong values with no
+/// error — the defect this whole path exists to remove.
 #[cfg(feature = "alloc")]
-fn is_native_endian(configured: &str) -> bool {
-    #[cfg(target_endian = "little")]
-    let host_is_little = true;
-    #[cfg(not(target_endian = "little"))]
-    let host_is_little = false;
-
+fn matches_host_endianness(configured: &str) -> Result<bool> {
+    let host_is_little = cfg!(target_endian = "little");
     match configured {
-        "little" => host_is_little,
-        "big" => !host_is_little,
-        _ => true, // "native" or unknown: no swap
+        "little" => Ok(host_is_little),
+        "big" => Ok(!host_is_little),
+        "native" => Ok(true),
+        other => Err(consus_core::Error::UnsupportedFeature {
+            feature: alloc::format!(
+                "zarr `bytes` codec endian={other:?}: expected \"little\" or \"big\""
+            ),
+        }),
     }
 }
 
-/// Byte-swap every `element_size`-byte word in `data` in place.
+/// Byte-swap every `element_size`-byte word in `data`.
 ///
-/// If `data.len()` is not a multiple of `element_size` the trailing partial
-/// element is left unchanged (no panic, no silent discard).
+/// A length that is not a multiple of `element_size` is an error, not a
+/// partial swap. Leaving the tail unreversed produces a buffer whose last
+/// element is the opposite endianness from the rest — mixed-endianness data
+/// returned as success, which is worse to diagnose than the corruption it
+/// came from. The length disagreeing with the dtype means one of the two is
+/// wrong, and the caller has to hear about it.
 #[cfg(feature = "alloc")]
-fn byte_swap_elements(data: &[u8], element_size: usize) -> Vec<u8> {
-    let mut out = data.to_vec();
-    let n_elements = out.len() / element_size;
-    for i in 0..n_elements {
-        let start = i * element_size;
-        let slice = &mut out[start..start + element_size];
-        slice.reverse();
+fn byte_swap_elements(data: &[u8], element_size: usize) -> Result<Vec<u8>> {
+    // `%` rather than `is_multiple_of`, which is stable only since 1.87 and
+    // this workspace's MSRV is 1.85. The zero check guards the division.
+    if element_size == 0 || data.len() % element_size != 0 {
+        return Err(consus_core::Error::Corrupted {
+            message: alloc::format!(
+                "zarr `bytes` codec: {} bytes is not a whole number of \
+                 {element_size}-byte elements",
+                data.len()
+            ),
+        });
     }
+    let mut out = data.to_vec();
+    for element in out.chunks_exact_mut(element_size) {
+        element.reverse();
+    }
+    Ok(out)
+}
+
+// ---------------------------------------------------------------------------
+// Checksum codec
+// ---------------------------------------------------------------------------
+
+/// Width of the trailing checksum the `crc32` codec appends.
+#[cfg(feature = "alloc")]
+const CRC32C_LEN: usize = 4;
+
+/// Append the Zarr v3 checksum: CRC-32C of `data`, little-endian.
+///
+/// The algorithm is **crc32c** (Castagnoli), not CRC-32/IEEE. They share an
+/// output width and agree on nothing else, so using the wrong one produces a
+/// checksum a conformant reader rejects — or worse, that this crate's own
+/// reader accepts while other implementations do not.
+#[cfg(feature = "alloc")]
+fn append_crc32c(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(data.len() + CRC32C_LEN);
+    out.extend_from_slice(data);
+    out.extend_from_slice(&Crc32c::compute_slice(data).to_le_bytes());
     out
+}
+
+/// Verify and strip the trailing CRC-32C, returning the payload.
+///
+/// A mismatch is [`consus_core::Error::Corrupted`] — the entire purpose of
+/// the codec is to convert silent corruption into a loud failure, so this is
+/// the one arm that must never fall back to returning the bytes.
+#[cfg(feature = "alloc")]
+fn verify_and_strip_crc32c(data: &[u8]) -> Result<Vec<u8>> {
+    let Some(split) = data.len().checked_sub(CRC32C_LEN) else {
+        return Err(consus_core::Error::Corrupted {
+            message: alloc::format!(
+                "zarr `crc32` codec: chunk is {} bytes, too short to carry a \
+                 {CRC32C_LEN}-byte checksum",
+                data.len()
+            ),
+        });
+    };
+    let (payload, stored) = data.split_at(split);
+    // `stored` is exactly CRC32C_LEN by construction of `split`.
+    let expected = u32::from_le_bytes([stored[0], stored[1], stored[2], stored[3]]);
+    let actual = Crc32c::compute_slice(payload);
+    if actual != expected {
+        return Err(consus_core::Error::Corrupted {
+            message: alloc::format!(
+                "zarr `crc32` codec: checksum mismatch over {} bytes \
+                 (stored {expected:#010x}, computed {actual:#010x})",
+                payload.len()
+            ),
+        });
+    }
+    Ok(payload.to_vec())
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +253,31 @@ impl CodecPipeline {
         &self.codecs
     }
 
+    /// The `bytes` codec, shared by both directions.
+    ///
+    /// Byte-order conversion is its own inverse, so read and write are the
+    /// same operation and must not be two copies that can drift apart.
+    ///
+    /// The endian key is required rather than defaulted. Zarr v3 mandates it
+    /// on this codec, so an absent key means the metadata is incomplete;
+    /// assuming `"little"` silently produces host-order output on a
+    /// little-endian machine and wrong output everywhere else, which is the
+    /// class of defect this codec was just fixed for.
+    fn apply_bytes_codec(&self, codec: &Codec, data: &[u8]) -> Result<Vec<u8>> {
+        let Some(configured) = codec.bytes_endian() else {
+            return Err(consus_core::Error::InvalidFormat {
+                message: alloc::string::String::from(
+                    "zarr `bytes` codec has no `endian` configuration; \
+                     Zarr v3 requires \"little\" or \"big\"",
+                ),
+            });
+        };
+        if matches_host_endianness(configured)? || self.element_size == 1 {
+            return Ok(data.to_vec());
+        }
+        byte_swap_elements(data, self.element_size)
+    }
+
     /// Compress data through the full codec chain.
     ///
     /// Codecs are applied in forward order: the first codec receives
@@ -228,22 +327,12 @@ impl CodecPipeline {
         match codec.name.as_str() {
             // Bytes codec: applies endian byte-swapping when the configured
             // endianness differs from the host byte order.
-            "bytes" => {
-                let configured = codec.bytes_endian().unwrap_or("little");
-                if self.element_size > 1 && !is_native_endian(configured) {
-                    Ok(byte_swap_elements(data, self.element_size))
-                } else {
-                    Ok(data.to_vec())
-                }
-            }
+            "bytes" => self.apply_bytes_codec(codec, data),
 
             // CRC32 checksum: not yet implemented as a full codec.
             // Returning pass-through is incorrect (silent corruption), so we
             // reject it at pipeline-application time instead.
-            "crc32" => Err(consus_core::Error::UnsupportedFeature {
-                feature: "crc32 codec (not implemented; use a compression codec without crc32)"
-                    .to_string(),
-            }),
+            "crc32" => Ok(append_crc32c(data)),
 
             // Compression codecs
             "gzip" | "zlib" => {
@@ -288,23 +377,13 @@ impl CodecPipeline {
     ) -> Result<Vec<u8>> {
         match codec.name.as_str() {
             // Bytes codec: reverse the byte-swap applied on compress (symmetric).
-            "bytes" => {
-                let configured = codec.bytes_endian().unwrap_or("little");
-                if self.element_size > 1 && !is_native_endian(configured) {
-                    Ok(byte_swap_elements(data, self.element_size))
-                } else {
-                    Ok(data.to_vec())
-                }
-            }
+            "bytes" => self.apply_bytes_codec(codec, data),
 
             // CRC32 checksum: not yet implemented.
             // Pass-through in either direction is incorrect (strips 4 bytes of
             // real payload on read or silently accepts corrupted data), so we
             // reject it.
-            "crc32" => Err(consus_core::Error::UnsupportedFeature {
-                feature: "crc32 codec (not implemented; use a compression codec without crc32)"
-                    .to_string(),
-            }),
+            "crc32" => verify_and_strip_crc32c(data),
 
             // All compression codecs use the same decompress interface
             name => registry
@@ -606,37 +685,165 @@ mod tests {
         }
     }
 
-    // ── CRC32 rejection (ATLAS-CONSUS-ZARR-CRC32-207) ────────────────────────
+    // -- CRC32C checksum codec (ATLAS-CONSUS-ZARR-CRC32-207) -----------------
 
-    /// `crc32` compress must be rejected with an error, not silently pass through.
+    /// Round-trip: the checksum is appended on write and stripped on read.
+    ///
+    /// Replaces two tests that asserted the codec was rejected. It is now
+    /// implemented, so asserting a refusal would pin the wrong contract.
     #[test]
-    fn crc32_codec_compress_is_rejected() {
+    fn crc32_codec_round_trips() {
         let registry = default_registry();
-        let codec = Codec {
+        let pipeline = CodecPipeline::single(Codec {
             name: String::from("crc32"),
             configuration: vec![],
-        };
-        assert!(
-            CodecPipeline::single(codec)
-                .compress(b"payload", registry)
-                .is_err(),
-            "crc32 compress must return an error"
+        });
+
+        let input = b"chunk payload";
+        let stored = pipeline.compress(input, registry).unwrap();
+        assert_eq!(
+            stored.len(),
+            input.len() + 4,
+            "the checksum must be appended, not folded in"
         );
+        assert_eq!(&stored[..input.len()], input, "payload must be unchanged");
+        assert_eq!(&pipeline.decompress(&stored, registry).unwrap(), input);
     }
 
-    /// `crc32` decompress must be rejected with an error, not silently pass through.
+    /// The appended bytes are CRC-32C, not CRC-32/IEEE.
+    ///
+    /// This is the assertion that distinguishes a conformant writer from one
+    /// whose output no other Zarr implementation accepts. Both algorithms
+    /// produce four bytes, so a length check cannot tell them apart.
     #[test]
-    fn crc32_codec_decompress_is_rejected() {
+    fn crc32_codec_appends_castagnoli_not_ieee() {
         let registry = default_registry();
-        let codec = Codec {
+        let input = b"123456789";
+        let stored = CodecPipeline::single(Codec {
             name: String::from("crc32"),
             configuration: vec![],
+        })
+        .compress(input, registry)
+        .unwrap();
+
+        let appended = u32::from_le_bytes([
+            stored[input.len()],
+            stored[input.len() + 1],
+            stored[input.len() + 2],
+            stored[input.len() + 3],
+        ]);
+        assert_eq!(appended, 0xE306_9283, "RFC 3720 CRC-32C check value");
+        assert_ne!(appended, 0xCBF4_3926, "must not be the IEEE check value");
+    }
+
+    /// A corrupted payload is an error, not a value.
+    #[test]
+    fn crc32_codec_rejects_a_corrupted_payload() {
+        let registry = default_registry();
+        let pipeline = CodecPipeline::single(Codec {
+            name: String::from("crc32"),
+            configuration: vec![],
+        });
+
+        let mut stored = pipeline.compress(b"chunk payload", registry).unwrap();
+        stored[0] ^= 0x01;
+        assert!(matches!(
+            pipeline.decompress(&stored, registry),
+            Err(consus_core::Error::Corrupted { .. })
+        ));
+    }
+
+    /// A chunk too short to carry a checksum is an error, not a panic.
+    ///
+    /// The slicing here is input-driven, so the failure mode without the
+    /// length guard is an out-of-bounds panic on hostile input.
+    #[test]
+    fn crc32_codec_rejects_a_truncated_chunk() {
+        let registry = default_registry();
+        let pipeline = CodecPipeline::single(Codec {
+            name: String::from("crc32"),
+            configuration: vec![],
+        });
+        for len in 0..4usize {
+            assert!(matches!(
+                pipeline.decompress(&vec![0u8; len], registry),
+                Err(consus_core::Error::Corrupted { .. })
+            ));
+        }
+    }
+
+    // -- bytes codec hardening -----------------------------------------------
+
+    /// An unrecognised endian value is an error, not a silent no-swap.
+    #[test]
+    fn bytes_codec_rejects_unknown_endianness() {
+        let registry = default_registry();
+        let pipeline = CodecPipeline::single(Codec {
+            name: String::from("bytes"),
+            configuration: vec![(String::from("endian"), String::from("middle"))],
+        })
+        .with_element_size(4);
+        assert!(pipeline.decompress(&[1, 2, 3, 4], registry).is_err());
+    }
+
+    /// A missing endian key is an error: Zarr v3 requires it on this codec.
+    #[test]
+    fn bytes_codec_requires_an_endian_key() {
+        let registry = default_registry();
+        let pipeline = CodecPipeline::single(Codec {
+            name: String::from("bytes"),
+            configuration: vec![],
+        })
+        .with_element_size(4);
+        assert!(pipeline.decompress(&[1, 2, 3, 4], registry).is_err());
+    }
+
+    /// A length that is not a whole number of elements is an error.
+    ///
+    /// Previously the trailing partial element was left unreversed, so the
+    /// call returned success with a buffer whose last element had the
+    /// opposite endianness from the rest.
+    #[test]
+    fn bytes_codec_rejects_a_partial_trailing_element() {
+        let foreign = if cfg!(target_endian = "big") {
+            "little"
+        } else {
+            "big"
         };
-        assert!(
-            CodecPipeline::single(codec)
-                .decompress(b"payload", registry)
-                .is_err(),
-            "crc32 decompress must return an error"
+        let registry = default_registry();
+        let pipeline = CodecPipeline::single(Codec {
+            name: String::from("bytes"),
+            configuration: vec![(String::from("endian"), String::from(foreign))],
+        })
+        .with_element_size(4);
+        assert!(matches!(
+            pipeline.decompress(&[1, 2, 3, 4, 5, 6], registry),
+            Err(consus_core::Error::Corrupted { .. })
+        ));
+    }
+
+    /// A foreign byte order really is swapped, per element.
+    #[test]
+    fn bytes_codec_swaps_foreign_endianness() {
+        let foreign = if cfg!(target_endian = "big") {
+            "little"
+        } else {
+            "big"
+        };
+        let registry = default_registry();
+        let pipeline = CodecPipeline::single(Codec {
+            name: String::from("bytes"),
+            configuration: vec![(String::from("endian"), String::from(foreign))],
+        })
+        .with_element_size(4);
+        let swapped = pipeline
+            .decompress(&[1, 2, 3, 4, 5, 6, 7, 8], registry)
+            .unwrap();
+        assert_eq!(swapped, vec![4, 3, 2, 1, 8, 7, 6, 5]);
+        // Its own inverse.
+        assert_eq!(
+            pipeline.compress(&swapped, registry).unwrap(),
+            vec![1, 2, 3, 4, 5, 6, 7, 8]
         );
     }
 }

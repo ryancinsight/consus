@@ -1040,6 +1040,7 @@ fn read_array_sharded<S: Store>(
                     linear,
                     total_inner,
                     &shard_cfg.inner_codecs,
+                    element_size,
                 ) {
                     Ok(chunk_data) if !chunk_data.is_empty() => {
                         let stored = stored_shape_for_chunk(

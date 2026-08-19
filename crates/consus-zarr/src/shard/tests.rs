@@ -61,13 +61,13 @@ fn write_shard_and_read_inner_chunk() {
     let total = 4usize;
     let shard = write_shard(&inner_chunks, total);
     assert_eq!(shard.len(), 16 + 64);
-    let c0 = read_inner_chunk_from_shard(&shard, 0, total, &[]).unwrap();
+    let c0 = read_inner_chunk_from_shard(&shard, 0, total, &[], 1).unwrap();
     assert_eq!(c0, vec![42u8, 0, 0, 0, 43, 0, 0, 0]);
-    let c1 = read_inner_chunk_from_shard(&shard, 1, total, &[]).unwrap();
+    let c1 = read_inner_chunk_from_shard(&shard, 1, total, &[], 1).unwrap();
     assert!(c1.is_empty(), "uninitialized chunk must return empty vec");
-    let c2 = read_inner_chunk_from_shard(&shard, 2, total, &[]).unwrap();
+    let c2 = read_inner_chunk_from_shard(&shard, 2, total, &[], 1).unwrap();
     assert_eq!(c2, vec![99u8, 0, 0, 0, 100, 0, 0, 0]);
-    let c3 = read_inner_chunk_from_shard(&shard, 3, total, &[]).unwrap();
+    let c3 = read_inner_chunk_from_shard(&shard, 3, total, &[], 1).unwrap();
     assert!(c3.is_empty(), "uninitialized chunk must return empty vec");
 }
 
@@ -78,7 +78,7 @@ fn write_shard_all_uninitialized() {
     let shard = write_shard(&inner_chunks, total);
     assert_eq!(shard.len(), 64);
     for i in 0..total {
-        let c = read_inner_chunk_from_shard(&shard, i, total, &[]).unwrap();
+        let c = read_inner_chunk_from_shard(&shard, i, total, &[], 1).unwrap();
         assert!(c.is_empty());
     }
 }
