@@ -1,38 +1,17 @@
 # Consus — Backlog
 
-## ATLAS-CONSUS-SHUFFLE-038 — HDF5 shuffle filter is a silent no-op on read [major] — todo
+## ATLAS-CONSUS-SHUFFLE-038 — HDF5 shuffle filter is a silent no-op on read [major] — complete 2026-08-19
 
-- Owner: unclaimed. Scope: `consus-hdf5::dataset::chunk` (sync + async chunk
-  read paths) and the `read_chunked_dataset_all_bytes` caller chain.
-- Defect: `apply_reverse_filter` (`dataset/chunk.rs:311`) matches filter ID 2
-  (shuffle) and returns `Ok(data)` unchanged, with a comment deferring the
-  unshuffle to "the higher-level reader". No higher-level reader applies it.
-  Every HDF5 dataset written with the shuffle filter therefore decodes to
-  byte-transposed data and is returned **without an error** — silent
-  corruption with plausible-looking values, not a detectable failure. The
-  forward (write) direction has the same hole.
-- Evidence: `roundtrip_h5py_to_consus::h5py_shuffle_deflate_i32_readable_by_consus`
-  is the single failing test in the workspace. It reads back
-  `[50462976, 117835012, 0, 0, 0, 0, 0, 0, 185207048, ...]` for expected
-  `0..16`. Those are exactly the shuffled bytes reinterpreted as LE i32:
-  chunk one is `00 01 02 03 04 05 06 07` followed by 24 zero bytes, which is
-  the byte-0 plane of `0..8` followed by three all-zero planes. Deflate
-  decompressed correctly and the chunk B-tree returned both chunks in the
-  right order — the only missing step is the inverse transposition.
-- Not a parse-limit or B-tree-descent issue: an earlier note suspected the
-  v1 descent bound was rejecting legitimate chunked descents. It is not. The
-  descent bound is on `collect_btree_v1_leaves` (group trees) and the chunk
-  read path rejects `header.level != 0` as `UnsupportedFeature`, a distinct
-  limitation; neither is reached here, since both chunks were located and
-  assembled correctly.
-- Fix shape: `consus_compression` already documents the transform
-  (`codec/blosc.rs:41-42`); the missing input is element size, which the
-  caller has from `ds.datatype`. Thread it into the pipeline rather than
-  adding a second shuffle implementation. Until then, an unhandled
-  shuffle filter must be a typed error, never a pass-through.
-- Acceptance: the h5py shuffle+deflate roundtrip passes; a forward/inverse
-  property test over element sizes 1/2/4/8; an unsupported-filter path that
-  errors instead of silently passing data through.
+- Owner: Atlas integration. The defect was fixed in provider commit `ef439b2`.
+  The synchronous and asynchronous chunk readers now carry dataset element
+  size into the filter pipeline, and filter ID 2 delegates both directions to
+  the canonical `consus_compression::ShuffleFilter`.
+- The wrapper preserves HDF5 framing for trailing partial elements. The
+  analytical oracle covers element sizes 1, 2, 4, and 8, the write path's
+  on-disk byte planes, the inverse read path, and the h5py shuffle-plus-deflate
+  end-to-end value case.
+- ADR-0003 records the accepted boundary and alternatives. Provider commit
+  `ef439b2` reports Nextest 2759/2759, strict Clippy, and formatting passing.
 
 ## ATLAS-CONSUS-UNWRAP-099 — Close parser-test ratchet delta [patch, complete]
 
