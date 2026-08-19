@@ -132,7 +132,10 @@ impl CodecPipeline {
     ///
     /// The codecs are applied in the order given for compression.
     pub fn new(codecs: Vec<Codec>) -> Self {
-        Self { codecs, element_size: 1 }
+        Self {
+            codecs,
+            element_size: 1,
+        }
     }
 
     /// Set the element size (bytes per scalar element) for byte-order conversion.
@@ -155,7 +158,10 @@ impl CodecPipeline {
 
     /// Create an empty (identity) pipeline.
     pub fn empty() -> Self {
-        Self { codecs: Vec::new(), element_size: 1 }
+        Self {
+            codecs: Vec::new(),
+            element_size: 1,
+        }
     }
 
     /// Returns the number of codecs in this pipeline.
@@ -553,8 +559,13 @@ mod tests {
         let input: Vec<u8> = vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
         let swapped: Vec<u8> = vec![0x04, 0x03, 0x02, 0x01, 0x08, 0x07, 0x06, 0x05];
         let compressed = pipeline.compress(&input, registry).expect("compress");
-        assert_eq!(compressed, swapped, "non-native endian: 4-byte elements must be swapped");
-        let back = pipeline.decompress(&compressed, registry).expect("decompress");
+        assert_eq!(
+            compressed, swapped,
+            "non-native endian: 4-byte elements must be swapped"
+        );
+        let back = pipeline
+            .decompress(&compressed, registry)
+            .expect("decompress");
         assert_eq!(back, input, "round-trip must recover original");
     }
 
@@ -568,7 +579,10 @@ mod tests {
         };
         let pipeline = CodecPipeline::single(codec).with_element_size(1);
         let input: Vec<u8> = vec![0x01, 0x02, 0x03, 0x04];
-        assert_eq!(pipeline.compress(&input, registry).expect("compress"), input);
+        assert_eq!(
+            pipeline.compress(&input, registry).expect("compress"),
+            input
+        );
     }
 
     /// Big-endian fixture: 1.0f32 must decode correctly on a little-endian host.
@@ -598,9 +612,14 @@ mod tests {
     #[test]
     fn crc32_codec_compress_is_rejected() {
         let registry = default_registry();
-        let codec = Codec { name: String::from("crc32"), configuration: vec![] };
+        let codec = Codec {
+            name: String::from("crc32"),
+            configuration: vec![],
+        };
         assert!(
-            CodecPipeline::single(codec).compress(b"payload", registry).is_err(),
+            CodecPipeline::single(codec)
+                .compress(b"payload", registry)
+                .is_err(),
             "crc32 compress must return an error"
         );
     }
@@ -609,9 +628,14 @@ mod tests {
     #[test]
     fn crc32_codec_decompress_is_rejected() {
         let registry = default_registry();
-        let codec = Codec { name: String::from("crc32"), configuration: vec![] };
+        let codec = Codec {
+            name: String::from("crc32"),
+            configuration: vec![],
+        };
         assert!(
-            CodecPipeline::single(codec).decompress(b"payload", registry).is_err(),
+            CodecPipeline::single(codec)
+                .decompress(b"payload", registry)
+                .is_err(),
             "crc32 decompress must return an error"
         );
     }
