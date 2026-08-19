@@ -9,7 +9,7 @@ use alloc::{
 #[cfg(feature = "std")]
 use crate::codec::{CodecPipeline, default_registry};
 #[cfg(feature = "alloc")]
-use crate::metadata::{ArrayMetadata, FillValue};
+use crate::metadata::{ArrayMetadata, FillValue, dtype_to_element_size};
 #[cfg(feature = "alloc")]
 use crate::store::Store;
 
@@ -373,6 +373,7 @@ pub fn read_chunk<S: Store>(
         return Err(ChunkError::DecompressFailed);
         #[cfg(feature = "std")]
         return CodecPipeline::new(meta.codecs.clone())
+            .with_element_size(dtype_to_element_size(&meta.dtype).unwrap_or(1))
             .decompress(&data, default_registry())
             .map_err(|_| ChunkError::DecompressFailed);
     }
@@ -397,6 +398,7 @@ pub fn write_chunk<S: Store>(
         return Err(ChunkError::CompressFailed);
         #[cfg(feature = "std")]
         CodecPipeline::new(meta.codecs.clone())
+            .with_element_size(dtype_to_element_size(&meta.dtype).unwrap_or(1))
             .compress(data, default_registry())
             .map_err(|_| ChunkError::CompressFailed)?
     } else {
@@ -614,6 +616,7 @@ pub fn read_array<S: Store>(
                     {
                         use crate::codec::{CodecPipeline, default_registry};
                         CodecPipeline::new(meta.codecs.clone())
+                            .with_element_size(dtype_to_element_size(&meta.dtype).unwrap_or(1))
                             .decompress(&data, default_registry())
                             .map_err(|_| ChunkError::DecompressFailed)
                     }
@@ -1221,6 +1224,7 @@ fn write_array_sharded<S: Store>(
                 return Err(ChunkError::CompressFailed);
                 #[cfg(feature = "std")]
                 crate::codec::CodecPipeline::new(shard_cfg.inner_codecs.clone())
+                    .with_element_size(element_size)
                     .compress(&chunk_data, crate::codec::default_registry())
                     .map_err(|_| ChunkError::CompressFailed)?
             };
