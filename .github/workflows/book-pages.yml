@@ -19,4 +19,4 @@ jobs:
       pages: write
       id-token: write
     with:
-      output-path: target/book/consus
+      output-path: target/book/consusBOOK_PAGES_PIN=20c93980f7c98f2e23a89c4a0540f16c8f2d7239python-cimport os,re,sys; s=sys.stdin.read(); p=os.environ["BOOK_PAGES_PIN"]; pattern=r"(uses: ryancinsight/atlas/\.github/workflows/book-pages\.yml@)[0-9a-f]+"; s,n=re.subn(pattern, lambda m:m.group(1)+p, s); assert n == 1, n; marker="      output-path: target/book/consus\n"; addition=marker+"      mdbook-test: true\n      rust-toolchain: \"1.97.0\"\n      cargo-package: consus-core\n      cargo-crate: consus_core\n"; assert s.count(marker) == 1; print(s.replace(marker,addition,1),end="")
