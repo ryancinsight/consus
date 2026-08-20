@@ -251,8 +251,44 @@ impl Codec for SzipCodec {
             });
         }
 
+        // `decoded` always ends up `n_samples` long, and `delta_decode` preserves
+        // length, so `output.len() == n_samples` for both codings. Check the caller's
+        // size contract here rather than after decoding: `n_samples` is attacker-
+        // controlled header data, so every use of it must be bounded before it can
+        // drive an allocation.
+        if n_samples != expected_size {
+            return Err(Error::CompressionError {
+                message: alloc::format!(
+                    "szip: header declares {n_samples} samples but expected_size is \
+                     {expected_size}"
+                ),
+            });
+        }
+
+        // Independent bound against the input itself, so a caller-supplied
+        // `expected_size` cannot drive the reserve either. Every decoded sample costs
+        // at least one bit: `read_unary` consumes a minimum of one bit per sample, and
+        // all bit data comes from the bytes after the header.
+        let max_samples = input.len().saturating_sub(HEADER_SIZE).saturating_mul(8);
+        if n_samples > max_samples {
+            return Err(Error::CompressionError {
+                message: alloc::format!(
+                    "szip: header declares {n_samples} samples but {} payload bytes can \
+                     encode at most {max_samples}",
+                    input.len() - HEADER_SIZE
+                ),
+            });
+        }
+
         // Decode blocks
-        let mut decoded = Vec::with_capacity(n_samples);
+        let mut decoded = Vec::new();
+        decoded
+            .try_reserve_exact(n_samples)
+            .map_err(|_| Error::CompressionError {
+                message: alloc::format!(
+                    "szip: cannot allocate {n_samples} bytes for the decoded block"
+                ),
+            })?;
         let mut pos: usize = HEADER_SIZE;
         let mut remaining = n_samples;
 
@@ -591,6 +627,65 @@ mod tests {
                 "pixels_per_block={ppb} must be accepted"
             );
         }
+    }
+
+    // -- Adversarial header bounds -------------------------------------------
+
+    /// A 7-byte header declaring `u32::MAX` samples must be rejected on the header,
+    /// before anything reserves capacity from that field. Prior to the bound this
+    /// reached `Vec::with_capacity(u32::MAX)` and aborted the process rather than
+    /// returning a typed error.
+    #[test]
+    fn reject_sample_count_exceeding_payload() {
+        let codec = SzipCodec::new(8, SzipCoding::EntropyCoding).unwrap();
+        let mut header = alloc::vec![0u8; HEADER_SIZE];
+        header[0] = 0; // EntropyCoding
+        header[1] = 8; // pixels_per_block
+        header[2] = BITS_PER_SAMPLE;
+        header[3..7].copy_from_slice(&u32::MAX.to_le_bytes());
+
+        let err = codec
+            .decompress(&header, u32::MAX as usize)
+            .expect_err("a header-only input cannot encode u32::MAX samples");
+        let msg = alloc::format!("{err}");
+        assert!(
+            msg.contains("can encode at most"),
+            "error must name the payload bound, got: {msg}"
+        );
+    }
+
+    /// The declared sample count must agree with the caller's size contract, and the
+    /// disagreement must surface before the decode allocates.
+    #[test]
+    fn reject_sample_count_disagreeing_with_expected_size() {
+        let codec = SzipCodec::new(8, SzipCoding::EntropyCoding).unwrap();
+        let encoded = codec
+            .compress(&xorshift_data(64), CompressionLevel::default())
+            .expect("compress must succeed");
+
+        let err = codec
+            .decompress(&encoded, 65)
+            .expect_err("expected_size must match the header sample count");
+        let msg = alloc::format!("{err}");
+        assert!(
+            msg.contains("expected_size"),
+            "error must name expected_size, got: {msg}"
+        );
+    }
+
+    /// Round-tripping still succeeds once the bounds are in place, so the guard
+    /// rejects only malformed headers.
+    #[test]
+    fn bounds_preserve_valid_round_trip() {
+        let codec = SzipCodec::new(8, SzipCoding::EntropyCoding).unwrap();
+        let original = xorshift_data(256);
+        let encoded = codec
+            .compress(&original, CompressionLevel::default())
+            .expect("compress must succeed");
+        let decoded = codec
+            .decompress(&encoded, original.len())
+            .expect("decompress must succeed");
+        assert_eq!(decoded, original);
     }
 
     // -- Delta encode/decode unit tests --------------------------------------
