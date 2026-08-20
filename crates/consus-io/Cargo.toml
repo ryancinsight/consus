@@ -6,55 +6,26 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Sync and async I/O abstractions for the Consus scientific storage library"
+description = "Synchronous I/O abstractions for the Consus scientific storage library"
 homepage.workspace = true
 readme = "README.md"
 keywords = ["io", "mmap", "storage", "positioned-io", "no-std"]
-categories = ["filesystem", "asynchronous", "no-std"]
+categories = ["filesystem", "no-std"]
 
 [features]
 default = ["std"]
 std = ["consus-core/std"]
 alloc = ["consus-core/alloc"]
-# Tokio-free async trait surface (AsyncReadAt/AsyncLength/... + AsyncMemCursor).
-async-traits = ["std", "alloc"]
-# Async traits + a tokio runtime (required by the legacy rusoto S3 backend).
-async-io = ["async-traits", "dep:tokio", "dep:futures-core"]
 mmap = ["dep:memmap2", "std"]
-# Legacy S3 backend (rusoto/reqwest on the tokio runtime).
-s3 = ["dep:rusoto_core", "dep:rusoto_s3", "dep:reqwest", "async-io"]
-# Native S3 backend (atlas ADR-0045,
-# docs/adr/0045-native-http-s3-transport-stack.md):
-# moirai HTTP/1.1 + SigV4, no tokio / no AWS SDK.
-s3-moirai = ["async-traits", "dep:moirai-http", "dep:hmac", "dep:sha2", "dep:quick-xml"]
 
 [dependencies]
 consus-core = { workspace = true }
-tokio = { workspace = true, optional = true }
-futures-core = { workspace = true, optional = true }
 memmap2 = { workspace = true, optional = true }
-rusoto_core = { workspace = true, optional = true }
-rusoto_s3 = { workspace = true, optional = true }
-reqwest = { workspace = true, optional = true }
-moirai-http = { workspace = true, optional = true }
-hmac = { workspace = true, optional = true }
-sha2 = { workspace = true, optional = true }
-quick-xml = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
-# Full runtime so the rusoto↔moirai S3 differential test can drive rusoto (hyper).
-tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "net", "time", "io-util"] }
 tempfile = { workspace = true }
-# Drives s3-moirai async tests on the Moirai runtime (no tokio).
-moirai = { package = "moirai-runtime", version = "0.5.0", git = "https://github.com/ryancinsight/Moirai", default-features = false, features = ["async"] }
-# For the rusoto↔moirai differential test (build a custom-endpoint Region).
-rusoto_core = { workspace = true }
 
-[[test]]
-name = "s3_rusoto_moirai_differential"
-path = "tests/s3_rusoto_moirai_differential.rs"
-required-features = ["s3", "s3-moirai"]
 
 [[test]]
 name = "property_io"

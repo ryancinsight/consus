@@ -16,9 +16,8 @@ categories = ["science", "encoding", "filesystem", "no-std"]
 default = ["std"]
 std = ["alloc", "consus-core/std", "consus-io/std", "consus-compression/std"]
 alloc = ["consus-core/alloc", "consus-io/alloc", "consus-compression/alloc"]
-# Tokio-free: the async HDF5 parsers are generic over consus-io's AsyncReadAt,
-# which lives in the tokio-free `async-traits` surface (not `async-io`).
-async-io = ["alloc", "consus-io/async-traits"]
+# Async HDF5 parsing is implemented against Moirai's native positioned I/O.
+async = ["std", "dep:moirai-async"]
 parallel-io = ["alloc", "dep:moirai"]
 # Compression codec features — forwarded to consus-compression.
 # Required to activate the corresponding codec in the DefaultCodecRegistry.
@@ -32,13 +31,14 @@ consus-io = { workspace = true }
 consus-compression = { workspace = true }
 byteorder = { workspace = true }
 moirai = { workspace = true, optional = true }
+moirai-async = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
 smallvec = { workspace = true }
 proptest = { workspace = true }
 criterion = { workspace = true }
-tokio = { version = "1", features = ["macros", "rt"] }
+moirai-async = { workspace = true }
 
 [[bench]]
 name = "hdf5_read"
@@ -47,7 +47,7 @@ required-features = ["alloc"]
 [[test]]
 name = "async_hdf5"
 path = "tests/async_hdf5.rs"
-required-features = ["async-io"]
+required-features = ["async"]
 
 [lints]
 workspace = true

@@ -1,6 +1,6 @@
 //! # consus-io
 //!
-//! Sync and async I/O abstractions for the Consus storage library.
+//! Synchronous I/O abstractions for the Consus storage library.
 //!
 //! ## Architecture
 //!
@@ -10,7 +10,6 @@
 //!
 //! - In-memory buffers for testing
 //! - Memory-mapped I/O
-//! - Object store backends (S3, GCS) via async adapters
 //! - `no_std` environments with custom I/O
 //!
 //! ## Module Hierarchy
@@ -25,7 +24,6 @@
 //! │   │   ├── stream   # Cursor-based sequential reader (StreamReader)
 //! │   │   ├── file     # std::fs::File positioned I/O implementation
 //! │   │   └── mmap     # Read-only memory-mapped file reader (MmapReader)
-//! │   └── async_io/    # Asynchronous positioned I/O (feature-gated)
 //! ```
 //!
 //! ### Trait Hierarchy
@@ -60,24 +58,3 @@ pub use io::sync::mmap::MmapReader;
 pub use io::sync::slice::SliceReader;
 #[cfg(feature = "alloc")]
 pub use io::sync::stream::StreamReader;
-
-// Async trait re-exports (tokio-free)
-#[cfg(feature = "async-traits")]
-pub use io::traits::{
-    AsyncLength, AsyncRandomAccess, AsyncReadAt, AsyncSeekable, AsyncTruncate, AsyncWriteAt,
-};
-
-// Async implementation re-exports
-#[cfg(feature = "async-traits")]
-pub use io::async_io::AsyncMemCursor;
-#[cfg(feature = "async-traits")]
-pub use io::sync::bounded::async_read_at_bounded;
-
-#[cfg(all(feature = "async-io", feature = "s3"))]
-pub use io::async_io::s3::S3Reader;
-
-// Native S3 backend (atlas ADR-0045,
-// docs/adr/0045-native-http-s3-transport-stack.md): moirai HTTP/1.1 + SigV4,
-// no tokio.
-#[cfg(feature = "s3-moirai")]
-pub use io::async_io::s3_moirai::{S3Client, S3Config, S3MoiraiReader};

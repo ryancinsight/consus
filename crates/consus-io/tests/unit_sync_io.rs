@@ -7,7 +7,7 @@
 //! - Bounds checking (read beyond EOF)
 //! - Zero-copy semantics
 //!
-//! These tests run WITHOUT the async-io feature enabled.
+//! These tests cover Consus' synchronous I/O surface; async contracts live in Moirai.
 
 use consus_core::Error;
 use consus_io::{MemCursor, ReadAt, WriteAt};

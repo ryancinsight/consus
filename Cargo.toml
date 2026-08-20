@@ -60,28 +60,17 @@ zip = { version = "6.0", default-features = false, features = ["deflate-flate2-z
 memmap2      = { version = "0.9" }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 serde_json = { version = "1", default-features = false, features = ["alloc"] }
-rusoto_core = { version = "0.48", default-features = false, features = ["native-tls"] }
-rusoto_s3 = { version = "0.48", default-features = false, features = ["native-tls"] }
-reqwest = { version = "0.12", default-features = false, features = ["json"] }
 
 # Compression (optional)
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 zrip = { version = "0.8.5", default-features = false, features = ["alloc"] }
 lz4_flex = { version = "0.11", default-features = false }
 
-# Async (optional)
-tokio = { version = "1", default-features = false, features = ["io-util", "fs"] }
-futures-core = { version = "0.3", default-features = false }
-
 # Parallelism: Moirai defaults provide the data-parallel API, Mnemosyne memory
 # integration, and Mellinoe branded partitioning.
-moirai = { package = "moirai-runtime", version = "0.5.0", git = "https://github.com/ryancinsight/Moirai" }
-moirai-http = { version = "0.5.0", git = "https://github.com/ryancinsight/Moirai", package = "moirai-http", default-features = false }
+moirai = { package = "moirai-runtime", version = "0.5.0", git = "https://github.com/ryancinsight/Moirai", rev = "b548bc9" }
+moirai-async = { version = "0.5.0", git = "https://github.com/ryancinsight/Moirai", rev = "b548bc9", default-features = false }
 themis = { package = "themis-topology", version = "0.10.1", git = "https://github.com/ryancinsight/themis", default-features = false, features = ["std"] }
-hmac = { version = "0.12", default-features = false }
-sha2 = { version = "0.10", default-features = false }
-# S3 ListObjectsV2 XML response parsing (sans-I/O, alloc).
-quick-xml = { version = "0.37", default-features = false }
 
 # Testing
 proptest = { version = "1" }

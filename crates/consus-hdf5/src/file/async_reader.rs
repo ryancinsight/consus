@@ -21,8 +21,8 @@ use byteorder::{ByteOrder, LittleEndian};
 
 use consus_core::{Error, Result};
 
-#[cfg(feature = "async-io")]
-use consus_io::{AsyncLength, AsyncReadAt};
+#[cfg(feature = "async")]
+use moirai_async::io::{AsyncLength, AsyncReadAt};
 
 #[cfg(feature = "alloc")]
 use consus_io::ReadAt;
@@ -39,7 +39,7 @@ use crate::object_header::{OCHK_SIGNATURE, OHDR_SIGNATURE};
 #[cfg(feature = "alloc")]
 use crate::object_header::message_types;
 
-#[cfg(all(feature = "async-io", feature = "alloc"))]
+#[cfg(all(feature = "async", feature = "alloc"))]
 use crate::superblock::Superblock;
 
 // ---------------------------------------------------------------------------
@@ -136,7 +136,7 @@ impl ReadAt for MultiRegionBuffer {
 /// Read exactly `len` bytes from `source` at `offset`.
 ///
 /// Returns `Ok(vec![])` immediately for `len == 0` without issuing I/O.
-#[cfg(all(feature = "async-io", feature = "alloc"))]
+#[cfg(all(feature = "async", feature = "alloc"))]
 pub(crate) async fn read_region<R: AsyncReadAt>(
     source: &R,
     offset: u64,
@@ -150,8 +150,46 @@ pub(crate) async fn read_region<R: AsyncReadAt>(
         u64::try_from(len).map_err(|_| Error::Overflow)?,
         "async HDF5 read region",
     )?;
-    source.read_at(offset, &mut buf).await?;
+    source
+        .read_at(offset, &mut buf)
+        .await
+        .map_err(Error::from)?;
     Ok(buf)
+}
+
+/// Read a file-declared region in bounded chunks before allocating the next
+/// portion. The async source contract is owned by Moirai; this helper only
+/// applies HDF5's parser budget and maps the runtime I/O error.
+#[cfg(all(feature = "async", feature = "alloc"))]
+pub(crate) async fn read_at_bounded<R: AsyncReadAt>(
+    source: &R,
+    offset: u64,
+    declared: u64,
+    budget: &consus_core::ParseBudget,
+    what: &'static str,
+) -> Result<Vec<u8>> {
+    const READ_CHUNK_BYTES: usize = 64 * 1024;
+
+    let length = budget.checked_bytes(declared, what)?;
+    let mut output = Vec::new();
+    while output.len() < length {
+        let chunk = (length - output.len()).min(READ_CHUNK_BYTES);
+        output
+            .try_reserve(chunk)
+            .map_err(|_| Error::ResourceLimit {
+                what,
+                requested: declared,
+                limit: output.len() as u64,
+            })?;
+        let start = output.len();
+        output.resize(start + chunk, 0);
+        let read_offset = offset.checked_add(start as u64).ok_or(Error::Overflow)?;
+        source
+            .read_at(read_offset, &mut output[start..start + chunk])
+            .await
+            .map_err(Error::from)?;
+    }
+    Ok(output)
 }
 
 // ---------------------------------------------------------------------------
@@ -274,9 +312,9 @@ pub(crate) fn scan_v1_continuations(
 ///
 /// - `Error::InvalidFormat` if `source` is empty or contains no valid
 ///   HDF5 superblock at any expected offset.
-#[cfg(all(feature = "async-io", feature = "alloc"))]
+#[cfg(all(feature = "async", feature = "alloc"))]
 pub async fn async_read_superblock<R: AsyncReadAt + AsyncLength>(source: &R) -> Result<Superblock> {
-    let file_len = AsyncLength::len(source).await?;
+    let file_len = AsyncLength::len(source).await.map_err(Error::from)?;
     // 2048 (last valid search offset) + 64 (max superblock size) = 2112
     let window = usize::try_from(file_len.min(2112)).map_err(|_| Error::Overflow)?;
     if window == 0 {
@@ -306,7 +344,7 @@ pub async fn async_read_superblock<R: AsyncReadAt + AsyncLength>(source: &R) -> 
 /// - `Error::InvalidFormat` - signature mismatch, version mismatch, or
 ///   chunk data-size exceeds the 64 MiB safety limit.
 /// - `Error::Corrupted` - continuation chain exceeds 256 hops.
-#[cfg(all(feature = "async-io", feature = "alloc"))]
+#[cfg(all(feature = "async", feature = "alloc"))]
 async fn async_read_ohdr_v2<R: AsyncReadAt>(
     source: &R,
     address: u64,
@@ -436,7 +474,7 @@ async fn async_read_ohdr_v2<R: AsyncReadAt>(
 ///
 /// - `Error::InvalidFormat` - version byte is not 1.
 /// - `Error::Corrupted` - continuation chain exceeds 256 hops.
-#[cfg(all(feature = "async-io", feature = "alloc"))]
+#[cfg(all(feature = "async", feature = "alloc"))]
 async fn async_read_ohdr_v1<R: AsyncReadAt>(
     source: &R,
     address: u64,
@@ -505,7 +543,7 @@ async fn async_read_ohdr_v1<R: AsyncReadAt>(
 /// ## Errors
 ///
 /// Propagates errors from the selected v1 or v2 parser.
-#[cfg(all(feature = "async-io", feature = "alloc"))]
+#[cfg(all(feature = "async", feature = "alloc"))]
 pub async fn async_read_object_header<R: AsyncReadAt>(
     source: &R,
     address: u64,

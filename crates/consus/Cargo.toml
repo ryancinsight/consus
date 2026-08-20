@@ -51,8 +51,8 @@ deflate = ["consus-compression/deflate"]
 zstd = ["consus-compression/zstd"]
 lz4 = ["consus-compression/lz4"]
 
-# Async I/O
-async-io = ["consus-io/async-io"]
+# Native async I/O is owned by Moirai.
+async = ["consus-hdf5?/async"]
 # Atlas integration: prefer Themis topology detection for the default
 # partition count, with the standard-library fallback preserved.
 atlas-themis = ["std", "dep:themis"]

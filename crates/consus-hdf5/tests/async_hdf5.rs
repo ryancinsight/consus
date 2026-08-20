@@ -1,17 +1,8 @@
-//! Async HDF5 file reader integration tests.
-//!
-//! ## Coverage
-//!
-//! - AsyncHdf5File::open on builder-produced in-memory HDF5 files
-//! - Superblock fields (version, offset_size, length_size)
-//! - root_node_type() on a real group object header
-//! - node_type_at(root_group_address) dispatch
-//! - read_bytes returning the HDF5 magic bytes
-//! - dataset_at returning correct address, shape, and layout
-//! - Rejection of non-HDF5 data and empty sources
+//! Async HDF5 reader integration tests using Moirai's native async surface.
 
-#![cfg(feature = "async-io")]
+#![cfg(feature = "async")]
 
+use core::future::Future;
 use core::num::NonZeroUsize;
 
 use consus_core::{ByteOrder, Datatype, Error, NodeType, ParseBudget, Shape};
@@ -19,7 +10,18 @@ use consus_hdf5::dataset::StorageLayout;
 use consus_hdf5::file::Hdf5File;
 use consus_hdf5::file::async_file::AsyncHdf5File;
 use consus_hdf5::file::writer::{DatasetCreationProps, FileCreationProps, Hdf5FileBuilder};
-use consus_io::{AsyncMemCursor, MemCursor};
+use consus_io::MemCursor;
+use moirai_async::{AsyncExecutor, AsyncMemReader};
+
+fn run_async<F, T>(future: F) -> T
+where
+    F: Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    AsyncExecutor::new()
+        .expect("Moirai executor must initialize")
+        .block_on(future)
+}
 
 fn build_scalar_hdf5() -> Vec<u8> {
     let dt = Datatype::Integer {
@@ -48,152 +50,113 @@ fn dataset_addr_sync(bytes: &[u8], name: &str) -> u64 {
     let children = file.list_root_group().expect("list root");
     children
         .iter()
-        .find(|(n, _, _)| n == name)
-        .map(|(_, addr, _)| *addr)
-        .unwrap_or_else(|| panic!("dataset {} not found", name))
+        .find(|(child_name, _, _)| child_name == name)
+        .map(|(_, address, _)| *address)
+        .unwrap_or_else(|| panic!("dataset {name} not found"))
 }
 
-#[tokio::test]
-async fn async_open_reads_correct_superblock_version() {
-    let bytes = build_scalar_hdf5();
-    let cursor = AsyncMemCursor::from_bytes(bytes);
-    let file = AsyncHdf5File::open(cursor).await.expect("must open");
-    assert_eq!(file.superblock().version, 2);
+#[test]
+fn async_open_reads_correct_superblock_version() {
+    run_async(async {
+        let file = AsyncHdf5File::open(AsyncMemReader::from_bytes(build_scalar_hdf5()))
+            .await
+            .expect("must open");
+        assert_eq!(file.superblock().version, 2);
+        assert_eq!(file.superblock().offset_size, 8);
+        assert_eq!(file.superblock().length_size, 8);
+        assert!(file.superblock().eof_address > 0);
+    });
 }
 
-#[tokio::test]
-async fn async_superblock_offset_and_length_size() {
-    let bytes = build_scalar_hdf5();
-    let cursor = AsyncMemCursor::from_bytes(bytes);
-    let file = AsyncHdf5File::open(cursor).await.expect("must open");
-    assert_eq!(file.superblock().offset_size, 8);
-    assert_eq!(file.superblock().length_size, 8);
-    assert_eq!(file.context().offset_size, 8);
-    assert_eq!(file.context().length_size, 8);
+#[test]
+fn async_root_node_type_is_group() {
+    run_async(async {
+        let file = AsyncHdf5File::open(AsyncMemReader::from_bytes(build_scalar_hdf5()))
+            .await
+            .expect("must open");
+        assert_eq!(
+            file.root_node_type().await.expect("root_node_type"),
+            NodeType::Group
+        );
+        let root = file.superblock().root_group_address;
+        assert_eq!(
+            file.node_type_at(root).await.expect("node_type_at"),
+            NodeType::Group
+        );
+    });
 }
 
-#[tokio::test]
-async fn async_superblock_eof_address_nonzero() {
-    let bytes = build_scalar_hdf5();
-    let cursor = AsyncMemCursor::from_bytes(bytes);
-    let file = AsyncHdf5File::open(cursor).await.expect("must open");
-    assert!(
-        file.superblock().eof_address > 0,
-        "eof_address must be non-zero"
-    );
+#[test]
+fn async_read_bytes_returns_hdf5_magic() {
+    run_async(async {
+        let file = AsyncHdf5File::open(AsyncMemReader::from_bytes(build_scalar_hdf5()))
+            .await
+            .expect("must open");
+        assert_eq!(
+            file.read_bytes(0, 8).await.expect("read_bytes"),
+            b"\x89HDF\r\n\x1a\n"
+        );
+    });
 }
 
-#[tokio::test]
-async fn async_root_node_type_is_group() {
-    let bytes = build_scalar_hdf5();
-    let cursor = AsyncMemCursor::from_bytes(bytes);
-    let file = AsyncHdf5File::open(cursor).await.expect("must open");
-    let nt = file.root_node_type().await.expect("root_node_type");
-    assert_eq!(nt, NodeType::Group);
+#[test]
+fn async_read_bytes_rejects_region_beyond_budget() {
+    run_async(async {
+        let file = AsyncHdf5File::open(AsyncMemReader::from_bytes(build_scalar_hdf5()))
+            .await
+            .expect("must open");
+        let result = file
+            .read_bytes(0, ParseBudget::DEFAULT.max_alloc_bytes + 1)
+            .await;
+        assert!(matches!(
+            result,
+            Err(Error::ResourceLimit {
+                what: "async HDF5 read region",
+                ..
+            })
+        ));
+    });
 }
 
-#[tokio::test]
-async fn async_node_type_at_root_matches_root_node_type() {
-    let bytes = build_scalar_hdf5();
-    let cursor = AsyncMemCursor::from_bytes(bytes);
-    let file = AsyncHdf5File::open(cursor).await.expect("must open");
-    let root_addr = file.superblock().root_group_address;
-    let nt_via_method = file.root_node_type().await.expect("root_node_type");
-    let nt_via_addr = file.node_type_at(root_addr).await.expect("node_type_at");
-    assert_eq!(nt_via_method, nt_via_addr);
-    assert_eq!(nt_via_addr, NodeType::Group);
+#[test]
+fn async_dataset_at_matches_sync_path() {
+    run_async(async {
+        let bytes = build_scalar_hdf5();
+        let address = dataset_addr_sync(&bytes, "scalar_value");
+        let sync_file = Hdf5File::open(MemCursor::from_bytes(bytes.clone())).expect("sync open");
+        let sync_dataset = sync_file.dataset_at(address).expect("sync dataset_at");
+        let async_file = AsyncHdf5File::open(AsyncMemReader::from_bytes(bytes))
+            .await
+            .expect("async open");
+        let async_dataset = async_file
+            .dataset_at(address)
+            .await
+            .expect("async dataset_at");
+        assert_eq!(
+            async_dataset.object_header_address,
+            sync_dataset.object_header_address
+        );
+        assert_eq!(async_dataset.layout, sync_dataset.layout);
+        assert_eq!(
+            async_dataset.shape.is_scalar(),
+            sync_dataset.shape.is_scalar()
+        );
+        assert_eq!(
+            async_dataset.shape.num_elements(),
+            sync_dataset.shape.num_elements()
+        );
+        assert_eq!(async_dataset.layout, StorageLayout::Contiguous);
+    });
 }
 
-#[tokio::test]
-async fn async_read_bytes_returns_hdf5_magic() {
-    let bytes = build_scalar_hdf5();
-    let cursor = AsyncMemCursor::from_bytes(bytes);
-    let file = AsyncHdf5File::open(cursor).await.expect("must open");
-    let magic = file.read_bytes(0, 8).await.expect("read_bytes");
-    assert_eq!(
-        magic.as_slice(),
-        b"\x89HDF\r\n\x1a\n",
-        "first 8 bytes must be HDF5 magic"
-    );
-}
-
-#[tokio::test]
-async fn async_read_bytes_rejects_region_beyond_budget() {
-    let bytes = build_scalar_hdf5();
-    let cursor = AsyncMemCursor::from_bytes(bytes);
-    let file = AsyncHdf5File::open(cursor).await.expect("must open");
-    let result = file
-        .read_bytes(0, ParseBudget::DEFAULT.max_alloc_bytes + 1)
-        .await;
-    assert!(matches!(
-        result,
-        Err(Error::ResourceLimit {
-            what: "async HDF5 read region",
-            ..
-        })
-    ));
-}
-
-#[tokio::test]
-async fn async_dataset_at_scalar_returns_correct_metadata() {
-    let bytes = build_scalar_hdf5();
-    let ds_addr = dataset_addr_sync(&bytes, "scalar_value");
-    let cursor = AsyncMemCursor::from_bytes(bytes);
-    let file = AsyncHdf5File::open(cursor).await.expect("must open");
-    let dataset = file.dataset_at(ds_addr).await.expect("dataset_at");
-    assert_eq!(
-        dataset.object_header_address, ds_addr,
-        "object_header_address must match"
-    );
-    assert!(dataset.shape.is_scalar(), "shape must be scalar");
-    assert_eq!(
-        dataset.layout,
-        StorageLayout::Contiguous,
-        "must use contiguous layout"
-    );
-}
-
-#[tokio::test]
-async fn async_dataset_at_matches_sync_path() {
-    let bytes = build_scalar_hdf5();
-    let ds_addr = dataset_addr_sync(&bytes, "scalar_value");
-    let sync_cursor = MemCursor::from_bytes(bytes.clone());
-    let sync_file = Hdf5File::open(sync_cursor).expect("sync open");
-    let sync_dataset = sync_file.dataset_at(ds_addr).expect("sync dataset_at");
-    let async_cursor = AsyncMemCursor::from_bytes(bytes);
-    let async_file = AsyncHdf5File::open(async_cursor).await.expect("async open");
-    let async_dataset = async_file
-        .dataset_at(ds_addr)
-        .await
-        .expect("async dataset_at");
-    assert_eq!(
-        async_dataset.object_header_address,
-        sync_dataset.object_header_address
-    );
-    assert_eq!(async_dataset.layout, sync_dataset.layout);
-    assert_eq!(
-        async_dataset.shape.is_scalar(),
-        sync_dataset.shape.is_scalar()
-    );
-    assert_eq!(
-        async_dataset.shape.num_elements(),
-        sync_dataset.shape.num_elements()
-    );
-}
-
-#[tokio::test]
-async fn async_open_rejects_non_hdf5() {
-    let cursor = AsyncMemCursor::from_bytes(vec![0u8; 4096]);
-    let result = AsyncHdf5File::open(cursor).await;
-    assert!(
-        result.is_err(),
-        "must reject a buffer containing no HDF5 superblock"
-    );
-}
-
-#[tokio::test]
-async fn async_open_rejects_empty_source() {
-    let cursor = AsyncMemCursor::new();
-    let result = AsyncHdf5File::open(cursor).await;
-    assert!(result.is_err(), "must reject an empty source");
+#[test]
+fn async_open_rejects_non_hdf5_and_empty_sources() {
+    run_async(async {
+        assert!(
+            AsyncHdf5File::open(AsyncMemReader::from_bytes(vec![0; 4096]))
+                .await
+                .is_err()
+        );
+        assert!(AsyncHdf5File::open(AsyncMemReader::new()).await.is_err());
+    });
 }

@@ -115,41 +115,6 @@ pub fn read_at_bounded<R: ReadAt + ?Sized>(
     Ok(output)
 }
 
-/// Asynchronous counterpart to [`read_at_bounded`], with identical bounds.
-///
-/// # Errors
-///
-/// As [`read_at_bounded`].
-#[cfg(feature = "async-traits")]
-pub async fn async_read_at_bounded<R: crate::io::traits::AsyncReadAt + ?Sized>(
-    source: &R,
-    pos: u64,
-    declared: u64,
-    budget: &ParseBudget,
-    what: &'static str,
-) -> ConsusResult<Vec<u8>> {
-    let length = budget.checked_bytes(declared, what)?;
-
-    let mut output = Vec::new();
-    while output.len() < length {
-        let chunk = (length - output.len()).min(READ_CHUNK_BYTES);
-        output
-            .try_reserve(chunk)
-            .map_err(|_| ConsusError::ResourceLimit {
-                what,
-                requested: declared,
-                limit: output.len() as u64,
-            })?;
-        let start = output.len();
-        output.resize(start + chunk, 0);
-        let offset = pos.checked_add(start as u64).ok_or(ConsusError::Overflow)?;
-        source
-            .read_at(offset, &mut output[start..start + chunk])
-            .await?;
-    }
-    Ok(output)
-}
-
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;

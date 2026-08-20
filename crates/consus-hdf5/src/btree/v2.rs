@@ -67,10 +67,10 @@ use alloc::{format, vec::Vec};
 use consus_core::Error;
 use consus_core::Result;
 
-#[cfg(all(feature = "async-io", feature = "alloc"))]
-use consus_io::AsyncReadAt;
 #[cfg(feature = "alloc")]
 use consus_io::ReadAt;
+#[cfg(all(feature = "async", feature = "alloc"))]
+use moirai_async::io::AsyncReadAt;
 
 #[cfg(feature = "alloc")]
 use crate::address::ParseContext;
@@ -221,7 +221,7 @@ impl BTreeV2Header {
     }
 
     /// Parse a B-tree v2 header from an async I/O source.
-    #[cfg(all(feature = "async-io", feature = "alloc"))]
+    #[cfg(all(feature = "async", feature = "alloc"))]
     pub async fn async_parse<R: AsyncReadAt>(
         source: &R,
         address: u64,
@@ -231,7 +231,10 @@ impl BTreeV2Header {
         let min_size = 4 + 1 + 1 + 4 + 2 + 2 + 1 + 1 + s + 2 + s + 4;
 
         let mut buf = vec![0u8; min_size];
-        source.read_at(address, &mut buf).await?;
+        source
+            .read_at(address, &mut buf)
+            .await
+            .map_err(Error::from)?;
 
         if buf[0..4] != BTREE_V2_SIGNATURE {
             return Err(Error::InvalidFormat {
@@ -396,7 +399,7 @@ impl BTreeV2LeafNode {
     }
 
     /// Parse a B-tree v2 leaf node from an async I/O source.
-    #[cfg(all(feature = "async-io", feature = "alloc"))]
+    #[cfg(all(feature = "async", feature = "alloc"))]
     pub async fn async_parse<R: AsyncReadAt>(
         source: &R,
         address: u64,
@@ -404,7 +407,7 @@ impl BTreeV2LeafNode {
         num_records: u16,
         ctx: &ParseContext,
     ) -> Result<Self> {
-        let buf = consus_io::async_read_at_bounded(
+        let buf = crate::file::async_reader::read_at_bounded(
             source,
             address,
             u64::from(header.node_size),
@@ -603,7 +606,7 @@ impl BTreeV2InternalNode {
     }
 
     /// Parse a B-tree v2 internal node from an async I/O source.
-    #[cfg(all(feature = "async-io", feature = "alloc"))]
+    #[cfg(all(feature = "async", feature = "alloc"))]
     pub async fn async_parse<R: AsyncReadAt>(
         source: &R,
         address: u64,
@@ -611,7 +614,7 @@ impl BTreeV2InternalNode {
         num_records: u16,
         ctx: &ParseContext,
     ) -> Result<Self> {
-        let buf = consus_io::async_read_at_bounded(
+        let buf = crate::file::async_reader::read_at_bounded(
             source,
             address,
             u64::from(header.node_size),
@@ -844,7 +847,7 @@ fn collect_records_recursive<R: ReadAt>(
 }
 
 /// Collect all records from a B-tree v2 by recursive traversal, asynchronously.
-#[cfg(all(feature = "async-io", feature = "alloc"))]
+#[cfg(all(feature = "async", feature = "alloc"))]
 pub async fn async_collect_all_records<R: AsyncReadAt>(
     source: &R,
     header: &BTreeV2Header,
@@ -879,7 +882,7 @@ pub async fn async_collect_all_records<R: AsyncReadAt>(
     Ok(records)
 }
 
-#[cfg(all(feature = "async-io", feature = "alloc"))]
+#[cfg(all(feature = "async", feature = "alloc"))]
 async fn async_collect_records_recursive<R: AsyncReadAt>(
     source: &R,
     header: &BTreeV2Header,
