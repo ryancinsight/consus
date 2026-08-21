@@ -3,11 +3,11 @@
 # Uncomment for specific targets:
 # target = "wasm32-unknown-unknown"
 
-[target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "target-cpu=native"]
-
-[target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-cpu=native"]
+# No `target-cpu=native`: it is not portable. Committed here it codegens every CI,
+# MSRV, and release build for whichever machine happened to run the build, and it
+# contradicts the runtime ISA detection the codecs already perform to select their
+# vector paths. `-C target-cpu=native` belongs in a local, non-distributed build
+# only, per the Atlas build-configuration rules.
 
 [alias]
 xtask = "run --package xtask --"
