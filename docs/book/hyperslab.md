@@ -17,9 +17,9 @@ Each dimension of a hyperslab is described by four parameters:
 
 The selected indices along dimension `i` are:
 
-```
+```text
 { start[i] + n × stride[i] + b : n ∈ [0, count[i]), b ∈ [0, block[i]) }
-```
+```text
 
 Total selected elements = `Πᵢ count[i] × block[i]`.
 
@@ -33,7 +33,7 @@ let dim = HyperslabDim::range(10, 50);   // stride=1, block=1
 
 // Every other row, 4-element blocks: rows 0, 2, 4, …
 let dim = HyperslabDim { start: 0, stride: 2, count: 100, block: 4 };
-```
+```text
 
 ### Validity
 
@@ -73,7 +73,7 @@ let sel = Selection::Hyperslab(Hyperslab::new(vec![
 ]));
 
 dataset.read_selection::<f32>(&sel)?;
-```
+```text
 
 Hyperslab I/O avoids loading the entire dataset into memory and is essential
 for large scientific arrays that exceed available RAM.
