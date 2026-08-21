@@ -41,7 +41,7 @@ offset:
 
 For a rank-R array with shape `(d₀, d₁, …, d_{R−1})` in row-major order:
 
-```
+```text
 offset = Σᵢ idxᵢ × Πⱼ₌ᵢ₊₁^{R−1} dⱼ
 ```
 
