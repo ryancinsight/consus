@@ -17,7 +17,7 @@ allocation policy, or visualization.
 
 ## Where Consus Sits
 
-```
+```text
 eunomia → aequitas → ... physics providers (helios, kwavers, CFDrs, ritk) ...
                                │
                                ▼ (store results)

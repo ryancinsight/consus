@@ -5,6 +5,8 @@
 //! parameters; the selected indices are
 //! `{ start + n·stride + b : n ∈ [0, count), b ∈ [0, block) }`.
 
+extern crate consus_core;
+
 use consus_core::types::selection::{Hyperslab, HyperslabDim};
 
 fn main() {

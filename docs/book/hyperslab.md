@@ -17,7 +17,7 @@ Each dimension of a hyperslab is described by four parameters:
 
 The selected indices along dimension `i` are:
 
-```
+```text
 { start[i] + n × stride[i] + b : n ∈ [0, count[i]), b ∈ [0, block[i]) }
 ```
 

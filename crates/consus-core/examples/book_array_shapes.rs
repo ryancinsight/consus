@@ -4,6 +4,8 @@
 //! fixed (known at creation) or unlimited (growable).  [`ChunkShape`] tiles a
 //! dataset into fixed-size storage blocks for chunked I/O.
 
+extern crate consus_core;
+
 use consus_core::types::{ChunkShape, Extent, Layout, Shape};
 
 fn main() {
