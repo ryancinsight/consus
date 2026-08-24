@@ -22,6 +22,14 @@ env:
   RUSTFLAGS: -Dwarnings
 
 jobs:
+  # Guards the one artifact whose correctness cannot be checked from inside the
+  # overlay environment that produces it. Calls the shared Atlas workflow.
+  lockfile:
+    name: Lockfile integrity
+    uses: ryancinsight/atlas/.github/workflows/lockfile-guard.yml@886d85b0e4bea20c8e5ec4b4239e6ba9cdbcf74d
+    permissions:
+      contents: read
+
   fmt:
     name: Format
     runs-on: ubuntu-latest
