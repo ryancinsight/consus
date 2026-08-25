@@ -1,6 +1,9 @@
 //! miMATRIX element parser for MAT v5.
 // Explicit `for f in 0..nfields` loops index parallel field arrays; reviewed-policy allow.
-#![allow(clippy::needless_range_loop)]
+#![expect(
+    clippy::needless_range_loop,
+    reason = "explicit `for f in 0..nfields` loops index parallel field arrays"
+)]
 #[cfg(feature = "alloc")]
 use alloc::{string::String, vec, vec::Vec};
 

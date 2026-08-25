@@ -1,6 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 // Doc-comment whitespace lint (rendering-neutral); reviewed-policy allow.
-#![allow(clippy::empty_line_after_doc_comments)]
+#![expect(
+    clippy::empty_line_after_doc_comments,
+    reason = "doc-comment whitespace is rendering-neutral; reviewed-policy allowance"
+)]
 
 //! # consus-arrow
 //!
