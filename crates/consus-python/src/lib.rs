@@ -6,9 +6,15 @@
 // conversion that clippy ≥1.95 flags as `useless_conversion`. The lint fires on
 // macro-generated code (the diagnostic span maps to the fn signature, where there
 // is no editable `.into()`), so it is suppressed crate-wide rather than per-site.
-#![allow(clippy::useless_conversion)]
+#![expect(
+    clippy::useless_conversion,
+    reason = "PyO3 `#[pymethods]` expansion emits an unavoidable `PyErr` conversion (span maps to the fn signature; no editable `.into()`)"
+)]
 // Some `#[pymethods]` mirror Python constructor signatures with many parameters.
-#![allow(clippy::too_many_arguments)]
+#![expect(
+    clippy::too_many_arguments,
+    reason = "`#[pymethods]` mirror Python constructor signatures with many parameters"
+)]
 
 extern crate alloc;
 

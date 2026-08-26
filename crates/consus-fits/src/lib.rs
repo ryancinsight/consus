@@ -37,7 +37,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 // FITS table/header readers take many column/layout parameters; wide signatures
 // are inherent to the format. Reviewed policy (see consus-hdf5 for rationale).
-#![allow(clippy::too_many_arguments)]
+#![expect(
+    clippy::too_many_arguments,
+    reason = "FITS table/header readers take many column/layout parameters; wide signatures are inherent to the format"
+)]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;

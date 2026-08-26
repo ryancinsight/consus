@@ -1,7 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 // Nested `if let` over attribute decode results reads clearer un-collapsed here;
 // reviewed-policy allow.
-#![allow(clippy::collapsible_match)]
+#![expect(
+    clippy::collapsible_match,
+    reason = "nested `if let` over attribute decode results reads clearer un-collapsed here"
+)]
 
 //! # consus-netcdf
 //!
