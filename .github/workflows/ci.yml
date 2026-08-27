@@ -73,7 +73,18 @@ jobs:
         with:
           toolchain: stable
           components: clippy
+      # Shared-key rust-cache so the 15-package matrix is warm across PRs
+      # instead of rebuilding from scratch each time. Default-keyed rust-cache
+      # hashes Cargo.lock and wipes target/ on every first-party provider repin
+      # (which consus does routinely); shared-key invalidates incrementally and
+      # is written from main only so concurrent branches cannot evict it.
+      # Mirrors the CFDrs #375/ritk #211/helios #75/eunomia #74 lever under
+      # ATLAS-CI-RUNNER-SATURATION.
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+        with:
+          workspaces: .
+          shared-key: consus
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Normalize lock onto current provider heads
         shell: bash
         run: cargo metadata --format-version 1 --all-features > /dev/null
@@ -117,6 +128,10 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+        with:
+          workspaces: .
+          shared-key: consus
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
         with:
           tool: nextest@0.9.140
@@ -155,6 +170,10 @@ jobs:
         with:
           toolchain: 1.85.0
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+        with:
+          workspaces: .
+          shared-key: consus
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Normalize lock onto current provider heads
         shell: bash
         run: cargo metadata --format-version 1 --all-features > /dev/null
@@ -171,6 +190,10 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+        with:
+          workspaces: .
+          shared-key: consus
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
         with:
           tool: nextest@0.9.140
@@ -197,9 +220,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           toolchain: nightly
+      # Shared-key rust-cache for the fuzz workspace so targets compile warm
+      # instead of cold-building nightly deps on every PR. Mirrors the fleet
+      # rust-cache lever under ATLAS-CI-RUNNER-SATURATION; written from main
+      # only.
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
         with:
           workspaces: fuzz
+          shared-key: consus-fuzz
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
         with:
           tool: cargo-fuzz@0.13.1
@@ -229,6 +258,8 @@ jobs:
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
         with:
           workspaces: fuzz
+          shared-key: consus-fuzz
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
         with:
           tool: cargo-fuzz@0.13.1
