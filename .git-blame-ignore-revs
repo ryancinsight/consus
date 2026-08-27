@@ -1,0 +1,3 @@
+# Commits to skip when blaming (git blame --ignore-revs-file=.git-blame-ignore-revs).
+# Line-ending renormalization — no content change (ATLAS-GITATTRIBUTES-DRIFT).
+269655d25ef752cfc9aa4fcfd8030843cfb97832
