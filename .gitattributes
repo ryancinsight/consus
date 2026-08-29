@@ -1,0 +1,27 @@
+# One line-ending policy across the stack, applied to the blobs as well as
+# declared (ATLAS-GITATTRIBUTES-DRIFT). LF on every platform so Windows and
+# Linux agents produce identical blobs and CRLF-replacement warnings vanish.
+* text=auto eol=lf
+
+# License files have no extension and are pure text.
+LICENSE-APACHE text eol=lf
+LICENSE-MIT text eol=lf
+
+# Binary scientific-data formats — never normalized.
+*.h5 binary
+*.mat binary
+*.nc binary
+*.arrow binary
+*.parquet binary
+*.nwb binary
+
+# NCZarr chunk blobs have no extension — mark them binary by directory shape.
+# v2 keeps its slices as N.N chunk-index files; v3 nests them under c/N/N.
+# The JSON metadata (.zarray/.zattrs/zarr.json/manifest.json) right next to
+# them must stay text, so only the digit-led chunk names match these globs,
+# never the dot-file metadata.
+data/zarr_python_fixtures/generated/v2_*/[0-9].[0-9] binary
+data/zarr_python_fixtures/generated/v3_*/c/[0-9]/[0-9] binary
+
+# Fuzz corpus seeds are byte blobs with no extension.
+fuzz/corpus/** binary
