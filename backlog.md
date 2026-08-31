@@ -1,6 +1,6 @@
 # Consus — Backlog
 
-## CONSUS-CONFORMANCE-RATCHET-2026-08-31 [patch] — in progress
+## CONSUS-CONFORMANCE-RATCHET-2026-08-31 [patch] — implementation complete; merge pending
 
 - Outcome: restore the Atlas debt ratchet at the exact pinned Consus revision
   without raising its committed baseline.
@@ -8,8 +8,10 @@
   `.git-blame-ignore-revs` false positive in the owning Atlas scanner.
 - Acceptance: Consus `workflow_missing_timeout` and `root_sprawl` both return
   to zero; workflow syntax and the Atlas detector regression suite pass.
-- Integrator: Codex; lease: Codex `.github/workflows/python-release.yml`, this
-  item block, and the corresponding Atlas scanner/test increment.
+- Evidence: provider source `a6cf113`; Atlas detector source `e421540a6`; the
+  27-case detector suite passes and the combined exact scan reports
+  `root_sprawl=0`, `workflow_missing_timeout=0`.
+- Integrator: Codex; lease: none. Provider and Atlas review/merge remain.
 - Last update: 2026-08-31.
 
 ## ATLAS-CONSUS-SHUFFLE-038 — HDF5 shuffle filter is a silent no-op on read [major] — complete 2026-08-19
