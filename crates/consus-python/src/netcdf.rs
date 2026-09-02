@@ -145,7 +145,7 @@ fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject
             )));
         }
     };
-    if data.len() % nbytes != 0 {
+    if !data.len().is_multiple_of(nbytes) {
         return Err(PyValueError::new_err(format!(
             "data length {} is not a multiple of element size {}",
             data.len(),

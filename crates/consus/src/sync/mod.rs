@@ -198,7 +198,7 @@ impl<'a> TypedByteView<'a> {
             .element_size()
             .ok_or_else(variable_length_zero_copy_unsupported)?;
 
-        if bytes.len() % element_size != 0 {
+        if !bytes.len().is_multiple_of(element_size) {
             return Err(Error::DatatypeMismatch {
                 #[cfg(feature = "alloc")]
                 expected: alloc::format!("byte length multiple of element size {element_size}"),

@@ -54,7 +54,7 @@ impl FitsLogicalRecord {
 
     /// Return whether `len` is aligned to a FITS logical record boundary.
     pub const fn is_aligned(len: usize) -> bool {
-        len % FITS_LOGICAL_RECORD_LEN == 0
+        len.is_multiple_of(FITS_LOGICAL_RECORD_LEN)
     }
 }
 

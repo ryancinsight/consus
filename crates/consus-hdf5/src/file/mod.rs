@@ -1137,7 +1137,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
             }
 
             let offset = usize::try_from(dimension_offsets[dim]).map_err(|_| Error::Overflow)?;
-            if offset % chunk_dim != 0 {
+            if !offset.is_multiple_of(chunk_dim) {
                 return Err(Error::InvalidFormat {
                     message: String::from("chunk element offset is not aligned to chunk dimension"),
                 });

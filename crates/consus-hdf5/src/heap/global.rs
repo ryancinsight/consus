@@ -269,7 +269,7 @@ pub fn resolve_vl_references<R: ReadAt>(
     let offset_bytes = ctx.offset_bytes();
     let ref_size = 4 + offset_bytes + 4;
 
-    if raw_data.len() % ref_size != 0 {
+    if !raw_data.len().is_multiple_of(ref_size) {
         return Err(Error::InvalidFormat {
             message: alloc::format!(
                 "VL raw data length {} is not a multiple of ref_size {} (offset_size={})",
