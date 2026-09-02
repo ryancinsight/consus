@@ -57,16 +57,16 @@ pub use endian::{EndianScalar, read_integer};
 ///   [`Error::InvalidFormat`].
 #[cfg(feature = "alloc")]
 pub fn decode_to_f64(raw: &[u8], dtype: &Datatype) -> Result<Vec<f64>, Error> {
-    if let Some(size) = dtype.element_size() {
-        if !raw.len().is_multiple_of(size) {
-            return Err(Error::InvalidFormat {
-                message: alloc::format!(
-                    "decode_to_f64: buffer length {} is not a multiple of element size {}",
-                    raw.len(),
-                    size
-                ),
-            });
-        }
+    if let Some(size) = dtype.element_size()
+        && !raw.len().is_multiple_of(size)
+    {
+        return Err(Error::InvalidFormat {
+            message: alloc::format!(
+                "decode_to_f64: buffer length {} is not a multiple of element size {}",
+                raw.len(),
+                size
+            ),
+        });
     }
     match dtype {
         Datatype::Float { bits, byte_order } => match bits.get() {
