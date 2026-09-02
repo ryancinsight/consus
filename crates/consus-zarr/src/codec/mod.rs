@@ -101,9 +101,9 @@ fn matches_host_endianness(configured: &str) -> Result<bool> {
 /// wrong, and the caller has to hear about it.
 #[cfg(feature = "alloc")]
 fn byte_swap_elements(data: &[u8], element_size: usize) -> Result<Vec<u8>> {
-    // `%` rather than `is_multiple_of`, which is stable only since 1.87 and
-    // this workspace's MSRV is 1.85. The zero check guards the division.
-    if element_size == 0 || data.len() % element_size != 0 {
+    // A zero element size is rejected outright: `is_multiple_of(0)` would
+    // accept an empty buffer, and no element is zero bytes wide.
+    if element_size == 0 || !data.len().is_multiple_of(element_size) {
         return Err(consus_core::Error::Corrupted {
             message: alloc::format!(
                 "zarr `bytes` codec: {} bytes is not a whole number of \
