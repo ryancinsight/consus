@@ -3,7 +3,7 @@
 **Pure-Rust, `no_std`-compatible, memory-safe reimplementation of hierarchical and array-oriented storage formats for scientific computing.**
 
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
-[![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-1.95%2B-orange.svg)](https://www.rust-lang.org)
 
 ## Overview
 
@@ -147,7 +147,7 @@ Current repository verification indicates:
 
 ## Minimum Supported Rust Version
 
-1.85.0 (edition 2024)
+1.95.0 (edition 2024)
 
 ### Pre-push hook
 
