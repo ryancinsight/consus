@@ -10,7 +10,9 @@ permissions:
   contents: read
 concurrency:
   group: book-pages-${{ github.ref }}
-  cancel-in-progress: true
+  # Deploys queue behind one another; a half-cancelled deploy is worse than a
+  # superseded one, and a cancelled default-branch run leaves that merge undeployed.
+  cancel-in-progress: false
 jobs:
   deploy:
     uses: ryancinsight/atlas/.github/workflows/book-pages.yml@20c93980f7c98f2e23a89c4a0540f16c8f2d7239
