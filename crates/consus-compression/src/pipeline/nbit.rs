@@ -218,7 +218,7 @@ impl Filter for NbitFilter {
 
         match direction {
             FilterDirection::Forward => {
-                if data.len() % elem_bytes != 0 {
+                if !data.len().is_multiple_of(elem_bytes) {
                     return Err(Error::InvalidFormat {
                         message: alloc::format!(
                             "nbit pack: data length {} is not divisible by element size {} bytes",

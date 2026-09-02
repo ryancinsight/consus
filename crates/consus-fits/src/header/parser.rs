@@ -121,7 +121,7 @@ impl FitsHeader {
 /// - mandatory primary-header keywords are missing or out of order
 #[cfg(feature = "alloc")]
 pub fn parse_header_bytes(bytes: &[u8]) -> Result<FitsHeader> {
-    if bytes.len() % FITS_CARD_LEN != 0 {
+    if !bytes.len().is_multiple_of(FITS_CARD_LEN) {
         return invalid_format("FITS header byte length is not a multiple of 80");
     }
 

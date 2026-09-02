@@ -146,7 +146,7 @@ impl Filter for ShuffleFilter {
     fn apply(&self, direction: FilterDirection, data: &[u8]) -> Result<Vec<u8>> {
         let t = self.typesize;
 
-        if data.len() % t != 0 {
+        if !data.len().is_multiple_of(t) {
             return Err(Error::InvalidFormat {
                 message: alloc::format!(
                     "shuffle: data length {} is not divisible by typesize {}",
