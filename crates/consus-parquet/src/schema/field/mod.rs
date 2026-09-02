@@ -219,10 +219,8 @@ impl FieldDescriptor {
     }
 
     /// Returns `true` if this is a group field.
-    // Not `const`: `Vec::is_empty` in const context is only stable since Rust
-    // 1.87, but the crate MSRV is 1.85.
     #[must_use]
-    pub fn is_group(&self) -> bool {
+    pub const fn is_group(&self) -> bool {
         !self.children.is_empty()
     }
 
