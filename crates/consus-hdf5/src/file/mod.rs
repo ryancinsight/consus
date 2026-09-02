@@ -582,13 +582,13 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
             // Fall back to v1 symbol table. v2 groups have no SYMBOL_TABLE
             // message, so list_group_v1 returns InvalidFormat in that case
             // treat failure as an empty list rather than propagating the error.
-            if found.is_none() {
-                if let Ok(v1) = reader::list_group_v1(&self.source, &header, &self.ctx) {
-                    for (name, addr) in &v1 {
-                        if name.as_str() == component {
-                            found = Some(*addr);
-                            break;
-                        }
+            if found.is_none()
+                && let Ok(v1) = reader::list_group_v1(&self.source, &header, &self.ctx)
+            {
+                for (name, addr) in &v1 {
+                    if name.as_str() == component {
+                        found = Some(*addr);
+                        break;
                     }
                 }
             }
@@ -893,7 +893,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
         }
 
         let payload = record_size - overhead;
-        if payload % 8 != 0 {
+        if !payload.is_multiple_of(8) {
             return Err(Error::InvalidFormat {
                 message: String::from(
                     "v4 chunk record scaled-offset payload is not aligned to 8-byte offsets",

@@ -1,7 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 // Nested `if let` over attribute decode results reads clearer un-collapsed here;
 // reviewed-policy allow.
+// Which lint clippy raises for a nesting follows the MSRV: below 1.88 every one
+// was `collapsible_match`; with let chains available most become `collapsible_if`.
 #![expect(
+    clippy::collapsible_if,
     clippy::collapsible_match,
     reason = "nested `if let` over attribute decode results reads clearer un-collapsed here"
 )]

@@ -171,7 +171,7 @@ mod imp {
                         char::from_u32(code_unit as u32).unwrap_or(char::REPLACEMENT_CHARACTER),
                     );
                 }
-                if raw.len() % 2 != 0 {
+                if !raw.len().is_multiple_of(2) {
                     return Err(MatError::InvalidFormat(String::from(
                         "v7.3 char dataset byte length is not a multiple of 2",
                     )));

@@ -116,14 +116,14 @@ pub fn read_chunk_raw<R: consus_io::ReadAt>(
         // the budget is the only thing standing between the header and the
         // allocator.
         let mut buf = budget.zeroed(uncompressed_size as u64, "chunk uncompressed size")?;
-        if let Some(fv) = fill_value {
-            if !fv.is_empty() {
-                // Tile the fill value pattern across the buffer.
-                // Invariant: element_size divides uncompressed_size.
-                for chunk in buf.chunks_mut(fv.len()) {
-                    let copy_len = chunk.len().min(fv.len());
-                    chunk[..copy_len].copy_from_slice(&fv[..copy_len]);
-                }
+        if let Some(fv) = fill_value
+            && !fv.is_empty()
+        {
+            // Tile the fill value pattern across the buffer.
+            // Invariant: element_size divides uncompressed_size.
+            for chunk in buf.chunks_mut(fv.len()) {
+                let copy_len = chunk.len().min(fv.len());
+                chunk[..copy_len].copy_from_slice(&fv[..copy_len]);
             }
         }
         return Ok(buf);
@@ -180,12 +180,12 @@ pub async fn async_read_chunk_raw<R: moirai_async::io::AsyncReadAt>(
 
     if location.address == crate::constants::UNDEFINED_ADDRESS {
         let mut buf = budget.zeroed(uncompressed_size as u64, "chunk uncompressed size")?;
-        if let Some(fv) = fill_value {
-            if !fv.is_empty() {
-                for chunk in buf.chunks_mut(fv.len()) {
-                    let copy_len = chunk.len().min(fv.len());
-                    chunk[..copy_len].copy_from_slice(&fv[..copy_len]);
-                }
+        if let Some(fv) = fill_value
+            && !fv.is_empty()
+        {
+            for chunk in buf.chunks_mut(fv.len()) {
+                let copy_len = chunk.len().min(fv.len());
+                chunk[..copy_len].copy_from_slice(&fv[..copy_len]);
             }
         }
         return Ok(buf);

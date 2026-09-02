@@ -106,7 +106,7 @@ impl SzipCodec {
     /// Returns [`Error::InvalidFormat`] if `pixels_per_block` is odd or
     /// outside the range `[2, 32]`.
     pub fn new(pixels_per_block: u8, coding: SzipCoding) -> Result<Self> {
-        if !(2..=32).contains(&pixels_per_block) || pixels_per_block % 2 != 0 {
+        if !(2..=32).contains(&pixels_per_block) || !pixels_per_block.is_multiple_of(2) {
             return Err(Error::InvalidFormat {
                 message: alloc::format!(
                     "szip: pixels_per_block must be even and in [2, 32], got {pixels_per_block}"
@@ -235,7 +235,7 @@ impl Codec for SzipCodec {
             }
         };
 
-        if !(2..=32).contains(&ppb) || ppb % 2 != 0 {
+        if !(2..=32).contains(&ppb) || !ppb.is_multiple_of(2) {
             return Err(Error::CompressionError {
                 message: alloc::format!(
                     "szip: invalid pixels_per_block {ppb} in header (must be even, 2..=32)"
