@@ -34,7 +34,7 @@ pub fn normalize_endian(mut data: Vec<u8>, elem_size: usize, big_endian: bool) -
 
 #[cfg(feature = "alloc")]
 pub fn decode_i32_vec(buf: &[u8], big_endian: bool) -> Result<Vec<i32>, MatError> {
-    if buf.len() % 4 != 0 {
+    if !buf.len().is_multiple_of(4) {
         return Err(MatError::InvalidFormat(alloc::string::String::from(
             "i32 data length not multiple of 4",
         )));

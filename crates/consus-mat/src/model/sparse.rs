@@ -97,14 +97,14 @@ impl MatSparseArray {
             )));
         }
 
-        if let Some(imag_data) = &self.imag_data {
-            if imag_data.len() != self.real_data.len() {
-                return Err(MatError::ShapeError(format!(
-                    "sparse: imag_data.len() {} != real_data.len() {}",
-                    imag_data.len(),
-                    self.real_data.len()
-                )));
-            }
+        if let Some(imag_data) = &self.imag_data
+            && imag_data.len() != self.real_data.len()
+        {
+            return Err(MatError::ShapeError(format!(
+                "sparse: imag_data.len() {} != real_data.len() {}",
+                imag_data.len(),
+                self.real_data.len()
+            )));
         }
 
         for (idx, &row) in self.row_indices.iter().enumerate() {

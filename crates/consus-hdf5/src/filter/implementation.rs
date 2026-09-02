@@ -199,7 +199,7 @@ fn parse_filter_desc_v1(data: &[u8], cursor: &mut usize, index: usize) -> Result
     *cursor += client_data_bytes;
 
     // Version 1: pad client data to even count (4 bytes padding if odd).
-    if num_client_data % 2 != 0 {
+    if !num_client_data.is_multiple_of(2) {
         *cursor += 4;
     }
 

@@ -251,13 +251,12 @@ pub fn read_attributes<R: ReadAt>(
     }
 
     // Dense attributes: Attribute Info message (0x0015) -> fractal heap + B-tree v2.
-    if let Some(ai_msg) = find_message(header, message_types::ATTRIBUTE_INFO) {
-        if let Ok(attr_info) = crate::attribute::info::AttributeInfo::parse(&ai_msg.data, ctx) {
-            if attr_info.fractal_heap_address != UNDEFINED_ADDRESS {
-                let dense = collect_dense_attributes(source, &attr_info, ctx)?;
-                attrs.extend(dense);
-            }
-        }
+    if let Some(ai_msg) = find_message(header, message_types::ATTRIBUTE_INFO)
+        && let Ok(attr_info) = crate::attribute::info::AttributeInfo::parse(&ai_msg.data, ctx)
+        && attr_info.fractal_heap_address != UNDEFINED_ADDRESS
+    {
+        let dense = collect_dense_attributes(source, &attr_info, ctx)?;
+        attrs.extend(dense);
     }
 
     Ok(attrs)
@@ -387,10 +386,9 @@ fn collect_btree_v1_leaves<R: ReadAt>(
                         .unwrap_or(heap_data.len() - name_off);
                     if let Ok(name) =
                         core::str::from_utf8(&heap_data[name_off..name_off + name_end])
+                        && !name.is_empty()
                     {
-                        if !name.is_empty() {
-                            children.push((String::from(name), entry.object_header_address));
-                        }
+                        children.push((String::from(name), entry.object_header_address));
                     }
                 }
             }
@@ -439,13 +437,12 @@ pub fn list_group_v2<R: ReadAt>(
     }
 
     // Dense storage: Link Info message (0x0002) -> fractal heap + B-tree v2.
-    if let Some(li_msg) = find_message(header, message_types::LINK_INFO) {
-        if let Ok(link_info) = crate::link::LinkInfo::parse(&li_msg.data, ctx) {
-            if link_info.fractal_heap_address != UNDEFINED_ADDRESS {
-                let dense = collect_dense_links(source, &link_info, ctx)?;
-                children.extend(dense);
-            }
-        }
+    if let Some(li_msg) = find_message(header, message_types::LINK_INFO)
+        && let Ok(link_info) = crate::link::LinkInfo::parse(&li_msg.data, ctx)
+        && link_info.fractal_heap_address != UNDEFINED_ADDRESS
+    {
+        let dense = collect_dense_links(source, &link_info, ctx)?;
+        children.extend(dense);
     }
 
     Ok(children)

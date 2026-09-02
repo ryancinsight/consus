@@ -280,10 +280,10 @@ impl ArrayMetadataV2 {
         let mut codecs = Vec::new();
 
         // Compressor -> codec entry
-        if let Some(compressor) = &self.compressor {
-            if let Some(codec) = compressor.to_codec() {
-                codecs.push(codec);
-            }
+        if let Some(compressor) = &self.compressor
+            && let Some(codec) = compressor.to_codec()
+        {
+            codecs.push(codec);
         }
 
         // Filters (for completeness; most v2 files have no filters)

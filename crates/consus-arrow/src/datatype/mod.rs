@@ -269,7 +269,7 @@ impl ArrowDataType {
 /// Convert a fixed bit width into a byte width when it is a multiple of 8.
 #[must_use]
 pub const fn bit_width_to_byte_width(bit_width: u8) -> Option<usize> {
-    if bit_width % 8 == 0 {
+    if bit_width.is_multiple_of(8) {
         Some((bit_width / 8) as usize)
     } else {
         None

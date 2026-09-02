@@ -84,11 +84,11 @@ pub fn write_embedded_parquet(
         attrs.push("consus_hybrid_encoding", &format!("{:?}", layout.encoding));
     }
 
-    if let Some(ref part) = descriptor.partitioning {
-        if part.is_partitioned() {
-            attrs.push("consus_hybrid_partition_keys", &part.keys.join(","));
-            attrs.push("consus_hybrid_partition_paths", &part.paths.join(","));
-        }
+    if let Some(ref part) = descriptor.partitioning
+        && part.is_partitioned()
+    {
+        attrs.push("consus_hybrid_partition_keys", &part.keys.join(","));
+        attrs.push("consus_hybrid_partition_paths", &part.paths.join(","));
     }
 
     let dt = Datatype::Integer {

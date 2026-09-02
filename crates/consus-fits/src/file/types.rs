@@ -292,7 +292,7 @@ fn read_header_at<IO: ReadAt>(
 
 #[cfg(feature = "alloc")]
 pub(crate) fn parse_extension_header_bytes(bytes: &[u8]) -> Result<FitsHeader> {
-    if bytes.len() % 80 != 0 {
+    if !bytes.len().is_multiple_of(80) {
         return invalid_format("FITS header byte length is not a multiple of 80");
     }
 

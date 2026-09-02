@@ -1030,10 +1030,10 @@ fn find_huge_object_recursive<R: ReadAt>(
         // We find the first child whose record key is > our search key.
         let mut child_idx = 0;
         for (i, rec) in internal.records.iter().enumerate() {
-            if let Some(first_key) = extract_record_first_key(rec, header.record_size) {
-                if first_key > key {
-                    break;
-                }
+            if let Some(first_key) = extract_record_first_key(rec, header.record_size)
+                && first_key > key
+            {
+                break;
             }
             child_idx = i + 1;
         }
