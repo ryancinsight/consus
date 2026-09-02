@@ -58,8 +58,7 @@ pub use endian::{EndianScalar, read_integer};
 #[cfg(feature = "alloc")]
 pub fn decode_to_f64(raw: &[u8], dtype: &Datatype) -> Result<Vec<f64>, Error> {
     if let Some(size) = dtype.element_size() {
-        // `is_multiple_of` is stable only since 1.87; the MSRV is 1.85.
-        if raw.len() % size != 0 {
+        if !raw.len().is_multiple_of(size) {
             return Err(Error::InvalidFormat {
                 message: alloc::format!(
                     "decode_to_f64: buffer length {} is not a multiple of element size {}",
@@ -181,9 +180,10 @@ pub fn decode_bytes_to_f64(
     // Reject ragged buffers up front instead of letting `chunks_exact` drop
     // the trailing bytes, matching `decode_to_f64` and the module invariant
     // (a non-multiple length is `InvalidFormat`, not silent truncation).
-    // `elem_size == 0` cannot divide and falls through to
-    // `UnsupportedFeature` below, so guard the modulo.
-    if elem_size != 0 && bytes.len() % elem_size != 0 {
+    // `elem_size == 0` falls through to `UnsupportedFeature` below;
+    // `is_multiple_of(0)` would instead report `InvalidFormat` for any
+    // non-empty buffer, so the guard stays.
+    if elem_size != 0 && !bytes.len().is_multiple_of(elem_size) {
         return Err(Error::InvalidFormat {
             message: alloc::format!(
                 "decode_bytes_to_f64: buffer length {} is not a multiple of element size {}",
