@@ -1,17 +1,51 @@
 [build-system]
-requires = ["maturin>=1,<2"]
+requires = ["maturin>=1.9.4,<2.0"]
 build-backend = "maturin"
 
 [project]
 name = "consus-python"
 dynamic = ["version"]
-description = "Python bindings for the Consus scientific storage library"
+description = "Pure-Rust readers and writers for HDF5, Zarr, Parquet, netCDF-4, MATLAB, and HDMF, exposed to Python"
 authors = [
     { name = "Ryan Clanton", email = "ryanclanton@outlook.com" },
 ]
 license = { text = "MIT OR Apache-2.0" }
 readme = "README.md"
+# Matches the wheel matrix in .github/workflows/python-release.yml. The
+# bindings are not abi3, so this floor is the lowest interpreter built rather
+# than an abi3 minimum.
 requires-python = ">=3.9"
+keywords = ["hdf5", "zarr", "parquet", "netcdf", "rust"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Scientific/Engineering",
+    "Topic :: System :: Filesystems",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ryancinsight/consus"
+Repository = "https://github.com/ryancinsight/consus"
+Issues = "https://github.com/ryancinsight/consus/issues"
 
 [tool.maturin]
 module-name = "consus"

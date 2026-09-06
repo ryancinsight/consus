@@ -8,6 +8,9 @@ edition = "2021"
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
+description = "Pure-Rust readers and writers for HDF5, Zarr, Parquet, netCDF-4, MATLAB, and HDMF, exposed to Python"
 publish = false
 
 [lib]
