@@ -148,6 +148,7 @@ mod tests {
     use crate::io::sync::cursor::MemCursor;
     #[cfg(not(feature = "std"))]
     use alloc::vec;
+    use consus_core::test_support::assert_rejects;
 
     /// Sequential read advances cursor.
     #[test]
@@ -269,7 +270,7 @@ mod tests {
 
         let mut buf = [0u8; 4];
         let result = stream.read_stream(&mut buf);
-        assert!(result.is_err());
+        assert_rejects(&result, "buffer too small: need 6 bytes, got 3");
         // Cursor must not advance on failure.
         assert_eq!(stream.position(), 2);
     }

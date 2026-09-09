@@ -31,6 +31,7 @@ zrip = { workspace = true, optional = true }
 lz4_flex = { workspace = true, optional = true }
 
 [dev-dependencies]
+consus-core = { workspace = true, features = ["test-util"] }
 proptest = { workspace = true }
 
 [lints]

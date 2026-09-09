@@ -27,3 +27,6 @@ all-features = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+consus-core = { workspace = true, features = ["test-util"] }

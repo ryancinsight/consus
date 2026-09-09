@@ -201,7 +201,6 @@ fn v5_complex_double_roundtrip() {
     let (_, arr) = &mat.variables[0];
     if let MatArray::Numeric(na) = arr {
         assert_eq!(na.class, MatNumericClass::Double);
-        assert!(na.imag_data.is_some());
         assert_eq!(na.shape, vec![1, 2]);
         let re_v: Vec<f64> = na
             .real_data

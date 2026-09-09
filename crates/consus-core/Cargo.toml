@@ -16,6 +16,9 @@ categories = ["science", "encoding", "data-structures", "no-std"]
 default = ["std"]
 std = ["alloc"]
 alloc = []
+# Exposes `test_support` to sibling crates' test targets; carries no
+# production code and is never enabled by a dependency edge.
+test-util = ["alloc"]
 
 [dependencies]
 byteorder = { workspace = true }

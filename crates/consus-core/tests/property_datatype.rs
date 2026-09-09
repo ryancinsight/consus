@@ -76,9 +76,10 @@ proptest! {
             byte_order,
             signed,
         };
-        let size = dt.element_size();
-        prop_assert!(size.is_some());
-        prop_assert_eq!(size.unwrap(), bits / 8);
+        let size = dt
+            .element_size()
+            .expect("an integer datatype must report an element size");
+        prop_assert_eq!(size, bits / 8);
     }
 
     #[test]

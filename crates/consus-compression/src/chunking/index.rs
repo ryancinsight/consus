@@ -298,6 +298,7 @@ pub fn chunk_element_range(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use consus_core::test_support::assert_rejects;
 
     // -----------------------------------------------------------------------
     // chunk_grid_shape tests (alloc-gated)
@@ -330,41 +331,16 @@ mod tests {
         #[test]
         fn rank_mismatch_error() {
             let result = chunk_grid_shape(&[100, 200], &[10]);
-            assert!(result.is_err());
-            let err = result.unwrap_err();
-            match &err {
-                consus_core::Error::ShapeError {
-                    #[cfg(feature = "alloc")]
-                    message,
-                } => {
-                    #[cfg(feature = "alloc")]
-                    assert!(
-                        message.contains("rank mismatch"),
-                        "expected rank mismatch message, got: {message}"
-                    );
-                }
-                other => panic!("expected ShapeError, got: {other:?}"),
-            }
+            assert_rejects(
+                &result,
+                "shape error: rank mismatch: dataset_shape has 2 dimensions, chunk_shape has 1",
+            );
         }
 
         #[test]
         fn zero_chunk_dim_error() {
             let result = chunk_grid_shape(&[100, 200], &[10, 0]);
-            assert!(result.is_err());
-            let err = result.unwrap_err();
-            match &err {
-                consus_core::Error::ShapeError {
-                    #[cfg(feature = "alloc")]
-                    message,
-                } => {
-                    #[cfg(feature = "alloc")]
-                    assert!(
-                        message.contains("zero"),
-                        "expected zero-chunk message, got: {message}"
-                    );
-                }
-                other => panic!("expected ShapeError, got: {other:?}"),
-            }
+            assert_rejects(&result, "shape error: chunk_shape[1] is zero");
         }
 
         #[test]
@@ -406,21 +382,27 @@ mod tests {
     fn fixed_output_buffer_too_small() {
         let mut out = [0usize; 1];
         let result = chunk_grid_shape_fixed(&[100, 200], &[10, 20], &mut out);
-        assert!(result.is_err());
+        assert_rejects(
+            &result,
+            "shape error: output buffer too small: need 2 slots, got 1",
+        );
     }
 
     #[test]
     fn fixed_rank_mismatch() {
         let mut out = [0usize; 2];
         let result = chunk_grid_shape_fixed(&[100, 200], &[10], &mut out);
-        assert!(result.is_err());
+        assert_rejects(
+            &result,
+            "shape error: rank mismatch: dataset_shape has 2 dimensions, chunk_shape has 1",
+        );
     }
 
     #[test]
     fn fixed_zero_chunk_dim() {
         let mut out = [0usize; 2];
         let result = chunk_grid_shape_fixed(&[100, 200], &[0, 10], &mut out);
-        assert!(result.is_err());
+        assert_rejects(&result, "shape error: chunk_shape[0] is zero");
     }
 
     // -----------------------------------------------------------------------
@@ -448,11 +430,7 @@ mod tests {
     fn total_chunks_overflow() {
         // usize::MAX * 2 must overflow.
         let result = total_chunks(&[usize::MAX, 2]);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            consus_core::Error::Overflow => {}
-            other => panic!("expected Overflow, got: {other:?}"),
-        }
+        assert_rejects(&result, "integer overflow in size computation");
     }
 
     #[test]

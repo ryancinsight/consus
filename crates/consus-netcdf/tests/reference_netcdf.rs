@@ -547,7 +547,6 @@ fn model_with_compressed_variable() {
     model.validate().unwrap();
 
     let v = model.root.variable("data").unwrap();
-    assert!(v.compression.is_some());
     match &v.compression {
         Some(Compression::Deflate { level }) => assert_eq!(*level, 4),
         other => panic!("expected Deflate {{ level: 4 }}, got {:?}", other),

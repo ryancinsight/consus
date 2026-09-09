@@ -8,6 +8,7 @@ use crate::datastructure::{
 use crate::file::types::parse_extension_header_bytes;
 use crate::header::parse_header_bytes;
 use crate::types::HduType;
+use consus_core::test_support::assert_rejects;
 
 fn card(text: &str) -> [u8; 80] {
     assert!(text.len() <= 80);
@@ -24,6 +25,22 @@ fn header_bytes(cards: &[&str]) -> Vec<u8> {
     let padded_len = FitsBlockAlignment::padded_len(bytes.len());
     bytes.resize(padded_len, b' ');
     bytes
+}
+
+/// Rebuild `hdu` at `index`, preserving every other field.
+///
+/// [`FitsHduSequence`] checks indices before primary placement, so a fixture
+/// whose index is wrong never reaches the placement rules: an HDU carrying the
+/// index the sequence expects is what makes those rules testable.
+fn reindexed(hdu: &FitsHdu, index: usize) -> FitsHdu {
+    FitsHdu::new(
+        FitsHduIndex::new(index),
+        hdu.kind(),
+        hdu.header().clone(),
+        hdu.header_block(),
+        hdu.data_span(),
+        hdu.payload().clone(),
+    )
 }
 
 fn primary_hdu() -> FitsHdu {
@@ -194,21 +211,15 @@ fn sequence_requires_primary_first_and_contiguous_indices() {
         image.kind()
     );
 
-    let invalid_first = FitsHduSequence::new(vec![image.clone()]);
-    assert!(invalid_first.is_err());
+    assert_rejects(
+        &FitsHduSequence::new(vec![reindexed(&image, 0)]),
+        "invalid format: first FITS HDU must be primary",
+    );
 
-    let invalid_gap = FitsHduSequence::new(vec![
-        primary,
-        FitsHdu::new(
-            FitsHduIndex::new(2),
-            image.kind(),
-            image.header().clone(),
-            image.header_block(),
-            image.data_span(),
-            image.payload().clone(),
-        ),
-    ]);
-    assert!(invalid_gap.is_err());
+    assert_rejects(
+        &FitsHduSequence::new(vec![primary, reindexed(&image, 2)]),
+        "invalid format: FITS HDU indices must be contiguous and ordered",
+    );
 }
 
 #[test]
@@ -220,6 +231,13 @@ fn sequence_push_preserves_invariants() {
     assert_eq!(sequence.len(), 2);
     assert!(sequence.primary().unwrap().is_primary());
 
-    let invalid_primary_again = sequence.push(primary_hdu());
-    assert!(invalid_primary_again.is_err());
+    assert_rejects(
+        &sequence.push(reindexed(&primary_hdu(), 2)),
+        "invalid format: only the first FITS HDU may be primary",
+    );
+
+    assert_rejects(
+        &sequence.push(primary_hdu()),
+        "invalid format: FITS HDU indices must be contiguous and ordered",
+    );
 }

@@ -176,6 +176,7 @@ impl Filter for ShuffleFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use consus_core::test_support::assert_rejects;
 
     /// Round-trip with typesize=4 on 16 bytes (4 elements of 4 bytes).
     ///
@@ -277,7 +278,10 @@ mod tests {
         let input: Vec<u8> = vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07];
 
         let result = filter.apply(FilterDirection::Forward, &input);
-        assert!(result.is_err(), "misaligned input must produce an error");
+        assert_rejects(
+            &result,
+            "invalid format: shuffle: data length 7 is not divisible by typesize 4",
+        );
 
         // Verify the error is InvalidFormat with a descriptive message.
         match result.unwrap_err() {

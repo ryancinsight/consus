@@ -127,8 +127,13 @@ fn prop_read_beyond_bounds_errors() {
 
         if required > provided {
             let mut buf = vec![0u8; read_len];
-            let result = cursor.read_at(read_offset, &mut buf);
-            prop_assert!(result.is_err());
+            let error = cursor
+                .read_at(read_offset, &mut buf)
+                .expect_err("a read past the end must fail");
+            prop_assert_eq!(
+                format!("{error}"),
+                format!("buffer too small: need {required} bytes, got {provided}")
+            );
         }
     });
 }
@@ -154,9 +159,9 @@ fn prop_read_valid_offset_succeeds() {
         };
 
         let mut buf = vec![0u8; read_len];
-        let result = cursor.read_at(read_offset as u64, &mut buf);
-
-        prop_assert!(result.is_ok());
+        cursor
+            .read_at(read_offset as u64, &mut buf)
+            .expect("a read inside the buffer must succeed");
         prop_assert_eq!(buf.as_slice(), &initial_data[read_offset..read_offset + read_len]);
     });
 }
@@ -165,10 +170,13 @@ fn prop_read_valid_offset_succeeds() {
 #[test]
 fn prop_zero_length_read_always_succeeds() {
     proptest!(|(initial_data: Vec<u8>, offset: u64)| {
-        let cursor = MemCursor::from_bytes(initial_data);
+        let cursor = MemCursor::from_bytes(initial_data.clone());
         let mut buf = [];
-        let result = cursor.read_at(offset, &mut buf);
-        prop_assert!(result.is_ok());
+        cursor
+            .read_at(offset, &mut buf)
+            .expect("a zero-length read must succeed at any offset");
+        // The cursor is unchanged by a read that asks for nothing.
+        prop_assert_eq!(cursor.byte_len(), initial_data.len());
     });
 }
 
@@ -312,8 +320,14 @@ fn prop_interleaved_read_write() {
         let len = cursor.byte_len();
         if len > 0 {
             let mut buf = vec![0u8; len];
-            let result = cursor.read_at(0, &mut buf);
-            prop_assert!(result.is_ok() || len == 0);
+            cursor
+                .read_at(0, &mut buf)
+                .expect("reading the cursor's whole extent must succeed");
+            let mut again = vec![0u8; len];
+            cursor
+                .read_at(0, &mut again)
+                .expect("re-reading the whole extent must succeed");
+            prop_assert_eq!(&buf, &again);
         }
     });
 }

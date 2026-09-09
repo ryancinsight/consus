@@ -418,6 +418,7 @@ const fn nonzero(bits: usize) -> NonZeroUsize {
 #[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
+    use consus_core::test_support::assert_rejects;
 
     // -----------------------------------------------------------------------
     // parse_binary_format tests
@@ -468,14 +469,10 @@ mod tests {
     #[test]
     fn parse_binary_format_rejects_invalid_code() {
         let result = parse_binary_format("Z");
-        assert!(
-            result.is_err(),
-            "expected error for invalid format code 'Z'"
+        assert_rejects(
+            &result,
+            "invalid format: invalid FITS binary table format code: 'Z' in TFORM 'Z'",
         );
-        match result.unwrap_err() {
-            Error::InvalidFormat { .. } => {}
-            other => panic!("expected InvalidFormat, got: {other:?}"),
-        }
     }
 
     // -----------------------------------------------------------------------

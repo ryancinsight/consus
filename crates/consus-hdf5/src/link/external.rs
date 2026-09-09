@@ -217,6 +217,7 @@ mod traversal_tests {
 #[cfg(feature = "alloc")]
 mod tests {
     use super::*;
+    use consus_core::test_support::assert_rejects;
 
     /// Golden-path: well-formed external link payload with absolute object path.
     #[test]
@@ -249,7 +250,7 @@ mod tests {
     #[test]
     fn parse_empty_payload_fails() {
         let result = parse_external_link_value(&[]);
-        assert!(result.is_err());
+        assert_rejects(&result, "invalid format: empty external link data");
     }
 
     /// Missing null terminator on filename is rejected.
@@ -257,7 +258,10 @@ mod tests {
     fn parse_missing_filename_terminator_fails() {
         let data = [0x00, b'a', b'b', b'c']; // no null terminator
         let result = parse_external_link_value(&data);
-        assert!(result.is_err());
+        assert_rejects(
+            &result,
+            "invalid format: external link filename not null-terminated",
+        );
     }
 
     /// Missing null terminator on object path is rejected.
@@ -268,7 +272,10 @@ mod tests {
         data.extend_from_slice(b"file.h5\0");
         data.extend_from_slice(b"/no_terminator"); // no trailing \0
         let result = parse_external_link_value(&data);
-        assert!(result.is_err());
+        assert_rejects(
+            &result,
+            "invalid format: external link object path not null-terminated",
+        );
     }
 
     /// Flags byte is accepted but currently ignored.

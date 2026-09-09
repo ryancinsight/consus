@@ -12,6 +12,7 @@
 use consus_compression::{
     Codec, CodecId, CompressionLevel, CompressionRegistry, DefaultCodecRegistry,
 };
+use consus_core::test_support::assert_rejects;
 
 // =============================================================================
 // DefaultCodecRegistry Tests
@@ -179,7 +180,7 @@ mod default_registry {
         let registry = DefaultCodecRegistry::new();
 
         let result = registry.get(&CodecId::FilterId(9999));
-        assert!(result.is_err(), "unregistered FilterId must return error");
+        assert_rejects(&result, "unsupported feature: codec FilterId(9999)");
 
         match result.err().expect("result is Err (checked above)") {
             consus_core::Error::UnsupportedFeature { feature } => {
@@ -199,7 +200,10 @@ mod default_registry {
         let registry = DefaultCodecRegistry::new();
 
         let result = registry.get_by_name("nonexistent_codec");
-        assert!(result.is_err(), "unregistered name must return error");
+        assert_rejects(
+            &result,
+            "unsupported feature: codec named \"nonexistent_codec\"",
+        );
 
         match result.err().expect("result is Err (checked above)") {
             consus_core::Error::UnsupportedFeature { feature } => {
@@ -419,7 +423,7 @@ mod lookup_edge_cases {
     fn empty_registry_unknown_id() {
         let registry = DefaultCodecRegistry::new();
         let result = registry.get(&CodecId::FilterId(9999));
-        assert!(result.is_err());
+        assert_rejects(&result, "unsupported feature: codec FilterId(9999)");
     }
 
     /// `get_by_name` is case-sensitive.
@@ -441,7 +445,7 @@ mod lookup_edge_cases {
     fn get_by_name_empty_string() {
         let registry = DefaultCodecRegistry::new();
         let result = registry.get_by_name("");
-        assert!(result.is_err());
+        assert_rejects(&result, "unsupported feature: codec named \"\"");
     }
 
     /// FilterId(0) is not a valid HDF5 filter ID and should not be registered.
@@ -467,8 +471,11 @@ mod lookup_edge_cases {
         let name = codec.name();
         assert!(!name.is_empty(), "codec name must not be empty");
 
-        let filter_id = codec.hdf5_filter_id();
-        assert!(filter_id.is_some(), "deflate must have HDF5 filter ID");
+        assert_eq!(
+            codec.hdf5_filter_id(),
+            Some(1),
+            "deflate must report the HDF5 deflate filter ID"
+        );
 
         // Verify compression works
         let input: Vec<u8> = (0u8..=255).cycle().take(1024).collect();

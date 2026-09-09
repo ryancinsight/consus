@@ -527,9 +527,10 @@ proptest! {
 
     #[test]
     fn prop_datatype_fixed_size_always_some(dt in fixed_size_datatype_strategy()) {
-        let size = dt.element_size();
-        prop_assert!(size.is_some(), "fixed-size datatype returned None: {:?}", dt);
-        prop_assert!(size.unwrap() > 0, "fixed-size datatype returned zero: {:?}", dt);
+        let size = dt
+            .element_size()
+            .expect("a fixed-size datatype must report an element size");
+        prop_assert!(size > 0, "fixed-size datatype returned zero: {:?}", dt);
         prop_assert!(!dt.is_variable_length());
     }
 
@@ -799,9 +800,8 @@ proptest! {
     fn prop_chunk_shape_accepts_positive_dims(
         dims in prop::collection::vec(1usize..=100, 1..=4),
     ) {
-        let chunk = ChunkShape::new(&dims);
-        prop_assert!(chunk.is_some());
-        let c = chunk.unwrap();
+        let c = ChunkShape::new(&dims)
+            .expect("all-positive dimensions must build a chunk shape");
         prop_assert_eq!(c.rank(), dims.len());
         prop_assert_eq!(c.dims(), dims.as_slice());
     }

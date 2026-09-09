@@ -730,12 +730,11 @@ fn nwb_file_builder_writes_timestamps_reference_time() {
     let hdf5 = Hdf5File::open(SliceReader::new(&bytes)).unwrap();
     let root_addr = hdf5.superblock().root_group_address;
     let attrs = hdf5.attributes_at(root_addr).unwrap();
-    let trt_attr = attrs.iter().find(|a| a.name == "timestamps_reference_time");
-    assert!(
-        trt_attr.is_some(),
-        "timestamps_reference_time attribute must be written"
-    );
-    match trt_attr.unwrap().decode_value().unwrap() {
+    let trt_attr = attrs
+        .iter()
+        .find(|a| a.name == "timestamps_reference_time")
+        .expect("timestamps_reference_time attribute must be written");
+    match trt_attr.decode_value().unwrap() {
         consus_core::AttributeValue::String(ref s) => {
             assert_eq!(
                 s.as_str(),
@@ -759,12 +758,11 @@ fn nwb_file_builder_writes_file_create_date() {
     let hdf5 = Hdf5File::open(SliceReader::new(&bytes)).unwrap();
     let root_addr = hdf5.superblock().root_group_address;
     let attrs = hdf5.attributes_at(root_addr).unwrap();
-    let fcd_attr = attrs.iter().find(|a| a.name == "file_create_date");
-    assert!(
-        fcd_attr.is_some(),
-        "file_create_date attribute must be written"
-    );
-    match fcd_attr.unwrap().decode_value().unwrap() {
+    let fcd_attr = attrs
+        .iter()
+        .find(|a| a.name == "file_create_date")
+        .expect("file_create_date attribute must be written");
+    match fcd_attr.decode_value().unwrap() {
         consus_core::AttributeValue::String(ref s) => {
             assert_eq!(s.as_str(), ts);
         }

@@ -287,6 +287,7 @@ impl Filter for NbitFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use consus_core::test_support::assert_rejects;
 
     /// Pack/unpack 8-bit values with 4 bits per value.
     ///
@@ -455,7 +456,10 @@ mod tests {
         let input: Vec<u8> = vec![0x01, 0x02, 0x03];
 
         let result = filter.apply(FilterDirection::Forward, &input);
-        assert!(result.is_err(), "misaligned input must produce an error");
+        assert_rejects(
+            &result,
+            "invalid format: nbit pack: data length 3 is not divisible by element size 2 bytes",
+        );
 
         match result.unwrap_err() {
             Error::InvalidFormat { message } => {
@@ -479,7 +483,10 @@ mod tests {
         bad_data[4] = 0xFF;
 
         let result = filter.apply(FilterDirection::Reverse, &bad_data);
-        assert!(result.is_err(), "truncated stream must produce an error");
+        assert_rejects(
+            &result,
+            "invalid format: nbit unpack: packed stream has 1 bytes but need 50 for 100 elements at 4 bits each",
+        );
 
         match result.unwrap_err() {
             Error::InvalidFormat { message } => {
@@ -497,7 +504,10 @@ mod tests {
     fn error_too_short_for_header() {
         let filter = NbitFilter::new(4, 8);
         let result = filter.apply(FilterDirection::Reverse, &[0x01, 0x02]);
-        assert!(result.is_err(), "data shorter than header must error");
+        assert_rejects(
+            &result,
+            "invalid format: nbit unpack: data length 2 is too short for header (need >= 4)",
+        );
 
         match result.unwrap_err() {
             Error::InvalidFormat { message } => {

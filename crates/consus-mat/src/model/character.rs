@@ -75,6 +75,7 @@ impl MatCharArray {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use consus_core::test_support::assert_rejects;
 
     #[test]
     fn new_valid_char_array() {
@@ -87,7 +88,10 @@ mod tests {
     #[test]
     fn new_element_count_mismatch_returns_error() {
         let err = MatCharArray::new(vec![1, 3], "hello".to_string());
-        assert!(err.is_err());
+        assert_rejects(
+            &err,
+            "shape error: char array element count 5 != shape product 3",
+        );
     }
 
     #[test]

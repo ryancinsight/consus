@@ -27,6 +27,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+consus-core = { workspace = true, features = ["test-util"] }
 tempfile = { workspace = true }
 proptest = { workspace = true }
 criterion = { workspace = true }

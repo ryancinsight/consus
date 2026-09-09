@@ -98,6 +98,7 @@ impl Superblock {
 mod tests {
     use super::*;
     use byteorder::{ByteOrder, LittleEndian};
+    use consus_core::test_support::assert_rejects;
     use consus_io::MemCursor;
 
     /// Construct a minimal valid v2 superblock and verify parsing.
@@ -158,6 +159,9 @@ mod tests {
     fn no_magic_returns_error() {
         let cursor = MemCursor::from_bytes(vec![0u8; 4096]);
         let result = Superblock::read_from(&cursor);
-        assert!(result.is_err());
+        assert_rejects(
+            &result,
+            "invalid format: no HDF5 superblock found at expected offsets",
+        );
     }
 }

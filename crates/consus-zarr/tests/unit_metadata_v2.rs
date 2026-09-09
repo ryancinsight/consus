@@ -68,8 +68,10 @@ fn parse_zarray_with_gzip_compressor() {
     }"#;
 
     let meta = ArrayMetadataV2::parse(json).expect("parse must succeed");
-    assert!(meta.compressor.is_some());
-    let comp = meta.compressor.as_ref().unwrap();
+    let comp = meta
+        .compressor
+        .as_ref()
+        .expect("a gzip compressor entry must parse into Some");
     match comp {
         CompressorConfig::Named(named) => {
             assert_eq!(named.id, "gzip");
@@ -533,8 +535,10 @@ fn parse_zarray_with_named_filter() {
     }"#;
 
     let meta = ArrayMetadataV2::parse(json).expect("parse must succeed");
-    assert!(meta.filters.is_some());
-    let filters = meta.filters.as_ref().unwrap();
+    let filters = meta
+        .filters
+        .as_ref()
+        .expect("a filters array must parse into Some");
     assert_eq!(filters.len(), 1);
     match &filters[0].id {
         FilterId::Name(name) => assert_eq!(name, "shuffle"),
@@ -557,7 +561,15 @@ fn parse_zarray_with_hdf5_filter_id() {
     }"#;
 
     let meta = ArrayMetadataV2::parse(json).expect("parse must succeed");
-    assert!(meta.filters.is_some());
+    let filters = meta
+        .filters
+        .as_ref()
+        .expect("a filters array must parse into Some");
+    assert_eq!(filters.len(), 1);
+    match &filters[0].id {
+        FilterId::Number(id) => assert_eq!(*id, 32008),
+        other => panic!("expected an HDF5 numeric filter id, got {other:?}"),
+    }
 }
 
 /// Test .zarray with multiple filters.

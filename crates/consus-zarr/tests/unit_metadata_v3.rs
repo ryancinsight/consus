@@ -572,8 +572,9 @@ fn dimension_names() {
         ZarrJson::Array {
             dimension_names, ..
         } => {
-            assert!(dimension_names.is_some());
-            let names = dimension_names.as_ref().unwrap();
+            let names = dimension_names
+                .as_ref()
+                .expect("declared dimension_names must parse into Some");
             assert_eq!(names.len(), 3);
             assert_eq!(names[0], "time");
             assert_eq!(names[1], "latitude");

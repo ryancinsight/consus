@@ -18,6 +18,7 @@
 #![cfg(all(feature = "std", feature = "alloc"))]
 
 use consus_compression::{Filter, FilterDirection, FilterPipeline, NbitFilter, ShuffleFilter};
+use consus_core::test_support::assert_rejects;
 
 // =============================================================================
 // Shuffle Filter Tests (HDF5 filter ID 2)
@@ -155,7 +156,10 @@ mod shuffle_tests {
         let input: Vec<u8> = vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07];
 
         let result = filter.apply(FilterDirection::Forward, &input);
-        assert!(result.is_err(), "misaligned input must produce an error");
+        assert_rejects(
+            &result,
+            "invalid format: shuffle: data length 7 is not divisible by typesize 4",
+        );
 
         match result.unwrap_err() {
             consus_core::Error::InvalidFormat { message } => {
@@ -374,7 +378,10 @@ mod nbit_tests {
         let input: Vec<u8> = vec![0x01, 0x02, 0x03];
 
         let result = filter.apply(FilterDirection::Forward, &input);
-        assert!(result.is_err(), "misaligned input must produce error");
+        assert_rejects(
+            &result,
+            "invalid format: nbit pack: data length 3 is not divisible by element size 2 bytes",
+        );
     }
 
     /// Filter metadata accessors.
@@ -544,7 +551,10 @@ mod pipeline_tests {
         let bad_input: Vec<u8> = vec![0x01, 0x02, 0x03, 0x04, 0x05];
 
         let result = pipeline.execute(FilterDirection::Forward, &bad_input);
-        assert!(result.is_err(), "misaligned input must propagate error");
+        assert_rejects(
+            &result,
+            "invalid format: shuffle: data length 5 is not divisible by typesize 4",
+        );
 
         match result.unwrap_err() {
             consus_core::Error::InvalidFormat { message } => {
