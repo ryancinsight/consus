@@ -34,6 +34,7 @@ moirai = { workspace = true, optional = true }
 moirai-async = { workspace = true, optional = true }
 
 [dev-dependencies]
+consus-core = { workspace = true, features = ["test-util"] }
 tempfile = { workspace = true }
 smallvec = { workspace = true }
 proptest = { workspace = true }

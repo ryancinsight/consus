@@ -1,4 +1,5 @@
 //! MAT v4 read tests.
+use consus_core::test_support::assert_rejects;
 use consus_mat::{MatArray, MatNumericClass, loadmat_bytes};
 
 #[test]
@@ -38,7 +39,10 @@ fn v4_empty_slice_returns_error() {
 fn v4_truncated_header_returns_error() {
     let data = [0u8; 10];
     let result = loadmat_bytes(&data);
-    assert!(result.is_err(), "truncated v4 should fail");
+    assert_rejects(
+        &result,
+        "invalid MAT format: MAT v4 record truncated at header",
+    );
 }
 
 #[test]

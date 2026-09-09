@@ -17,6 +17,7 @@
 //! - Attribute encoding/decoding
 //! - Group hierarchy and link resolution
 
+use consus_core::test_support::assert_rejects;
 use std::path::PathBuf;
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian};
@@ -558,12 +559,10 @@ fn group_hierarchy() {
 
         // Hard links must resolve to a valid node type
         if *link_type == LinkType::Hard {
-            let node_type = file.node_type_at(*addr);
-            assert!(
-                node_type.is_ok(),
-                "hard link '{}' must resolve to valid object",
-                name
-            );
+            // Report why resolution failed; `is_ok` discarded the cause.
+            file.node_type_at(*addr).unwrap_or_else(|error| {
+                panic!("hard link '{name}' must resolve to an object: {error}")
+            });
         }
     }
 }
@@ -614,7 +613,7 @@ fn navigate_by_path() {
 
     // Invalid path should return error
     let invalid = file.open_path("/nonexistent/path/to/nowhere");
-    assert!(invalid.is_err(), "invalid path must return error");
+    assert_rejects(&invalid, "path not found: nonexistent");
 }
 
 // ---------------------------------------------------------------------------
@@ -735,10 +734,16 @@ fn contiguous_layout() {
         let dataset = file.dataset_at(*addr).expect("read dataset metadata");
 
         if dataset.layout == StorageLayout::Contiguous {
-            // Contiguous layout must have data address
-            assert!(
-                dataset.data_address.is_some(),
-                "contiguous layout must have data address"
+            // `is_some` held structurally: the contiguous parse always stores
+            // `Some(..)`, so it could not fail. The address's value is what
+            // carries the contract.
+            let address = dataset
+                .data_address
+                .expect("a contiguous layout must record a data address");
+            assert_ne!(
+                address,
+                u64::MAX,
+                "contiguous dataset at {addr} has an undefined data address"
             );
         }
     }

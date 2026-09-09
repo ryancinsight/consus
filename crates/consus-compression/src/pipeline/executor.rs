@@ -139,6 +139,7 @@ mod tests {
     use super::*;
     use crate::pipeline::nbit::NbitFilter;
     use crate::pipeline::shuffle::ShuffleFilter;
+    use consus_core::test_support::assert_rejects;
 
     /// Empty pipeline returns data unchanged for both directions.
     #[test]
@@ -359,7 +360,10 @@ mod tests {
         let bad_input: Vec<u8> = vec![0x01, 0x02, 0x03, 0x04, 0x05];
 
         let result = pipeline.execute(FilterDirection::Forward, &bad_input);
-        assert!(result.is_err(), "misaligned input must propagate error");
+        assert_rejects(
+            &result,
+            "invalid format: shuffle: data length 5 is not divisible by typesize 4",
+        );
 
         match result.unwrap_err() {
             consus_core::Error::InvalidFormat { message } => {

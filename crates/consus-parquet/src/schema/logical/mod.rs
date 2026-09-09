@@ -293,6 +293,6 @@ mod tests {
         let annotation = TypeAnnotation::optional().with_logical_type(LogicalType::String);
         assert!(annotation.is_optional());
         assert!(!annotation.is_repeated());
-        assert!(annotation.logical_type.is_some());
+        assert_eq!(annotation.logical_type, Some(LogicalType::String));
     }
 }

@@ -62,6 +62,7 @@ impl MatLogicalArray {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use consus_core::test_support::assert_rejects;
 
     #[test]
     fn new_valid_logical_array() {
@@ -74,7 +75,10 @@ mod tests {
     #[test]
     fn new_element_count_mismatch_returns_error() {
         let err = MatLogicalArray::new(vec![1, 3], vec![true, false]);
-        assert!(err.is_err());
+        assert_rejects(
+            &err,
+            "shape error: logical array data length does not match shape product",
+        );
     }
 
     #[test]

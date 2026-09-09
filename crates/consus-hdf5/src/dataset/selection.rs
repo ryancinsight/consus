@@ -387,6 +387,7 @@ pub fn map_selection_to_chunks(
 #[cfg(feature = "alloc")]
 mod tests {
     use super::*;
+    use consus_core::test_support::assert_rejects;
 
     /// Single chunk fully covered by the selection.
     #[test]
@@ -467,7 +468,7 @@ mod tests {
     fn rank_mismatch_error() {
         let slab = Hyperslab::contiguous(&[0, 0], &[4, 4]);
         let result = decompose_hyperslab(&slab, &[4, 4, 4]);
-        assert!(result.is_err());
+        assert_rejects(&result, "shape error: hyperslab rank 2 != chunk rank 3");
     }
 
     /// 1-D selection spanning three chunks.

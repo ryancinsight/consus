@@ -103,6 +103,7 @@ mod tests {
     use super::*;
     use crate::model::MatArray;
     use crate::model::numeric::{MatNumericArray, MatNumericClass};
+    use consus_core::test_support::assert_rejects;
 
     fn scalar_numeric(v: f64) -> MatArray {
         MatArray::Numeric(MatNumericArray {
@@ -182,7 +183,7 @@ mod tests {
                 ("x".to_string(), vec![scalar_numeric(2.0)]),
             ],
         );
-        assert!(err.is_err());
+        assert_rejects(&err, "invalid MAT format: struct: duplicate field name");
     }
 
     #[test]
@@ -191,6 +192,9 @@ mod tests {
             vec![1, 2],
             vec![("x".to_string(), vec![scalar_numeric(1.0)])],
         );
-        assert!(err.is_err());
+        assert_rejects(
+            &err,
+            "shape error: struct: field element count must equal shape product",
+        );
     }
 }

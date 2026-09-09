@@ -69,8 +69,10 @@ fn v2_spec_array_with_gzip() {
 
     let meta = ArrayMetadataV2::parse(zarray_json).expect("parse must succeed");
 
-    assert!(meta.compressor.is_some());
-    let comp = meta.compressor.as_ref().unwrap();
+    let comp = meta
+        .compressor
+        .as_ref()
+        .expect("a gzip compressor entry must parse into Some");
     match comp {
         CompressorConfig::Named(named) => assert_eq!(named.id, "gzip"),
         _ => panic!("expected named compressor"),

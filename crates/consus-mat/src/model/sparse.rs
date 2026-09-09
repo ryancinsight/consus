@@ -159,6 +159,7 @@ impl MatSparseArray {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use consus_core::test_support::assert_rejects;
 
     fn valid_sparse() -> MatSparseArray {
         MatSparseArray::new(
@@ -208,7 +209,7 @@ mod tests {
             [5.0f64.to_le_bytes(), 7.0f64.to_le_bytes()].concat(),
             None,
         );
-        assert!(err.is_err());
+        assert_rejects(&err, "shape error: sparse: jc.len() 3 != ncols+1 4");
     }
 
     #[test]
@@ -221,7 +222,7 @@ mod tests {
             [5.0f64.to_le_bytes(), 7.0f64.to_le_bytes()].concat(),
             None,
         );
-        assert!(err.is_err());
+        assert_rejects(&err, "shape error: sparse: ir.len() 3 != nnz 2");
     }
 
     #[test]
@@ -234,7 +235,7 @@ mod tests {
             5.0f64.to_le_bytes().to_vec(),
             None,
         );
-        assert!(err.is_err());
+        assert_rejects(&err, "shape error: sparse: real_data.len() 8 != nnz*8 16");
     }
 
     #[test]
@@ -247,7 +248,7 @@ mod tests {
             [5.0f64.to_le_bytes(), 7.0f64.to_le_bytes()].concat(),
             None,
         );
-        assert!(err.is_err());
+        assert_rejects(&err, "shape error: sparse: ir[1] 5 >= nrows 3");
     }
 
     #[test]
@@ -260,6 +261,6 @@ mod tests {
             [5.0f64.to_le_bytes(), 7.0f64.to_le_bytes()].concat(),
             None,
         );
-        assert!(err.is_err());
+        assert_rejects(&err, "shape error: sparse: jc[2] 1 < jc[1] 2");
     }
 }

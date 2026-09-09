@@ -267,8 +267,11 @@ mod tests {
         assert_eq!(header.uncompressed_page_size, 40);
         assert_eq!(header.compressed_page_size, 40);
         assert_eq!(header.crc, None);
-        assert!(header.data_page_header.is_some());
-        assert_eq!(header.data_page_header.as_ref().unwrap().num_values, 5);
+        let data_page_header = header
+            .data_page_header
+            .as_ref()
+            .expect("a DataPage header must carry its data-page fields");
+        assert_eq!(data_page_header.num_values, 5);
         assert_eq!(consumed, 17);
     }
 

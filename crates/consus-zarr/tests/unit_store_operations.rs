@@ -9,6 +9,7 @@
 //! - SplitStore wrapper
 //! - Error handling for missing keys
 
+use consus_core::test_support::assert_rejects;
 use consus_zarr::store::{InMemoryStore, PrefixedStore, SplitStore, Store};
 use tempfile::TempDir;
 
@@ -87,7 +88,7 @@ fn in_memory_store_delete() {
     store.delete(key).expect("delete must succeed");
 
     let result = store.get(key);
-    assert!(result.is_err());
+    assert_rejects(&result, "path not found: to_delete");
 }
 
 /// Test InMemoryStore delete missing key.
@@ -95,7 +96,7 @@ fn in_memory_store_delete() {
 fn in_memory_store_delete_missing() {
     let mut store = InMemoryStore::new();
     let result = store.delete("nonexistent");
-    assert!(result.is_err());
+    assert_rejects(&result, "path not found: nonexistent");
 }
 
 /// Test InMemoryStore list with prefix.
@@ -168,7 +169,7 @@ fn in_memory_store_contains() {
 fn in_memory_store_get_missing() {
     let store = InMemoryStore::new();
     let result = store.get("missing");
-    assert!(result.is_err());
+    assert_rejects(&result, "path not found: missing");
 }
 
 /// Test InMemoryStore from_entries constructor.
@@ -270,7 +271,7 @@ fn fs_store_delete() {
     store.delete("file").expect("delete must succeed");
 
     let result = store.get("file");
-    assert!(result.is_err());
+    assert_rejects(&result, "path not found: file");
 }
 
 /// Test FsStore list with prefix.
@@ -328,7 +329,7 @@ fn fs_store_missing_file() {
     let store = consus_zarr::store::FsStore::create(tmp.path()).expect("create must succeed");
 
     let result = store.get("nonexistent");
-    assert!(result.is_err());
+    assert_rejects(&result, "path not found: nonexistent");
 }
 
 // ---------------------------------------------------------------------------

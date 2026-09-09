@@ -422,6 +422,7 @@ impl FitsTableDescriptor {
 #[cfg(all(test, feature = "alloc"))]
 mod tests {
     use alloc::vec::Vec;
+    use consus_core::test_support::assert_rejects;
 
     use super::*;
     use crate::datastructure::FitsBlockAlignment;
@@ -722,8 +723,10 @@ mod tests {
         ]);
         let header = parse_extension_header_bytes(&bytes).unwrap();
         let result = FitsBinaryTableDescriptor::from_header(&header);
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), Error::InvalidFormat { .. }));
+        assert_rejects(
+            &result,
+            "invalid format: FITS BINTABLE column byte widths do not sum to NAXIS1",
+        );
     }
 
     #[test]

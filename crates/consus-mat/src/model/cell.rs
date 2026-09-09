@@ -70,6 +70,7 @@ mod tests {
     use super::*;
     use crate::model::MatArray;
     use crate::model::numeric::{MatNumericArray, MatNumericClass};
+    use consus_core::test_support::assert_rejects;
 
     fn dummy_numeric() -> MatArray {
         MatArray::Numeric(MatNumericArray {
@@ -91,7 +92,10 @@ mod tests {
     #[test]
     fn new_element_count_mismatch_returns_error() {
         let err = MatCellArray::new(vec![2, 3], vec![dummy_numeric(), dummy_numeric()]);
-        assert!(err.is_err());
+        assert_rejects(
+            &err,
+            "shape error: cell array element count does not match shape product",
+        );
     }
 
     #[test]

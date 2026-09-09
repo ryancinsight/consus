@@ -6,6 +6,7 @@
 //! - Compression roundtrip with random data
 //! - Store operations with random keys and values
 //! - Metadata serialization/deserialization invariants
+use std::collections::BTreeMap;
 
 use consus_zarr::Codec;
 use consus_zarr::chunk::{ChunkKeySeparator, chunk_key};
@@ -339,9 +340,10 @@ proptest! {
     fn attribute_value_serialization(attr in attribute_value()) {
         let attrs = vec![("test".to_string(), attr)];
 
-        // Should not panic
-        let result = serialize_zattrs(&attrs);
-        prop_assert!(result.is_ok());
+        let serialized = serialize_zattrs(&attrs).expect("serialize must succeed");
+        let reparsed = parse_zattrs(&serialized).expect("parse must succeed");
+        prop_assert_eq!(reparsed.len(), 1);
+        prop_assert_eq!(&reparsed[0].0, "test");
     }
 }
 
@@ -492,14 +494,23 @@ proptest! {
     ) {
         let mut store = InMemoryStore::new();
 
+        let mut written = BTreeMap::new();
         for (value, key_prefix) in ops {
             let key = format!("{}_{}", key_prefix, value);
             store.set(&key, &[value]).expect("set must succeed");
+            written.insert(key, value);
         }
 
-        // Store should be in consistent state
-        let list_result = store.list("");
-        prop_assert!(list_result.is_ok());
+        // Every key written is listed exactly once and reads back its value.
+        let mut listed = store.list("").expect("list must succeed");
+        listed.sort();
+        let mut expected: Vec<String> = written.keys().cloned().collect();
+        expected.sort();
+        prop_assert_eq!(&listed, &expected);
+        for (key, value) in &written {
+            let stored = store.get(key).expect("a listed key must read back");
+            prop_assert_eq!(stored.as_slice(), &[*value]);
+        }
     }
 }
 
@@ -529,11 +540,18 @@ proptest! {
     fn store_delete_missing_consistent(key in zarr_key()) {
         let mut store = InMemoryStore::new();
 
-        let delete_result = store.delete(&key);
+        let error = store
+            .delete(&key)
+            .expect_err("deleting a key that was never set must fail");
         let contains = store.contains(&key).expect("contains must succeed");
 
-        // Delete of missing should fail, and key should not exist
-        prop_assert!(delete_result.is_err());
+        // The failure must name the missing key, not merely be a failure.
+        let rendered = format!("{error}");
+        prop_assert!(
+            rendered.contains("path not found") && rendered.contains(&key),
+            "delete of a missing key must report that key, got {}",
+            rendered
+        );
         prop_assert!(!contains);
     }
 }

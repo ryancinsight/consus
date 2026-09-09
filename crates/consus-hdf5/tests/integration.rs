@@ -1,5 +1,6 @@
 #![cfg(feature = "alloc")]
 
+use consus_core::test_support::assert_rejects;
 use core::num::NonZeroUsize;
 
 use byteorder::{ByteOrder, LittleEndian};
@@ -528,11 +529,7 @@ fn open_path_returns_not_found_for_missing() {
     let (cursor, _, _) = build_compact_group_file();
     let file = Hdf5File::open(cursor).expect("open");
     let result = file.open_path("/nonexistent_group/dataset");
-    assert!(result.is_err());
-    match result.unwrap_err() {
-        consus_core::Error::NotFound { .. } => {}
-        other => panic!("expected NotFound, got {other:?}"),
-    }
+    assert_rejects(&result, "path not found: nonexistent_group");
 }
 
 #[test]

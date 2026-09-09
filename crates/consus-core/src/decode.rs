@@ -263,6 +263,7 @@ mod tests {
     use super::super::Error;
     use super::super::types::datatype::{ByteOrder, Datatype};
     use super::{decode_bytes_to_f64, decode_to_f64};
+    use crate::test_support::assert_rejects;
     use core::num::NonZeroUsize;
 
     fn le_int(bits: usize, signed: bool) -> Datatype {
@@ -341,7 +342,7 @@ mod tests {
     fn unsupported_float_width_fails_closed() {
         let raw = vec![0u8; 16];
         let out = decode_to_f64(&raw, &be_float(128));
-        assert!(out.is_err());
+        assert_rejects(&out, "unsupported feature: decode_to_f64: 128-bit float");
     }
 
     #[test]
@@ -349,7 +350,10 @@ mod tests {
         // 4 bytes of f32 data + 1 trailing byte
         let raw = vec![0u8; 5];
         let out = decode_to_f64(&raw, &le_float(32));
-        assert!(out.is_err());
+        assert_rejects(
+            &out,
+            "invalid format: decode_to_f64: buffer length 5 is not a multiple of element size 4",
+        );
     }
 
     #[test]

@@ -393,7 +393,6 @@ fn variable_chunking() {
     )
     .with_compression(Compression::Deflate { level: 6 });
 
-    assert!(var.compression.is_some());
     assert_eq!(var.compression, Some(Compression::Deflate { level: 6 }));
     assert_eq!(var.rank(), 3);
 }
@@ -415,7 +414,6 @@ fn variable_compression() {
     )
     .with_compression(Compression::Deflate { level: 6 });
 
-    assert!(var.compression.is_some());
     match &var.compression {
         Some(Compression::Deflate { level }) => assert_eq!(*level, 6),
         other => panic!("expected Deflate {{ level: 6 }}, got {:?}", other),
@@ -441,8 +439,10 @@ fn variable_with_fill_value() {
     )
     .with_fill_value(fill_bytes.clone());
 
-    assert!(var.fill_value.is_some());
-    let stored = var.fill_value.as_ref().unwrap();
+    let stored = var
+        .fill_value
+        .as_ref()
+        .expect("with_fill_value must record the bytes");
     let restored = f32::from_le_bytes(stored[..4].try_into().unwrap());
     assert_eq!(restored, -999.0f32);
 }

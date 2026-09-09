@@ -292,8 +292,15 @@ mod tests {
         let mut iter = ChunkIterator::new(&grid);
         for remaining in (0..expected).rev() {
             assert_eq!(iter.len(), remaining + 1);
-            let item = iter.next();
-            assert!(item.is_some());
+            let coordinate = iter.next().expect("len() promised another chunk");
+            assert_eq!(coordinate.len(), grid.len());
+            assert!(
+                coordinate
+                    .iter()
+                    .zip(grid.iter())
+                    .all(|(c, extent)| c < extent),
+                "chunk coordinate {coordinate:?} escapes the grid {grid:?}"
+            );
         }
         assert_eq!(iter.len(), 0);
         assert!(iter.next().is_none());

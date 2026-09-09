@@ -47,6 +47,8 @@ extern crate alloc;
 pub mod core;
 pub mod decode;
 pub mod parse;
+#[cfg(all(feature = "alloc", any(test, feature = "test-util")))]
+pub mod test_support;
 pub mod types;
 
 // ---------------------------------------------------------------------------

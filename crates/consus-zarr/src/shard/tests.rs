@@ -104,9 +104,8 @@ fn extract_sharding_config_basic() {
             ),
         ],
     };
-    let cfg = extract_sharding_config(&[codec]);
-    assert!(cfg.is_some());
-    let cfg = cfg.unwrap();
+    let cfg =
+        extract_sharding_config(&[codec]).expect("a sharding_indexed codec must yield a config");
     assert_eq!(cfg.inner_chunk_shape, vec![2, 2]);
     assert_eq!(cfg.inner_codecs.len(), 1);
     assert_eq!(cfg.inner_codecs[0].name, "bytes");
