@@ -243,7 +243,7 @@ fn chunk_size_encoding(data_size: usize) -> (usize, u8) {
         (1, 0x00)
     } else if data_size < 65536 {
         (2, 0x01)
-    } else if data_size < (1 << 32) {
+    } else if usize::try_from(1_u64 << 32).map_or(true, |limit| data_size < limit) {
         (4, 0x02)
     } else {
         (8, 0x03)
@@ -2566,6 +2566,10 @@ mod tests {
         assert_eq!(chunk_size_encoding(256), (2, 0x01));
         assert_eq!(chunk_size_encoding(65535), (2, 0x01));
         assert_eq!(chunk_size_encoding(65536), (4, 0x02));
+        #[cfg(target_pointer_width = "64")]
+        assert_eq!(chunk_size_encoding(1usize << 32), (8, 0x03));
+        #[cfg(target_pointer_width = "32")]
+        assert_eq!(chunk_size_encoding(usize::MAX), (4, 0x02));
     }
 
     #[cfg(feature = "alloc")]
