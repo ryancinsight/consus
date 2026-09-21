@@ -24,9 +24,11 @@ use consus_hdf5::address::ParseContext;
 use consus_hdf5::btree::v2::{BTreeV2Header, collect_all_records, find_huge_object_record};
 use consus_hdf5::dataset::chunk::{ChunkLocation, read_chunk_raw};
 use consus_hdf5::datatype::compound::parse_datatype;
+use consus_hdf5::file::Hdf5File;
 use consus_hdf5::heap::fractal::{FractalHeapHeader, read_huge_object, read_managed_object};
 use consus_hdf5::heap::global::GlobalHeapCollection;
 use consus_io::MemCursor;
+use std::path::Path;
 
 /// A resource-limit rejection, as opposed to any other typed failure.
 #[track_caller]
@@ -481,4 +483,39 @@ fn huge_object_search_rejects_empty_child_table() {
         matches!(error, Error::InvalidFormat { .. }),
         "empty HUGE-object child table: expected invalid format, got {error:?}"
     );
+}
+
+/// The retained `fuzz_hdf5_parser` crash replays without panicking.
+///
+/// `crash-c1d0c4d8fe81006f54b9c70923df027535377fbc`, found by CI run
+/// 35558013774, reaches an array datatype whose extents multiply past
+/// `usize` and panicked with "attempt to multiply with overflow" inside
+/// `Datatype::element_size`. The bound belongs in the size computation
+/// (asserted value-semantically in consus-core's `unit_datatype`); this
+/// asserts the end-to-end property the fuzzer asserts -- that the whole
+/// parser path over hostile bytes terminates by returning, not by panicking.
+///
+/// The input is committed as a named corpus seed, so the fuzzer replays it on
+/// every run as well.
+#[test]
+fn retained_array_extent_overflow_crash_replays_without_panic() {
+    let seed = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fuzz/corpus/fuzz_hdf5_parser/seed-array-extent-product-overflow");
+    let data =
+        std::fs::read(&seed).unwrap_or_else(|e| panic!("corpus seed {}: {e}", seed.display()));
+
+    // The same sequence the fuzz target drives, with the same discards: only
+    // a panic is a failure, and reaching the end is the assertion.
+    let cursor = MemCursor::from_bytes(data);
+    let Ok(file) = Hdf5File::open(cursor) else {
+        panic!("the seed parses as HDF5; a rejection here would stop exercising the path")
+    };
+    let Ok(entries) = file.list_root_group() else {
+        return;
+    };
+    for (_name, addr, _link_type) in &entries {
+        let _ = file.dataset_at(*addr);
+        let _ = file.attributes_at(*addr);
+        let _ = file.read_chunked_dataset_all_bytes(*addr);
+    }
 }
