@@ -3,7 +3,7 @@
 <a id="CONSUS-RASTER-001"></a>
 ## CONSUS-RASTER-001 — Shared raster codecs [arch] [minor]
 
-- Status: review; integrator: root; branch: feat/raster-codecs.
+- Status: done; integrator: root; [PR 76](https://github.com/ryancinsight/consus/pull/76).
 - Driver: [METIS-ASSETS-001](../metis/backlog.md#METIS-ASSETS-001).
 - Outcome: one bounded JPEG decoder serves desktop assets and medical samples.
 - Scope: `consus-raster`, JPEG sequential/progressive/lossless decoding and EXIF;
