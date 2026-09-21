@@ -1,6 +1,19 @@
 use crate::{DecodeError, DecodeErrorKind};
 
-use super::{PixelDensity, PresentationMetadata};
+use super::traversal::{DirectoryKind, PixelDensity, PresentationMetadata};
+
+pub(super) fn density_for(
+    metadata: &mut PresentationMetadata,
+    kind: DirectoryKind,
+) -> Result<&mut PixelDensity, DecodeError> {
+    match kind {
+        DirectoryKind::Root => Ok(&mut metadata.primary_density),
+        DirectoryKind::Thumbnail => Ok(&mut metadata.thumbnail_density),
+        DirectoryKind::Exif | DirectoryKind::Gps | DirectoryKind::Interoperability => {
+            Err(DecodeError::new(DecodeErrorKind::Unsupported))
+        }
+    }
+}
 
 pub(super) fn validate(tiff: &[u8], metadata: &PresentationMetadata) -> Result<(), DecodeError> {
     validate_density(&metadata.primary_density)?;

@@ -1,5 +1,5 @@
 use super::*;
-use crate::{DecodeErrorKind, PixelFormat};
+use crate::{DecodeErrorKind, DecodeLimits, DecodedImage, PixelFormat};
 use jpeg_encoder::{ColorType, Encoder};
 use proptest::prelude::*;
 use proptest::test_runner::{RngSeed, TestCaseResult};
