@@ -1,5 +1,19 @@
 # Consus — Backlog
 
+<a id="CONSUS-HDF5-TEST-STRUCTURE-001"></a>
+## CONSUS-HDF5-TEST-STRUCTURE-001 — Bound adversarial test modules [patch]
+
+- Status: in-progress; integrator: root/ritk_consumer; branch:
+  `fix/hdf5-adversarial-test-structure`.
+- Outcome: keep the HDF5 adversarial integration target below the source-file
+  budget without changing its hostile workloads or value-semantic assertions.
+- Scope: `crates/consus-hdf5/tests/adversarial_input.rs`, its
+  `nested_datatype` leaf module, and this item.
+- Acceptance: the same 18 adversarial tests pass in one integration binary;
+  focused Clippy, docs, and the authoritative Atlas scan pass without a
+  baseline increase.
+- Lease: root/ritk_consumer owns the scoped files from 2026-09-21T17:20:00-04:00.
+
 <a id="CONSUS-RASTER-001"></a>
 ## CONSUS-RASTER-001 — Shared raster codecs [arch] [minor]
 
