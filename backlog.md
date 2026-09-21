@@ -3,7 +3,7 @@
 <a id="CONSUS-HDF5-TEST-STRUCTURE-001"></a>
 ## CONSUS-HDF5-TEST-STRUCTURE-001 — Bound adversarial test modules [patch]
 
-- Status: in-progress; integrator: root/ritk_consumer; branch:
+- Status: review; integrator: root/ritk_consumer; branch:
   `fix/hdf5-adversarial-test-structure`.
 - Outcome: keep the HDF5 adversarial integration target below the source-file
   budget without changing its hostile workloads or value-semantic assertions.
@@ -12,7 +12,9 @@
 - Acceptance: the same 18 adversarial tests pass in one integration binary;
   focused Clippy, docs, and the authoritative Atlas scan pass without a
   baseline increase.
-- Lease: root/ritk_consumer owns the scoped files from 2026-09-21T17:20:00-04:00.
+- Verification: Atlas scan zero regressions; strict Clippy and docs pass;
+  nextest `876d4055-51f9-44e5-a795-a971f69b4b50` passes 434/434.
+- Lease: none.
 
 <a id="CONSUS-RASTER-001"></a>
 ## CONSUS-RASTER-001 — Shared raster codecs [arch] [minor]
