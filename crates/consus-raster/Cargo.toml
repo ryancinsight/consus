@@ -1,0 +1,22 @@
+[package]
+name = "consus-raster"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Bounded pure-Rust raster codecs"
+keywords = ["jpeg", "raster", "image", "codec", "medical"]
+categories = ["multimedia::images", "encoding"]
+readme = "README.md"
+
+[dependencies]
+jpeg-encoder.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true
