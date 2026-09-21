@@ -8,14 +8,14 @@ enum FixtureOrder {
 }
 
 impl FixtureOrder {
-    fn u16(self, value: u16) -> [u8; 2] {
+    fn short_bytes(self, value: u16) -> [u8; 2] {
         match self {
             Self::Little => value.to_le_bytes(),
             Self::Big => value.to_be_bytes(),
         }
     }
 
-    fn u32(self, value: u32) -> [u8; 4] {
+    fn long_bytes(self, value: u32) -> [u8; 4] {
         match self {
             Self::Little => value.to_le_bytes(),
             Self::Big => value.to_be_bytes(),
@@ -29,11 +29,11 @@ fn tiff(orientation: u16, order: FixtureOrder) -> Vec<u8> {
         FixtureOrder::Little => b"II",
         FixtureOrder::Big => b"MM",
     });
-    bytes.extend_from_slice(&order.u16(42));
-    bytes.extend_from_slice(&order.u32(8));
-    bytes.extend_from_slice(&order.u16(1));
+    bytes.extend_from_slice(&order.short_bytes(42));
+    bytes.extend_from_slice(&order.long_bytes(8));
+    bytes.extend_from_slice(&order.short_bytes(1));
     entry(&mut bytes, order, 0x0112, 3, short(order, orientation));
-    bytes.extend_from_slice(&order.u32(0));
+    bytes.extend_from_slice(&order.long_bytes(0));
     bytes
 }
 
@@ -49,14 +49,14 @@ fn entry_with_count(
     count: u32,
     value: [u8; 4],
 ) {
-    bytes.extend_from_slice(&order.u16(tag));
-    bytes.extend_from_slice(&order.u16(field_type));
-    bytes.extend_from_slice(&order.u32(count));
+    bytes.extend_from_slice(&order.short_bytes(tag));
+    bytes.extend_from_slice(&order.short_bytes(field_type));
+    bytes.extend_from_slice(&order.long_bytes(count));
     bytes.extend_from_slice(&value);
 }
 
 fn short(order: FixtureOrder, value: u16) -> [u8; 4] {
-    let [first, second] = order.u16(value);
+    let [first, second] = order.short_bytes(value);
     [first, second, 0, 0]
 }
 
@@ -64,28 +64,28 @@ fn tiff_with_primary_and_thumbnail_density() -> Vec<u8> {
     let order = FixtureOrder::Little;
     let mut bytes = Vec::new();
     bytes.extend_from_slice(b"II");
-    bytes.extend_from_slice(&order.u16(42));
-    bytes.extend_from_slice(&order.u32(8));
-    bytes.extend_from_slice(&order.u16(4));
+    bytes.extend_from_slice(&order.short_bytes(42));
+    bytes.extend_from_slice(&order.long_bytes(8));
+    bytes.extend_from_slice(&order.short_bytes(4));
     entry(&mut bytes, order, 0x0112, 3, short(order, 6));
-    entry(&mut bytes, order, 0x011a, 5, order.u32(62));
-    entry(&mut bytes, order, 0x011b, 5, order.u32(70));
+    entry(&mut bytes, order, 0x011a, 5, order.long_bytes(62));
+    entry(&mut bytes, order, 0x011b, 5, order.long_bytes(70));
     entry(&mut bytes, order, 0x0128, 3, short(order, 2));
-    bytes.extend_from_slice(&order.u32(78));
-    bytes.extend_from_slice(&order.u32(300));
-    bytes.extend_from_slice(&order.u32(1));
-    bytes.extend_from_slice(&order.u32(300));
-    bytes.extend_from_slice(&order.u32(1));
-    bytes.extend_from_slice(&order.u16(4));
+    bytes.extend_from_slice(&order.long_bytes(78));
+    bytes.extend_from_slice(&order.long_bytes(300));
+    bytes.extend_from_slice(&order.long_bytes(1));
+    bytes.extend_from_slice(&order.long_bytes(300));
+    bytes.extend_from_slice(&order.long_bytes(1));
+    bytes.extend_from_slice(&order.short_bytes(4));
     entry(&mut bytes, order, 0x0112, 3, short(order, 1));
-    entry(&mut bytes, order, 0x011a, 5, order.u32(132));
-    entry(&mut bytes, order, 0x011b, 5, order.u32(140));
+    entry(&mut bytes, order, 0x011a, 5, order.long_bytes(132));
+    entry(&mut bytes, order, 0x011b, 5, order.long_bytes(140));
     entry(&mut bytes, order, 0x0128, 3, short(order, 2));
-    bytes.extend_from_slice(&order.u32(0));
-    bytes.extend_from_slice(&order.u32(72));
-    bytes.extend_from_slice(&order.u32(1));
-    bytes.extend_from_slice(&order.u32(72));
-    bytes.extend_from_slice(&order.u32(1));
+    bytes.extend_from_slice(&order.long_bytes(0));
+    bytes.extend_from_slice(&order.long_bytes(72));
+    bytes.extend_from_slice(&order.long_bytes(1));
+    bytes.extend_from_slice(&order.long_bytes(72));
+    bytes.extend_from_slice(&order.long_bytes(1));
     bytes
 }
 
@@ -93,15 +93,15 @@ fn tiff_with_thumbnail() -> Vec<u8> {
     let order = FixtureOrder::Little;
     let mut bytes = Vec::new();
     bytes.extend_from_slice(b"II");
-    bytes.extend_from_slice(&order.u16(42));
-    bytes.extend_from_slice(&order.u32(8));
-    bytes.extend_from_slice(&order.u16(1));
+    bytes.extend_from_slice(&order.short_bytes(42));
+    bytes.extend_from_slice(&order.long_bytes(8));
+    bytes.extend_from_slice(&order.short_bytes(1));
     entry(&mut bytes, order, 0x0112, 3, short(order, 4));
-    bytes.extend_from_slice(&order.u32(26));
-    bytes.extend_from_slice(&order.u16(2));
-    entry(&mut bytes, order, 0x0201, 4, order.u32(56));
-    entry(&mut bytes, order, 0x0202, 4, order.u32(4));
-    bytes.extend_from_slice(&order.u32(0));
+    bytes.extend_from_slice(&order.long_bytes(26));
+    bytes.extend_from_slice(&order.short_bytes(2));
+    entry(&mut bytes, order, 0x0201, 4, order.long_bytes(56));
+    entry(&mut bytes, order, 0x0202, 4, order.long_bytes(4));
+    bytes.extend_from_slice(&order.long_bytes(0));
     bytes.extend_from_slice(&[0xff, 0xd8, 0xff, 0xd9]);
     bytes
 }
@@ -110,25 +110,25 @@ fn big_endian_tiff_with_pointer_graph_and_density() -> Vec<u8> {
     let order = FixtureOrder::Big;
     let mut bytes = Vec::new();
     bytes.extend_from_slice(b"MM");
-    bytes.extend_from_slice(&order.u16(42));
-    bytes.extend_from_slice(&order.u32(8));
-    bytes.extend_from_slice(&order.u16(4));
+    bytes.extend_from_slice(&order.short_bytes(42));
+    bytes.extend_from_slice(&order.long_bytes(8));
+    bytes.extend_from_slice(&order.short_bytes(4));
     entry(&mut bytes, order, 0x0112, 3, short(order, 7));
-    entry(&mut bytes, order, 0x011a, 5, order.u32(62));
-    entry(&mut bytes, order, 0x011b, 5, order.u32(70));
-    entry(&mut bytes, order, 0x8769, 4, order.u32(78));
-    bytes.extend_from_slice(&order.u32(0));
-    bytes.extend_from_slice(&order.u32(300));
-    bytes.extend_from_slice(&order.u32(1));
-    bytes.extend_from_slice(&order.u32(300));
-    bytes.extend_from_slice(&order.u32(1));
-    bytes.extend_from_slice(&order.u16(2));
+    entry(&mut bytes, order, 0x011a, 5, order.long_bytes(62));
+    entry(&mut bytes, order, 0x011b, 5, order.long_bytes(70));
+    entry(&mut bytes, order, 0x8769, 4, order.long_bytes(78));
+    bytes.extend_from_slice(&order.long_bytes(0));
+    bytes.extend_from_slice(&order.long_bytes(300));
+    bytes.extend_from_slice(&order.long_bytes(1));
+    bytes.extend_from_slice(&order.long_bytes(300));
+    bytes.extend_from_slice(&order.long_bytes(1));
+    bytes.extend_from_slice(&order.short_bytes(2));
     entry(&mut bytes, order, 0xa001, 3, short(order, 1));
-    entry(&mut bytes, order, 0xa005, 4, order.u32(108));
-    bytes.extend_from_slice(&order.u32(0));
-    bytes.extend_from_slice(&order.u16(1));
+    entry(&mut bytes, order, 0xa005, 4, order.long_bytes(108));
+    bytes.extend_from_slice(&order.long_bytes(0));
+    bytes.extend_from_slice(&order.short_bytes(1));
     entry_with_count(&mut bytes, order, 0x0001, 2, 4, *b"R98\0");
-    bytes.extend_from_slice(&order.u32(0));
+    bytes.extend_from_slice(&order.long_bytes(0));
     bytes
 }
 

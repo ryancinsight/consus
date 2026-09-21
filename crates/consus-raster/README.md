@@ -26,3 +26,8 @@ assert_eq!(image.pixels(), &[0; 64]);
 
 JPEG decoding returns the encoded pixel grid. EXIF orientation is metadata and
 is not applied to the returned pixels.
+
+## Attribution
+
+JPEG encoding uses `jpeg-encoder`. This software is based in part on the work
+of the Independent JPEG Group.

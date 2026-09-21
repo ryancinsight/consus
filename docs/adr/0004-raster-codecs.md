@@ -18,6 +18,12 @@ encoded-grid orientation; display normalization is distinct from clinical geomet
 RITK retains DICOM layout, signedness and modality conversion. Metis retains
 capability-controlled file reads, display limits and raster placement.
 
+Revision 2026-09-20: the Atlas conformance gate identified implementation-bearing
+module manifests and numeric helper names in the initial delivery. EXIF parsing,
+TIFF traversal and fields, JPEG storage bounds, encoding and container decoding
+now have separate operation modules. Module manifests expose the same public
+surface; this organization does not alter decoding or resource limits.
+
 The admitted JPEG processes are eight-bit Huffman sequential/progressive DCT
 and 8–16-bit single-component Huffman lossless coding. DCT reconstruction uses
 a separable transform and nearest-neighbor chroma upsampling. The integer color

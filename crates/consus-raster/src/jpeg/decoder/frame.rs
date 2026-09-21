@@ -1,7 +1,7 @@
 use super::super::bitstream::Tables;
 use super::super::transform::{BLOCK_CELLS, BLOCK_SIDE, ZIGZAG};
 use super::{
-    Coding, Component, Frame, Scan, ScanComponent, UNSEEN, allocation, malformed, read_u16,
+    Coding, Component, Frame, Scan, ScanComponent, UNSEEN, allocation, malformed, read_word,
     too_large, unsupported,
 };
 use crate::{DecodeError, DecodeLimits};
@@ -17,8 +17,8 @@ pub(super) fn parse_frame(
     limits: DecodeLimits,
 ) -> Result<Frame, DecodeError> {
     let precision = *payload.first().ok_or_else(malformed)?;
-    let height = usize::from(read_u16(payload.get(1..).ok_or_else(malformed)?)?);
-    let width = usize::from(read_u16(payload.get(3..).ok_or_else(malformed)?)?);
+    let height = usize::from(read_word(payload.get(1..).ok_or_else(malformed)?)?);
+    let width = usize::from(read_word(payload.get(3..).ok_or_else(malformed)?)?);
     let count = usize::from(*payload.get(5).ok_or_else(malformed)?);
     if width == 0 || height == 0 || !matches!(count, 1 | 3 | 4) || payload.len() != 6 + count * 3 {
         return Err(malformed());

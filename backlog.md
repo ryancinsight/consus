@@ -3,7 +3,7 @@
 <a id="CONSUS-RASTER-001"></a>
 ## CONSUS-RASTER-001 — Shared raster codecs [arch] [minor]
 
-- Status: done; integrator: root; [PR 76](https://github.com/ryancinsight/consus/pull/76).
+- Status: review; integrator: root; provider [PR 76](https://github.com/ryancinsight/consus/pull/76); module ownership [PR 77](https://github.com/ryancinsight/consus/pull/77).
 - Driver: [METIS-ASSETS-001](../metis/backlog.md#METIS-ASSETS-001).
 - Outcome: one bounded JPEG decoder serves desktop assets and medical samples.
 - Scope: `consus-raster`, JPEG sequential/progressive/lossless decoding and EXIF;
@@ -12,7 +12,7 @@
   orientations, malformed/truncated/budget rejection, no downstream decoder copy.
 - Decision: ADR 0004; no reverse dependency on RITK or Metis.
 - Verification: configured focused nextest, Clippy, docs, consumer gates and V06.
-- Provider: focused debug/release tests and Clippy pass; consumer integration remains tracked by the driver.
+- Closure: module ownership correction passes the Atlas ratchet without baseline increases, 33 debug and 33 release tests, focused Clippy and independent source review; public codec paths and behavior remain unchanged.
 
 ## CONSUS-CONFORMANCE-RATCHET-2026-08-31 [patch] — implementation complete; merge pending
 
