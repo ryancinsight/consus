@@ -212,9 +212,17 @@ impl Datatype {
             #[cfg(feature = "alloc")]
             Self::Compound { size, .. } => Some(*size),
             #[cfg(feature = "alloc")]
-            Self::Array { base, dims } => base
-                .element_size()
-                .and_then(|s| s.checked_mul(dims.iter().product::<usize>())),
+            Self::Array { base, dims } => {
+                // The element count is as attacker-controlled as the element
+                // size: a parsed array carries a `u32` per dimension at any
+                // rank, so the product needs the same bound as the multiply
+                // that consumes it. An unchecked `product()` inside a
+                // `checked_mul` argument panics before the check it feeds.
+                let count = dims
+                    .iter()
+                    .try_fold(1usize, |count, &extent| count.checked_mul(extent))?;
+                base.element_size().and_then(|size| size.checked_mul(count))
+            }
             #[cfg(feature = "alloc")]
             Self::Enum { base, .. } => base.element_size(),
             #[cfg(feature = "alloc")]
