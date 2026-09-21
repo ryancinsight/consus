@@ -35,6 +35,12 @@ State of the tree, not a roadmap:
 
 ## Supported Formats
 
+The shared raster boundary is defined in [ADR 0004](docs/adr/0004-raster-codecs.md).
+`consus-raster` owns JPEG integer samples and bounded EXIF interpretation for
+RITK and Metis. Medical modality conversion and display placement stay with
+those consumers. Migration acceptance is tracked by
+[CONSUS-RASTER-001](backlog.md#CONSUS-RASTER-001).
+
 | Format | Status | Spec Compliance |
 |--------|--------|-----------------|
 | HDF5 | Phase 1 – Complete | Full read and write paths implemented (v1/v2/v3 superblocks, all datatype classes, multi-chunk with filter pipeline). Chunked dataset write with layout v3/v4 and async I/O paths verified. |
