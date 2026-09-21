@@ -1,5 +1,20 @@
 # Consus — Backlog
 
+<a id="CONSUS-RASTER-001"></a>
+## CONSUS-RASTER-001 — Shared raster codecs [arch] [minor]
+
+- Status: in-progress; integrator: root; branch: feat/raster-codecs.
+- Driver: [METIS-ASSETS-001](../metis/backlog.md#METIS-ASSETS-001).
+- Outcome: one bounded JPEG decoder serves desktop assets and medical samples.
+- Scope: `consus-raster`, JPEG sequential/progressive/lossless decoding and EXIF;
+  RITK retains modality conversion, Metis retains scoped access and rendering.
+- Acceptance: exact lossless samples, independent progressive fixtures, all eight
+  orientations, malformed/truncated/budget rejection, no downstream decoder copy.
+- Decision: ADR 0004; no reverse dependency on RITK or Metis.
+- Verification: configured focused nextest, Clippy, docs, consumer gates and V06.
+- Lease: root crates/consus-raster Cargo.toml Cargo.lock docs/adr/0004-raster-codecs.md.
+- Updated: 2026-09-20.
+
 ## CONSUS-CONFORMANCE-RATCHET-2026-08-31 [patch] — implementation complete; merge pending
 
 - Outcome: restore the Atlas debt ratchet at the exact pinned Consus revision
