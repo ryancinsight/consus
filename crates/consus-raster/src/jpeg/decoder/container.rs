@@ -1,6 +1,7 @@
 use super::super::bitstream::{Tables, parse_tables};
 use super::{
-    Coding, ColorModel, Frame, entropy, frame, malformed, output, read_word, too_large, unsupported,
+    Coding, ColorModel, EntropyCoding, Frame, entropy, frame, malformed, output, read_word,
+    too_large, unsupported,
 };
 use crate::exif::Orientation;
 use crate::{DecodeError, DecodeLimits, DecodedImage};
@@ -33,6 +34,7 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
     let mut cursor = 2_usize;
     let mut frame = None;
     let mut tables = Tables::new();
+    let mut conditioning = super::conditioning::Conditioning::new();
     let mut quantization = [None; 4];
     let mut restart_interval = 0_usize;
     let mut scans = 0_usize;
@@ -53,7 +55,7 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
                 let color_model = select_color_model(&frame, saw_jfif, adobe_transform)?;
                 return output::finish(frame, color_model, orientation);
             }
-            0xc0..=0xc3 => {
+            0xc0..=0xc3 | 0xc9..=0xcb => {
                 if frame.is_some() || scans != 0 {
                     return Err(malformed());
                 }
@@ -64,6 +66,7 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
                 )?);
             }
             0xc4 => parse_tables(segment(bytes, &mut cursor)?, &mut tables)?,
+            0xcc => conditioning.parse(segment(bytes, &mut cursor)?)?,
             0xdb => frame::parse_quantization(segment(bytes, &mut cursor)?, &mut quantization)?,
             0xdd => {
                 let payload = segment(bytes, &mut cursor)?;
@@ -80,8 +83,34 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
                 }
                 let scan = frame::parse_scan(payload, current, &tables)?;
                 frame::capture_quantization(current, &scan, &quantization)?;
-                cursor =
-                    entropy::decode_scan(bytes, cursor, current, &tables, &scan, restart_interval)?;
+                cursor = match (current.entropy_coding, current.coding) {
+                    (EntropyCoding::Huffman, _) => entropy::decode_scan(
+                        bytes,
+                        cursor,
+                        current,
+                        &tables,
+                        &scan,
+                        restart_interval,
+                    )?,
+                    (EntropyCoding::Arithmetic, Coding::Lossless) => {
+                        super::lossless_arithmetic::decode_scan(
+                            bytes,
+                            cursor,
+                            current,
+                            &conditioning,
+                            &scan,
+                            restart_interval,
+                        )?
+                    }
+                    (EntropyCoding::Arithmetic, _) => super::arithmetic::decode_scan(
+                        bytes,
+                        cursor,
+                        current,
+                        &conditioning,
+                        &scan,
+                        restart_interval,
+                    )?,
+                };
                 output::record_progression(current, &scan)?;
                 scans = scans.checked_add(1).ok_or_else(too_large)?;
             }
@@ -114,7 +143,7 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
                 let _ = segment(bytes, &mut cursor)?;
                 return Err(unsupported());
             }
-            0xc8 | 0xcc | 0xdc | 0xde | 0xdf | 0xe2..=0xed | 0xef => {
+            0xc8 | 0xdc | 0xde | 0xdf | 0xe2..=0xed | 0xef => {
                 let _ = segment(bytes, &mut cursor)?;
                 return Err(unsupported());
             }
@@ -130,7 +159,7 @@ fn select_color_model(
     adobe_transform: Option<u8>,
 ) -> Result<ColorModel, DecodeError> {
     match frame.components.len() {
-        1 if adobe_transform.is_none() => Ok(ColorModel::Gray),
+        1 if matches!(adobe_transform, None | Some(0)) => Ok(ColorModel::Gray),
         3 => match adobe_transform {
             Some(0) => Ok(ColorModel::Rgb),
             Some(1) => Ok(ColorModel::Ycbcr),

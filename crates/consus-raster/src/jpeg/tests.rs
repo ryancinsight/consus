@@ -98,10 +98,19 @@ fn every_zero_limit_rejects_before_decode() {
 
 #[test]
 fn working_storage_bound_covers_decoded_storage() {
-    assert_eq!(working_storage_bound(8, 8), Ok(7488));
+    assert_eq!(
+        working_storage_bound(8, 8),
+        Ok(4096 + 4 * 4 * 4 * 64 * 6 + 6 * 64)
+    );
     assert_eq!(
         working_storage_bound(0, 8).expect_err("zero width").kind(),
         DecodeErrorKind::Malformed
+    );
+    assert_eq!(
+        working_storage_bound(u32::MAX, u32::MAX)
+            .expect_err("maximum dimensions overflow the storage calculation")
+            .kind(),
+        DecodeErrorKind::TooLarge
     );
 }
 
@@ -429,6 +438,7 @@ fn assert_decoded_contract(image: &DecodedImage, policy: DecodeLimits) -> TestCa
         PixelFormat::Gray => 1,
         PixelFormat::GrayWide => 2,
         PixelFormat::Rgb => 3,
+        PixelFormat::RgbWide => 6,
     };
     prop_assert_eq!(
         image.pixels().len(),

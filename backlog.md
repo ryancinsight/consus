@@ -3,16 +3,18 @@
 <a id="CONSUS-RASTER-001"></a>
 ## CONSUS-RASTER-001 — Shared raster codecs [arch] [minor]
 
-- Status: review; integrator: root; provider [PR 76](https://github.com/ryancinsight/consus/pull/76); module ownership [PR 77](https://github.com/ryancinsight/consus/pull/77).
+- Status: in-progress; integrator: root; branch: `feat/jpeg-processes`.
 - Driver: [METIS-ASSETS-001](../metis/backlog.md#METIS-ASSETS-001).
 - Outcome: one bounded JPEG decoder serves desktop assets and medical samples.
-- Scope: `consus-raster`, JPEG sequential/progressive/lossless decoding and EXIF;
+- Scope: `consus-raster`, Apollo DCT ownership, 12-bit DCT and arithmetic JPEG;
   RITK retains modality conversion, Metis retains scoped access and rendering.
 - Acceptance: exact lossless samples, independent progressive fixtures, all eight
   orientations, malformed/truncated/budget rejection, no downstream decoder copy.
 - Decision: ADR 0004; no reverse dependency on RITK or Metis.
 - Verification: configured focused nextest, Clippy, docs, consumer gates and V06.
-- Closure: module ownership correction passes the Atlas ratchet without baseline increases, 33 debug and 33 release tests, focused Clippy and independent source review; public codec paths and behavior remain unchanged.
+- Baseline: merged PRs 76/77; nextest `56c9445c-d936-46e0-a783-60373c5c8ade` passes 33 tests at `e34902fe`.
+- Plan: Apollo PR 526 supplies DCT; verify shared precision/arithmetic decoding and display mapping, then consumer gates and V06.
+- Provider checks: 73/73 debug and release, 2 doctests, strict Clippy/rustdoc, and 196 API checks pass; consumer gates and V06 remain in progress.
 
 ## CONSUS-CONFORMANCE-RATCHET-2026-08-31 [patch] — implementation complete; merge pending
 

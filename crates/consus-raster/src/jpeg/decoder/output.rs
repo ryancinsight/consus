@@ -3,7 +3,7 @@ use super::{
     Coding, ColorModel, Frame, Scan, UNSEEN, allocation, malformed, too_large, unsupported,
 };
 use crate::exif::Orientation;
-use crate::{DecodeError, DecodedImage, PixelFormat};
+use crate::{Compression, DecodeError, DecodedImage, PixelFormat};
 
 pub(super) fn record_progression(frame: &mut Frame, scan: &Scan) -> Result<(), DecodeError> {
     if frame.coding == Coding::Lossless {
@@ -61,8 +61,10 @@ pub(super) fn finish(
             let coefficients = frame
                 .coefficients
                 .get(coefficient_start..coefficient_end)
-                .ok_or_else(malformed)?;
-            let samples = reconstruct(coefficients, &table);
+                .ok_or_else(malformed)?
+                .try_into()
+                .map_err(|_| malformed())?;
+            let samples = reconstruct(coefficients, &table, frame.precision);
             let block_x = block % component.stored_across;
             let block_y = block / component.stored_across;
             let stride = component
@@ -90,14 +92,18 @@ pub(super) fn finish(
         .checked_mul(frame.height)
         .ok_or_else(too_large)?;
     let channels = if frame.components.len() == 1 { 1 } else { 3 };
-    let output_len = pixel_count.checked_mul(channels).ok_or_else(too_large)?;
+    let bytes_per_sample = if frame.precision > 8 { 2 } else { 1 };
+    let output_len = pixel_count
+        .checked_mul(channels)
+        .and_then(|samples| samples.checked_mul(bytes_per_sample))
+        .ok_or_else(too_large)?;
     let mut pixels = Vec::new();
     pixels
         .try_reserve_exact(output_len)
         .map_err(|_| allocation())?;
     for y in 0..frame.height {
         for x in 0..frame.width {
-            let sample = |component_index: usize| -> Result<u8, DecodeError> {
+            let sample = |component_index: usize| -> Result<u16, DecodeError> {
                 let component = frame
                     .components
                     .get(component_index)
@@ -124,28 +130,39 @@ pub(super) fn finish(
                     .copied()
                     .ok_or_else(malformed)
             };
-            match (color_model, frame.components.len()) {
-                (ColorModel::Gray, 1) => pixels.push(sample(0)?),
-                (ColorModel::Rgb, 3) => {
-                    pixels.extend_from_slice(&[sample(0)?, sample(1)?, sample(2)?]);
-                }
+            let samples = match (color_model, frame.components.len()) {
+                (ColorModel::Gray, 1) => [sample(0)?, 0, 0],
+                (ColorModel::Rgb, 3) => [sample(0)?, sample(1)?, sample(2)?],
                 (ColorModel::Ycbcr, 3) => {
-                    pixels.extend_from_slice(&ycbcr_to_rgb(sample(0)?, sample(1)?, sample(2)?));
+                    ycbcr_to_rgb(sample(0)?, sample(1)?, sample(2)?, frame.precision)
                 }
                 (ColorModel::Cmyk | ColorModel::Ycck, 4) => {
                     let key = sample(3)?;
                     let colors = if color_model == ColorModel::Ycck {
-                        ycbcr_to_rgb(sample(0)?, sample(1)?, sample(2)?)
-                            .map(|channel| 255 - channel)
+                        let maximum = (1_u16 << frame.precision) - 1;
+                        ycbcr_to_rgb(sample(0)?, sample(1)?, sample(2)?, frame.precision)
+                            .map(|channel| maximum - channel)
                     } else {
                         [sample(0)?, sample(1)?, sample(2)?]
                     };
-                    pixels.extend(colors.map(|channel| {
-                        let color = u16::from(channel) * u16::from(key) / 255;
-                        u8::try_from(color).expect("invariant: CMYK product divided by 255 fits u8")
-                    }));
+                    let maximum = (1_u32 << frame.precision) - 1;
+                    colors.map(|channel| {
+                        u16::try_from(u32::from(channel) * u32::from(key) / maximum).expect(
+                            "invariant: CMYK product divided by the sample maximum fits u16",
+                        )
+                    })
                 }
                 _ => return Err(unsupported()),
+            };
+            let samples = &samples[..channels];
+            if frame.precision <= 8 {
+                for &sample in samples {
+                    pixels.push(u8::try_from(sample).map_err(|_| malformed())?);
+                }
+            } else {
+                for &sample in samples {
+                    pixels.extend_from_slice(&sample.to_ne_bytes());
+                }
             }
         }
     }
@@ -156,11 +173,14 @@ pub(super) fn finish(
         u32::try_from(frame.width).map_err(|_| too_large())?,
         u32::try_from(frame.height).map_err(|_| too_large())?,
         pixels,
-        if channels == 1 {
-            PixelFormat::Gray
-        } else {
-            PixelFormat::Rgb
+        match (channels, frame.precision <= 8) {
+            (1, true) => PixelFormat::Gray,
+            (1, false) => PixelFormat::GrayWide,
+            (_, true) => PixelFormat::Rgb,
+            (_, false) => PixelFormat::RgbWide,
         },
+        frame.precision,
+        Compression::Lossy,
         orientation,
     ))
 }
@@ -215,6 +235,8 @@ fn finish_lossless(frame: Frame, orientation: Orientation) -> Result<DecodedImag
         } else {
             PixelFormat::GrayWide
         },
+        frame.precision,
+        Compression::Lossless,
         orientation,
     ))
 }
