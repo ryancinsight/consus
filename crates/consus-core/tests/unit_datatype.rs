@@ -599,3 +599,43 @@ fn datatype_all_base_types_are_distinct() {
         }
     }
 }
+
+/// An array whose dimensions multiply past `usize` reports no element size.
+///
+/// The product of the extents is as attacker-controlled as the element size:
+/// a parsed HDF5 array datatype carries a `u32` per dimension at any rank, so
+/// three large extents exceed `usize` on a 64-bit host. The multiply that
+/// consumes the product was already `checked_mul`, but the product feeding it
+/// was not, so the overflow panicked before reaching the check -- reachable
+/// from `Hdf5File::open` on adversarial input, and found there by
+/// `fuzz_hdf5_parser`.
+///
+/// `None` is the contract for "no representable element size", the same answer
+/// the variable-length variants give.
+#[test]
+fn datatype_array_element_size_is_none_when_the_extents_overflow() {
+    let base = Datatype::Integer {
+        bits: NonZeroUsize::new(64).unwrap(),
+        signed: false,
+        byte_order: ByteOrder::LittleEndian,
+    };
+    let huge = u32::MAX as usize;
+
+    let overflowing = Datatype::Array {
+        base: Box::new(base.clone()),
+        dims: vec![huge, huge, huge],
+    };
+    assert_eq!(
+        overflowing.element_size(),
+        None,
+        "the extent product overflows usize, so there is no element size"
+    );
+
+    // The bound must not swallow a representable array: 2 x 3 x 4 elements of
+    // 8 bytes is 192, and the same call still computes it.
+    let representable = Datatype::Array {
+        base: Box::new(base),
+        dims: vec![2, 3, 4],
+    };
+    assert_eq!(representable.element_size(), Some(192));
+}
