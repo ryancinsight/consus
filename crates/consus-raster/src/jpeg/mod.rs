@@ -9,6 +9,9 @@
 use crate::{DecodeError, DecodeErrorKind, DecodeLimits, DecodedImage};
 use jpeg_encoder::{ColorType, Encoder};
 
+const WORKING_METADATA_BOUND: usize = 4096;
+const MAX_DCT_BYTES_PER_TILE: usize = 3200;
+
 mod bitstream;
 mod decoder;
 mod transform;
@@ -28,6 +31,41 @@ mod fixture_data;
 /// exceeded limits, or a refused bounded allocation.
 pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, DecodeError> {
     decoder::decode(bytes, limits)
+}
+
+/// Returns a working-storage bound for every supported JPEG at `width` by `height`.
+///
+/// The result covers coefficients or lossless samples, component planes,
+/// allocation descriptors, and the final output while those allocations
+/// coexist. It is suitable for [`DecodeLimits::max_working_bytes`] when the
+/// caller knows the encoded-grid dimensions before decoding.
+///
+/// # Errors
+///
+/// Returns [`DecodeErrorKind::Malformed`] for a zero dimension and
+/// [`DecodeErrorKind::TooLarge`] if the bound does not fit in [`usize`].
+pub fn working_storage_bound(width: u32, height: u32) -> Result<usize, DecodeError> {
+    if width == 0 || height == 0 {
+        return Err(DecodeError::new(DecodeErrorKind::Malformed));
+    }
+    let width = usize::try_from(width).map_err(|_| DecodeError::new(DecodeErrorKind::TooLarge))?;
+    let height =
+        usize::try_from(height).map_err(|_| DecodeError::new(DecodeErrorKind::TooLarge))?;
+    let tiles = width
+        .div_ceil(transform::BLOCK_SIDE)
+        .checked_mul(height.div_ceil(transform::BLOCK_SIDE))
+        .ok_or_else(|| DecodeError::new(DecodeErrorKind::TooLarge))?;
+    let pixels = width
+        .checked_mul(height)
+        .ok_or_else(|| DecodeError::new(DecodeErrorKind::TooLarge))?;
+    WORKING_METADATA_BOUND
+        .checked_add(
+            tiles
+                .checked_mul(MAX_DCT_BYTES_PER_TILE)
+                .ok_or_else(|| DecodeError::new(DecodeErrorKind::TooLarge))?,
+        )
+        .and_then(|bytes| bytes.checked_add(pixels.checked_mul(3)?))
+        .ok_or_else(|| DecodeError::new(DecodeErrorKind::TooLarge))
 }
 
 /// Encodes one tightly packed eight-bit grayscale image as JPEG.

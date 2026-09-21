@@ -32,7 +32,7 @@ static COSINE: LazyLock<[[f64; BLOCK_SIDE]; BLOCK_SIDE]> = LazyLock::new(|| {
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    reason = "the rounded sample is analytically clamped to the u8 range"
+    reason = "rounded IDCT samples are clamped to the exact u8 domain before conversion"
 )]
 pub(super) fn reconstruct(coefficients: &[i32], quantization: &[u16; 64]) -> [u8; 64] {
     let basis = &*COSINE;
@@ -73,9 +73,9 @@ pub(super) fn ycbcr_to_rgb(y: u8, cb: u8, cr: u8) -> [u8; 3] {
     let green = y - ((88 * cb + 183 * cr + 128) >> 8);
     let blue = y + ((454 * cb + 128) >> 8);
     [
-        red.clamp(0, 255) as u8,
-        green.clamp(0, 255) as u8,
-        blue.clamp(0, 255) as u8,
+        u8::try_from(red.clamp(0, 255)).expect("invariant: clamped red channel fits u8"),
+        u8::try_from(green.clamp(0, 255)).expect("invariant: clamped green channel fits u8"),
+        u8::try_from(blue.clamp(0, 255)).expect("invariant: clamped blue channel fits u8"),
     ]
 }
 

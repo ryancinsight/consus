@@ -1,6 +1,6 @@
 use super::bitstream::{Tables, parse_tables};
 use crate::exif::Orientation;
-use crate::{DecodeError, DecodeErrorKind, DecodeLimits, DecodedImage, PixelFormat};
+use crate::{DecodeError, DecodeErrorKind, DecodeLimits, DecodedImage};
 
 const SOI: [u8; 2] = [0xff, 0xd8];
 const UNSEEN: u8 = u8::MAX;
@@ -12,11 +12,21 @@ enum Coding {
     Lossless,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ColorModel {
+    Gray,
+    Rgb,
+    Ycbcr,
+    Cmyk,
+    Ycck,
+}
+
 struct Component {
     id: u8,
     horizontal: u8,
     vertical: u8,
     quantization: usize,
+    quantization_values: Option<[u16; 64]>,
     blocks_across: usize,
     blocks_down: usize,
     stored_across: usize,
@@ -57,7 +67,7 @@ pub(super) fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage,
     if limits.max_encoded_bytes == 0
         || limits.max_dimension == 0
         || limits.max_pixels == 0
-        || limits.max_working_bytes == 0
+        || limits.max_working_bytes < super::WORKING_METADATA_BOUND
         || bytes.len() > limits.max_encoded_bytes
     {
         return Err(too_large());
@@ -86,8 +96,8 @@ pub(super) fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage,
                     return Err(malformed());
                 }
                 let frame = frame.ok_or_else(malformed)?;
-                validate_color_model(&frame, adobe_transform)?;
-                return output::finish(frame, &quantization, adobe_transform, orientation, limits);
+                let color_model = select_color_model(&frame, saw_jfif, adobe_transform)?;
+                return output::finish(frame, color_model, orientation);
             }
             0xc0..=0xc3 => {
                 if frame.is_some() || scans != 0 {
@@ -111,7 +121,11 @@ pub(super) fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage,
             0xda => {
                 let payload = segment(bytes, &mut cursor)?;
                 let current = frame.as_mut().ok_or_else(malformed)?;
+                if current.coding == Coding::Lossless && scans != 0 {
+                    return Err(malformed());
+                }
                 let scan = frame::parse_scan(payload, current, &tables)?;
+                frame::capture_quantization(current, &scan, &quantization)?;
                 cursor =
                     entropy::decode_scan(bytes, cursor, current, &tables, &scan, restart_interval)?;
                 output::record_progression(current, &scan)?;
@@ -161,9 +175,34 @@ mod frame;
 mod lossless;
 mod output;
 
-fn validate_color_model(frame: &Frame, adobe_transform: Option<u8>) -> Result<(), DecodeError> {
-    match (frame.components.len(), adobe_transform) {
-        (1, None) | (3, None | Some(0 | 1)) | (4, Some(0 | 2)) => Ok(()),
+fn select_color_model(
+    frame: &Frame,
+    saw_jfif: bool,
+    adobe_transform: Option<u8>,
+) -> Result<ColorModel, DecodeError> {
+    match frame.components.len() {
+        1 if adobe_transform.is_none() => Ok(ColorModel::Gray),
+        3 => match adobe_transform {
+            Some(0) => Ok(ColorModel::Rgb),
+            Some(1) => Ok(ColorModel::Ycbcr),
+            Some(_) => Err(unsupported()),
+            None if saw_jfif => Ok(ColorModel::Ycbcr),
+            None if frame
+                .components
+                .as_slice()
+                .iter()
+                .map(|component| component.id)
+                .eq(b"RGB".iter().copied()) =>
+            {
+                Ok(ColorModel::Rgb)
+            }
+            None => Ok(ColorModel::Ycbcr),
+        },
+        4 => match adobe_transform {
+            Some(0) => Ok(ColorModel::Cmyk),
+            Some(2) => Ok(ColorModel::Ycck),
+            _ => Err(unsupported()),
+        },
         _ => Err(unsupported()),
     }
 }
@@ -248,4 +287,38 @@ const fn too_large() -> DecodeError {
 const fn allocation() -> DecodeError {
     DecodeError::new(DecodeErrorKind::Allocation)
 }
-\n
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rgb_frame() -> Frame {
+        frame::parse_frame(
+            &[
+                8, 0, 8, 0, 8, 3, b'R', 0x11, 0, b'G', 0x11, 0, b'B', 0x11, 0,
+            ],
+            0xc0,
+            DecodeLimits {
+                max_encoded_bytes: 1024,
+                max_dimension: 8,
+                max_pixels: 64,
+                max_working_bytes: 8192,
+            },
+        )
+        .expect("valid RGB frame")
+    }
+
+    #[test]
+    fn container_metadata_precedes_component_identifiers() {
+        let frame = rgb_frame();
+        assert_eq!(
+            select_color_model(&frame, true, None),
+            Ok(ColorModel::Ycbcr)
+        );
+        assert_eq!(
+            select_color_model(&frame, true, Some(0)),
+            Ok(ColorModel::Rgb)
+        );
+        assert_eq!(select_color_model(&frame, false, None), Ok(ColorModel::Rgb));
+    }
+}

@@ -1,10 +1,12 @@
 use super::super::transform::{BLOCK_CELLS, BLOCK_SIDE, reconstruct, ycbcr_to_rgb};
-use super::{Coding, Frame, Scan, UNSEEN, allocation, malformed, too_large, unsupported};
+use super::{
+    Coding, ColorModel, Frame, Scan, UNSEEN, allocation, malformed, too_large, unsupported,
+};
 use crate::exif::Orientation;
-use crate::{DecodeError, DecodeLimits, DecodedImage, PixelFormat};
+use crate::{DecodeError, DecodedImage, PixelFormat};
 
 pub(super) fn record_progression(frame: &mut Frame, scan: &Scan) -> Result<(), DecodeError> {
-    if frame.coding != Coding::Progressive {
+    if frame.coding == Coding::Lossless {
         return Ok(());
     }
     for scan_component in &scan.components {
@@ -21,28 +23,19 @@ pub(super) fn record_progression(frame: &mut Frame, scan: &Scan) -> Result<(), D
 
 pub(super) fn finish(
     frame: Frame,
-    quantization: &[Option<[u16; 64]>; 4],
-    adobe_transform: Option<u8>,
+    color_model: ColorModel,
     orientation: Orientation,
-    limits: DecodeLimits,
 ) -> Result<DecodedImage, DecodeError> {
     if frame.coding == Coding::Lossless {
         return finish_lossless(frame, orientation);
     }
-    if frame.coding == Coding::Progressive
-        && frame
-            .components
-            .iter()
-            .any(|component| component.approximation[0] == UNSEEN)
-    {
-        return Err(malformed());
-    }
+    ensure_complete(&frame)?;
     let mut planes = Vec::new();
     planes
         .try_reserve_exact(frame.components.len())
         .map_err(|_| allocation())?;
     for component in &frame.components {
-        let table = quantization[component.quantization].ok_or_else(malformed)?;
+        let table = component.quantization_values.ok_or_else(malformed)?;
         let plane_len = component
             .stored_across
             .checked_mul(component.stored_down)
@@ -131,21 +124,24 @@ pub(super) fn finish(
                     .copied()
                     .ok_or_else(malformed)
             };
-            match frame.components.len() {
-                1 => pixels.push(sample(0)?),
-                3 if adobe_transform == Some(0) => {
+            match (color_model, frame.components.len()) {
+                (ColorModel::Gray, 1) => pixels.push(sample(0)?),
+                (ColorModel::Rgb, 3) => {
                     pixels.extend_from_slice(&[sample(0)?, sample(1)?, sample(2)?]);
                 }
-                3 => pixels.extend_from_slice(&ycbcr_to_rgb(sample(0)?, sample(1)?, sample(2)?)),
-                4 => {
+                (ColorModel::Ycbcr, 3) => {
+                    pixels.extend_from_slice(&ycbcr_to_rgb(sample(0)?, sample(1)?, sample(2)?));
+                }
+                (ColorModel::Cmyk | ColorModel::Ycck, 4) => {
                     let key = sample(3)?;
-                    let cmy = if adobe_transform == Some(2) {
+                    let colors = if color_model == ColorModel::Ycck {
                         ycbcr_to_rgb(sample(0)?, sample(1)?, sample(2)?)
+                            .map(|channel| 255 - channel)
                     } else {
                         [sample(0)?, sample(1)?, sample(2)?]
                     };
-                    pixels.extend(cmy.map(|channel| {
-                        let color = u16::from(255 - channel) * u16::from(255 - key) / 255;
+                    pixels.extend(colors.map(|channel| {
+                        let color = u16::from(channel) * u16::from(key) / 255;
                         u8::try_from(color).expect("invariant: CMYK product divided by 255 fits u8")
                     }));
                 }
@@ -153,7 +149,7 @@ pub(super) fn finish(
             }
         }
     }
-    if pixels.len() != output_len || output_len > limits.max_working_bytes {
+    if pixels.len() != output_len {
         return Err(malformed());
     }
     Ok(DecodedImage::new(
@@ -167,6 +163,17 @@ pub(super) fn finish(
         },
         orientation,
     ))
+}
+
+fn ensure_complete(frame: &Frame) -> Result<(), DecodeError> {
+    if frame
+        .components
+        .iter()
+        .any(|component| component.approximation[0] == UNSEEN)
+    {
+        return Err(malformed());
+    }
+    Ok(())
 }
 
 fn finish_lossless(frame: Frame, orientation: Orientation) -> Result<DecodedImage, DecodeError> {
@@ -211,4 +218,63 @@ fn finish_lossless(frame: Frame, orientation: Orientation) -> Result<DecodedImag
         orientation,
     ))
 }
-\n
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{DecodeErrorKind, DecodeLimits};
+
+    #[test]
+    fn incomplete_component_is_rejected() {
+        let frame = super::super::frame::parse_frame(
+            &[8, 0, 8, 0, 8, 3, 1, 0x11, 0, 2, 0x11, 0, 3, 0x11, 0],
+            0xc0,
+            DecodeLimits {
+                max_encoded_bytes: 1024,
+                max_dimension: 8,
+                max_pixels: 64,
+                max_working_bytes: 8192,
+            },
+        )
+        .expect("valid frame");
+        assert_eq!(
+            ensure_complete(&frame)
+                .expect_err("unscanned components")
+                .kind(),
+            DecodeErrorKind::Malformed
+        );
+    }
+
+    #[test]
+    fn rgb_component_identifiers_select_direct_samples_without_app14() {
+        let mut encoded = vec![
+            0xff, 0xd8, 0xff, 0xee, 0, 14, b'A', b'd', b'o', b'b', b'e', 0, 0, 0, 0, 0, 0, 0, 0xff,
+            0xdb, 0, 67, 0,
+        ];
+        encoded.extend_from_slice(&[1; 64]);
+        encoded.extend_from_slice(&[
+            0xff, 0xc0, 0, 17, 8, 0, 8, 0, 8, 3, b'R', 0x11, 0, b'G', 0x11, 0, b'B', 0x11, 0, 0xff,
+            0xc4, 0, 21, 0, 1, 1,
+        ]);
+        encoded.extend_from_slice(&[0; 14]);
+        encoded.extend_from_slice(&[4, 0, 0xff, 0xc4, 0, 20, 0x10, 1]);
+        encoded.extend_from_slice(&[0; 15]);
+        encoded.extend_from_slice(&[
+            0, 0xff, 0xda, 0, 12, 3, b'R', 0, b'G', 0, b'B', 0, 0, 63, 0, 0x42, 0x1d, 0xff, 0xd9,
+        ]);
+        encoded.drain(2..18);
+        let decoded = super::super::decode(
+            &encoded,
+            DecodeLimits {
+                max_encoded_bytes: 1024,
+                max_dimension: 8,
+                max_pixels: 64,
+                max_working_bytes: 8192,
+            },
+        )
+        .expect("direct RGB fixture after removing APP14");
+        assert_eq!(decoded.format(), PixelFormat::Rgb);
+        assert_eq!((decoded.width(), decoded.height()), (8, 8));
+        assert_eq!(decoded.pixels(), &[129, 128, 127].repeat(64));
+    }
+}

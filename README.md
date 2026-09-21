@@ -72,10 +72,11 @@ consus (facade)
 ├── consus-onnx        # Bounded zero-copy ONNX document decoding
 └── consus-parquet     # Parquet interop layer
 
+consus-raster          # JPEG samples and bounded EXIF metadata
 consus-python          # PyO3 extension module (wheel-only, publish = false)
 ```
 
-All sixteen crates above are `[workspace] members` of the root `Cargo.toml`;
+All seventeen crates above are `[workspace] members` of the root `Cargo.toml`;
 `tests` is an additional non-publishable integration-test member.
 
 ## Quick Start

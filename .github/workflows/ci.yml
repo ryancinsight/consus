@@ -33,7 +33,7 @@ jobs:
     name: SemVer gate
     uses: ryancinsight/atlas/.github/workflows/semver-gate.yml@da9d549bc50dbb9c4e1d18dca8f37d17059098cb
     with:
-      package: consus-arrow,consus-compression,consus-core,consus-fits,consus-hdf5,consus-hdmf,consus-io,consus-mat,consus-netcdf,consus-npy,consus-nwb,consus-onnx,consus-parquet,consus-zarr,consus
+      package: consus-arrow,consus-compression,consus-core,consus-fits,consus-hdf5,consus-hdmf,consus-io,consus-mat,consus-netcdf,consus-npy,consus-nwb,consus-onnx,consus-raster,consus-parquet,consus-zarr,consus
       rust-toolchain: 1.97.0
     permissions:
       contents: read
@@ -81,6 +81,7 @@ jobs:
           - consus-mat
           - consus-npy
           - consus-onnx
+          - consus-raster
           - consus-nwb
           - consus-hdmf
     steps:
@@ -136,6 +137,7 @@ jobs:
           - consus-mat
           - consus-npy
           - consus-onnx
+          - consus-raster
           - consus-nwb
           - consus-hdmf
     steps:
@@ -182,6 +184,7 @@ jobs:
           - consus-mat
           - consus-npy
           - consus-onnx
+          - consus-raster
           - consus-nwb
           - consus-hdmf
     steps:

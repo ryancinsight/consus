@@ -8,7 +8,7 @@ resource limits explicitly.
 ```rust
 use consus_raster::{DecodeLimits, PixelFormat, jpeg};
 
-let encoded = jpeg::encode_gray(&[0, 64, 128, 255], 2, 2, 90)?;
+let encoded = jpeg::encode_gray(&[0; 64], 8, 8, 100)?;
 let image = jpeg::decode(
     &encoded,
     DecodeLimits {
@@ -19,11 +19,10 @@ let image = jpeg::decode(
     },
 )?;
 assert_eq!(image.format(), PixelFormat::Gray);
-assert_eq!(image.pixels().len(), 4);
+assert_eq!((image.width(), image.height()), (8, 8));
+assert_eq!(image.pixels(), &[0; 64]);
 # Ok::<(), consus_raster::DecodeError>(())
 ```
 
 JPEG decoding returns the encoded pixel grid. EXIF orientation is metadata and
 is not applied to the returned pixels.
-
-\n

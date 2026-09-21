@@ -1,6 +1,6 @@
 //! Bounded EXIF orientation parsing and coordinate mapping.
 //!
-//! [`parse`] accepts the TIFF payload that follows an EXIF `Exif\0\0`
+//! [`parse`](crate::exif::parse) accepts the TIFF payload following an EXIF `Exif\0\0`
 //! signature. It traverses a bounded image-file-directory graph, validates
 //! presentation metadata that affects display interpretation, and returns the
 //! primary image's orientation. Embedded thumbnail metadata is not presented:

@@ -3,7 +3,7 @@
 <a id="CONSUS-RASTER-001"></a>
 ## CONSUS-RASTER-001 — Shared raster codecs [arch] [minor]
 
-- Status: in-progress; integrator: root; branch: feat/raster-codecs.
+- Status: review; integrator: root; branch: feat/raster-codecs.
 - Driver: [METIS-ASSETS-001](../metis/backlog.md#METIS-ASSETS-001).
 - Outcome: one bounded JPEG decoder serves desktop assets and medical samples.
 - Scope: `consus-raster`, JPEG sequential/progressive/lossless decoding and EXIF;
@@ -12,8 +12,7 @@
   orientations, malformed/truncated/budget rejection, no downstream decoder copy.
 - Decision: ADR 0004; no reverse dependency on RITK or Metis.
 - Verification: configured focused nextest, Clippy, docs, consumer gates and V06.
-- Lease: root crates/consus-raster Cargo.toml Cargo.lock docs/adr/0004-raster-codecs.md.
-- Updated: 2026-09-20.
+- Provider: focused debug/release tests and Clippy pass; consumer integration remains tracked by the driver.
 
 ## CONSUS-CONFORMANCE-RATCHET-2026-08-31 [patch] — implementation complete; merge pending
 
@@ -191,4 +190,3 @@ so the compiled API surface is unchanged.
 
 - [x] [minor] Own typed NPY/NPZ storage so simulation consumers can remove
   `ndarray-npy` without implementing format parsing downstream.
-

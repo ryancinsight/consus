@@ -372,6 +372,7 @@ name = "consus-raster"
 version = "0.1.0"
 dependencies = [
  "jpeg-encoder",
+ "proptest",
 ]
 
 [[package]]

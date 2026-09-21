@@ -30,9 +30,12 @@ pub(super) fn decode_lossless_scan(
         .width
         .checked_mul(frame.height)
         .ok_or_else(too_large)?;
+    if restart_interval != 0 && !restart_interval.is_multiple_of(frame.width) {
+        return Err(malformed());
+    }
     let mut reader = BitReader::new(bytes, cursor);
     let mut expected_restart = 0_u8;
-    let mut restart_origin = true;
+    let mut restart_row = true;
     for sample in 0..sample_count {
         let category = table.decode(&mut reader)?;
         if category > 16 {
@@ -47,9 +50,9 @@ pub(super) fn decode_lossless_scan(
         };
         let x = sample % frame.width;
         let y = sample / frame.width;
-        let predictor = if restart_origin || sample == 0 {
+        let predictor = if restart_row && x == 0 {
             initial
-        } else if y == 0 {
+        } else if restart_row || y == 0 {
             *frame.coefficients.get(sample - 1).ok_or_else(malformed)?
         } else if x == 0 {
             *frame
@@ -76,7 +79,9 @@ pub(super) fn decode_lossless_scan(
             return Err(malformed());
         }
         *frame.coefficients.get_mut(sample).ok_or_else(malformed)? = value;
-        restart_origin = false;
+        if x.checked_add(1).ok_or_else(too_large)? == frame.width {
+            restart_row = false;
+        }
 
         let completed = sample.checked_add(1).ok_or_else(too_large)?;
         if restart_interval != 0 && completed % restart_interval == 0 && completed < sample_count {
@@ -87,7 +92,7 @@ pub(super) fn decode_lossless_scan(
             }
             reader.cursor = after_marker;
             expected_restart = (expected_restart + 1) & 7;
-            restart_origin = true;
+            restart_row = true;
         }
     }
     reader.finish_byte()?;
@@ -132,4 +137,3 @@ fn lossless_predictor(
         _ => Err(malformed()),
     }
 }
-\n

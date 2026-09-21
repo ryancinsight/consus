@@ -189,4 +189,3 @@
       warning-denied Clippy and rustdoc; focused doctests; ONNX `alloc`-only
       compilation; locked metadata; and all 196 applicable Consus I/O semver
       checks.
-

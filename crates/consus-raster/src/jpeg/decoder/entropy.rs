@@ -1,4 +1,5 @@
 use super::super::bitstream::{BitReader, Tables, receive_extend};
+use super::super::transform::{BLOCK_CELLS, ZIGZAG};
 use super::{Coding, Frame, Scan, ScanComponent, malformed, too_large};
 use crate::DecodeError;
 
@@ -431,4 +432,3 @@ fn coefficient_mut(
         .ok_or_else(too_large)?;
     frame.coefficients.get_mut(index).ok_or_else(malformed)
 }
-\n
