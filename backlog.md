@@ -19,7 +19,7 @@
 <a id="CONSUS-RASTER-001"></a>
 ## CONSUS-RASTER-001 — Shared raster codecs [arch] [minor]
 
-- Status: in-progress; integrator: root; branch: `feat/jpeg-processes`.
+- Status: done; integrator: root; delivery: [PR 80](https://github.com/ryancinsight/consus/pull/80), merge `7a0b023b388b34c1991b5d5cea6b17ec7857b574`; updated: 2026-09-21.
 - Driver: [METIS-ASSETS-001](../metis/backlog.md#METIS-ASSETS-001).
 - Outcome: one bounded JPEG decoder serves desktop assets and medical samples.
 - Scope: `consus-raster`, Apollo DCT ownership, 12-bit DCT and arithmetic JPEG;
@@ -27,10 +27,15 @@
 - Acceptance: exact lossless samples, independent progressive fixtures, all eight
   orientations, malformed/truncated/budget rejection, no downstream decoder copy.
 - Decision: ADR 0004; no reverse dependency on RITK or Metis.
-- Verification: configured focused nextest, Clippy, docs, consumer gates and V06.
-- Baseline: merged PRs 76/77; nextest `56c9445c-d936-46e0-a783-60373c5c8ade` passes 33 tests at `e34902fe`.
-- Plan: Apollo PR 526 supplies DCT; verify shared precision/arithmetic decoding and display mapping, then consumer gates and V06.
-- Provider checks: 73/73 debug and release, 2 doctests, strict Clippy/rustdoc, and 196 API checks pass; consumer gates and V06 remain in progress.
+- Verification: provider checks pass with 73/73 debug tests, 73/73 release tests,
+  2 doctests, strict Clippy/rustdoc and 196 API checks. Apollo PR 526 supplies the
+  shared DCT. Metis PR 312 (merge `4bceb90fe616465eca91cddc0c182548b295ca95`)
+  passes 386/386 debug and 386/386 release tests and exact 464,000-pixel V06;
+  RITK PRs 556 (`fc85dad03a6c14a617e9687609044497c1eba122`) and 561
+  (`71b247c0f0e948614a7e2c5205b34106762c0861`) pass 1,356 debug and 392 release
+  tests with the standalone Consus/Apollo lock and preserve the real 94-file MRI
+  replay. The decoder migration is complete; native presentation, clinical
+  conversion and broader media acceptance remain consumer-owned follow-up scope.
 
 ## CONSUS-CONFORMANCE-RATCHET-2026-08-31 [patch] — implementation complete; merge pending
 

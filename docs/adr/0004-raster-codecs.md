@@ -87,12 +87,22 @@ encoded, pixel and working-memory bounds constrain resource use. Filesystem
 capabilities remain outside the codec. Unknown presentation metadata is rejected
 by display admission rather than silently interpreted as clinical orientation.
 
+Revision 2026-09-21: the shared provider delivery is complete at Consus PR 80
+(`7a0b023b388b34c1991b5d5cea6b17ec7857b574`). Provider checks pass with 73/73
+debug and release tests, two doctests, strict Clippy/rustdoc and 196 API checks.
+Metis consumes the display-sample iterator and its integrated V06 compares all
+464,000 client pixels exactly; RITK consumes raw samples for clinical conversion
+and its merged PRs 556/561 pass 1,356 debug and 392 release tests with the
+standalone provider lock. The codec migration therefore has no remaining
+downstream decoder copy. Native shell presentation, clinical policy and broader
+media coverage remain consumer contracts and are not established by this ADR.
+
 Acceptance includes exact lossless samples and modality conversion, independent
 sequential/progressive fixtures, restart and refinement behavior, all eight EXIF
 orientations, malformed prefixes, and resource-limit boundaries. Consumer native
 presentation evidence remains in the Metis manual; decoder tests do not establish
-Windows display behavior. Migration is incomplete until both consumer copies are
-removed and their focused configured gates pass.
+Windows display behavior. Both consumer copies are removed and their focused
+configured gates pass at the revisions recorded above.
 
 The complete decoder path has an analytical single-AC-coefficient pixel oracle.
 Sequential and progressive encodings of one independently produced image must
