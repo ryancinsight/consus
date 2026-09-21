@@ -3,7 +3,12 @@ use crate::{DecodeError, DecodeErrorKind};
 use super::transform;
 
 pub(super) const WORKING_METADATA_BOUND: usize = 4096;
-const MAX_DCT_BYTES_PER_TILE: usize = 3200;
+// Four frame components each admit sampling factors up to 4×4, including
+// noninterleaved scans. Each padded block retains 64 i32 coefficients and
+// 64 u16 plane samples; frame MCU count cannot exceed the 8×8 image tile count.
+// Three output channels occupy at most two bytes each.
+const MAX_DCT_BYTES_PER_TILE: usize = 4 * 4 * 4 * 64 * 6;
+const MAX_OUTPUT_BYTES_PER_PIXEL: usize = 6;
 
 /// Returns a working-storage bound for every supported JPEG at `width` by `height`.
 ///
@@ -36,6 +41,6 @@ pub fn working_storage_bound(width: u32, height: u32) -> Result<usize, DecodeErr
                 .checked_mul(MAX_DCT_BYTES_PER_TILE)
                 .ok_or_else(|| DecodeError::new(DecodeErrorKind::TooLarge))?,
         )
-        .and_then(|bytes| bytes.checked_add(pixels.checked_mul(3)?))
+        .and_then(|bytes| bytes.checked_add(pixels.checked_mul(MAX_OUTPUT_BYTES_PER_PIXEL)?))
         .ok_or_else(|| DecodeError::new(DecodeErrorKind::TooLarge))
 }

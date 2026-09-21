@@ -1,7 +1,10 @@
 use super::super::bitstream::{BitReader, Tables, receive_extend};
-use super::super::transform::{BLOCK_CELLS, ZIGZAG};
-use super::{Coding, Frame, Scan, ScanComponent, malformed, too_large};
+use super::scan::{DctScanState, coefficient_mut, decode_dct_scan};
+use super::{Coding, Frame, Scan, ScanComponent, malformed};
 use crate::DecodeError;
+
+const DC_CATEGORY_PRECISION_OFFSET: u8 = 3;
+const AC_CATEGORY_PRECISION_OFFSET: u8 = 2;
 
 pub(super) fn decode_scan(
     bytes: &[u8],
@@ -21,100 +24,67 @@ pub(super) fn decode_scan(
             restart_interval,
         );
     }
-    let interleaved = scan.components.len() > 1;
-    let (mcu_across, mcu_down) = if interleaved {
-        (frame.mcu_across, frame.mcu_down)
-    } else {
-        let component = frame
-            .components
-            .get(scan.components[0].frame_index)
-            .ok_or_else(malformed)?;
-        (component.blocks_across, component.blocks_down)
+    let mut state = HuffmanScanState {
+        reader: BitReader::new(bytes, cursor),
+        tables,
+        eob_run: 0,
+        dc_predictors: [0; 4],
     };
-    let mcu_count = mcu_across.checked_mul(mcu_down).ok_or_else(too_large)?;
-    let mut reader = BitReader::new(bytes, cursor);
-    let mut eob_run = 0_usize;
-    let mut expected_restart = 0_u8;
-    let mut dc_predictors = [0_i32; 4];
-    for mcu in 0..mcu_count {
-        let mcu_x = mcu % mcu_across;
-        let mcu_y = mcu / mcu_across;
-        for scan_component in &scan.components {
-            let (horizontal, vertical) = if interleaved {
-                let component = frame
-                    .components
-                    .get(scan_component.frame_index)
-                    .ok_or_else(malformed)?;
-                (
-                    usize::from(component.horizontal),
-                    usize::from(component.vertical),
-                )
-            } else {
-                (1, 1)
-            };
-            for block_y in 0..vertical {
-                for block_x in 0..horizontal {
-                    let block_index = {
-                        let component = frame
-                            .components
-                            .get(scan_component.frame_index)
-                            .ok_or_else(malformed)?;
-                        if interleaved {
-                            let row = mcu_y
-                                .checked_mul(vertical)
-                                .and_then(|value| value.checked_add(block_y))
-                                .ok_or_else(too_large)?;
-                            let column = mcu_x
-                                .checked_mul(horizontal)
-                                .and_then(|value| value.checked_add(block_x))
-                                .ok_or_else(too_large)?;
-                            row.checked_mul(component.stored_across)
-                                .and_then(|value| value.checked_add(column))
-                                .ok_or_else(too_large)?
-                        } else {
-                            mcu_y
-                                .checked_mul(component.stored_across)
-                                .and_then(|value| value.checked_add(mcu_x))
-                                .ok_or_else(too_large)?
-                        }
-                    };
-                    decode_dct_block(
-                        &mut reader,
-                        frame,
-                        tables,
-                        *scan_component,
-                        scan,
-                        block_index,
-                        &mut eob_run,
-                        &mut dc_predictors,
-                    )?;
-                }
-            }
+    decode_dct_scan(frame, scan, restart_interval, &mut state)
+}
+
+struct HuffmanScanState<'bytes, 'tables> {
+    reader: BitReader<'bytes>,
+    tables: &'tables Tables,
+    eob_run: usize,
+    dc_predictors: [i32; 4],
+}
+
+impl DctScanState for HuffmanScanState<'_, '_> {
+    fn decode_block(
+        &mut self,
+        frame: &mut Frame,
+        component: ScanComponent,
+        scan: &Scan,
+        block_index: usize,
+    ) -> Result<(), DecodeError> {
+        decode_dct_block(
+            &mut self.reader,
+            frame,
+            self.tables,
+            component,
+            scan,
+            block_index,
+            &mut self.eob_run,
+            &mut self.dc_predictors,
+        )
+    }
+
+    fn restart(&mut self, expected_restart: u8) -> Result<(), DecodeError> {
+        if self.eob_run != 0 {
+            return Err(malformed());
         }
-        let completed = mcu.checked_add(1).ok_or_else(too_large)?;
-        if restart_interval != 0 && completed % restart_interval == 0 && completed < mcu_count {
-            if eob_run != 0 {
-                return Err(malformed());
-            }
-            reader.finish_byte()?;
-            let (_, marker, after_marker) = reader.marker()?;
-            if marker != 0xd0 + expected_restart {
-                return Err(malformed());
-            }
-            reader.cursor = after_marker;
-            expected_restart = (expected_restart + 1) & 7;
-            dc_predictors.fill(0);
+        self.reader.finish_byte()?;
+        let (_, marker, after_marker) = self.reader.marker()?;
+        if marker != 0xd0 + expected_restart {
+            return Err(malformed());
         }
+        self.reader.cursor = after_marker;
+        self.dc_predictors.fill(0);
+        Ok(())
     }
-    if eob_run != 0 {
-        return Err(malformed());
+
+    fn finish(&mut self) -> Result<usize, DecodeError> {
+        if self.eob_run != 0 {
+            return Err(malformed());
+        }
+        self.reader.finish_byte()?;
+        let (marker_start, marker, _) = self.reader.marker()?;
+        if matches!(marker, 0xd0..=0xd7) {
+            return Err(malformed());
+        }
+        Ok(marker_start)
     }
-    reader.finish_byte()?;
-    let (marker_start, marker, _) = reader.marker()?;
-    if matches!(marker, 0xd0..=0xd7) {
-        return Err(malformed());
-    }
-    Ok(marker_start)
 }
 
 #[expect(
@@ -132,7 +102,7 @@ fn decode_dct_block(
     dc_predictors: &mut [i32; 4],
 ) -> Result<(), DecodeError> {
     match frame.coding {
-        Coding::Sequential => {
+        Coding::Baseline | Coding::Sequential => {
             decode_sequential(reader, frame, tables, component, block_index, dc_predictors)
         }
         Coding::Progressive if scan.start == 0 && scan.high == 0 => decode_dc_initial(
@@ -177,20 +147,23 @@ fn decode_sequential(
 ) -> Result<(), DecodeError> {
     let table = tables.dc[component.dc_table].ok_or_else(malformed)?;
     let category = table.decode(reader)?;
-    if category > 11 {
+    let dc_category_limit =
+        coefficient_category_limit(frame.precision, DC_CATEGORY_PRECISION_OFFSET)?;
+    if category > dc_category_limit {
         return Err(malformed());
     }
     let difference = receive_extend(reader, category)?;
-    let predictor = predictors
-        .get_mut(component.frame_index)
-        .ok_or_else(malformed)?;
-    *predictor = predictor.checked_add(difference).ok_or_else(malformed)?;
-    if !(-2048..=2047).contains(predictor) {
-        return Err(malformed());
-    }
-    *coefficient_mut(frame, component.frame_index, block_index, 0)? = *predictor;
+    let predictor = update_dc_predictor(
+        predictors,
+        component.frame_index,
+        difference,
+        dc_category_limit,
+    )?;
+    *coefficient_mut(frame, component.frame_index, block_index, 0)? = predictor;
 
     let table = tables.ac[component.ac_table].ok_or_else(malformed)?;
+    let ac_category_limit =
+        coefficient_category_limit(frame.precision, AC_CATEGORY_PRECISION_OFFSET)?;
     let mut coefficient = 1_u8;
     while coefficient <= 63 {
         let symbol = table.decode(reader)?;
@@ -206,7 +179,7 @@ fn decode_sequential(
             coefficient += 16;
             continue;
         }
-        if size > 10 {
+        if size > ac_category_limit {
             return Err(malformed());
         }
         coefficient = coefficient.checked_add(run).ok_or_else(malformed)?;
@@ -231,17 +204,18 @@ fn decode_dc_initial(
 ) -> Result<(), DecodeError> {
     let table = tables.dc[component.dc_table].ok_or_else(malformed)?;
     let category = table.decode(reader)?;
-    if category > 11 {
+    let dc_category_limit =
+        coefficient_category_limit(frame.precision, DC_CATEGORY_PRECISION_OFFSET)?;
+    if category > dc_category_limit {
         return Err(malformed());
     }
     let difference = receive_extend(reader, category)?;
-    let predictor = predictors
-        .get_mut(component.frame_index)
-        .ok_or_else(malformed)?;
-    *predictor = predictor.checked_add(difference).ok_or_else(malformed)?;
-    if !(-2048..=2047).contains(predictor) {
-        return Err(malformed());
-    }
+    let predictor = update_dc_predictor(
+        predictors,
+        component.frame_index,
+        difference,
+        dc_category_limit,
+    )?;
     *coefficient_mut(frame, component.frame_index, block_index, 0)? = predictor
         .checked_shl(u32::from(low))
         .ok_or_else(malformed)?;
@@ -262,6 +236,8 @@ fn decode_ac_initial(
         return Ok(());
     }
     let table = tables.ac[component.ac_table].ok_or_else(malformed)?;
+    let ac_category_limit =
+        coefficient_category_limit(frame.precision, AC_CATEGORY_PRECISION_OFFSET)?;
     let mut coefficient = scan.start;
     while coefficient <= scan.end {
         let symbol = table.decode(reader)?;
@@ -281,7 +257,7 @@ fn decode_ac_initial(
                 .ok_or_else(malformed)?;
             break;
         }
-        if size > 10 {
+        if size > ac_category_limit {
             return Err(malformed());
         }
         coefficient = coefficient.checked_add(run).ok_or_else(malformed)?;
@@ -410,25 +386,26 @@ fn refine_value(
     Ok(())
 }
 
-fn coefficient_mut(
-    frame: &mut Frame,
+fn coefficient_category_limit(precision: u8, precision_offset: u8) -> Result<u8, DecodeError> {
+    precision
+        .checked_add(precision_offset)
+        .ok_or_else(malformed)
+}
+
+fn update_dc_predictor(
+    predictors: &mut [i32; 4],
     component: usize,
-    block: usize,
-    zigzag: u8,
-) -> Result<&mut i32, DecodeError> {
-    let component = frame.components.get(component).ok_or_else(malformed)?;
-    let block_count = component
-        .stored_across
-        .checked_mul(component.stored_down)
-        .ok_or_else(too_large)?;
-    if block >= block_count {
+    difference: i32,
+    category_limit: u8,
+) -> Result<i32, DecodeError> {
+    let upper_bound = 1_i32
+        .checked_shl(u32::from(category_limit))
+        .ok_or_else(malformed)?;
+    let lower_bound = upper_bound.checked_neg().ok_or_else(malformed)?;
+    let predictor = predictors.get_mut(component).ok_or_else(malformed)?;
+    *predictor = predictor.checked_add(difference).ok_or_else(malformed)?;
+    if !(lower_bound..upper_bound).contains(predictor) {
         return Err(malformed());
     }
-    let natural = *ZIGZAG.get(usize::from(zigzag)).ok_or_else(malformed)?;
-    let index = component
-        .coefficient_offset
-        .checked_add(block.checked_mul(BLOCK_CELLS).ok_or_else(too_large)?)
-        .and_then(|value| value.checked_add(natural))
-        .ok_or_else(too_large)?;
-    frame.coefficients.get_mut(index).ok_or_else(malformed)
+    Ok(*predictor)
 }

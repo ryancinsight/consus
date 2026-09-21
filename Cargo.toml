@@ -34,6 +34,7 @@ categories = ["science", "filesystem", "encoding", "no-std"]
 description = "Pure-Rust, no_std-compatible, memory-safe hierarchical and array-oriented storage formats"
 
 [workspace.dependencies]
+apollo-dctdst-core = { version = "0.16.0", git = "https://github.com/ryancinsight/apollo" }
 # Internal crates
 consus-mat = { path = "crates/consus-mat", version = "0.1.0", default-features = false }
 consus-nwb = { path = "crates/consus-nwb", version = "0.1.0", default-features = false }

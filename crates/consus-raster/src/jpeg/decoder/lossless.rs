@@ -15,6 +15,64 @@ pub(super) fn decode_lossless_scan(
     }
     let component = scan.components[0];
     let table = tables.dc[component.dc_table].ok_or_else(malformed)?;
+    let mut state = HuffmanDifferences {
+        reader: BitReader::new(bytes, cursor),
+        table,
+    };
+    decode_samples(frame, scan, restart_interval, &mut state)
+}
+
+pub(super) trait Differences {
+    fn decode(&mut self, column: usize) -> Result<i32, DecodeError>;
+    fn restart(&mut self, expected: u8) -> Result<(), DecodeError>;
+    fn finish(&mut self) -> Result<usize, DecodeError>;
+}
+
+struct HuffmanDifferences<'input> {
+    reader: BitReader<'input>,
+    table: super::super::bitstream::HuffmanTable,
+}
+
+impl Differences for HuffmanDifferences<'_> {
+    fn decode(&mut self, _column: usize) -> Result<i32, DecodeError> {
+        let category = self.table.decode(&mut self.reader)?;
+        if category > 16 {
+            return Err(malformed());
+        }
+        // T.81 Table H.2 assigns category 16 to -32768 without magnitude bits.
+        if category == 16 {
+            Ok(-32_768)
+        } else {
+            receive_extend(&mut self.reader, category)
+        }
+    }
+
+    fn restart(&mut self, expected: u8) -> Result<(), DecodeError> {
+        self.reader.finish_byte()?;
+        let (_, marker, after_marker) = self.reader.marker()?;
+        if marker != 0xd0 + expected {
+            return Err(malformed());
+        }
+        self.reader.cursor = after_marker;
+        Ok(())
+    }
+
+    fn finish(&mut self) -> Result<usize, DecodeError> {
+        self.reader.finish_byte()?;
+        let (start, marker, _) = self.reader.marker()?;
+        if matches!(marker, 0xd0..=0xd7) {
+            return Err(malformed());
+        }
+        Ok(start)
+    }
+}
+
+pub(super) fn decode_samples<D: Differences>(
+    frame: &mut Frame,
+    scan: &Scan,
+    restart_interval: usize,
+    differences: &mut D,
+) -> Result<usize, DecodeError> {
     let reduced_precision = frame
         .precision
         .checked_sub(scan.low)
@@ -33,22 +91,11 @@ pub(super) fn decode_lossless_scan(
     if restart_interval != 0 && !restart_interval.is_multiple_of(frame.width) {
         return Err(malformed());
     }
-    let mut reader = BitReader::new(bytes, cursor);
     let mut expected_restart = 0_u8;
     let mut restart_row = true;
     for sample in 0..sample_count {
-        let category = table.decode(&mut reader)?;
-        if category > 16 {
-            return Err(malformed());
-        }
-        // T.81 Table H.2 reserves category 16 for -32768 and encodes no
-        // additional magnitude bits.
-        let difference = if category == 16 {
-            -32_768
-        } else {
-            receive_extend(&mut reader, category)?
-        };
         let x = sample % frame.width;
+        let difference = differences.decode(x)?;
         let y = sample / frame.width;
         let predictor = if restart_row && x == 0 {
             initial
@@ -85,21 +132,12 @@ pub(super) fn decode_lossless_scan(
 
         let completed = sample.checked_add(1).ok_or_else(too_large)?;
         if restart_interval != 0 && completed % restart_interval == 0 && completed < sample_count {
-            reader.finish_byte()?;
-            let (_, marker, after_marker) = reader.marker()?;
-            if marker != 0xd0 + expected_restart {
-                return Err(malformed());
-            }
-            reader.cursor = after_marker;
+            differences.restart(expected_restart)?;
             expected_restart = (expected_restart + 1) & 7;
             restart_row = true;
         }
     }
-    reader.finish_byte()?;
-    let (marker_start, marker, _) = reader.marker()?;
-    if matches!(marker, 0xd0..=0xd7) {
-        return Err(malformed());
-    }
+    let marker_start = differences.finish()?;
     for sample in &mut frame.coefficients {
         *sample = sample
             .checked_shl(u32::from(scan.low))

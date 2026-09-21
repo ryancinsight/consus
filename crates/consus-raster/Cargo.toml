@@ -13,6 +13,7 @@ categories = ["multimedia::images", "encoding"]
 readme = "README.md"
 
 [dependencies]
+apollo-dctdst-core.workspace = true
 jpeg-encoder.workspace = true
 
 [dev-dependencies]

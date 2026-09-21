@@ -13,17 +13,8 @@
 - Decision: ADR 0004; no reverse dependency on RITK or Metis.
 - Verification: configured focused nextest, Clippy, docs, consumer gates and V06.
 - Baseline: merged PRs 76/77; nextest `56c9445c-d936-46e0-a783-60373c5c8ade` passes 33 tests at `e34902fe`.
-- Plan: consolidate transform upstream; add precision-aware samples and 12-bit scans; add arithmetic contexts/termination; verify consumers and presentation.
-- lease: root `crates/consus-raster/`, `docs/adr/0004-raster-codecs.md` 2026-09-21.
-
-<a id="CONSUS-HDF5-FUZZ-001"></a>
-## CONSUS-HDF5-FUZZ-001 — Reject overflowing parser products [patch]
-
-- Status: todo; source: CI run 35558013774 at `e34902fe`.
-- Outcome: malformed HDF5 input returns an error without integer-product panic.
-- Scope: HDF5 parser path reached by `fuzz_hdf5_parser`; independent of raster decoding.
-- Reproduction: retained crash `c1d0c4d8fe81006f54b9c70923df027535377fbc` from the run artifact.
-- Acceptance: replay the original crash, correct the unchecked product at its owning boundary, assert classified rejection and run configured parser gates.
+- Plan: Apollo PR 526 supplies DCT; verify shared precision/arithmetic decoding and display mapping, then consumer gates and V06.
+- Provider checks: 73/73 debug and release, 2 doctests, strict Clippy/rustdoc, and 196 API checks pass; consumer gates and V06 remain in progress.
 
 ## CONSUS-CONFORMANCE-RATCHET-2026-08-31 [patch] — implementation complete; merge pending
 

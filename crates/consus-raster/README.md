@@ -5,6 +5,18 @@ It decodes sequential and progressive JPEG images to grayscale or RGB pixels and
 lossless JPEG grayscale images at their encoded precision. Callers supply all
 resource limits explicitly.
 
+DCT images admit 8 or 12 bits per sample; single-component lossless images
+admit 2 through 16 bits. Both Huffman and arithmetic entropy coding are supported.
+`DecodedImage::sample_precision()` reports meaningful sample bits. Wide grayscale
+and RGB formats store native-endian `u16` channels; the decoder preserves their
+integer values. `DecodedImage::display_samples()` exposes an allocation-free
+borrowed iterator that maps every encoded sample to the nearest packed eight-bit
+value. It preserves encoded channel order and leaves orientation, alpha, gamma,
+and clinical presentation policy to the consumer.
+`DecodedImage::compression()` distinguishes quantized DCT from predictive coding;
+a predictive point transform restores discarded low bits as zero. Hierarchical
+and differential JPEG processes are rejected as unsupported.
+
 ```rust
 use consus_raster::{DecodeLimits, PixelFormat, jpeg};
 
@@ -21,6 +33,7 @@ let image = jpeg::decode(
 assert_eq!(image.format(), PixelFormat::Gray);
 assert_eq!((image.width(), image.height()), (8, 8));
 assert_eq!(image.pixels(), &[0; 64]);
+assert!(image.display_samples().eq([0; 64]));
 # Ok::<(), consus_raster::DecodeError>(())
 ```
 

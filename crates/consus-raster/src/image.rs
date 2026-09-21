@@ -1,15 +1,29 @@
 use crate::exif;
 
+mod display;
+
+/// The encoded compression process family.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Compression {
+    /// Quantized transform coding.
+    Lossy,
+    /// Predictive coding, including any encoded point transform.
+    Lossless,
+}
+
 /// Pixel representation returned by a decoder.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum PixelFormat {
-    /// One eight-bit luminance sample per pixel.
+    /// One luminance sample per pixel in one byte.
     Gray,
     /// One native-endian `u16` luminance sample per pixel.
     GrayWide,
-    /// Three eight-bit red, green, and blue samples per pixel.
+    /// Three red, green, and blue samples per pixel in three bytes.
     Rgb,
+    /// Three native-endian `u16` red, green, and blue samples per pixel.
+    RgbWide,
 }
 
 /// A validated encoded-grid raster image.
@@ -19,6 +33,8 @@ pub struct DecodedImage {
     height: u32,
     pixels: Vec<u8>,
     format: PixelFormat,
+    sample_precision: u8,
+    compression: Compression,
     orientation: exif::Orientation,
 }
 
@@ -28,6 +44,8 @@ impl DecodedImage {
         height: u32,
         pixels: Vec<u8>,
         format: PixelFormat,
+        sample_precision: u8,
+        compression: Compression,
         orientation: exif::Orientation,
     ) -> Self {
         Self {
@@ -35,6 +53,8 @@ impl DecodedImage {
             height,
             pixels,
             format,
+            sample_precision,
+            compression,
             orientation,
         }
     }
@@ -61,6 +81,18 @@ impl DecodedImage {
     #[must_use]
     pub const fn format(&self) -> PixelFormat {
         self.format
+    }
+
+    /// Returns the number of meaningful bits in each decoded sample.
+    #[must_use]
+    pub const fn sample_precision(&self) -> u8 {
+        self.sample_precision
+    }
+
+    /// Returns the encoded compression process family.
+    #[must_use]
+    pub const fn compression(&self) -> Compression {
+        self.compression
     }
 
     /// Returns the EXIF presentation orientation for the encoded pixel grid.

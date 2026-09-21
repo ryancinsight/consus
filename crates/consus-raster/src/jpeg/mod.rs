@@ -1,11 +1,12 @@
 //! Bounded JPEG encoding and decoding.
 //!
-//! Decoding supports 8-bit sequential, extended sequential, and progressive
-//! Huffman DCT streams with grayscale, RGB/YCbCr, CMYK, or YCCK components. It
-//! also supports 8 through 16-bit single-component lossless Huffman streams.
-//! Entropy data must end exactly at its following marker; truncated scans are
-//! rejected instead of being padded with synthetic coefficients.
+//! Decoding supports 8/12-bit sequential and progressive DCT streams with
+//! grayscale, RGB/YCbCr, CMYK, or YCCK components, and 2 through 16-bit
+//! single-component lossless streams. Huffman and arithmetic entropy coding
+//! share sample reconstruction. Every scan requires a physical terminating
+//! marker; arithmetic termination follows the implicit-zero rule of T.81 D.2.6.
 
+mod arithmetic;
 mod bitstream;
 mod decoder;
 mod encoder;
@@ -23,3 +24,6 @@ mod fixture_data;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod precision_tests;

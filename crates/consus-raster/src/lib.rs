@@ -13,7 +13,7 @@ mod image;
 mod limits;
 
 pub use error::{DecodeError, DecodeErrorKind};
-pub use image::{DecodedImage, PixelFormat};
+pub use image::{Compression, DecodedImage, PixelFormat};
 pub use limits::DecodeLimits;
 
 /// EXIF metadata parsing.

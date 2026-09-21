@@ -2,9 +2,16 @@ pub(super) const UNSEEN: u8 = u8::MAX;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Coding {
+    Baseline,
     Sequential,
     Progressive,
     Lossless,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum EntropyCoding {
+    Huffman,
+    Arithmetic,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,6 +39,7 @@ pub(super) struct Component {
 
 pub(super) struct Frame {
     pub(super) coding: Coding,
+    pub(super) entropy_coding: EntropyCoding,
     pub(super) width: usize,
     pub(super) height: usize,
     pub(super) precision: u8,
