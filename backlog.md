@@ -37,19 +37,20 @@
   replay. The decoder migration is complete; native presentation, clinical
   conversion and broader media acceptance remain consumer-owned follow-up scope.
 
-## CONSUS-CONFORMANCE-RATCHET-2026-08-31 [patch] — implementation complete; merge pending
+<a id="CONSUS-CONFORMANCE-RATCHET-2026-08-31"></a>
+## CONSUS-CONFORMANCE-RATCHET-2026-08-31 [patch]
 
+- Status: done; integrator: Codex; delivery: [PR 60](https://github.com/ryancinsight/consus/pull/60), merge `7066e5335ea4dd88e87b2c977cc4b21363ddbfe7`; updated: 2026-09-21.
 - Outcome: restore the Atlas debt ratchet at the exact pinned Consus revision
   without raising its committed baseline.
 - Scope: bound the Python publishing job; classify the repository-standard
   `.git-blame-ignore-revs` false positive in the owning Atlas scanner.
 - Acceptance: Consus `workflow_missing_timeout` and `root_sprawl` both return
   to zero; workflow syntax and the Atlas detector regression suite pass.
-- Evidence: provider source `a6cf113`; Atlas detector source `e421540a6`; the
-  27-case detector suite passes and the combined exact scan reports
-  `root_sprawl=0`, `workflow_missing_timeout=0`.
-- Integrator: Codex; lease: none. Provider and Atlas review/merge remain.
-- Last update: 2026-08-31.
+- Verification: PR 60 adds the bounded PyPI publication job. Provider source
+  `a6cf113` and Atlas detector source `e421540a6` pass the 27-case detector suite;
+  the combined exact scan reports `root_sprawl=0` and
+  `workflow_missing_timeout=0` without a baseline increase.
 
 ## ATLAS-CONSUS-UNWRAP-099 — Close parser-test ratchet delta [patch, complete]
 
