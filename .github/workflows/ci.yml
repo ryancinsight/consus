@@ -101,10 +101,9 @@ jobs:
         run: cargo check --locked -p consus-core --no-default-features
 
   test:
-    # PRs run the fast single-OS signal; the 3-OS matrix moves to schedule,
-    # workflow_dispatch, and pushes to main (item 3: queue-bound PR CI never
-    # pays for OS breadth a merge gate can supply after the fact) so a PR
-    # event stops paying for 48 Test jobs it does not need to land.
+    # Pull requests run one OS; the 3-OS matrix runs on schedule,
+    # workflow_dispatch, and pushes to main. PR wall time is bound by the
+    # account's shared runner queue, not by build cost.
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -122,6 +121,13 @@ jobs:
           workspaces: .
           shared-key: consus
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      # The workspace build includes consus-python, whose pyo3 0.22 build
+      # script rejects interpreters past 3.13; runner images default newer
+      # (macos-latest ships 3.14). Pin the newest interpreter the bindings
+      # declare in pyproject.toml.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
       - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
         with:
           tool: nextest@0.9.140
