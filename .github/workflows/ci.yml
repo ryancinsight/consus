@@ -23,6 +23,10 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
+  # Incremental compilation buys nothing on a runner that never reuses its own
+  # incremental cache between jobs, and it inflates the artifacts rust-cache
+  # has to hash and store. Atlas-wide lever under ATLAS-CI-RUNNER-SATURATION.
+  CARGO_INCREMENTAL: 0
 
 jobs:
   # Public-surface compatibility, informational on pull requests: the
@@ -64,33 +68,13 @@ jobs:
     needs: fmt
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        package:
-          - consus
-          - consus-core
-          - consus-hdf5
-          - consus-fits
-          - consus-zarr
-          - consus-netcdf
-          - consus-parquet
-          - consus-arrow
-          - consus-compression
-          - consus-io
-          - consus-mat
-          - consus-npy
-          - consus-onnx
-          - consus-raster
-          - consus-nwb
-          - consus-hdmf
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           toolchain: stable
           components: clippy
-      # Shared-key rust-cache so the 15-package matrix is warm across PRs
+      # Shared-key rust-cache so the workspace build is warm across PRs
       # instead of rebuilding from scratch each time. Default-keyed rust-cache
       # hashes Cargo.lock and wipes target/ on every first-party provider repin
       # (which consus does routinely); shared-key invalidates incrementally and
@@ -105,41 +89,29 @@ jobs:
       - name: Normalize lock onto current provider heads
         shell: bash
         run: cargo metadata --format-version 1 --all-features > /dev/null
-      - name: cargo clippy (${{ matrix.package }})
-        run: cargo clippy --locked -p ${{ matrix.package }} --all-features --all-targets -- -D warnings
-      - name: cargo check (${{ matrix.package }}, default features)
-        run: cargo check --locked -p ${{ matrix.package }}
-      - name: cargo check (${{ matrix.package }}, all features)
-        run: cargo check --locked -p ${{ matrix.package }} --all-features
+      # One workspace-level invocation replaces the former one-job-per-crate
+      # matrix (16 Check jobs): every crate still gets checked, in one build.
+      - name: cargo clippy (workspace)
+        run: cargo clippy --workspace --locked --all-features --all-targets -- -D warnings
+      - name: cargo check (workspace, default features)
+        run: cargo check --workspace --locked
+      - name: cargo check (workspace, all features)
+        run: cargo check --workspace --locked --all-features
       - name: cargo check (no_std core)
-        if: matrix.package == 'consus-core'
         run: cargo check --locked -p consus-core --no-default-features
 
   test:
-    name: Test
+    # PRs run the fast single-OS signal; the 3-OS matrix moves to schedule,
+    # workflow_dispatch, and pushes to main (item 3: queue-bound PR CI never
+    # pays for OS breadth a merge gate can supply after the fact) so a PR
+    # event stops paying for 48 Test jobs it does not need to land.
+    name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        package:
-          - consus
-          - consus-core
-          - consus-hdf5
-          - consus-fits
-          - consus-zarr
-          - consus-netcdf
-          - consus-parquet
-          - consus-arrow
-          - consus-compression
-          - consus-io
-          - consus-mat
-          - consus-npy
-          - consus-onnx
-          - consus-raster
-          - consus-nwb
-          - consus-hdmf
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","windows-latest","macos-latest"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
@@ -156,8 +128,14 @@ jobs:
       - name: Normalize lock onto current provider heads
         shell: bash
         run: cargo metadata --format-version 1 --all-features > /dev/null
-      - name: cargo nextest (${{ matrix.package }})
-        run: cargo nextest run --locked -p ${{ matrix.package }} --all-features
+      # One workspace-level invocation replaces the former one-job-per-crate
+      # matrix (16 Test jobs per OS): every crate's tests still run, in one
+      # build. nextest does not execute doctests, so they run as their own
+      # step (previously absent from CI entirely).
+      - name: cargo nextest (workspace)
+        run: cargo nextest run --workspace --locked --all-features
+      - name: cargo test --doc (workspace)
+        run: cargo test --doc --workspace --locked
 
   msrv:
     name: MSRV (1.95.0)
@@ -167,26 +145,6 @@ jobs:
       # outranks it, so without this the job compiled with the pinned channel.
       RUSTUP_TOOLCHAIN: 1.95.0
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        package:
-          - consus
-          - consus-core
-          - consus-hdf5
-          - consus-fits
-          - consus-zarr
-          - consus-netcdf
-          - consus-parquet
-          - consus-arrow
-          - consus-compression
-          - consus-io
-          - consus-mat
-          - consus-npy
-          - consus-onnx
-          - consus-raster
-          - consus-nwb
-          - consus-hdmf
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
@@ -202,8 +160,10 @@ jobs:
       - name: Normalize lock onto current provider heads
         shell: bash
         run: cargo metadata --format-version 1 --all-features > /dev/null
-      - name: cargo check (${{ matrix.package }})
-        run: cargo check --locked -p ${{ matrix.package }}
+      # One workspace-level invocation replaces the former one-job-per-crate
+      # matrix (16 MSRV jobs).
+      - name: cargo check (workspace)
+        run: cargo check --workspace --locked
 
   test-mat-features:
     name: Test consus-mat feature matrix
