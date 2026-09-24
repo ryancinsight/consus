@@ -214,9 +214,3 @@ so the compiled API surface is unchanged.
 
 - [x] [minor] Own typed NPY/NPZ storage so simulation consumers can remove
   `ndarray-npy` without implementing format parsing downstream.
-
-<a id="CONSUS-OPS-SPLIT-001"></a>
-## CONSUS-OPS-SPLIT-001 — Split the 1915-line Zarr chunk ops into leaf modules [patch]
-- Status: todo; priority: structure; integrator: pi-session; updated: 2026-09-24. Claimed for delivery in this change's PR.
-- Scope: `crates/consus-zarr/src/chunk/ops.rs` (1 915 lines) becomes a `chunk/ops/` module tree: coords, selection, fill, chunk_io, arrays, sharded plus per-family test modules; bodies verbatim.
-- Acceptance: every emitted file below the 500-line target; conformance oversized_files tightens 80 -> 79 with no other class moving; clippy `-D warnings`, nextest (316/316), fmt, and doc gates green; the `chunk::ops::*` re-export surface in `chunk/mod.rs` unchanged.
