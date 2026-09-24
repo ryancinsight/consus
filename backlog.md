@@ -214,3 +214,9 @@ so the compiled API surface is unchanged.
 
 - [x] [minor] Own typed NPY/NPZ storage so simulation consumers can remove
   `ndarray-npy` without implementing format parsing downstream.
+
+<a id="CONSUS-BTREE-V2-SPLIT-001"></a>
+## CONSUS-BTREE-V2-SPLIT-001 — Split the 1472-line B-tree v2 into leaf modules [patch]
+- Status: todo; priority: structure; integrator: pi-session; updated: 2026-09-24. Claimed for delivery in this change's PR.
+- Scope: `crates/consus-hdf5/src/btree/v2.rs` (1 472 lines) becomes a `btree/v2/` module tree: header, leaf, internal, util, collect, huge, record_type leaf modules plus a single `tests.rs`; bodies verbatim.
+- Acceptance: every emitted file below the 500-line target; conformance oversized_files tightens further with no other class moving; clippy `--all-features --all-targets -D warnings`, nextest, fmt, and doc gates green; the `btree::v2::*` public surface unchanged.
