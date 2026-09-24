@@ -120,26 +120,7 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
     #[cfg(feature = "alloc")]
     pub fn list_group_at(&self, address: u64) -> Result<Vec<(String, u64, consus_core::LinkType)>> {
         let header = reader::read_object_header(&self.source, address, &self.ctx)?;
-
-        let v2 = reader::list_group_v2(&self.source, &header, &self.ctx)?;
-        if !v2.is_empty() {
-            return Ok(v2.into_iter().map(|(n, a, lt, _)| (n, a, lt)).collect());
-        }
-
-        // Only attempt the v1 symbol-table path when the object header
-        // contains a SYMBOL_TABLE message.  v2 groups with zero children
-        // produce an empty v2 list and carry no SYMBOL_TABLE message; for
-        // them an empty result is correct and the v1 path must not be tried.
-        use crate::object_header::message_types;
-        if reader::find_message(&header, message_types::SYMBOL_TABLE).is_none() {
-            return Ok(Vec::new());
-        }
-
-        let v1 = reader::list_group_v1(&self.source, &header, &self.ctx)?;
-        Ok(v1
-            .into_iter()
-            .map(|(name, addr)| (name, addr, consus_core::LinkType::Hard))
-            .collect())
+        self.list_group_children_from_header(&header, false)
     }
     /// Classify the object at the given object header address.
     #[cfg(feature = "alloc")]
