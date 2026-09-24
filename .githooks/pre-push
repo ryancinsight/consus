@@ -106,8 +106,17 @@ if [ ! -t 0 ]; then
       # range is empty, and a manifest-changing push skips the check.
       base="$(default_branch_base "$local_sha" || true)"
       [ -z "$base" ] && { touches_dependency_state=unknown; break; }
-    else
+    elif git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+      # Ordinary branch updates extend the remote tip, so only new commits
+      # enter the gate range.
       base="$remote_sha"
+    else
+      # Publication branches may be rebuilt from a newer default branch.
+      # Their previous tip is then outside the new history; gate the PR delta
+      # from the new tip's default-branch base rather than unrelated mainline
+      # changes between the two generated commits.
+      base="$(default_branch_base "$local_sha" || true)"
+      [ -z "$base" ] && { touches_dependency_state=unknown; break; }
     fi
     if [ -z "$gate_tip" ]; then
       gate_tip="$local_sha"
