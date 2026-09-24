@@ -381,7 +381,12 @@ impl CodecConfigElement {
 #[inline]
 fn codec_configuration_pairs(configuration: Option<&CodecConfiguration>) -> Vec<(String, String)> {
     configuration
-        .map(|cfg| cfg.elements.iter().filter_map(CodecConfigElement::to_pair).collect())
+        .map(|cfg| {
+            cfg.elements
+                .iter()
+                .filter_map(CodecConfigElement::to_pair)
+                .collect()
+        })
         .unwrap_or_default()
 }
 
