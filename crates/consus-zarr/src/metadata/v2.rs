@@ -330,14 +330,7 @@ impl CompressorConfig {
 impl CompressorNamed {
     /// Convert to a canonical `Codec`.
     fn to_codec(&self) -> Codec {
-        let mut configuration = Vec::new();
-        if let Some(cfg) = &self.configuration {
-            for elem in &cfg.elements {
-                if let Some(pair) = elem.to_pair() {
-                    configuration.push(pair);
-                }
-            }
-        }
+        let mut configuration = codec_configuration_pairs(self.configuration.as_ref());
         if let Some(level) = self.level {
             configuration.push((String::from("level"), level.to_string()));
         }
@@ -352,14 +345,7 @@ impl FilterIdConfig {
     /// Convert an HDF5 filter ID to a canonical codec name.
     fn to_codec(&self) -> Codec {
         let name = hdf5_filter_id_to_name(self.id);
-        let mut configuration = Vec::new();
-        if let Some(cfg) = &self.configuration {
-            for elem in &cfg.elements {
-                if let Some(pair) = elem.to_pair() {
-                    configuration.push(pair);
-                }
-            }
-        }
+        let configuration = codec_configuration_pairs(self.configuration.as_ref());
         Codec {
             name,
             configuration,
@@ -374,14 +360,7 @@ impl FilterConfig {
             FilterId::Name(s) => s.clone(),
             FilterId::Number(n) => hdf5_filter_id_to_name(*n),
         };
-        let mut configuration = Vec::new();
-        if let Some(cfg) = &self.configuration {
-            for elem in &cfg.elements {
-                if let Some(pair) = elem.to_pair() {
-                    configuration.push(pair);
-                }
-            }
-        }
+        let configuration = codec_configuration_pairs(self.configuration.as_ref());
         Some(Codec {
             name,
             configuration,
@@ -397,6 +376,13 @@ impl CodecConfigElement {
             Self::Value(v) => Some(("level".to_string(), v.to_string())),
         }
     }
+}
+
+#[inline]
+fn codec_configuration_pairs(configuration: Option<&CodecConfiguration>) -> Vec<(String, String)> {
+    configuration
+        .map(|cfg| cfg.elements.iter().filter_map(CodecConfigElement::to_pair).collect())
+        .unwrap_or_default()
 }
 
 /// Map an HDF5 filter ID to a codec name string.
