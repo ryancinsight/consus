@@ -227,3 +227,9 @@ so the compiled API surface is unchanged.
 - Status: todo; priority: structure; integrator: pi-session; updated: 2026-09-24. Claimed for delivery in this change's PR.
 - Scope: `crates/consus-hdf5/src/datatype/compound.rs` (1 446 lines) becomes a `datatype/compound/` tree: parse dispatch, scalar parsers, compound members, class parsers (reference/enum/vl/array), plus per-family test modules; bodies verbatim.
 - Acceptance: every emitted file below the 500-line target; clippy `-D warnings` and nextest pass; the `datatype::compound::*` surface unchanged.
+
+<a id="CONSUS-FRACTAL-SPLIT-001"></a>
+## CONSUS-FRACTAL-SPLIT-001 — Split the 1218-line fractal heap into leaf modules [patch]
+- Status: todo; priority: structure; integrator: pi-session; updated: 2026-09-24. Claimed for delivery in this change's PR.
+- Scope: `crates/consus-hdf5/src/heap/fractal.rs` (1 218 lines) becomes a `heap/fractal/` tree: header (252), ids (129), read (281), huge (164), tests (365); bodies verbatim.
+- Acceptance: every emitted file below the 500-line target; clippy `-D warnings` and nextest pass; the `heap::fractal::*` public surface unchanged.
