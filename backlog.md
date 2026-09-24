@@ -217,6 +217,7 @@ so the compiled API surface is unchanged.
 
 <a id="CONSUS-WRITER-SPLIT-001"></a>
 ## CONSUS-WRITER-SPLIT-001 — Split the 3364-line HDF5 writer into leaf modules [patch]
-- Status: todo; priority: structure; integrator: pi-session; updated: 2026-09-24. Claimed for delivery in this change's PR.
+- Status: todo; integrator: pi-session; updated: 2026-09-24. Claimed for delivery in this change's PR.
+- priority: tightening
 - Scope: `crates/consus-hdf5/src/file/writer.rs` (3 364 lines) becomes a `writer/` module tree: leaf modules per operation family (state, group, dataset, datatype, dataspace, layout, filters, chunk_index, chunk_data, links, attributes, builder, builder_subgroup, builder_specs) and per-family test modules; bodies verbatim.
 - Acceptance: every emitted file below the 500-line target; conformance oversized_files tightens 81 -> 80 with no other class moving; clippy `-D warnings`, nextest (434/434), fmt, and doc gates green; the `consus_hdf5::file::writer::*` public surface unchanged.
