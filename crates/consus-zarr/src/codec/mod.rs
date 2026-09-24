@@ -278,6 +278,44 @@ impl CodecPipeline {
         byte_swap_elements(data, self.element_size)
     }
 
+    fn codec_level(codec: &Codec) -> i32 {
+        match codec.name.as_str() {
+            "gzip" | "zlib" => codec.gzip_level().unwrap_or(6) as i32,
+            "zstd" => codec.zstd_level().unwrap_or(3),
+            "lz4" => codec.lz4_level().unwrap_or(0),
+            _ => codec
+                .configuration
+                .iter()
+                .find(|(key, _)| key == "level")
+                .and_then(|(_, value)| value.parse::<i32>().ok())
+                .unwrap_or(6),
+        }
+    }
+
+    fn apply_registry_compress(
+        &self,
+        codec: &Codec,
+        data: &[u8],
+        registry: &dyn CompressionRegistryTrait,
+    ) -> Result<Vec<u8>> {
+        registry
+            .get_by_name(codec.name.as_str())
+            .and_then(|codec_impl| {
+                codec_impl.compress(data, CompressionLevel(Self::codec_level(codec)))
+            })
+    }
+
+    fn apply_registry_decompress(
+        &self,
+        codec: &Codec,
+        data: &[u8],
+        registry: &dyn CompressionRegistryTrait,
+    ) -> Result<Vec<u8>> {
+        registry
+            .get_by_name(codec.name.as_str())
+            .and_then(|codec_impl| codec_impl.decompress(data, 0))
+    }
+
     /// Compress data through the full codec chain.
     ///
     /// Codecs are applied in forward order: the first codec receives
@@ -333,38 +371,8 @@ impl CodecPipeline {
             // Returning pass-through is incorrect (silent corruption), so we
             // reject it at pipeline-application time instead.
             "crc32" => Ok(append_crc32c(data)),
-
             // Compression codecs
-            "gzip" | "zlib" => {
-                let level = codec.gzip_level().unwrap_or(6) as i32;
-                registry
-                    .get_by_name(&codec.name)
-                    .and_then(|c| c.compress(data, CompressionLevel(level)))
-            }
-            "zstd" => {
-                let level = codec.zstd_level().unwrap_or(3);
-                registry
-                    .get_by_name(&codec.name)
-                    .and_then(|c| c.compress(data, CompressionLevel(level)))
-            }
-            "lz4" => {
-                let level = codec.lz4_level().unwrap_or(0);
-                registry
-                    .get_by_name(&codec.name)
-                    .and_then(|c| c.compress(data, CompressionLevel(level)))
-            }
-            // blosc, deflate, etc. — look up by name
-            name => {
-                let level = codec
-                    .configuration
-                    .iter()
-                    .find(|(k, _)| k == "level")
-                    .and_then(|(_, v)| v.parse::<i32>().ok())
-                    .unwrap_or(6);
-                registry
-                    .get_by_name(name)
-                    .and_then(|c| c.compress(data, CompressionLevel(level)))
-            }
+            _ => self.apply_registry_compress(codec, data, registry),
         }
     }
 
@@ -384,11 +392,7 @@ impl CodecPipeline {
             // real payload on read or silently accepts corrupted data), so we
             // reject it.
             "crc32" => verify_and_strip_crc32c(data),
-
-            // All compression codecs use the same decompress interface
-            name => registry
-                .get_by_name(name)
-                .and_then(|c| c.decompress(data, 0)),
+            _ => self.apply_registry_decompress(codec, data, registry),
         }
     }
 }

@@ -10,28 +10,62 @@ use byteorder::{ByteOrder, LittleEndian};
 use consus_core::{Compression, Result};
 
 #[cfg(feature = "alloc")]
+const DEFLATE_FILTER_ID: u16 = 1;
+#[cfg(feature = "alloc")]
+const FLETCHER32_FILTER_ID: u16 = 3;
+#[cfg(feature = "alloc")]
+const LZ4_FILTER_ID: u16 = 32004;
+#[cfg(feature = "alloc")]
+const ZSTD_FILTER_ID: u16 = 32015;
+
+#[cfg(feature = "alloc")]
+fn compression_filter_id(compression: &Compression) -> Option<u16> {
+    match compression {
+        Compression::None => None,
+        Compression::Deflate { .. } | Compression::Gzip { .. } => Some(DEFLATE_FILTER_ID),
+        Compression::Zstd { .. } => Some(ZSTD_FILTER_ID),
+        Compression::Lz4 => Some(LZ4_FILTER_ID),
+    }
+}
+
+#[cfg(feature = "alloc")]
+fn deflate_level(compression: &Compression) -> u32 {
+    match compression {
+        Compression::Deflate { level } | Compression::Gzip { level } => *level,
+        _ => 6,
+    }
+}
+
+#[cfg(feature = "alloc")]
+fn push_unique(filter_ids: &mut Vec<u16>, filter_id: u16) {
+    if !filter_ids.contains(&filter_id) {
+        filter_ids.push(filter_id);
+    }
+}
+
+#[cfg(feature = "alloc")]
+fn is_compression_filter(filter_id: u16) -> bool {
+    matches!(
+        filter_id,
+        DEFLATE_FILTER_ID | ZSTD_FILTER_ID | LZ4_FILTER_ID
+    )
+}
+
+#[cfg(feature = "alloc")]
 pub(crate) fn dataset_filter_ids(props: &DatasetCreationProps) -> Vec<u16> {
     let mut integrity_filters = Vec::new();
     let mut transform_filters = Vec::new();
     let mut compression_filters = Vec::new();
 
-    match props.compression {
-        Compression::None => {}
-        Compression::Deflate { .. } => compression_filters.push(1),
-        Compression::Zstd { .. } => compression_filters.push(32015),
-        Compression::Lz4 => compression_filters.push(32004),
-        Compression::Gzip { .. } => compression_filters.push(1),
+    if let Some(filter_id) = compression_filter_id(&props.compression) {
+        compression_filters.push(filter_id);
     }
 
     for &filter_id in &props.filters {
-        if filter_id == 3 {
-            if !integrity_filters.contains(&filter_id) {
-                integrity_filters.push(filter_id);
-            }
-        } else if filter_id == 1 || filter_id == 32015 || filter_id == 32004 {
-            if !compression_filters.contains(&filter_id) {
-                compression_filters.push(filter_id);
-            }
+        if filter_id == FLETCHER32_FILTER_ID {
+            push_unique(&mut integrity_filters, filter_id);
+        } else if is_compression_filter(filter_id) {
+            push_unique(&mut compression_filters, filter_id);
         } else if !transform_filters.contains(&filter_id) {
             transform_filters.push(filter_id);
         }
@@ -76,14 +110,10 @@ pub(crate) fn encode_filter_pipeline(
 
     for &filter_id in filter_ids {
         let (name, client_data_owned, flags): (&[u8], alloc::vec::Vec<u32>, u16) = match filter_id {
-            1 => {
+            DEFLATE_FILTER_ID => {
                 // Deflate filter: name="deflate\0" (8 bytes), flags=H5Z_FLAG_OPTIONAL(1),
                 // one client data element = compression level.
-                let level = match compression {
-                    Compression::Deflate { level } => *level,
-                    Compression::Gzip { level } => *level,
-                    _ => 6u32,
-                };
+                let level = deflate_level(compression);
                 (b"deflate\0", alloc::vec![level], 1u16)
             }
             _ => (b"", alloc::vec::Vec::new(), 0u16),

@@ -17,7 +17,7 @@
 //! | 6 | BROTLI | (none) | always `UnsupportedFeature` |
 //! | 7 | ZLIB | `gzip` | `flate2::read::DeflateDecoder` (raw deflate) |
 
-use alloc::{format, string::String, vec::Vec};
+use alloc::{format, vec::Vec};
 
 use consus_core::{Error, ParseBudget, Result};
 
@@ -51,6 +51,59 @@ impl CompressionCodec {
             _ => None,
         }
     }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Uncompressed => "UNCOMPRESSED",
+            Self::Snappy => "SNAPPY",
+            Self::Gzip => "GZIP",
+            Self::Lz4Raw => "LZ4_RAW",
+            Self::Zstd => "ZSTD",
+            Self::Lz4 => "LZ4",
+            Self::Brotli => "BROTLI",
+            Self::Zlib => "ZLIB",
+        }
+    }
+
+    fn unsupported(self, feature_flag: Option<&str>) -> Error {
+        let feature = match feature_flag {
+            Some(feature_flag) => format!(
+                "parquet compression codec {} ({}) — enable feature '{feature_flag}'",
+                self as i32,
+                self.label()
+            ),
+            None => format!(
+                "parquet compression codec {} ({})",
+                self as i32,
+                self.label()
+            ),
+        };
+        Error::UnsupportedFeature { feature }
+    }
+}
+
+fn compression_error<E: core::fmt::Display>(codec: &str, action: &str, error: E) -> Error {
+    Error::CompressionError {
+        message: format!("{codec} {action} failed: {error}"),
+    }
+}
+
+fn allocate_output_buffer(size: usize) -> Result<Vec<u8>> {
+    let size = checked_output_size(size)?;
+    ParseBudget::default().zeroed(
+        u64::try_from(size).map_err(|_| Error::Overflow)?,
+        "decompressed output",
+    )
+}
+
+fn decode_into_buffer<F>(output_size: usize, decode: F) -> Result<Vec<u8>>
+where
+    F: FnOnce(&mut [u8]) -> Result<usize>,
+{
+    let mut output = allocate_output_buffer(output_size)?;
+    let written = decode(&mut output)?;
+    output.truncate(written);
+    Ok(output)
 }
 
 /// Compress page value bytes using the given Parquet compression codec.
@@ -79,25 +132,13 @@ pub(crate) fn compress_page_values(data: &[u8], codec: CompressionCodec) -> Resu
                 let mut output = Vec::with_capacity(data.len());
                 encoder
                     .read_to_end(&mut output)
-                    .map_err(|e| Error::CompressionError {
-                        message: format!("deflate compress failed: {e}"),
-                    })?;
+                    .map_err(|e| compression_error("deflate", "compress", e))?;
                 Ok(output)
             }
             #[cfg(not(feature = "gzip"))]
             {
                 let _ = data;
-                Err(Error::UnsupportedFeature {
-                    feature: format!(
-                        "parquet compression codec {} ({}) — enable feature 'gzip'",
-                        codec as i32,
-                        match codec {
-                            CompressionCodec::Gzip => "GZIP",
-                            CompressionCodec::Zlib => "ZLIB",
-                            _ => unreachable!(),
-                        }
-                    ),
-                })
+                Err(codec.unsupported(Some("gzip")))
             }
         }
 
@@ -106,36 +147,24 @@ pub(crate) fn compress_page_values(data: &[u8], codec: CompressionCodec) -> Resu
             {
                 snap::raw::Encoder::new()
                     .compress_vec(data)
-                    .map_err(|e| Error::CompressionError {
-                        message: format!("snappy compress failed: {e}"),
-                    })
+                    .map_err(|e| compression_error("snappy", "compress", e))
             }
             #[cfg(not(feature = "snappy"))]
             {
                 let _ = data;
-                Err(Error::UnsupportedFeature {
-                    feature: String::from(
-                        "parquet compression codec 1 (SNAPPY) — enable feature 'snappy'",
-                    ),
-                })
+                Err(codec.unsupported(Some("snappy")))
             }
         }
 
         CompressionCodec::Zstd => {
             #[cfg(feature = "zstd")]
             {
-                zrip::compress(data, 3).map_err(|e| Error::CompressionError {
-                    message: format!("zstd compress failed: {e}"),
-                })
+                zrip::compress(data, 3).map_err(|e| compression_error("zstd", "compress", e))
             }
             #[cfg(not(feature = "zstd"))]
             {
                 let _ = data;
-                Err(Error::UnsupportedFeature {
-                    feature: String::from(
-                        "parquet compression codec 4 (ZSTD) — enable feature 'zstd'",
-                    ),
-                })
+                Err(codec.unsupported(Some("zstd")))
             }
         }
 
@@ -147,11 +176,7 @@ pub(crate) fn compress_page_values(data: &[u8], codec: CompressionCodec) -> Resu
             #[cfg(not(feature = "lz4"))]
             {
                 let _ = data;
-                Err(Error::UnsupportedFeature {
-                    feature: String::from(
-                        "parquet compression codec 3 (LZ4_RAW) — enable feature 'lz4'",
-                    ),
-                })
+                Err(codec.unsupported(Some("lz4")))
             }
         }
 
@@ -163,19 +188,13 @@ pub(crate) fn compress_page_values(data: &[u8], codec: CompressionCodec) -> Resu
             #[cfg(not(feature = "lz4"))]
             {
                 let _ = data;
-                Err(Error::UnsupportedFeature {
-                    feature: String::from(
-                        "parquet compression codec 5 (LZ4) — enable feature 'lz4'",
-                    ),
-                })
+                Err(codec.unsupported(Some("lz4")))
             }
         }
 
         CompressionCodec::Brotli => {
             let _ = data;
-            Err(Error::UnsupportedFeature {
-                feature: String::from("parquet compression codec BROTLI (6)"),
-            })
+            Err(codec.unsupported(None))
         }
     }
 }
@@ -207,47 +226,25 @@ pub fn decompress_page_values(
             #[cfg(not(feature = "gzip"))]
             {
                 let _ = (data, uncompressed_size);
-                Err(Error::UnsupportedFeature {
-                    feature: format!(
-                        "parquet compression codec {} ({}) — enable feature 'gzip'",
-                        codec as i32,
-                        match codec {
-                            CompressionCodec::Gzip => "GZIP",
-                            CompressionCodec::Zlib => "ZLIB",
-                            _ => unreachable!(),
-                        }
-                    ),
-                })
+                Err(codec.unsupported(Some("gzip")))
             }
         }
 
         CompressionCodec::Snappy => {
             #[cfg(feature = "snappy")]
             {
-                let decoded_size =
-                    snap::raw::decompress_len(data).map_err(|e| Error::CompressionError {
-                        message: format!("snappy header decode failed: {e}"),
-                    })?;
-                let mut output = ParseBudget::default().zeroed(
-                    u64::try_from(decoded_size).map_err(|_| Error::Overflow)?,
-                    "decompressed output",
-                )?;
-                let written = snap::raw::Decoder::new()
-                    .decompress(data, &mut output)
-                    .map_err(|e| Error::CompressionError {
-                        message: format!("snappy decompress failed: {e}"),
-                    })?;
-                output.truncate(written);
-                Ok(output)
+                let decoded_size = snap::raw::decompress_len(data)
+                    .map_err(|e| compression_error("snappy header", "decode", e))?;
+                decode_into_buffer(decoded_size, |output| {
+                    snap::raw::Decoder::new()
+                        .decompress(data, output)
+                        .map_err(|e| compression_error("snappy", "decompress", e))
+                })
             }
             #[cfg(not(feature = "snappy"))]
             {
                 let _ = (data, uncompressed_size);
-                Err(Error::UnsupportedFeature {
-                    feature: String::from(
-                        "parquet compression codec 1 (SNAPPY) — enable feature 'snappy'",
-                    ),
-                })
+                Err(codec.unsupported(Some("snappy")))
             }
         }
 
@@ -255,18 +252,13 @@ pub fn decompress_page_values(
             #[cfg(feature = "zstd")]
             {
                 let limit = checked_output_size(uncompressed_size)?;
-                zrip::decompress_with_limit(data, limit).map_err(|e| Error::CompressionError {
-                    message: format!("zstd decompress failed: {e}"),
-                })
+                zrip::decompress_with_limit(data, limit)
+                    .map_err(|e| compression_error("zstd", "decompress", e))
             }
             #[cfg(not(feature = "zstd"))]
             {
                 let _ = (data, uncompressed_size);
-                Err(Error::UnsupportedFeature {
-                    feature: String::from(
-                        "parquet compression codec 4 (ZSTD) — enable feature 'zstd'",
-                    ),
-                })
+                Err(codec.unsupported(Some("zstd")))
             }
         }
 
@@ -274,67 +266,38 @@ pub fn decompress_page_values(
             #[cfg(feature = "lz4")]
             {
                 let output_size = checked_output_size(uncompressed_size)?;
-                let mut output = ParseBudget::default().zeroed(
-                    u64::try_from(output_size).map_err(|_| Error::Overflow)?,
-                    "decompressed output",
-                )?;
-                let written = lz4_flex::block::decompress_into(data, &mut output).map_err(|e| {
-                    Error::CompressionError {
-                        message: format!("lz4_raw decompress failed: {e}"),
-                    }
-                })?;
-                output.truncate(written);
-                Ok(output)
+                decode_into_buffer(output_size, |output| {
+                    lz4_flex::block::decompress_into(data, output)
+                        .map_err(|e| compression_error("lz4_raw", "decompress", e))
+                })
             }
             #[cfg(not(feature = "lz4"))]
             {
                 let _ = (data, uncompressed_size);
-                Err(Error::UnsupportedFeature {
-                    feature: String::from(
-                        "parquet compression codec 3 (LZ4_RAW) — enable feature 'lz4'",
-                    ),
-                })
+                Err(codec.unsupported(Some("lz4")))
             }
         }
 
         CompressionCodec::Lz4 => {
             #[cfg(feature = "lz4")]
             {
-                let (decoded_size, payload) =
-                    lz4_flex::block::uncompressed_size(data).map_err(|e| {
-                        Error::CompressionError {
-                            message: format!("lz4 header decode failed: {e}"),
-                        }
-                    })?;
-                let mut output = ParseBudget::default().zeroed(
-                    u64::try_from(decoded_size).map_err(|_| Error::Overflow)?,
-                    "decompressed output",
-                )?;
-                let written =
-                    lz4_flex::block::decompress_into(payload, &mut output).map_err(|e| {
-                        Error::CompressionError {
-                            message: format!("lz4 decompress failed: {e}"),
-                        }
-                    })?;
-                output.truncate(written);
-                Ok(output)
+                let (decoded_size, payload) = lz4_flex::block::uncompressed_size(data)
+                    .map_err(|e| compression_error("lz4 header", "decode", e))?;
+                decode_into_buffer(decoded_size, |output| {
+                    lz4_flex::block::decompress_into(payload, output)
+                        .map_err(|e| compression_error("lz4", "decompress", e))
+                })
             }
             #[cfg(not(feature = "lz4"))]
             {
                 let _ = (data, uncompressed_size);
-                Err(Error::UnsupportedFeature {
-                    feature: String::from(
-                        "parquet compression codec 5 (LZ4) — enable feature 'lz4'",
-                    ),
-                })
+                Err(codec.unsupported(Some("lz4")))
             }
         }
 
         CompressionCodec::Brotli => {
             let _ = (data, uncompressed_size);
-            Err(Error::UnsupportedFeature {
-                feature: String::from("parquet compression codec BROTLI (6)"),
-            })
+            Err(codec.unsupported(None))
         }
     }
 }
@@ -366,11 +329,7 @@ fn checked_output_size(size: usize) -> Result<usize> {
 }
 
 fn copy_bounded(data: &[u8]) -> Result<Vec<u8>> {
-    let len = checked_output_size(data.len())?;
-    let mut output = ParseBudget::default().zeroed(
-        u64::try_from(len).map_err(|_| Error::Overflow)?,
-        "decompressed output",
-    )?;
+    let mut output = allocate_output_buffer(data.len())?;
     output.copy_from_slice(data);
     Ok(output)
 }
