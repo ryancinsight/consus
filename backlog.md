@@ -221,3 +221,9 @@ so the compiled API surface is unchanged.
 - priority: tightening
 - Scope: `crates/consus-hdf5/src/file/writer.rs` (3 364 lines) becomes a `writer/` module tree: leaf modules per operation family (state, group, dataset, datatype, dataspace, layout, filters, chunk_index, chunk_data, links, attributes, builder, builder_subgroup, builder_specs) and per-family test modules; bodies verbatim.
 - Acceptance: every emitted file below the 500-line target; conformance oversized_files tightens 81 -> 80 with no other class moving; clippy `-D warnings`, nextest (434/434), fmt, and doc gates green; the `consus_hdf5::file::writer::*` public surface unchanged.
+
+<a id="CONSUS-FILE-MOD-SPLIT-001"></a>
+## CONSUS-FILE-MOD-SPLIT-001 — Split the 1303-line file/mod.rs into leaf modules [patch]
+- Status: todo; priority: structure; integrator: pi-session; updated: 2026-09-24. Claimed for delivery in this change's PR.
+- Scope: `crates/consus-hdf5/src/file/mod.rs` (1 303 lines) becomes manifest-only `mod.rs` plus leaves: access.rs, dataset_io.rs, navigation.rs, chunk_read.rs, tests.rs; method bodies move verbatim between impl blocks.
+- Acceptance: every emitted file below the 500-line target; clippy `-D warnings` and nextest pass; the `file::{Hdf5File, ...}` public surface unchanged.
