@@ -397,27 +397,8 @@ fn parse_compound_member(
     let mut pos: usize = 0;
 
     // -- Name (null-terminated) ----------------------------------------------
-    let name_start = pos;
-    while pos < data.len() && data[pos] != 0 {
-        pos += 1;
-    }
-    if pos >= data.len() {
-        return Err(Error::InvalidFormat {
-            message: format!("unterminated compound member name at index {member_index}"),
-        });
-    }
-    let name = core::str::from_utf8(&data[name_start..pos])
-        .map_err(|_| Error::InvalidFormat {
-            message: format!("compound member {member_index} name is not valid UTF-8"),
-        })
-        .map(String::from)?;
-    pos += 1; // skip null terminator
-
-    // For version 1/2: name field (including null) is padded to 8-byte boundary.
-    if version < 3 {
-        let name_field_len = pos - name_start;
-        pos = name_start + ((name_field_len + 7) & !7);
-    }
+    let (name, new_pos) = parse_member_name(data, pos, version, "compound member", member_index)?;
+    pos = new_pos;
 
     // -- Byte offset of member within the compound ---------------------------
     let member_offset = if version < 3 {
@@ -563,28 +544,8 @@ fn parse_enum(
             .min(props.len() + 1),
     );
     for i in 0..num_members {
-        let name_start = pos;
-        while pos < props.len() && props[pos] != 0 {
-            pos += 1;
-        }
-        if pos >= props.len() {
-            return Err(Error::InvalidFormat {
-                message: format!("unterminated enum member name at index {i}"),
-            });
-        }
-        let name = core::str::from_utf8(&props[name_start..pos])
-            .map_err(|_| Error::InvalidFormat {
-                message: format!("enum member {i} name is not valid UTF-8"),
-            })
-            .map(String::from)?;
-        pos += 1; // skip null
-
-        // Version 1/2: each name is padded to 8-byte boundary.
-        if version < 3 {
-            let name_field_len = pos - name_start;
-            pos = name_start + ((name_field_len + 7) & !7);
-        }
-
+        let (name, new_pos) = parse_member_name(props, pos, version, "enum member", i)?;
+        pos = new_pos;
         names.push(name);
     }
 
@@ -824,6 +785,41 @@ fn member_offset_byte_count(compound_size: usize) -> usize {
     } else {
         4
     }
+}
+
+/// Parse a null-terminated member name from `data[start..]`.
+///
+/// For datatype versions 1/2, consumes 8-byte aligned padded name fields.
+/// For version 3+, consumes exactly `name_len + 1` bytes.
+fn parse_member_name(
+    data: &[u8],
+    start: usize,
+    version: u8,
+    kind: &str,
+    index: usize,
+) -> Result<(String, usize)> {
+    let mut pos = start;
+    while pos < data.len() && data[pos] != 0 {
+        pos += 1;
+    }
+    if pos >= data.len() {
+        return Err(Error::InvalidFormat {
+            message: format!("unterminated {kind} name at index {index}"),
+        });
+    }
+
+    let name = core::str::from_utf8(&data[start..pos])
+        .map_err(|_| Error::InvalidFormat {
+            message: format!("{kind} {index} name is not valid UTF-8"),
+        })
+        .map(String::from)?;
+    pos += 1; // skip null
+
+    if version < 3 {
+        let name_field_len = pos - start;
+        pos = start + ((name_field_len + 7) & !7);
+    }
+    Ok((name, pos))
 }
 
 /// Read an unsigned little-endian integer of 0–8 bytes.
