@@ -1,8 +1,8 @@
 //! Byte-order utilities for multi-byte integer reading and writing.
 //!
-//! This module is the SSOT for all endian conversion in Consus.
-//! No other crate may duplicate these implementations.
-//! (consus-hdf5's `primitives.rs` should be replaced by imports from here.)
+//! The implementations now live in [`consus_core::decode`], the single home
+//! for fixed-width byte-order decoding across Consus. This module re-exports
+//! them so the historical `consus_compression::endian` path keeps working.
 
 pub mod conversion;
 

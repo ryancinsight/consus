@@ -42,7 +42,11 @@ use super::types::datatype::Datatype;
 
 mod endian;
 
-pub use endian::{EndianScalar, read_integer};
+pub use endian::{
+    EndianScalar, read_int_width, read_integer, read_length, read_offset, read_uint_arbitrary,
+    read_uint_be, read_uint_le, read_uint_width, sign_extend, swap_bytes, write_uint_be,
+    write_uint_le,
+};
 
 /// Decode a raw buffer of fixed-size numeric elements into `Vec<f64>`.
 ///

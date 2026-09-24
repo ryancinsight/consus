@@ -16,7 +16,7 @@ use consus_io::ReadAt;
 /// Read a managed object from a fractal heap.
 ///
 /// Locates and reads the object at the given `offset` and `length` (decoded
-/// from a [`FractalHeapId::Managed`]).  Handles both the simple case where
+/// from a [`FractalHeapId::Managed`][super::FractalHeapId::Managed]).  Handles both the simple case where
 /// the root block is a direct block (`root_indirect_rows == 0`) and the
 /// general case where the root block is an indirect block.
 ///

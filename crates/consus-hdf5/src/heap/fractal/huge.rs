@@ -16,7 +16,7 @@ use consus_io::ReadAt;
 /// Read a HUGE object from a fractal heap.
 ///
 /// HUGE objects are stored outside the managed address space and indexed
-/// by a v2 B-tree. The `btree_key` from [`FractalHeapId::Huge`] is either:
+/// by a v2 B-tree. The `btree_key` from [`FractalHeapId::Huge`][super::FractalHeapId::Huge] is either:
 /// - A **direct file address** (when header flag bit 0 is SET), or
 /// - A **B-tree key** to search (when header flag bit 0 is CLEAR).
 ///
@@ -143,21 +143,11 @@ pub(crate) fn read_bounded_bytes<R: ReadAt>(
 // ---------------------------------------------------------------------------
 
 /// Read an unsigned little-endian integer of 1–8 bytes.
+///
+/// Delegates to [`consus_core::read_uint_width`], the single home for
+/// fixed-width byte-order decoding.
 #[cfg(feature = "alloc")]
 pub(crate) fn read_uint_le(data: &[u8], size: usize) -> u64 {
-    match size {
-        0 => 0,
-        1 => data[0] as u64,
-        2 => u16::from_le_bytes([data[0], data[1]]) as u64,
-        3 => u32::from_le_bytes([data[0], data[1], data[2], 0]) as u64,
-        4 => u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as u64,
-        5 => u64::from_le_bytes([data[0], data[1], data[2], data[3], data[4], 0, 0, 0]),
-        6 => u64::from_le_bytes([data[0], data[1], data[2], data[3], data[4], data[5], 0, 0]),
-        7 => u64::from_le_bytes([
-            data[0], data[1], data[2], data[3], data[4], data[5], data[6], 0,
-        ]),
-        _ => u64::from_le_bytes([
-            data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
-        ]),
-    }
+    consus_core::read_uint_width(data, size.min(8), consus_core::ByteOrder::LittleEndian)
+        .expect("fractal-heap integer width is 0..=8 and the caller supplies the bytes")
 }

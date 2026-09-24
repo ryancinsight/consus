@@ -203,6 +203,21 @@ pub fn decode_ascii_column(row: &[u8], column: &FitsTableColumn) -> Result<FitsC
         }),
     }
 }
+
+/// Read one big-endian fixed-width scalar, or report a short buffer.
+///
+/// FITS stores every multi-byte integer and float big-endian (FITS Standard
+/// 4.0 section 7.3); the order is named here rather than defaulted.
+#[cfg(feature = "alloc")]
+fn read_be<T: consus_core::EndianScalar>(bytes: &[u8]) -> Result<T> {
+    consus_core::read_integer::<T>(bytes, consus_core::ByteOrder::BigEndian).ok_or(
+        Error::BufferTooSmall {
+            required: T::BYTE_WIDTH,
+            provided: bytes.len(),
+        },
+    )
+}
+
 /// Decode exactly one scalar element for the given `BinaryFormatCode`.
 ///
 /// `bytes` must be `binary_format_element_size(code)` bytes.
@@ -225,41 +240,11 @@ fn decode_scalar_binary(code: BinaryFormatCode, bytes: &[u8]) -> Result<FitsColu
             })?;
             Ok(FitsColumnValue::UInt8(b))
         }
-        BinaryFormatCode::Int16 => {
-            let arr: [u8; 2] = bytes.try_into().map_err(|_| Error::BufferTooSmall {
-                required: 2,
-                provided: bytes.len(),
-            })?;
-            Ok(FitsColumnValue::Int16(i16::from_be_bytes(arr)))
-        }
-        BinaryFormatCode::Int32 => {
-            let arr: [u8; 4] = bytes.try_into().map_err(|_| Error::BufferTooSmall {
-                required: 4,
-                provided: bytes.len(),
-            })?;
-            Ok(FitsColumnValue::Int32(i32::from_be_bytes(arr)))
-        }
-        BinaryFormatCode::Int64 => {
-            let arr: [u8; 8] = bytes.try_into().map_err(|_| Error::BufferTooSmall {
-                required: 8,
-                provided: bytes.len(),
-            })?;
-            Ok(FitsColumnValue::Int64(i64::from_be_bytes(arr)))
-        }
-        BinaryFormatCode::Float32 => {
-            let arr: [u8; 4] = bytes.try_into().map_err(|_| Error::BufferTooSmall {
-                required: 4,
-                provided: bytes.len(),
-            })?;
-            Ok(FitsColumnValue::Float32(f32::from_be_bytes(arr)))
-        }
-        BinaryFormatCode::Float64 => {
-            let arr: [u8; 8] = bytes.try_into().map_err(|_| Error::BufferTooSmall {
-                required: 8,
-                provided: bytes.len(),
-            })?;
-            Ok(FitsColumnValue::Float64(f64::from_be_bytes(arr)))
-        }
+        BinaryFormatCode::Int16 => Ok(FitsColumnValue::Int16(read_be::<i16>(bytes)?)),
+        BinaryFormatCode::Int32 => Ok(FitsColumnValue::Int32(read_be::<i32>(bytes)?)),
+        BinaryFormatCode::Int64 => Ok(FitsColumnValue::Int64(read_be::<i64>(bytes)?)),
+        BinaryFormatCode::Float32 => Ok(FitsColumnValue::Float32(read_be::<f32>(bytes)?)),
+        BinaryFormatCode::Float64 => Ok(FitsColumnValue::Float64(read_be::<f64>(bytes)?)),
         BinaryFormatCode::Complex32 => {
             if bytes.len() < 8 {
                 return Err(Error::BufferTooSmall {

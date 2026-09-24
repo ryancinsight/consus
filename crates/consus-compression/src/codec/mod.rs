@@ -5,6 +5,10 @@
 
 pub mod traits;
 
+/// Bounded `flate2` decompression shared by the zlib/gzip/raw-deflate codecs.
+#[cfg(all(feature = "std", any(feature = "deflate", feature = "gzip")))]
+pub mod flate;
+
 #[cfg(feature = "deflate")]
 pub mod deflate;
 

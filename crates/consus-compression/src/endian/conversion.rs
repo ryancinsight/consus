@@ -1,8 +1,9 @@
-//! Multi-byte integer read/write and byte-swap utilities.
+//! Multi-byte integer read/write and byte-swap utilities (re-export shim).
 //!
-//! Provides endian-aware reading of variable-width integers, which is
-//! required by HDF5's variable `offset_size`/`length_size` fields and by
-//! other format parsers.
+//! The implementations live in [`consus_core::decode`], the single home for
+//! fixed-width byte-order decoding. This module re-exports them so the
+//! historical `consus_compression::endian::conversion` path keeps working
+//! without a second copy.
 //!
 //! ## Supported Widths
 //!
@@ -18,136 +19,9 @@
 //! - `swap_bytes(buf, w)` is an involution: applying it twice restores the
 //!   original byte order.
 
-use byteorder::{BigEndian, ByteOrder, LittleEndian};
-
-/// Read a little-endian unsigned integer of `width` bytes from `buf`.
-///
-/// ## Supported widths
-///
-/// 1, 2, 4, 8 bytes.
-///
-/// ## Panics
-///
-/// Panics if `buf.len() < width` or `width` is not in {1, 2, 4, 8}.
-#[inline]
-pub fn read_uint_le(buf: &[u8], width: usize) -> u64 {
-    match width {
-        1 => buf[0] as u64,
-        2 => LittleEndian::read_u16(buf) as u64,
-        4 => LittleEndian::read_u32(buf) as u64,
-        8 => LittleEndian::read_u64(buf),
-        _ => panic!("unsupported integer width: {width}"),
-    }
-}
-
-/// Read a big-endian unsigned integer of `width` bytes from `buf`.
-///
-/// ## Supported widths
-///
-/// 1, 2, 4, 8 bytes.
-///
-/// ## Panics
-///
-/// Panics if `buf.len() < width` or `width` is not in {1, 2, 4, 8}.
-#[inline]
-pub fn read_uint_be(buf: &[u8], width: usize) -> u64 {
-    match width {
-        1 => buf[0] as u64,
-        2 => BigEndian::read_u16(buf) as u64,
-        4 => BigEndian::read_u32(buf) as u64,
-        8 => BigEndian::read_u64(buf),
-        _ => panic!("unsupported integer width: {width}"),
-    }
-}
-
-/// Write a little-endian unsigned integer of `width` bytes to `buf`.
-///
-/// ## Supported widths
-///
-/// 1, 2, 4, 8 bytes.
-///
-/// ## Panics
-///
-/// Panics if `buf.len() < width`, `width` is not in {1, 2, 4, 8},
-/// or `value` exceeds the range representable in `width` bytes
-/// (for width < 8).
-#[inline]
-pub fn write_uint_le(buf: &mut [u8], width: usize, value: u64) {
-    match width {
-        1 => buf[0] = value as u8,
-        2 => LittleEndian::write_u16(buf, value as u16),
-        4 => LittleEndian::write_u32(buf, value as u32),
-        8 => LittleEndian::write_u64(buf, value),
-        _ => panic!("unsupported integer width: {width}"),
-    }
-}
-
-/// Write a big-endian unsigned integer of `width` bytes to `buf`.
-///
-/// ## Supported widths
-///
-/// 1, 2, 4, 8 bytes.
-///
-/// ## Panics
-///
-/// Panics if `buf.len() < width`, `width` is not in {1, 2, 4, 8},
-/// or `value` exceeds the range representable in `width` bytes
-/// (for width < 8).
-#[inline]
-pub fn write_uint_be(buf: &mut [u8], width: usize, value: u64) {
-    match width {
-        1 => buf[0] = value as u8,
-        2 => BigEndian::write_u16(buf, value as u16),
-        4 => BigEndian::write_u32(buf, value as u32),
-        8 => BigEndian::write_u64(buf, value),
-        _ => panic!("unsupported integer width: {width}"),
-    }
-}
-
-/// Read a file offset of `size` bytes (little-endian) from a buffer.
-///
-/// This is the canonical replacement for `consus-hdf5::primitives::read_offset`.
-/// Supports 2, 4, and 8 byte offsets as per the HDF5 specification.
-///
-/// ## Panics
-///
-/// Panics if `size` is not in {2, 4, 8}, or if `buf.len() < size`.
-#[inline]
-pub fn read_offset(buf: &[u8], size: usize) -> u64 {
-    read_uint_le(buf, size)
-}
-
-/// Read a file length of `size` bytes (little-endian) from a buffer.
-///
-/// Semantically identical to [`read_offset`] but distinct for documentation
-/// clarity. HDF5 files store lengths and offsets with the same encoding but
-/// distinct semantic roles.
-///
-/// ## Panics
-///
-/// Panics if `size` is not in {2, 4, 8}, or if `buf.len() < size`.
-#[inline]
-pub fn read_length(buf: &[u8], size: usize) -> u64 {
-    read_uint_le(buf, size)
-}
-
-/// Swap byte order of a value in-place within a mutable buffer.
-///
-/// Reverses the first `width` bytes of `buf`.
-///
-/// ## Proof of involution
-///
-/// Reversing a sequence twice yields the original sequence:
-/// `reverse(reverse(s)) = s` for all finite sequences `s`.
-///
-/// ## Panics
-///
-/// Panics if `buf.len() < width`.
-#[inline]
-pub fn swap_bytes(buf: &mut [u8], width: usize) {
-    let slice = &mut buf[..width];
-    slice.reverse();
-}
+pub use consus_core::decode::{
+    read_length, read_offset, read_uint_be, read_uint_le, swap_bytes, write_uint_be, write_uint_le,
+};
 
 #[cfg(test)]
 mod tests {
