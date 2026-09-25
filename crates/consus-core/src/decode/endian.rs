@@ -249,101 +249,34 @@ impl EndianScalar for i8 {
     }
 }
 
-impl EndianScalar for u16 {
-    const BYTE_WIDTH: usize = 2;
+macro_rules! impl_endian_scalar {
+    ($(($ty:ty, $width:expr)),+ $(,)?) => {
+        $(
+            impl EndianScalar for $ty {
+                const BYTE_WIDTH: usize = $width;
 
-    fn from_bytes(bytes: &[u8], byte_order: ByteOrder) -> Option<Self> {
-        let bytes: [u8; Self::BYTE_WIDTH] = bytes.try_into().ok()?;
-        Some(match byte_order {
-            ByteOrder::LittleEndian => Self::from_le_bytes(bytes),
-            ByteOrder::BigEndian => Self::from_be_bytes(bytes),
-        })
-    }
+                fn from_bytes(bytes: &[u8], byte_order: ByteOrder) -> Option<Self> {
+                    let bytes: [u8; Self::BYTE_WIDTH] = bytes.try_into().ok()?;
+                    Some(match byte_order {
+                        ByteOrder::LittleEndian => Self::from_le_bytes(bytes),
+                        ByteOrder::BigEndian => Self::from_be_bytes(bytes),
+                    })
+                }
+            }
+        )+
+    };
 }
 
-impl EndianScalar for i16 {
-    const BYTE_WIDTH: usize = 2;
-
-    fn from_bytes(bytes: &[u8], byte_order: ByteOrder) -> Option<Self> {
-        let bytes: [u8; Self::BYTE_WIDTH] = bytes.try_into().ok()?;
-        Some(match byte_order {
-            ByteOrder::LittleEndian => Self::from_le_bytes(bytes),
-            ByteOrder::BigEndian => Self::from_be_bytes(bytes),
-        })
-    }
-}
-
-impl EndianScalar for u32 {
-    const BYTE_WIDTH: usize = 4;
-
-    fn from_bytes(bytes: &[u8], byte_order: ByteOrder) -> Option<Self> {
-        let bytes: [u8; Self::BYTE_WIDTH] = bytes.try_into().ok()?;
-        Some(match byte_order {
-            ByteOrder::LittleEndian => Self::from_le_bytes(bytes),
-            ByteOrder::BigEndian => Self::from_be_bytes(bytes),
-        })
-    }
-}
-
-impl EndianScalar for i32 {
-    const BYTE_WIDTH: usize = 4;
-
-    fn from_bytes(bytes: &[u8], byte_order: ByteOrder) -> Option<Self> {
-        let bytes: [u8; Self::BYTE_WIDTH] = bytes.try_into().ok()?;
-        Some(match byte_order {
-            ByteOrder::LittleEndian => Self::from_le_bytes(bytes),
-            ByteOrder::BigEndian => Self::from_be_bytes(bytes),
-        })
-    }
-}
-
-impl EndianScalar for u64 {
-    const BYTE_WIDTH: usize = 8;
-
-    fn from_bytes(bytes: &[u8], byte_order: ByteOrder) -> Option<Self> {
-        let bytes: [u8; Self::BYTE_WIDTH] = bytes.try_into().ok()?;
-        Some(match byte_order {
-            ByteOrder::LittleEndian => Self::from_le_bytes(bytes),
-            ByteOrder::BigEndian => Self::from_be_bytes(bytes),
-        })
-    }
-}
-
-impl EndianScalar for i64 {
-    const BYTE_WIDTH: usize = 8;
-
-    fn from_bytes(bytes: &[u8], byte_order: ByteOrder) -> Option<Self> {
-        let bytes: [u8; Self::BYTE_WIDTH] = bytes.try_into().ok()?;
-        Some(match byte_order {
-            ByteOrder::LittleEndian => Self::from_le_bytes(bytes),
-            ByteOrder::BigEndian => Self::from_be_bytes(bytes),
-        })
-    }
-}
-
-impl EndianScalar for f32 {
-    const BYTE_WIDTH: usize = 4;
-
-    fn from_bytes(bytes: &[u8], byte_order: ByteOrder) -> Option<Self> {
-        let bytes: [u8; Self::BYTE_WIDTH] = bytes.try_into().ok()?;
-        Some(match byte_order {
-            ByteOrder::LittleEndian => Self::from_le_bytes(bytes),
-            ByteOrder::BigEndian => Self::from_be_bytes(bytes),
-        })
-    }
-}
-
-impl EndianScalar for f64 {
-    const BYTE_WIDTH: usize = 8;
-
-    fn from_bytes(bytes: &[u8], byte_order: ByteOrder) -> Option<Self> {
-        let bytes: [u8; Self::BYTE_WIDTH] = bytes.try_into().ok()?;
-        Some(match byte_order {
-            ByteOrder::LittleEndian => Self::from_le_bytes(bytes),
-            ByteOrder::BigEndian => Self::from_be_bytes(bytes),
-        })
-    }
-}
+impl_endian_scalar!(
+    (u16, 2),
+    (i16, 2),
+    (u32, 4),
+    (i32, 4),
+    (u64, 8),
+    (i64, 8),
+    (f32, 4),
+    (f64, 8),
+);
 
 #[cfg(test)]
 mod tests {
