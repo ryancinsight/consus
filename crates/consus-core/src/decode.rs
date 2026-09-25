@@ -48,6 +48,44 @@ pub use endian::{
     write_uint_le,
 };
 
+#[cfg(feature = "alloc")]
+macro_rules! decode_integer_bytes_as {
+    ($bytes:expr, $bits:expr, $signed:expr, $byte_order:expr, $output:ty, $context:literal) => {{
+        let bo = $byte_order;
+        match ($bits, $signed) {
+            (8, false) => Ok($bytes.iter().map(|&v| v as $output).collect()),
+            (8, true) => Ok($bytes.iter().map(|&v| (v as i8) as $output).collect()),
+            (16, false) => Ok($bytes
+                .chunks_exact(2)
+                .map(|c| read_integer::<u16>(c, bo).expect("chunks_exact supplies a scalar") as $output)
+                .collect()),
+            (16, true) => Ok($bytes
+                .chunks_exact(2)
+                .map(|c| read_integer::<i16>(c, bo).expect("chunks_exact supplies a scalar") as $output)
+                .collect()),
+            (32, false) => Ok($bytes
+                .chunks_exact(4)
+                .map(|c| read_integer::<u32>(c, bo).expect("chunks_exact supplies a scalar") as $output)
+                .collect()),
+            (32, true) => Ok($bytes
+                .chunks_exact(4)
+                .map(|c| read_integer::<i32>(c, bo).expect("chunks_exact supplies a scalar") as $output)
+                .collect()),
+            (64, false) => Ok($bytes
+                .chunks_exact(8)
+                .map(|c| read_integer::<u64>(c, bo).expect("chunks_exact supplies a scalar") as $output)
+                .collect()),
+            (64, true) => Ok($bytes
+                .chunks_exact(8)
+                .map(|c| read_integer::<i64>(c, bo).expect("chunks_exact supplies a scalar") as $output)
+                .collect()),
+            (other, _) => Err(Error::UnsupportedFeature {
+                feature: alloc::format!("{}: {}-bit integer", $context, other),
+            }),
+        }
+    }};
+}
+
 /// Decode a raw buffer of fixed-size numeric elements into `Vec<f64>`.
 ///
 /// Supports `Float { 32, 64 }` (32-bit widened exactly), `Integer
@@ -103,52 +141,14 @@ pub fn decode_to_f64(raw: &[u8], dtype: &Datatype) -> Result<Vec<f64>, Error> {
             bits,
             signed,
             byte_order,
-        } => {
-            let bo = *byte_order;
-            match (bits.get(), *signed) {
-                (8, false) => Ok(raw.iter().map(|&v| v as f64).collect()),
-                (8, true) => Ok(raw.iter().map(|&v| (v as i8) as f64).collect()),
-                (16, false) => Ok(raw
-                    .chunks_exact(2)
-                    .map(|c| {
-                        read_integer::<u16>(c, bo).expect("chunks_exact supplies a scalar") as f64
-                    })
-                    .collect()),
-                (16, true) => Ok(raw
-                    .chunks_exact(2)
-                    .map(|c| {
-                        read_integer::<i16>(c, bo).expect("chunks_exact supplies a scalar") as f64
-                    })
-                    .collect()),
-                (32, false) => Ok(raw
-                    .chunks_exact(4)
-                    .map(|c| {
-                        read_integer::<u32>(c, bo).expect("chunks_exact supplies a scalar") as f64
-                    })
-                    .collect()),
-                (32, true) => Ok(raw
-                    .chunks_exact(4)
-                    .map(|c| {
-                        read_integer::<i32>(c, bo).expect("chunks_exact supplies a scalar") as f64
-                    })
-                    .collect()),
-                (64, false) => Ok(raw
-                    .chunks_exact(8)
-                    .map(|c| {
-                        read_integer::<u64>(c, bo).expect("chunks_exact supplies a scalar") as f64
-                    })
-                    .collect()),
-                (64, true) => Ok(raw
-                    .chunks_exact(8)
-                    .map(|c| {
-                        read_integer::<i64>(c, bo).expect("chunks_exact supplies a scalar") as f64
-                    })
-                    .collect()),
-                (b, _) => Err(Error::UnsupportedFeature {
-                    feature: alloc::format!("decode_to_f64: {b}-bit integer"),
-                }),
-            }
-        }
+        } => decode_integer_bytes_as!(
+            raw,
+            bits.get(),
+            *signed,
+            *byte_order,
+            f64,
+            "decode_to_f64"
+        ),
         Datatype::Boolean => Ok(raw
             .iter()
             .map(|&v| if v != 0 { 1.0 } else { 0.0 })
@@ -196,69 +196,79 @@ pub fn decode_bytes_to_f64(
             ),
         });
     }
-    if is_float {
+    let dtype = if is_float {
         match elem_size {
-            4 => Ok(bytes
-                .chunks_exact(4)
-                .map(|c| {
-                    let arr = [c[0], c[1], c[2], c[3]];
-                    match byte_order {
-                        ByteOrder::LittleEndian => f32::from_le_bytes(arr) as f64,
-                        ByteOrder::BigEndian => f32::from_be_bytes(arr) as f64,
-                    }
-                })
-                .collect()),
-            8 => Ok(bytes
-                .chunks_exact(8)
-                .map(|c| {
-                    let arr = [c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]];
-                    match byte_order {
-                        ByteOrder::LittleEndian => f64::from_le_bytes(arr),
-                        ByteOrder::BigEndian => f64::from_be_bytes(arr),
-                    }
-                })
-                .collect()),
-            other => Err(Error::UnsupportedFeature {
-                feature: alloc::format!("decode_bytes_to_f64: unsupported float size {other}"),
-            }),
+            4 | 8 => Datatype::Float {
+                bits: core::num::NonZeroUsize::new(elem_size * 8)
+                    .expect("supported float element sizes are non-zero"),
+                byte_order,
+            },
+            other => {
+                return Err(Error::UnsupportedFeature {
+                    feature: alloc::format!("decode_bytes_to_f64: unsupported float size {other}"),
+                });
+            }
         }
     } else {
-        let bo = byte_order;
-        Ok(match (elem_size, signed) {
-            (1, false) => bytes.iter().map(|&v| v as f64).collect(),
-            (1, true) => bytes.iter().map(|&v| (v as i8) as f64).collect(),
-            (2, false) => bytes
-                .chunks_exact(2)
-                .map(|c| read_integer::<u16>(c, bo).expect("chunks_exact supplies a scalar") as f64)
-                .collect(),
-            (2, true) => bytes
-                .chunks_exact(2)
-                .map(|c| read_integer::<i16>(c, bo).expect("chunks_exact supplies a scalar") as f64)
-                .collect(),
-            (4, false) => bytes
-                .chunks_exact(4)
-                .map(|c| read_integer::<u32>(c, bo).expect("chunks_exact supplies a scalar") as f64)
-                .collect(),
-            (4, true) => bytes
-                .chunks_exact(4)
-                .map(|c| read_integer::<i32>(c, bo).expect("chunks_exact supplies a scalar") as f64)
-                .collect(),
-            (8, false) => bytes
-                .chunks_exact(8)
-                .map(|c| read_integer::<u64>(c, bo).expect("chunks_exact supplies a scalar") as f64)
-                .collect(),
-            (8, true) => bytes
-                .chunks_exact(8)
-                .map(|c| read_integer::<i64>(c, bo).expect("chunks_exact supplies a scalar") as f64)
-                .collect(),
-            (other, _) => {
+        match elem_size {
+            1 | 2 | 4 | 8 => Datatype::Integer {
+                bits: core::num::NonZeroUsize::new(elem_size * 8)
+                    .expect("supported integer element sizes are non-zero"),
+                signed,
+                byte_order,
+            },
+            other => {
                 return Err(Error::UnsupportedFeature {
                     feature: alloc::format!(
                         "decode_bytes_to_f64: unsupported integer size {other}"
                     ),
                 });
             }
-        })
+        }
+    };
+    decode_to_f64(bytes, &dtype)
+}
+
+/// Decode a raw buffer of fixed-size integer elements into `Vec<u64>`.
+///
+/// Signed integers are widened with Rust's `as u64` cast, preserving the input
+/// bit pattern modulo two's-complement sign extension.
+///
+/// # Errors
+///
+/// - The datatype is not a fixed-size integer →
+///   [`Error::UnsupportedFeature`].
+/// - The buffer length is not a multiple of the element size →
+///   [`Error::InvalidFormat`].
+#[cfg(feature = "alloc")]
+pub fn decode_to_u64(raw: &[u8], dtype: &Datatype) -> Result<Vec<u64>, Error> {
+    if let Some(size) = dtype.element_size()
+        && !raw.len().is_multiple_of(size)
+    {
+        return Err(Error::InvalidFormat {
+            message: alloc::format!(
+                "decode_to_u64: buffer length {} is not a multiple of element size {}",
+                raw.len(),
+                size
+            ),
+        });
+    }
+    match dtype {
+        Datatype::Integer {
+            bits,
+            signed,
+            byte_order,
+        } => decode_integer_bytes_as!(
+            raw,
+            bits.get(),
+            *signed,
+            *byte_order,
+            u64,
+            "decode_to_u64"
+        ),
+        other => Err(Error::UnsupportedFeature {
+            feature: alloc::format!("decode_to_u64: unsupported datatype {other:?}"),
+        }),
     }
 }
 

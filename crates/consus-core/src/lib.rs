@@ -73,7 +73,7 @@ pub use decode::{
     write_uint_le,
 };
 #[cfg(feature = "alloc")]
-pub use decode::{decode_bytes_to_f64, decode_to_f64};
+pub use decode::{decode_bytes_to_f64, decode_to_f64, decode_to_u64};
 
 // ---------------------------------------------------------------------------
 // Re-export abstract traits at the crate root.

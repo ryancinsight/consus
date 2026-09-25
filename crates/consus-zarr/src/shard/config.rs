@@ -1,8 +1,5 @@
 #[cfg(feature = "alloc")]
-use alloc::{
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::vec::Vec;
 
 use crate::metadata::Codec;
 
@@ -72,9 +69,9 @@ impl ShardingConfig {
 pub fn extract_sharding_config(codecs: &[Codec]) -> Option<ShardingConfig> {
     for codec in codecs {
         if codec.name == "sharding_indexed" {
-            let inner_chunk_shape = extract_usize_vec(codec, "chunk_shape")?;
-            let inner_codecs = extract_codec_array(codec, "codecs").unwrap_or_default();
-            let index_codecs = extract_codec_array(codec, "index_codecs").unwrap_or_default();
+            let inner_chunk_shape = codec.usize_vec("chunk_shape")?;
+            let inner_codecs = codec.codec_array("codecs").unwrap_or_default();
+            let index_codecs = codec.codec_array("index_codecs").unwrap_or_default();
             return Some(ShardingConfig {
                 inner_chunk_shape,
                 inner_codecs,
@@ -83,58 +80,4 @@ pub fn extract_sharding_config(codecs: &[Codec]) -> Option<ShardingConfig> {
         }
     }
     None
-}
-
-#[cfg(feature = "alloc")]
-fn extract_usize_vec(codec: &Codec, key: &str) -> Option<Vec<usize>> {
-    let val = codec
-        .configuration
-        .iter()
-        .find(|(k, _)| k == key)
-        .map(|(_, v)| v.as_str())?;
-    let json: serde_json::Value = serde_json::from_str(val).ok()?;
-    json.as_array()?
-        .iter()
-        .map(|v| v.as_u64().map(|n| n as usize))
-        .collect()
-}
-
-#[cfg(feature = "alloc")]
-fn extract_codec_array(codec: &Codec, key: &str) -> Option<Vec<Codec>> {
-    let val = codec
-        .configuration
-        .iter()
-        .find(|(k, _)| k == key)
-        .map(|(_, v)| v.as_str())?;
-    let json: serde_json::Value = serde_json::from_str(val).ok()?;
-    Some(
-        json.as_array()?
-            .iter()
-            .filter_map(|v| {
-                let name = v.get("name")?.as_str()?.to_string();
-                let config = v
-                    .get("configuration")
-                    .and_then(|c| c.as_object())
-                    .map(|m| {
-                        m.iter()
-                            .filter_map(|(k, v)| {
-                                let s = match v {
-                                    serde_json::Value::String(s) => s.clone(),
-                                    serde_json::Value::Number(n) => n.to_string(),
-                                    serde_json::Value::Bool(b) => b.to_string(),
-                                    serde_json::Value::Null => String::new(),
-                                    _ => v.to_string(),
-                                };
-                                Some((k.clone(), s))
-                            })
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default();
-                Some(Codec {
-                    name,
-                    configuration: config,
-                })
-            })
-            .collect(),
-    )
 }

@@ -1,7 +1,6 @@
 #[cfg(feature = "alloc")]
 use alloc::{format, string::String, vec::Vec};
 
-use consus_core::decode::read_integer;
 use consus_core::{Datatype, Error, Result};
 use consus_hdf5::dataset::StorageLayout;
 use consus_hdf5::file::Hdf5File;
@@ -38,12 +37,10 @@ use consus_io::ReadAt;
 ///   `read_contiguous_dataset_bytes`, and `read_chunked_dataset_all_bytes`.
 #[cfg(feature = "alloc")]
 pub fn read_f64_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Result<Vec<f64>> {
-    let ds = file.dataset_at(addr)?;
-    let raw = file.read_dataset_raw(&ds, None)?;
-    consus_core::decode::decode_to_f64(&raw, &ds.datatype).map_err(|err| {
-        Error::UnsupportedFeature {
+    read_dataset_decoded(file, addr, None, |raw, dtype| {
+        consus_core::decode::decode_to_f64(raw, dtype).map_err(|err| Error::UnsupportedFeature {
             feature: format!("NWB: f64 dataset decode: {err}"),
-        }
+        })
     })
 }
 
@@ -89,9 +86,7 @@ pub fn read_scalar_f64_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) 
 /// - Propagates HDF5 I/O errors.
 #[cfg(feature = "alloc")]
 pub fn read_u64_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Result<Vec<u64>> {
-    let ds = file.dataset_at(addr)?;
-    let raw = file.read_dataset_raw(&ds, None)?;
-    decode_raw_as_u64(&raw, &ds.datatype)
+    read_dataset_decoded(file, addr, None, consus_core::decode::decode_to_u64)
 }
 
 /// Read a fixed-string dataset and return its elements as `Vec<String>`.
@@ -216,79 +211,21 @@ pub fn read_scalar_string_dataset<R: ReadAt + Sync>(
         })
 }
 
-/// Interpret raw bytes as `Vec<u64>` according to `dtype`.
-///
-/// ## Supported datatypes
-///
-/// - `Integer { bits: 8|16|32|64, signed: false|true }` (both byte orders)
-///   — cast to `u64` after byte-order decode; signed values cast as wrapping bit patterns.
-///
-/// All other datatypes return [`Error::UnsupportedFeature`].
+/// Load dataset bytes once, then hand them to a typed decode routine.
 #[cfg(feature = "alloc")]
-fn decode_raw_as_u64(raw: &[u8], dtype: &Datatype) -> Result<Vec<u64>> {
-    match dtype {
-        Datatype::Integer {
-            bits,
-            signed,
-            byte_order,
-        } => {
-            let bo = *byte_order;
-            let vals: Vec<u64> = match (bits.get(), *signed) {
-                (8, false) => raw.iter().map(|&v| v as u64).collect(),
-                (8, true) => raw.iter().map(|&v| (v as i8) as u64).collect(),
-                (16, false) => raw
-                    .chunks_exact(2)
-                    .map(|c| {
-                        read_integer::<u16>(c, bo).expect("chunks_exact supplies a scalar") as u64
-                    })
-                    .collect(),
-                (16, true) => raw
-                    .chunks_exact(2)
-                    .map(|c| {
-                        read_integer::<i16>(c, bo).expect("chunks_exact supplies a scalar") as u64
-                    })
-                    .collect(),
-                (32, false) => raw
-                    .chunks_exact(4)
-                    .map(|c| {
-                        read_integer::<u32>(c, bo).expect("chunks_exact supplies a scalar") as u64
-                    })
-                    .collect(),
-                (32, true) => raw
-                    .chunks_exact(4)
-                    .map(|c| {
-                        read_integer::<i32>(c, bo).expect("chunks_exact supplies a scalar") as u64
-                    })
-                    .collect(),
-                (64, false) => raw
-                    .chunks_exact(8)
-                    .map(|c| read_integer::<u64>(c, bo).expect("chunks_exact supplies a scalar"))
-                    .collect(),
-                (64, true) => raw
-                    .chunks_exact(8)
-                    .map(|c| {
-                        read_integer::<i64>(c, bo).expect("chunks_exact supplies a scalar") as u64
-                    })
-                    .collect(),
-                (b, _) => {
-                    return Err(Error::UnsupportedFeature {
-                        feature: format!(
-                            "NWB: integer dataset element type {} bits is not supported \
-                             for u64 read (only 8/16/32/64)",
-                            b
-                        ),
-                    });
-                }
-            };
-            Ok(vals)
-        }
-        other => Err(Error::UnsupportedFeature {
-            feature: format!(
-                "NWB: expected integer datatype for u64 dataset read, got {:?}",
-                other
-            ),
-        }),
-    }
+fn read_dataset_decoded<R, T, F>(
+    file: &Hdf5File<R>,
+    addr: u64,
+    chunk_len: Option<usize>,
+    decode: F,
+) -> Result<Vec<T>>
+where
+    R: ReadAt + Sync,
+    F: FnOnce(&[u8], &Datatype) -> Result<Vec<T>>,
+{
+    let ds = file.dataset_at(addr)?;
+    let raw = file.read_dataset_raw(&ds, chunk_len)?;
+    decode(&raw, &ds.datatype)
 }
 
 #[cfg(all(test, feature = "alloc"))]
