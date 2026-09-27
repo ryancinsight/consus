@@ -40,7 +40,6 @@ fn zero_levels(count: usize) -> Result<Vec<i32>> {
 ///   level_bit_width(4)  == 3,  level_bit_width(7)  == 3
 ///   level_bit_width(8)  == 4,  level_bit_width(15) == 4
 ///   level_bit_width(16) == 5
-#[allow(clippy::cast_possible_truncation)]
 pub fn level_bit_width(max_level: i32) -> u8 {
     if max_level == 0 {
         0
@@ -100,7 +99,6 @@ pub fn decode_levels(bytes: &[u8], bit_width: u8, count: usize) -> Result<Vec<i3
             pos = end;
             let to_emit = run_len.min(count - out.len());
             for _ in 0..to_emit {
-                #[allow(clippy::cast_possible_truncation)]
                 out.push(val as i32);
             }
         } else {
@@ -137,7 +135,6 @@ pub fn decode_levels(bytes: &[u8], bit_width: u8, count: usize) -> Result<Vec<i3
 /// Errors:
 ///   Error::InvalidFormat  - bit_width > 32.
 ///   Error::BufferTooSmall - bytes.len() < ceil(count * bit_width / 8).
-#[allow(clippy::cast_possible_truncation)]
 pub fn decode_bit_packed_raw(bytes: &[u8], bit_width: u8, count: usize) -> Result<Vec<i32>> {
     if bit_width > 32 {
         return Err(Error::InvalidFormat {
@@ -232,7 +229,6 @@ fn read_rle_varint(bytes: &[u8], pos: &mut usize) -> Result<u64> {
 /// The group occupies exactly bit_width bytes.
 /// Value i occupies bits [i*bit_width..(i+1)*bit_width-1] (LSB first).
 /// Uses a 64-bit accumulator, loading bytes on demand.
-#[allow(clippy::cast_possible_truncation)]
 fn unpack_8_values(buf: &[u8], bit_width: u8, out: &mut [i32; 8]) {
     if bit_width == 0 {
         *out = [0i32; 8];

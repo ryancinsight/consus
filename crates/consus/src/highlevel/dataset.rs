@@ -297,12 +297,6 @@ impl Dataset {
     pub fn exists(&self) -> Result<bool> {
         self.backend.file_read().exists(&self.path)
     }
-
-    /// Returns the erased backend handle.
-    #[allow(dead_code)]
-    pub(crate) fn backend(&self) -> &Arc<dyn UnifiedBackend> {
-        &self.backend
-    }
 }
 
 fn materialize_parallel_view(view: ByteView<'_>, ranges: &[IoRange]) -> Result<Vec<u8>> {

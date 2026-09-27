@@ -28,11 +28,12 @@
 
 use alloc::vec::Vec;
 
-use flate2::read::{GzDecoder, GzEncoder};
+use flate2::read::GzEncoder;
 use std::io::Read;
 
+use super::flate::{GzipFraming, flate2_decompress};
 use super::traits::{Codec, CompressionLevel};
-use consus_core::{Error, Result};
+use consus_core::{Error, ParseBudget, Result};
 
 /// Gzip codec using RFC 1952 framing.
 ///
@@ -73,14 +74,7 @@ impl Codec for GzipCodec {
     }
 
     fn decompress(&self, input: &[u8], expected_size: usize) -> Result<Vec<u8>> {
-        let mut decoder = GzDecoder::new(input);
-        let mut output = Vec::with_capacity(expected_size);
-        decoder
-            .read_to_end(&mut output)
-            .map_err(|e| Error::CompressionError {
-                message: alloc::format!("gzip decompress failed: {e}"),
-            })?;
-        Ok(output)
+        flate2_decompress::<GzipFraming>(input, expected_size, &ParseBudget::default())
     }
 }
 
@@ -242,5 +236,24 @@ mod tests {
             .expect("decompress must succeed");
         assert_eq!(decompressed.len(), 4096);
         assert_eq!(decompressed, input, "round-trip must be lossless");
+    }
+
+    /// A declared output above the shared bound must be rejected, not
+    /// allocated.
+    ///
+    /// Mirrors `deflate`'s `decompression_output_is_bounded`. The previous
+    /// `Vec::with_capacity(expected_size)` + `read_to_end` scaffold had no
+    /// ceiling, so a hostile gzip stream grew the buffer until the allocator
+    /// aborted an uncatchable process.
+    #[test]
+    fn decompression_output_is_bounded() {
+        let codec = GzipCodec;
+        let compressed = codec
+            .compress(&vec![7u8; 8192], CompressionLevel::default())
+            .expect("compress must succeed");
+        let error = codec
+            .decompress(&compressed, usize::MAX)
+            .expect_err("declared output above the shared bound must be rejected");
+        assert!(matches!(error, Error::ResourceLimit { .. }));
     }
 }

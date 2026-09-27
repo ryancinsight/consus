@@ -47,12 +47,12 @@
 //!   `C.decompress(C.compress(data)?) == data`
 
 #![cfg_attr(not(feature = "std"), no_std)]
-
 // NOTE: `extern crate alloc` is unconditional because the workspace
 // dependency on consus-core does not set `default-features = false`.
 // consus-core's defaults enable `std → alloc`, so `Error::InvalidFormat`
 // always carries `message: String`. Every crate that constructs errors
 // therefore requires alloc.
+#![deny(missing_docs)]
 extern crate alloc;
 
 pub mod checksum;

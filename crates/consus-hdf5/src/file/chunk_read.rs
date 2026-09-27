@@ -296,6 +296,43 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
 
         Ok((dimension_offsets, filter_mask, chunk_address, chunk_size))
     }
+
+    #[cfg(feature = "alloc")]
+    fn prepare_v4_chunk_entry(
+        &self,
+        entry: &ChunkIndexEntry,
+        grid_dims: &[usize],
+        chunk_dims: &[usize],
+        dataset_dims: &[usize],
+        element_size: usize,
+    ) -> Result<(
+        Vec<usize>,
+        Vec<usize>,
+        crate::dataset::chunk::ChunkLocation,
+        usize,
+    )> {
+        let chunk_coord =
+            Self::decode_v4_scaled_offsets(entry.dimension_offsets.as_slice(), grid_dims)?;
+        let actual_chunk_dims =
+            crate::dataset::chunk::edge_chunk_dims(&chunk_coord, chunk_dims, dataset_dims);
+        let uncompressed_size = actual_chunk_dims
+            .iter()
+            .product::<usize>()
+            .checked_mul(element_size)
+            .ok_or(Error::Overflow)?;
+        let location = crate::dataset::chunk::ChunkLocation {
+            address: entry.chunk_address,
+            size: if entry.chunk_size == 0 {
+                uncompressed_size as u64
+            } else {
+                entry.chunk_size as u64
+            },
+            filter_mask: entry.filter_mask,
+        };
+
+        Ok((chunk_coord, actual_chunk_dims, location, uncompressed_size))
+    }
+
     #[cfg(feature = "alloc")]
     pub(super) fn read_v4_chunk_entries(
         &self,
@@ -321,32 +358,18 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
             let tasks: Vec<ChunkTask> = entries
                 .iter()
                 .map(|entry| {
-                    let chunk_coord = Self::decode_v4_scaled_offsets(
-                        entry.dimension_offsets.as_slice(),
-                        &grid_dims,
-                    )?;
-                    let actual_chunk_dims = crate::dataset::chunk::edge_chunk_dims(
-                        &chunk_coord,
-                        chunk_dims,
-                        dataset_dims,
-                    );
-                    let uncompressed_size = actual_chunk_dims
-                        .iter()
-                        .product::<usize>()
-                        .checked_mul(element_size)
-                        .ok_or(Error::Overflow)?;
+                    let (chunk_coord, actual_chunk_dims, location, uncompressed_size) = self
+                        .prepare_v4_chunk_entry(
+                            entry,
+                            &grid_dims,
+                            chunk_dims,
+                            dataset_dims,
+                            element_size,
+                        )?;
 
                     Ok(ChunkTask {
                         chunk_coord,
-                        location: crate::dataset::chunk::ChunkLocation {
-                            address: entry.chunk_address,
-                            size: if entry.chunk_size == 0 {
-                                uncompressed_size as u64
-                            } else {
-                                entry.chunk_size as u64
-                            },
-                            filter_mask: entry.filter_mask,
-                        },
+                        location,
                         actual_chunk_dims,
                         uncompressed_size,
                     })
@@ -382,26 +405,18 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
         #[cfg(not(all(feature = "parallel-io", feature = "alloc")))]
         {
             for entry in entries {
-                let chunk_coord =
-                    Self::decode_v4_scaled_offsets(entry.dimension_offsets.as_slice(), &grid_dims)?;
-                let actual_chunk_dims =
-                    crate::dataset::chunk::edge_chunk_dims(&chunk_coord, chunk_dims, dataset_dims);
-                let chunk_elements = actual_chunk_dims.iter().product::<usize>();
-                let uncompressed_size = chunk_elements
-                    .checked_mul(element_size)
-                    .ok_or(Error::Overflow)?;
+                let (chunk_coord, actual_chunk_dims, location, uncompressed_size) = self
+                    .prepare_v4_chunk_entry(
+                        entry,
+                        &grid_dims,
+                        chunk_dims,
+                        dataset_dims,
+                        element_size,
+                    )?;
 
                 let chunk = crate::dataset::chunk::read_chunk_raw(
                     &self.source,
-                    &crate::dataset::chunk::ChunkLocation {
-                        address: entry.chunk_address,
-                        size: if entry.chunk_size == 0 {
-                            uncompressed_size as u64
-                        } else {
-                            entry.chunk_size as u64
-                        },
-                        filter_mask: entry.filter_mask,
-                    },
+                    &location,
                     uncompressed_size,
                     filter_ids,
                     element_size,

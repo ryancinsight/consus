@@ -92,7 +92,7 @@ pub fn write_embedded_parquet(
     }
 
     let dt = Datatype::Integer {
-        bits: NonZeroUsize::new(8).unwrap(),
+        bits: NonZeroUsize::new(8).expect("8 is a non-zero bit width"),
         byte_order: ByteOrder::LittleEndian,
         signed: false,
     };

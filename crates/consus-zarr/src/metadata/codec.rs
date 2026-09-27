@@ -38,13 +38,73 @@ pub struct Codec {
 
 #[cfg(feature = "alloc")]
 impl Codec {
+    /// Returns a raw configuration value by key.
+    pub fn config_value(&self, key: &str) -> Option<&str> {
+        self.configuration
+            .iter()
+            .find(|(candidate, _)| candidate == key)
+            .map(|(_, value)| value.as_str())
+    }
+
+    fn parsed_config<T: core::str::FromStr>(&self, key: &str) -> Option<T> {
+        self.config_value(key).and_then(|value| value.parse().ok())
+    }
+
+    fn config_json(&self, key: &str) -> Option<serde_json::Value> {
+        serde_json::from_str(self.config_value(key)?).ok()
+    }
+
+    /// Returns a vector-valued JSON configuration field as `usize`s.
+    pub fn usize_vec(&self, key: &str) -> Option<Vec<usize>> {
+        self.config_json(key)?
+            .as_array()?
+            .iter()
+            .map(|value| value.as_u64().map(|n| n as usize))
+            .collect()
+    }
+
+    /// Returns a nested codec array stored inside this codec's configuration.
+    pub fn codec_array(&self, key: &str) -> Option<Vec<Codec>> {
+        Some(
+            self.config_json(key)?
+                .as_array()?
+                .iter()
+                .filter_map(|value| {
+                    let name = value.get("name")?.as_str()?.to_owned();
+                    let configuration = value
+                        .get("configuration")
+                        .and_then(|config| config.as_object())
+                        .map(|config| {
+                            config
+                                .iter()
+                                .map(|(config_key, config_value)| {
+                                    (
+                                        config_key.clone(),
+                                        match config_value {
+                                            serde_json::Value::String(s) => s.clone(),
+                                            serde_json::Value::Number(n) => n.to_string(),
+                                            serde_json::Value::Bool(b) => b.to_string(),
+                                            serde_json::Value::Null => String::new(),
+                                            _ => config_value.to_string(),
+                                        },
+                                    )
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    Some(Codec {
+                        name,
+                        configuration,
+                    })
+                })
+                .collect(),
+        )
+    }
+
     /// Returns the gzip compression level if this is a gzip codec.
     pub fn gzip_level(&self) -> Option<u32> {
         if self.name == "gzip" {
-            self.configuration
-                .iter()
-                .find(|(key, _)| key == "level")
-                .and_then(|(_, value)| value.parse().ok())
+            self.parsed_config("level")
         } else {
             None
         }
@@ -53,10 +113,7 @@ impl Codec {
     /// Returns the zstd compression level if this is a zstd codec.
     pub fn zstd_level(&self) -> Option<i32> {
         if self.name == "zstd" {
-            self.configuration
-                .iter()
-                .find(|(key, _)| key == "level")
-                .and_then(|(_, value)| value.parse().ok())
+            self.parsed_config("level")
         } else {
             None
         }
@@ -64,10 +121,7 @@ impl Codec {
 
     /// Returns a boolean configuration flag for this codec.
     pub fn bool_flag(&self, key: &str) -> Option<bool> {
-        self.configuration
-            .iter()
-            .find(|(candidate, _)| candidate == key)
-            .and_then(|(_, value)| value.parse().ok())
+        self.parsed_config(key)
     }
 
     /// Returns the zstd checksum flag if this is a zstd codec.
@@ -82,10 +136,7 @@ impl Codec {
     /// Returns the lz4 compression level if this is an lz4 codec.
     pub fn lz4_level(&self) -> Option<i32> {
         if self.name == "lz4" {
-            self.configuration
-                .iter()
-                .find(|(key, _)| key == "level")
-                .and_then(|(_, value)| value.parse().ok())
+            self.parsed_config("level")
         } else {
             None
         }
@@ -93,10 +144,7 @@ impl Codec {
 
     /// Returns the endianness configuration if this is a bytes codec.
     pub fn bytes_endian(&self) -> Option<&str> {
-        self.configuration
-            .iter()
-            .find(|(key, _)| key == "endian")
-            .map(|(_, value)| value.as_str())
+        self.config_value("endian")
     }
 
     /// Returns true if this codec is a no-op (identity).
@@ -196,5 +244,39 @@ mod tests {
         };
 
         assert_eq!(codec.zstd_checksum(), None);
+    }
+
+    #[test]
+    fn test_usize_vec_parses_json_array() {
+        let codec = Codec {
+            name: alloc::string::String::from("sharding_indexed"),
+            configuration: alloc::vec![(
+                alloc::string::String::from("chunk_shape"),
+                alloc::string::String::from("[2, 4, 8]"),
+            )],
+        };
+
+        assert_eq!(codec.usize_vec("chunk_shape"), Some(vec![2, 4, 8]));
+    }
+
+    #[test]
+    fn test_codec_array_parses_nested_codecs() {
+        let codec = Codec {
+            name: alloc::string::String::from("sharding_indexed"),
+            configuration: alloc::vec![(
+                alloc::string::String::from("codecs"),
+                alloc::string::String::from(
+                    r#"[{"name":"bytes","configuration":{"endian":"little","level":1}}]"#,
+                ),
+            )],
+        };
+
+        let nested = codec
+            .codec_array("codecs")
+            .expect("nested codecs must parse");
+        assert_eq!(nested.len(), 1);
+        assert_eq!(nested[0].name, "bytes");
+        assert_eq!(nested[0].bytes_endian(), Some("little"));
+        assert_eq!(nested[0].config_value("level"), Some("1"));
     }
 }

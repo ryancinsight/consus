@@ -77,27 +77,25 @@ impl DatasetTarget for SubGroupBuilder<'_> {
 // ---------------------------------------------------------------------------
 
 #[inline(always)]
-fn i64_le_dt() -> Datatype {
+fn bit_width(bits: usize) -> NonZeroUsize {
+    NonZeroUsize::new(bits).expect("datatype bit width is non-zero")
+}
+
+/// Little-endian integer datatype of `bits` width.
+#[inline(always)]
+fn int_le_dt(bits: usize, signed: bool) -> Datatype {
     Datatype::Integer {
-        bits: NonZeroUsize::new(64).unwrap(),
+        bits: bit_width(bits),
         byte_order: ByteOrder::LittleEndian,
-        signed: true,
+        signed,
     }
 }
 
+/// Little-endian float datatype of `bits` width.
 #[inline(always)]
-fn u64_le_dt() -> Datatype {
-    Datatype::Integer {
-        bits: NonZeroUsize::new(64).unwrap(),
-        byte_order: ByteOrder::LittleEndian,
-        signed: false,
-    }
-}
-
-#[inline(always)]
-fn f64_le_dt() -> Datatype {
+fn float_le_dt(bits: usize) -> Datatype {
     Datatype::Float {
-        bits: NonZeroUsize::new(64).unwrap(),
+        bits: bit_width(bits),
         byte_order: ByteOrder::LittleEndian,
     }
 }
@@ -134,19 +132,19 @@ pub(super) fn encode_cf_attrs(
         match attr_value {
             AttributeValue::Int(v) => result.push((
                 attr_name.clone(),
-                i64_le_dt(),
+                int_le_dt(64, true),
                 Shape::scalar(),
                 v.to_le_bytes().to_vec(),
             )),
             AttributeValue::Uint(v) => result.push((
                 attr_name.clone(),
-                u64_le_dt(),
+                int_le_dt(64, false),
                 Shape::scalar(),
                 v.to_le_bytes().to_vec(),
             )),
             AttributeValue::Float(v) => result.push((
                 attr_name.clone(),
-                f64_le_dt(),
+                float_le_dt(64),
                 Shape::scalar(),
                 v.to_bits().to_le_bytes().to_vec(),
             )),
@@ -163,7 +161,7 @@ pub(super) fn encode_cf_attrs(
                 let data: Vec<u8> = v.iter().flat_map(|x| x.to_le_bytes()).collect();
                 result.push((
                     attr_name.clone(),
-                    i64_le_dt(),
+                    int_le_dt(64, true),
                     Shape::fixed(&[v.len()]),
                     data,
                 ));
@@ -172,7 +170,7 @@ pub(super) fn encode_cf_attrs(
                 let data: Vec<u8> = v.iter().flat_map(|x| x.to_le_bytes()).collect();
                 result.push((
                     attr_name.clone(),
-                    u64_le_dt(),
+                    int_le_dt(64, false),
                     Shape::fixed(&[v.len()]),
                     data,
                 ));
@@ -181,7 +179,7 @@ pub(super) fn encode_cf_attrs(
                 let data: Vec<u8> = v.iter().flat_map(|x| x.to_bits().to_le_bytes()).collect();
                 result.push((
                     attr_name.clone(),
-                    f64_le_dt(),
+                    float_le_dt(64),
                     Shape::fixed(&[v.len()]),
                     data,
                 ));
@@ -221,11 +219,7 @@ pub(super) fn write_dimension_scale<W: DatasetTarget>(
     dim: &NetcdfDimension,
     dim_id: u32,
 ) -> Result<u64> {
-    let u32_le_dt = Datatype::Integer {
-        bits: NonZeroUsize::new(32).unwrap(),
-        byte_order: ByteOrder::LittleEndian,
-        signed: false,
-    };
+    let u32_le_dt = int_le_dt(32, false);
 
     let size = dim.size;
     let data_shape = if size > 0 {
@@ -247,11 +241,7 @@ pub(super) fn write_dimension_scale<W: DatasetTarget>(
         dim.name.as_bytes().to_vec()
     };
 
-    let dimid_dt = Datatype::Integer {
-        bits: NonZeroUsize::new(32).unwrap(),
-        byte_order: ByteOrder::LittleEndian,
-        signed: false,
-    };
+    let dimid_dt = int_le_dt(32, false);
     let dimid_shape = Shape::scalar();
     let dimid_bytes: [u8; 4] = dim_id.to_le_bytes();
 

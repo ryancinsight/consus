@@ -2,9 +2,6 @@
 use alloc::vec::Vec;
 
 #[cfg(feature = "alloc")]
-use byteorder::{BigEndian, ByteOrder, LittleEndian};
-
-#[cfg(feature = "alloc")]
 use consus_core::Shape;
 
 /// Decode raw attribute bytes into a typed [`consus_core::AttributeValue`].
@@ -135,7 +132,7 @@ pub fn decode_attribute_value(
 
 /// Read a signed integer of `size` bytes from `raw` in the given byte order.
 ///
-/// Supported sizes: 1, 2, 4, 8.
+/// Supported sizes: 1, 2, 4, 8. Delegates to [`consus_core::read_int_width`].
 #[cfg(feature = "alloc")]
 fn read_int_le(raw: &[u8], size: usize, order: consus_core::ByteOrder) -> consus_core::Result<i64> {
     if raw.len() < size {
@@ -143,24 +140,15 @@ fn read_int_le(raw: &[u8], size: usize, order: consus_core::ByteOrder) -> consus
             message: alloc::format!("integer value truncated: need {size}, have {}", raw.len()),
         });
     }
-    let v = match (size, order) {
-        (1, _) => raw[0] as i8 as i64,
-        (2, consus_core::ByteOrder::LittleEndian) => LittleEndian::read_i16(raw) as i64,
-        (2, consus_core::ByteOrder::BigEndian) => BigEndian::read_i16(raw) as i64,
-        (4, consus_core::ByteOrder::LittleEndian) => LittleEndian::read_i32(raw) as i64,
-        (4, consus_core::ByteOrder::BigEndian) => BigEndian::read_i32(raw) as i64,
-        (8, consus_core::ByteOrder::LittleEndian) => LittleEndian::read_i64(raw),
-        (8, consus_core::ByteOrder::BigEndian) => BigEndian::read_i64(raw),
-        _ => {
-            return Err(consus_core::Error::UnsupportedFeature {
-                feature: alloc::format!("signed integer decode for size {size}"),
-            });
-        }
-    };
-    Ok(v)
+    if !matches!(size, 1 | 2 | 4 | 8) {
+        return Err(unsupported("signed integer", size));
+    }
+    consus_core::read_int_width(raw, size, order).ok_or_else(|| unsupported("signed integer", size))
 }
 
 /// Read an unsigned integer of `size` bytes from `raw`.
+///
+/// Delegates to [`consus_core::read_uint_width`].
 #[cfg(feature = "alloc")]
 fn read_uint_le(
     raw: &[u8],
@@ -175,21 +163,11 @@ fn read_uint_le(
             ),
         });
     }
-    let v = match (size, order) {
-        (1, _) => u64::from(raw[0]),
-        (2, consus_core::ByteOrder::LittleEndian) => u64::from(LittleEndian::read_u16(raw)),
-        (2, consus_core::ByteOrder::BigEndian) => u64::from(BigEndian::read_u16(raw)),
-        (4, consus_core::ByteOrder::LittleEndian) => u64::from(LittleEndian::read_u32(raw)),
-        (4, consus_core::ByteOrder::BigEndian) => u64::from(BigEndian::read_u32(raw)),
-        (8, consus_core::ByteOrder::LittleEndian) => LittleEndian::read_u64(raw),
-        (8, consus_core::ByteOrder::BigEndian) => BigEndian::read_u64(raw),
-        _ => {
-            return Err(consus_core::Error::UnsupportedFeature {
-                feature: alloc::format!("unsigned integer decode for size {size}"),
-            });
-        }
-    };
-    Ok(v)
+    if !matches!(size, 1 | 2 | 4 | 8) {
+        return Err(unsupported("unsigned integer", size));
+    }
+    consus_core::read_uint_width(raw, size, order)
+        .ok_or_else(|| unsupported("unsigned integer", size))
 }
 
 /// Read a floating-point value of `size` bytes from `raw`.
@@ -202,22 +180,21 @@ fn read_float(raw: &[u8], size: usize, order: consus_core::ByteOrder) -> consus_
             message: alloc::format!("float value truncated: need {size}, have {}", raw.len()),
         });
     }
-    let v = match (size, order) {
-        (4, consus_core::ByteOrder::LittleEndian) => {
-            f64::from(f32::from_bits(LittleEndian::read_u32(raw)))
-        }
-        (4, consus_core::ByteOrder::BigEndian) => {
-            f64::from(f32::from_bits(BigEndian::read_u32(raw)))
-        }
-        (8, consus_core::ByteOrder::LittleEndian) => f64::from_bits(LittleEndian::read_u64(raw)),
-        (8, consus_core::ByteOrder::BigEndian) => f64::from_bits(BigEndian::read_u64(raw)),
-        _ => {
-            return Err(consus_core::Error::UnsupportedFeature {
-                feature: alloc::format!("float decode for size {size}"),
-            });
-        }
-    };
-    Ok(v)
+    match size {
+        4 => consus_core::read_integer::<f32>(raw, order)
+            .map(f64::from)
+            .ok_or_else(|| unsupported("float", size)),
+        8 => consus_core::read_integer::<f64>(raw, order).ok_or_else(|| unsupported("float", size)),
+        _ => Err(unsupported("float", size)),
+    }
+}
+
+/// Build the `UnsupportedFeature` error for a width attribute decoding rejects.
+#[cfg(feature = "alloc")]
+fn unsupported(kind: &str, size: usize) -> consus_core::Error {
+    consus_core::Error::UnsupportedFeature {
+        feature: alloc::format!("{kind} decode for size {size}"),
+    }
 }
 
 /// Strip null bytes and decode as UTF-8 (lossy).

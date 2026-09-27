@@ -1,3 +1,6 @@
+//! The [`Checksum`] trait: the incremental-hash contract every algorithm in
+//! this module implements.
+
 /// A checksum algorithm.
 ///
 /// ## Contract

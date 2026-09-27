@@ -2,18 +2,23 @@
 use crate::error::MatError;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
+use consus_core::ByteOrder;
+
+/// MAT v5 defaults to little-endian but a header may declare big-endian.
+fn byte_order(big_endian: bool) -> ByteOrder {
+    if big_endian {
+        ByteOrder::BigEndian
+    } else {
+        ByteOrder::LittleEndian
+    }
+}
 
 pub fn read_u32(buf: &[u8], offset: usize, big_endian: bool) -> Result<u32, MatError> {
-    if offset + 4 > buf.len() {
-        return Err(MatError::InvalidFormat(alloc::string::String::from(
-            "read_u32: buffer too short",
-        )));
-    }
-    let b = &buf[offset..offset + 4];
-    Ok(if big_endian {
-        u32::from_be_bytes([b[0], b[1], b[2], b[3]])
-    } else {
-        u32::from_le_bytes([b[0], b[1], b[2], b[3]])
+    let slice = buf.get(offset..).ok_or_else(|| {
+        MatError::InvalidFormat(alloc::string::String::from("read_u32: buffer too short"))
+    })?;
+    consus_core::read_integer::<u32>(slice, byte_order(big_endian)).ok_or_else(|| {
+        MatError::InvalidFormat(alloc::string::String::from("read_u32: buffer too short"))
     })
 }
 

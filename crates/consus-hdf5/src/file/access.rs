@@ -61,18 +61,42 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
     #[cfg(feature = "alloc")]
     pub fn list_root_group(&self) -> Result<Vec<(String, u64, consus_core::LinkType)>> {
         let header = self.root_object_header()?;
-        let children = reader::list_group_v2(&self.source, &header, &self.ctx)?;
-        if !children.is_empty() {
-            return Ok(children
+        self.list_group_children_from_header(&header, true)
+    }
+
+    /// Shared v2/v1 group-listing fallback used by both root and by-address
+    /// group listing.
+    ///
+    /// Tries v2 compact/dense link messages first. Falls back to the v1
+    /// symbol-table path only when `allow_v1_without_symbol_table` is set or
+    /// the object header carries a `SYMBOL_TABLE` message; v2 groups with no
+    /// children have no such message and correctly return an empty list
+    /// rather than an error.
+    #[cfg(feature = "alloc")]
+    pub(super) fn list_group_children_from_header(
+        &self,
+        header: &ObjectHeader,
+        allow_v1_without_symbol_table: bool,
+    ) -> Result<Vec<(String, u64, consus_core::LinkType)>> {
+        let v2 = reader::list_group_v2(&self.source, header, &self.ctx)?;
+        if !v2.is_empty() {
+            return Ok(v2
                 .into_iter()
-                .map(|(n, a, lt, _)| (n, a, lt))
+                .map(|(name, addr, link_type, _)| (name, addr, link_type))
                 .collect());
         }
 
-        let v1_children = reader::list_group_v1(&self.source, &header, &self.ctx)?;
-        Ok(v1_children
+        let has_symbol_table =
+            reader::find_message(header, crate::object_header::message_types::SYMBOL_TABLE)
+                .is_some();
+        if !allow_v1_without_symbol_table && !has_symbol_table {
+            return Ok(Vec::new());
+        }
+
+        let v1 = reader::list_group_v1(&self.source, header, &self.ctx)?;
+        Ok(v1
             .into_iter()
-            .map(|(name, address)| (name, address, consus_core::LinkType::Hard))
+            .map(|(name, addr)| (name, addr, consus_core::LinkType::Hard))
             .collect())
     }
 }

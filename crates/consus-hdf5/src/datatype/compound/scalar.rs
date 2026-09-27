@@ -221,55 +221,27 @@ pub(crate) fn charset_to_encoding(charset: u8) -> Result<StringEncoding> {
 }
 
 /// Read an unsigned little-endian integer of 0–8 bytes.
+///
+/// Delegates to [`consus_core::read_uint_width`], the single home for
+/// fixed-width byte-order decoding.
 pub(crate) fn read_uint_le(data: &[u8], size: usize) -> u64 {
-    match size {
-        0 => 0,
-        1 => data[0] as u64,
-        2 => u16::from_le_bytes([data[0], data[1]]) as u64,
-        3 => u32::from_le_bytes([data[0], data[1], data[2], 0]) as u64,
-        4 => u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as u64,
-        5 => u64::from_le_bytes([data[0], data[1], data[2], data[3], data[4], 0, 0, 0]),
-        6 => u64::from_le_bytes([data[0], data[1], data[2], data[3], data[4], data[5], 0, 0]),
-        7 => u64::from_le_bytes([
-            data[0], data[1], data[2], data[3], data[4], data[5], data[6], 0,
-        ]),
-        _ => u64::from_le_bytes([
-            data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
-        ]),
-    }
+    consus_core::read_uint_width(data, size.min(8), consus_core::ByteOrder::LittleEndian)
+        .expect("HDF5 integer width is 0..=8 and the caller supplies the bytes")
 }
 
 /// Read an unsigned big-endian integer of 0–8 bytes.
+///
+/// Delegates to [`consus_core::read_uint_width`], the single home for
+/// fixed-width byte-order decoding.
 pub(crate) fn read_uint_be(data: &[u8], size: usize) -> u64 {
-    match size {
-        0 => 0,
-        1 => data[0] as u64,
-        2 => u16::from_be_bytes([data[0], data[1]]) as u64,
-        3 => u32::from_be_bytes([0, data[0], data[1], data[2]]) as u64,
-        4 => u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as u64,
-        5 => u64::from_be_bytes([0, 0, 0, data[0], data[1], data[2], data[3], data[4]]),
-        6 => u64::from_be_bytes([0, 0, data[0], data[1], data[2], data[3], data[4], data[5]]),
-        7 => u64::from_be_bytes([
-            0, data[0], data[1], data[2], data[3], data[4], data[5], data[6],
-        ]),
-        _ => u64::from_be_bytes([
-            data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
-        ]),
-    }
+    consus_core::read_uint_width(data, size.min(8), consus_core::ByteOrder::BigEndian)
+        .expect("HDF5 integer width is 0..=8 and the caller supplies the bytes")
 }
 
 /// Sign-extend an unsigned value of `size` bytes to `i64`.
 ///
-/// If the most-significant bit of the `size`-byte value is set, the upper
-/// bits of the returned `i64` are filled with ones (arithmetic shift).
-pub(crate) fn sign_extend(val: u64, size: usize) -> i64 {
-    let bits = size * 8;
-    if bits == 0 || bits >= 64 {
-        return val as i64;
-    }
-    let shift = 64 - bits;
-    ((val as i64) << shift) >> shift
-}
+/// Re-exported from [`consus_core::sign_extend`].
+pub(crate) use consus_core::sign_extend;
 
 // ---------------------------------------------------------------------------
 // Tests

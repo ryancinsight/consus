@@ -5,12 +5,7 @@ use crate::chunk::error::ChunkError;
 #[cfg(feature = "alloc")]
 use crate::metadata::ArrayMetadata;
 #[cfg(feature = "alloc")]
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
+use alloc::{string::String, vec, vec::Vec};
 
 /// Internal helper: generates the chunk key for a given array and coordinates.
 ///
@@ -22,27 +17,36 @@ pub(crate) fn chunk_key_for_array(
     coords: &[u64],
     chunk_key_encoding: &crate::metadata::ChunkKeyEncoding,
 ) -> String {
-    let coord_parts: Vec<String> = coords.iter().map(|c| c.to_string()).collect();
+    use core::fmt::Write;
 
-    if chunk_key_encoding.name == "v2" || chunk_key_encoding.separator == '.' {
-        if array_key.is_empty() || array_key == "." {
-            coord_parts.join(".")
-        } else {
-            format!("{}/{}", array_key, coord_parts.join("."))
+    let dot_separated = chunk_key_encoding.name == "v2" || chunk_key_encoding.separator == '.';
+    let has_prefix = !(array_key.is_empty() || array_key == ".");
+
+    // Build the key into a single pre-sized buffer: the previous form
+    // materialised one `String` per coordinate plus an intermediate `join`
+    // and a final `format!`, i.e. 6-9 heap allocations per chunk key on a
+    // path taken once per chunk. Capacity allows for the prefix, `c/`,
+    // separators, and a decimal `u64` (at most 20 digits) per coordinate.
+    let mut key = String::with_capacity(array_key.len() + 2 + coords.len() * 21);
+    if has_prefix {
+        key.push_str(array_key);
+        key.push('/');
+    }
+    if dot_separated {
+        for (i, c) in coords.iter().enumerate() {
+            if i > 0 {
+                key.push('.');
+            }
+            write!(&mut key, "{c}").expect("write to String");
         }
     } else {
-        let chunk_suffix = if coord_parts.is_empty() {
-            String::from("c")
-        } else {
-            format!("c/{}", coord_parts.join("/"))
-        };
-
-        if array_key.is_empty() || array_key == "." {
-            chunk_suffix
-        } else {
-            format!("{}/{}", array_key, chunk_suffix)
+        key.push('c');
+        for c in coords {
+            key.push('/');
+            write!(&mut key, "{c}").expect("write to String");
         }
     }
+    key
 }
 
 #[cfg(feature = "alloc")]

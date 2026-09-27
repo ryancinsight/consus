@@ -40,6 +40,7 @@
 //!   column-major (Fortran) is explicitly represented via `Layout`.
 
 #![cfg_attr(not(feature = "std"), no_std)]
+#![deny(missing_docs)]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -67,9 +68,13 @@ pub use parse::ParseBudget;
 // Re-export byte-decoding helpers at the crate root for convenience.
 // ---------------------------------------------------------------------------
 
-pub use decode::{EndianScalar, read_integer};
+pub use decode::{
+    EndianScalar, read_int_width, read_integer, read_length, read_offset, read_uint_arbitrary,
+    read_uint_be, read_uint_le, read_uint_width, sign_extend, swap_bytes, write_uint_be,
+    write_uint_le,
+};
 #[cfg(feature = "alloc")]
-pub use decode::{decode_bytes_to_f64, decode_to_f64};
+pub use decode::{decode_bytes_to_f64, decode_to_f64, decode_to_u64};
 
 // ---------------------------------------------------------------------------
 // Re-export abstract traits at the crate root.
