@@ -1,29 +1,29 @@
-/// Arrow field definitions and schema-adjacent metadata.
-///
-/// This module provides the canonical field model for `consus-arrow`.
-/// It is intentionally independent of any external Arrow crate so the
-/// crate can serve as a stable Rust implementation boundary.
-///
-/// ## Invariants
-///
-/// - Field names are non-empty.
-/// - Field identity is stable within a schema.
-/// - Field nullability is explicit.
-/// - Nested fields are represented recursively.
-/// - Field ordering is preserved.
-///
-/// ## Architecture
-///
-/// - `ArrowFieldId` identifies a field within a schema.
-/// - `ArrowFieldKind` classifies the logical shape of the field.
-/// - `ArrowField` stores the canonical field descriptor.
-/// - `ArrowFieldBuilder` constructs validated field values.
-///
-/// This module is designed to support:
-/// - schema materialization
-/// - IPC metadata translation
-/// - compute planning
-/// - zero-copy eligibility analysis
+//! Arrow field definitions and schema-adjacent metadata.
+//!
+//! This module provides the canonical field model for `consus-arrow`.
+//! It is intentionally independent of any external Arrow crate so the
+//! crate can serve as a stable Rust implementation boundary.
+//!
+//! ## Invariants
+//!
+//! - Field names are non-empty.
+//! - Field identity is stable within a schema.
+//! - Field nullability is explicit.
+//! - Nested fields are represented recursively.
+//! - Field ordering is preserved.
+//!
+//! ## Architecture
+//!
+//! - `ArrowFieldId` identifies a field within a schema.
+//! - `ArrowFieldKind` classifies the logical shape of the field.
+//! - `ArrowField` stores the canonical field descriptor.
+//! - `ArrowFieldBuilder` constructs validated field values.
+//!
+//! This module is designed to support:
+//! - schema materialization
+//! - IPC metadata translation
+//! - compute planning
+//! - zero-copy eligibility analysis
 
 #[cfg(feature = "alloc")]
 use alloc::{string::String, vec::Vec};

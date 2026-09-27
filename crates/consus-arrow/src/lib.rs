@@ -1,9 +1,4 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-// Doc-comment whitespace lint (rendering-neutral); reviewed-policy allow.
-#![expect(
-    clippy::empty_line_after_doc_comments,
-    reason = "doc-comment whitespace is rendering-neutral; reviewed-policy allowance"
-)]
 
 //! # consus-arrow
 //!
@@ -47,6 +42,7 @@
 //!
 //! This is the authoritative Arrow model crate for Consus.
 
+#![deny(missing_docs)]
 #[cfg(feature = "alloc")]
 extern crate alloc;
 

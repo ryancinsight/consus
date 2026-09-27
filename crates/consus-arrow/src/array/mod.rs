@@ -1,32 +1,32 @@
+//! Arrow array model.
+//!
+//! This module defines a Rust-native columnar array representation for the
+//! `consus-arrow` crate. It is intentionally independent of any external Arrow
+//! implementation so it can serve as a canonical bridge layer for Consus.
+//!
+//! ## Specification
+//!
+//! A columnar array is a typed sequence of values with optional nulls.
+//! The model is split into:
+//! - physical representation (`ArrayData`)
+//! - logical array wrappers (`ArrowArray`)
+//! - validity bitmap semantics (`ValidityBitmap`)
+//! - slicing and projection helpers
+//!
+//! ## Invariants
+//!
+//! - `len` is the logical row count.
+//! - `null_count <= len`.
+//! - `values.len() >= len * element_width` for fixed-width arrays.
+//! - Variable-width arrays keep offsets monotonic and length-consistent.
+//! - Validity and value buffers are independent concerns.
+//!
+//! This file is the authoritative array layer for the crate.
+
 #[cfg(feature = "alloc")]
 pub mod materialize;
 #[cfg(feature = "alloc")]
 pub use materialize::column_values_to_arrow;
-
-/// Arrow array model.
-///
-/// This module defines a Rust-native columnar array representation for the
-/// `consus-arrow` crate. It is intentionally independent of any external Arrow
-/// implementation so it can serve as a canonical bridge layer for Consus.
-///
-/// ## Specification
-///
-/// A columnar array is a typed sequence of values with optional nulls.
-/// The model is split into:
-/// - physical representation (`ArrayData`)
-/// - logical array wrappers (`ArrowArray`)
-/// - validity bitmap semantics (`ValidityBitmap`)
-/// - slicing and projection helpers
-///
-/// ## Invariants
-///
-/// - `len` is the logical row count.
-/// - `null_count <= len`.
-/// - `values.len() >= len * element_width` for fixed-width arrays.
-/// - Variable-width arrays keep offsets monotonic and length-consistent.
-/// - Validity and value buffers are independent concerns.
-///
-/// This file is the authoritative array layer for the crate.
 
 #[cfg(feature = "alloc")]
 extern crate alloc;

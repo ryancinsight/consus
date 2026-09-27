@@ -406,7 +406,6 @@ pub trait CompressionRegistryTrait: Send + Sync {
     /// Look up a codec by name.
     fn get_by_name(&self, name: &str) -> Result<Box<dyn CodecTrait + '_>>;
     /// Look up a codec by HDF5 filter ID.
-    #[allow(unused)]
     fn get_by_filter_id(&self, _id: u16) -> Result<Box<dyn CodecTrait>> {
         Err(consus_core::Error::UnsupportedFeature {
             feature: "filter_id_lookup".to_string(),

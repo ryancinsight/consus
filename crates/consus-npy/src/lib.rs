@@ -7,7 +7,7 @@
 //! Format reference: <https://numpy.org/doc/stable/reference/generated/numpy.lib.format.html>
 
 #![forbid(unsafe_code)]
-
+#![deny(missing_docs)]
 mod array;
 mod error;
 mod format;

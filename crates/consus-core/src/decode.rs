@@ -57,27 +57,39 @@ macro_rules! decode_integer_bytes_as {
             (8, true) => Ok($bytes.iter().map(|&v| (v as i8) as $output).collect()),
             (16, false) => Ok($bytes
                 .chunks_exact(2)
-                .map(|c| read_integer::<u16>(c, bo).expect("chunks_exact supplies a scalar") as $output)
+                .map(|c| {
+                    read_integer::<u16>(c, bo).expect("chunks_exact supplies a scalar") as $output
+                })
                 .collect()),
             (16, true) => Ok($bytes
                 .chunks_exact(2)
-                .map(|c| read_integer::<i16>(c, bo).expect("chunks_exact supplies a scalar") as $output)
+                .map(|c| {
+                    read_integer::<i16>(c, bo).expect("chunks_exact supplies a scalar") as $output
+                })
                 .collect()),
             (32, false) => Ok($bytes
                 .chunks_exact(4)
-                .map(|c| read_integer::<u32>(c, bo).expect("chunks_exact supplies a scalar") as $output)
+                .map(|c| {
+                    read_integer::<u32>(c, bo).expect("chunks_exact supplies a scalar") as $output
+                })
                 .collect()),
             (32, true) => Ok($bytes
                 .chunks_exact(4)
-                .map(|c| read_integer::<i32>(c, bo).expect("chunks_exact supplies a scalar") as $output)
+                .map(|c| {
+                    read_integer::<i32>(c, bo).expect("chunks_exact supplies a scalar") as $output
+                })
                 .collect()),
             (64, false) => Ok($bytes
                 .chunks_exact(8)
-                .map(|c| read_integer::<u64>(c, bo).expect("chunks_exact supplies a scalar") as $output)
+                .map(|c| {
+                    read_integer::<u64>(c, bo).expect("chunks_exact supplies a scalar") as $output
+                })
                 .collect()),
             (64, true) => Ok($bytes
                 .chunks_exact(8)
-                .map(|c| read_integer::<i64>(c, bo).expect("chunks_exact supplies a scalar") as $output)
+                .map(|c| {
+                    read_integer::<i64>(c, bo).expect("chunks_exact supplies a scalar") as $output
+                })
                 .collect()),
             (other, _) => Err(Error::UnsupportedFeature {
                 feature: alloc::format!("{}: {}-bit integer", $context, other),
@@ -141,14 +153,7 @@ pub fn decode_to_f64(raw: &[u8], dtype: &Datatype) -> Result<Vec<f64>, Error> {
             bits,
             signed,
             byte_order,
-        } => decode_integer_bytes_as!(
-            raw,
-            bits.get(),
-            *signed,
-            *byte_order,
-            f64,
-            "decode_to_f64"
-        ),
+        } => decode_integer_bytes_as!(raw, bits.get(), *signed, *byte_order, f64, "decode_to_f64"),
         Datatype::Boolean => Ok(raw
             .iter()
             .map(|&v| if v != 0 { 1.0 } else { 0.0 })
@@ -258,14 +263,7 @@ pub fn decode_to_u64(raw: &[u8], dtype: &Datatype) -> Result<Vec<u64>, Error> {
             bits,
             signed,
             byte_order,
-        } => decode_integer_bytes_as!(
-            raw,
-            bits.get(),
-            *signed,
-            *byte_order,
-            u64,
-            "decode_to_u64"
-        ),
+        } => decode_integer_bytes_as!(raw, bits.get(), *signed, *byte_order, u64, "decode_to_u64"),
         other => Err(Error::UnsupportedFeature {
             feature: alloc::format!("decode_to_u64: unsupported datatype {other:?}"),
         }),

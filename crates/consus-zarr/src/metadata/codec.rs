@@ -271,7 +271,9 @@ mod tests {
             )],
         };
 
-        let nested = codec.codec_array("codecs").expect("nested codecs must parse");
+        let nested = codec
+            .codec_array("codecs")
+            .expect("nested codecs must parse");
         assert_eq!(nested.len(), 1);
         assert_eq!(nested[0].name, "bytes");
         assert_eq!(nested[0].bytes_endian(), Some("little"));

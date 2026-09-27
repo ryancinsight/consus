@@ -62,7 +62,7 @@ fn colnames_attr_bytes(colnames: &[String]) -> (Datatype, Shape, Vec<u8>) {
 /// Integer datatype helper (little-endian, signed).
 fn int64_le() -> Datatype {
     Datatype::Integer {
-        bits: NonZeroUsize::new(64).unwrap(),
+        bits: NonZeroUsize::new(64).expect("64 is a non-zero bit width"),
         signed: true,
         byte_order: ByteOrder::LittleEndian,
     }
@@ -71,7 +71,7 @@ fn int64_le() -> Datatype {
 /// Unsigned 64-bit integer datatype helper (little-endian).
 fn uint64_le() -> Datatype {
     Datatype::Integer {
-        bits: NonZeroUsize::new(64).unwrap(),
+        bits: NonZeroUsize::new(64).expect("64 is a non-zero bit width"),
         signed: false,
         byte_order: ByteOrder::LittleEndian,
     }
@@ -80,7 +80,7 @@ fn uint64_le() -> Datatype {
 /// Float 64-bit datatype helper (little-endian).
 fn float64_le() -> Datatype {
     Datatype::Float {
-        bits: NonZeroUsize::new(64).unwrap(),
+        bits: NonZeroUsize::new(64).expect("64 is a non-zero bit width"),
         byte_order: ByteOrder::LittleEndian,
     }
 }

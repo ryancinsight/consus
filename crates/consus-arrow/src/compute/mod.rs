@@ -1,32 +1,32 @@
-/// Arrow compute descriptors for the Consus Arrow runtime.
-///
-/// This module defines the canonical compute-planning layer for Arrow-style
-/// operations over `consus-core` and `consus-parquet` schema models.
-///
-/// ## Scope
-///
-/// - no wire-format encoding
-/// - no dependency on the external Arrow crate
-/// - compute plans, kernel descriptors, and buffer compatibility rules
-/// - zero-copy eligibility for projection and cast operations
-///
-/// ## Invariants
-///
-/// - Compute plans preserve input field identity.
-/// - Kernel selection is explicit and value-semantic.
-/// - Projection does not fabricate fields.
-/// - Casts are only accepted when the source and target types are compatible
-///   under the declared conversion mode.
-///
-/// ## Architecture
-///
-/// ```text
-/// compute/
-/// ├── kernel        # kernel identifiers and execution modes
-/// ├── cast          # cast compatibility and conversion plans
-/// ├── projection    # field projection descriptors
-/// └── plan          # full compute plan composition
-/// ```
+//! Arrow compute descriptors for the Consus Arrow runtime.
+//!
+//! This module defines the canonical compute-planning layer for Arrow-style
+//! operations over `consus-core` and `consus-parquet` schema models.
+//!
+//! ## Scope
+//!
+//! - no wire-format encoding
+//! - no dependency on the external Arrow crate
+//! - compute plans, kernel descriptors, and buffer compatibility rules
+//! - zero-copy eligibility for projection and cast operations
+//!
+//! ## Invariants
+//!
+//! - Compute plans preserve input field identity.
+//! - Kernel selection is explicit and value-semantic.
+//! - Projection does not fabricate fields.
+//! - Casts are only accepted when the source and target types are compatible
+//!   under the declared conversion mode.
+//!
+//! ## Architecture
+//!
+//! ```text
+//! compute/
+//! ├── kernel        # kernel identifiers and execution modes
+//! ├── cast          # cast compatibility and conversion plans
+//! ├── projection    # field projection descriptors
+//! └── plan          # full compute plan composition
+//! ```
 
 #[cfg(feature = "alloc")]
 use alloc::{string::String, vec::Vec};
