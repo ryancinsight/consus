@@ -84,7 +84,16 @@ jobs:
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
         with:
           workspaces: .
-          shared-key: consus
+          # Root cause: check, test, and test-mat-features shared one
+          # key ("consus"). GitHub's cache API is immutable per key, so
+          # whichever job saved first each run won it; the others' saves
+          # of their own dependency subsets silently no-op, and restores
+          # report a full match while third-party crates still recompile
+          # (confirmed: 169/47/6 non-consus Compiling lines despite full
+          # match, run 36374861030). msrv already escapes the collision
+          # via its own toolchain hash; splitting the rest by job name
+          # for clarity and so no future toolchain coincidence collides.
+          shared-key: consus-check
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Normalize lock onto current provider heads
         shell: bash
@@ -119,7 +128,7 @@ jobs:
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
         with:
           workspaces: .
-          shared-key: consus
+          shared-key: consus-test
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # The workspace build includes consus-python, whose pyo3 0.22 build
       # script rejects interpreters past 3.13; runner images default newer
@@ -161,7 +170,7 @@ jobs:
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
         with:
           workspaces: .
-          shared-key: consus
+          shared-key: consus-msrv
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Normalize lock onto current provider heads
         shell: bash
@@ -183,7 +192,7 @@ jobs:
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
         with:
           workspaces: .
-          shared-key: consus
+          shared-key: consus-test-mat-features
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
         with:
@@ -218,7 +227,7 @@ jobs:
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
         with:
           workspaces: fuzz
-          shared-key: consus-fuzz
+          shared-key: consus-fuzz-build
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
         with:
@@ -249,7 +258,7 @@ jobs:
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
         with:
           workspaces: fuzz
-          shared-key: consus-fuzz
+          shared-key: consus-fuzz-run
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
         with:
