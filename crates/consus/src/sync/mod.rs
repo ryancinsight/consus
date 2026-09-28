@@ -10,6 +10,9 @@ use alloc::vec::Vec;
 use consus_core::{Datatype, Error, Result, Selection, Shape};
 use consus_io::{Length, ReadAt, WriteAt};
 
+mod range_bytes;
+pub use range_bytes::RangeBytes;
+
 #[cfg(feature = "std")]
 use moirai::ParallelSlice;
 
@@ -298,18 +301,30 @@ where
 }
 
 /// Reads multiple disjoint byte ranges sequentially.
-pub fn read_ranges<R>(reader: &R, ranges: &[IoRange]) -> Result<Vec<Vec<u8>>>
+///
+/// Returns one contiguous [`RangeBytes`] instead of a `Vec<Vec<u8>>`: `n`
+/// ranges cost one allocation rather than `n`. This wins clearly (~4x in
+/// `benches/range_reads.rs`) when the batch's total bytes stay small enough
+/// that the jagged form's many small allocations dominate; on this host, a
+/// single-call batch large enough to need a multi-MiB buffer instead loses
+/// to the jagged form (measured up to ~1.75x slower), plausibly because a
+/// buffer of that size is allocated and freed fresh on every call and falls
+/// outside the allocator's reused small-object arena, paying OS-level
+/// allocation and first-touch page-fault cost the jagged form's reused
+/// small blocks avoid after warm-up (unconfirmed beyond this measurement;
+/// no allocator-level profile was taken). Neither shape dominates
+/// unconditionally, and this function has no in-tree caller yet to
+/// establish which regime matters in practice.
+pub fn read_ranges<R>(reader: &R, ranges: &[IoRange]) -> Result<RangeBytes>
 where
     R: ReadAt + ?Sized,
 {
-    ranges
-        .iter()
-        .map(|range| {
-            let mut buffer = vec![0u8; range.len];
-            reader.read_at(range.offset, &mut buffer)?;
-            Ok(buffer)
-        })
-        .collect()
+    let mut out = RangeBytes::with_capacity(ranges);
+    for range in ranges {
+        let buf = out.push_zeroed(range.len);
+        reader.read_at(range.offset, buf)?;
+    }
+    Ok(out)
 }
 
 /// Writes multiple disjoint byte ranges sequentially.
@@ -335,27 +350,34 @@ where
 ///
 /// This helper is format-agnostic. It parallelizes positioned reads over any
 /// source implementing `ReadAt + Send + Sync`.
-pub fn par_read_ranges<R>(reader: Arc<R>, ranges: &[IoRange]) -> Result<Vec<Vec<u8>>>
+///
+/// Each parallel task reads into its own owned buffer, and those per-task
+/// buffers are concatenated into one contiguous [`RangeBytes`] afterward, so
+/// no jagged container crosses this function's boundary. This costs one
+/// extra full copy of the read bytes relative to returning the per-task
+/// buffers directly: range lengths are known up front (a prefix sum over
+/// `ranges`), so pre-splitting one flat buffer into disjoint `&mut [u8]`
+/// views via repeated safe `split_at_mut` and reading directly into them
+/// would avoid it, at the cost of building an intermediate `Vec` of those
+/// views to pair with `ranges` for the parallel dispatch. Not done here:
+/// this function has no in-tree caller to measure the tradeoff against.
+pub fn par_read_ranges<R>(reader: Arc<R>, ranges: &[IoRange]) -> Result<RangeBytes>
 where
     R: ReadAt + Send + Sync + 'static,
 {
     // Order-preserving parallel map; `map_collect` keeps input order, so no
     // index/sort bookkeeping is needed.
-    let results: Vec<Vec<u8>> = ranges
-        .par()
-        .map_collect(|range| {
-            let mut buffer = vec![0u8; range.len];
-            reader.read_at(range.offset, &mut buffer)?;
-            Ok::<Vec<u8>, Error>(buffer)
-        })
-        .into_iter()
-        .collect::<Result<Vec<_>>>()?;
-    Ok(results)
+    let chunks: Vec<Result<Vec<u8>>> = ranges.par().map_collect(|range| {
+        let mut buffer = vec![0u8; range.len];
+        reader.read_at(range.offset, &mut buffer)?;
+        Ok::<Vec<u8>, Error>(buffer)
+    });
+    RangeBytes::try_from_chunks(chunks)
 }
 
 #[cfg(not(feature = "std"))]
 /// Sequential fallback with the same signature shape as the parallel helper.
-pub fn par_read_ranges<R>(reader: R, ranges: &[IoRange]) -> Result<Vec<Vec<u8>>>
+pub fn par_read_ranges<R>(reader: R, ranges: &[IoRange]) -> Result<RangeBytes>
 where
     R: ReadAt,
 {
@@ -455,88 +477,5 @@ fn variable_length_selection_sizing_unsupported() -> Error {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use consus_core::{ByteOrder, Datatype, Shape};
-    use consus_io::MemCursor;
-    use core::num::NonZeroUsize;
-
-    fn f64_datatype() -> Datatype {
-        Datatype::Float {
-            bits: NonZeroUsize::new(64).expect("non-zero"),
-            byte_order: ByteOrder::LittleEndian,
-        }
-    }
-
-    #[test]
-    fn byte_view_reports_zero_copy_state() {
-        let borrowed = ByteView::Borrowed(&[1, 2, 3]);
-        let owned = ByteView::Owned(vec![1, 2, 3]);
-
-        assert!(borrowed.is_zero_copy());
-        assert!(!owned.is_zero_copy());
-        assert_eq!(borrowed.as_slice(), &[1, 2, 3]);
-        assert_eq!(owned.as_slice(), &[1, 2, 3]);
-    }
-
-    #[test]
-    fn typed_view_validates_element_multiple() {
-        let err = TypedByteView::new(ByteView::Owned(vec![0u8; 3]), f64_datatype())
-            .expect_err("3 bytes cannot represent whole f64 elements");
-
-        match err {
-            Error::DatatypeMismatch { .. } => {}
-            other => panic!("unexpected error: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn selection_byte_len_for_all_selection() {
-        let shape = Shape::fixed(&[2, 2]);
-        let bytes =
-            selection_byte_len(&f64_datatype(), &shape, &Selection::All).expect("selection bytes");
-
-        assert_eq!(bytes, 32);
-    }
-
-    #[test]
-    fn read_ranges_reads_expected_bytes() {
-        let reader = MemCursor::from_bytes((0u8..16).collect());
-        let ranges = [IoRange::new(0, 4), IoRange::new(8, 4)];
-
-        let result = read_ranges(&reader, &ranges).expect("range reads");
-
-        assert_eq!(result[0], vec![0, 1, 2, 3]);
-        assert_eq!(result[1], vec![8, 9, 10, 11]);
-    }
-
-    #[test]
-    fn parallelism_threshold_disables_small_reads() {
-        let policy = Parallelism::new().min_len(1024).partitions(8);
-
-        assert_eq!(policy.partitions_for_len(128), 1);
-        assert_eq!(policy.partitions_for_len(4096), 8);
-    }
-
-    #[cfg(feature = "atlas-themis")]
-    #[test]
-    fn default_parallelism_matches_themis_topology() {
-        let expected = themis::CpuTopology::detect()
-            .map(|topology| topology.logical_processors())
-            .or_else(|| std::thread::available_parallelism().ok().map(|n| n.get()))
-            .unwrap_or(1)
-            .max(1);
-
-        assert_eq!(Parallelism::new().configured_partitions(), expected);
-    }
-
-    #[test]
-    fn partition_range_covers_total_length() {
-        let ranges = partition_range(10, 3).expect("partition");
-
-        assert_eq!(
-            ranges,
-            vec![IoRange::new(0, 4), IoRange::new(4, 3), IoRange::new(7, 3)]
-        );
-    }
-}
+#[path = "tests.rs"]
+mod tests;
