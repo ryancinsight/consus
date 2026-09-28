@@ -15,7 +15,14 @@ publish = false
 
 [lib]
 name = "consus"
-crate-type = ["cdylib"]
+# "rlib" is additive to the shipped cdylib. `cargo nextest run` builds and
+# runs unit tests fine with `cdylib` alone (verified empirically), but
+# `cargo test --doc` does not: rustc refuses doctests for a `cdylib`-only
+# target ("doc tests are not supported for crate type(s) `cdylib`" / "no
+# library targets found"). Adding `rlib` is what makes the doctest gate
+# command pass for this crate at all; it changes nothing about the built
+# wheel (cdylib stays first in the list and is still produced).
+crate-type = ["cdylib", "rlib"]
 doc = false
 
 [dependencies]
