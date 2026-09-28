@@ -1,6 +1,9 @@
 //! Reference, enum, variable-length, and array datatype parsers.
 
-use super::{charset_to_encoding, parse_datatype_inner, read_uint_be, read_uint_le, sign_extend};
+use super::{
+    charset_to_encoding, names::parse_member_name, parse_datatype_inner, read_uint_be,
+    read_uint_le, sign_extend,
+};
 use alloc::{boxed::Box, format, string::String, vec::Vec};
 use consus_core::{ByteOrder, Datatype, EnumMember, Error, ParseBudget, ReferenceType, Result};
 
@@ -80,27 +83,8 @@ pub(crate) fn parse_enum(
             .min(props.len() + 1),
     );
     for i in 0..num_members {
-        let name_start = pos;
-        while pos < props.len() && props[pos] != 0 {
-            pos += 1;
-        }
-        if pos >= props.len() {
-            return Err(Error::InvalidFormat {
-                message: format!("unterminated enum member name at index {i}"),
-            });
-        }
-        let name = core::str::from_utf8(&props[name_start..pos])
-            .map_err(|_| Error::InvalidFormat {
-                message: format!("enum member {i} name is not valid UTF-8"),
-            })
-            .map(String::from)?;
-        pos += 1; // skip null
-
-        // Version 1/2: each name is padded to 8-byte boundary.
-        if version < 3 {
-            let name_field_len = pos - name_start;
-            pos = name_start + ((name_field_len + 7) & !7);
-        }
+        let (name, new_pos) = parse_member_name(props, pos, version, "enum member", i)?;
+        pos = new_pos;
 
         names.push(name);
     }

@@ -36,6 +36,7 @@
 
 mod classes;
 mod members;
+mod names;
 mod parse;
 mod scalar;
 #[cfg(test)]
