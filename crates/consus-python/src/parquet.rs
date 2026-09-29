@@ -43,13 +43,54 @@ impl OwnedCell {
 }
 
 // ---------------------------------------------------------------------------
+// ColumnMatrix
+// ---------------------------------------------------------------------------
+
+/// Column-major flat storage for equal-length columns of cells.
+///
+/// Every column holds exactly `row_count` cells (verified by the caller),
+/// so the matrix is rectangular, not ragged: cells live in one contiguous
+/// `Vec` addressed as `cells[col * row_count + row]` instead of one heap
+/// allocation per column.
+struct ColumnMatrix {
+    cells: Vec<OwnedCell>,
+    row_count: usize,
+}
+
+impl ColumnMatrix {
+    fn with_capacity(col_count: usize, row_count: usize) -> Self {
+        Self {
+            cells: Vec::with_capacity(col_count * row_count),
+            row_count,
+        }
+    }
+
+    /// Appends one full column's cells; `column.len()` must equal `row_count`.
+    fn push_column(&mut self, column: Vec<OwnedCell>) {
+        debug_assert_eq!(
+            column.len(),
+            self.row_count,
+            "ColumnMatrix::push_column: column length must match row_count"
+        );
+        self.cells.extend(column);
+    }
+
+    fn col_count(&self) -> usize {
+        self.cells.len().checked_div(self.row_count).unwrap_or(0)
+    }
+
+    fn cell(&self, col: usize, row: usize) -> &OwnedCell {
+        &self.cells[col * self.row_count + row]
+    }
+}
+
+// ---------------------------------------------------------------------------
 // VecRowSource
 // ---------------------------------------------------------------------------
 
 /// Column-oriented in-memory row source for `ParquetWriter`.
 struct VecRowSource {
-    /// `columns[col_idx][row_idx]`
-    columns: Vec<Vec<OwnedCell>>,
+    columns: ColumnMatrix,
     row_count: usize,
 }
 
@@ -59,10 +100,8 @@ impl RowSource for VecRowSource {
     }
 
     fn row(&self, index: usize) -> consus_core::Result<RowValue<'_>> {
-        let cells: Vec<CellValue<'_>> = self
-            .columns
-            .iter()
-            .map(|col| col[index].as_cell())
+        let cells: Vec<CellValue<'_>> = (0..self.columns.col_count())
+            .map(|col| self.columns.cell(col, index).as_cell())
             .collect();
         Ok(RowValue::new(cells))
     }
@@ -300,8 +339,9 @@ impl PyParquetBuilder {
             .collect();
         let schema = SchemaDescriptor::new(schema_fields);
 
-        // Extract column data from Python dict in schema order.
-        let mut col_data: Vec<Vec<OwnedCell>> = Vec::with_capacity(self.fields.len());
+        // Extract column data from Python dict in schema order. The matrix
+        // is allocated once row_count is known, from the first column.
+        let mut col_data: Option<ColumnMatrix> = None;
         let mut row_count: Option<usize> = None;
 
         for (name, pt) in &self.fields {
@@ -343,7 +383,9 @@ impl PyParquetBuilder {
                 };
                 cells.push(cell);
             }
-            col_data.push(cells);
+            col_data
+                .get_or_insert_with(|| ColumnMatrix::with_capacity(self.fields.len(), n))
+                .push_column(cells);
         }
 
         let row_count = row_count.unwrap_or(0);
@@ -365,7 +407,7 @@ impl PyParquetBuilder {
             ParquetDatasetDescriptor::new(schema, vec![row_group]).map_err(from_consus)?;
 
         let row_source = VecRowSource {
-            columns: col_data,
+            columns: col_data.expect("self.fields is non-empty, checked above"),
             row_count,
         };
 
@@ -373,5 +415,75 @@ impl PyParquetBuilder {
             .write_dataset_bytes(&dataset, &row_source)
             .map_err(from_consus)?;
         Ok(PyBytes::new_bound(py, &bytes).unbind())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pre-conversion baseline: one `Vec<OwnedCell>` per column (what
+    /// `ColumnMatrix` replaces), used here only to characterize the exact
+    /// row-major cell ordering `VecRowSource::row` must still produce.
+    fn jagged_row(columns: &[Vec<OwnedCell>], index: usize) -> Vec<CellValue<'_>> {
+        columns.iter().map(|col| col[index].as_cell()).collect()
+    }
+
+    #[test]
+    fn column_matrix_matches_jagged_row_order() {
+        let jagged: Vec<Vec<OwnedCell>> = vec![
+            vec![
+                OwnedCell::Int64(1),
+                OwnedCell::Int64(2),
+                OwnedCell::Int64(3),
+            ],
+            vec![
+                OwnedCell::Boolean(true),
+                OwnedCell::Boolean(false),
+                OwnedCell::Boolean(true),
+            ],
+        ];
+
+        let mut matrix = ColumnMatrix::with_capacity(jagged.len(), 3);
+        for column in jagged.clone() {
+            matrix.push_column(column);
+        }
+
+        assert_eq!(matrix.col_count(), 2);
+        for row in 0..3 {
+            let expected = jagged_row(&jagged, row);
+            let actual: Vec<CellValue<'_>> = (0..matrix.col_count())
+                .map(|col| matrix.cell(col, row).as_cell())
+                .collect();
+            assert_eq!(expected, actual, "row {row}");
+        }
+    }
+
+    #[test]
+    fn column_matrix_row_source_matches_jagged_row_source() {
+        let jagged: Vec<Vec<OwnedCell>> = vec![
+            vec![OwnedCell::Double(1.5), OwnedCell::Double(2.5)],
+            vec![OwnedCell::Int32(10), OwnedCell::Int32(20)],
+            vec![OwnedCell::Boolean(false), OwnedCell::Boolean(true)],
+        ];
+
+        let mut matrix = ColumnMatrix::with_capacity(jagged.len(), 2);
+        for column in jagged.clone() {
+            matrix.push_column(column);
+        }
+        let source = VecRowSource {
+            columns: matrix,
+            row_count: 2,
+        };
+
+        for row in 0..2 {
+            let expected = jagged_row(&jagged, row);
+            let row_value = source.row(row).expect("row");
+            assert_eq!(expected, row_value.columns(), "row {row}");
+        }
     }
 }

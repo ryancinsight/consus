@@ -360,12 +360,14 @@ fn encode_bytes(data: &Bound<'_, PyList>, dt: &Datatype) -> PyResult<Vec<u8>> {
 /// Accepts raw HDF5/netCDF-4 bytes and exposes the root-group structure plus
 /// variable data decoding.
 ///
-/// Example::
+/// Example:
 ///
-///     with open("data.nc", "rb") as f:
-///         nf = PyNetcdfFile(f.read())
-///     print(nf.variable_names())
-///     print(nf.read_variable("temperature"))
+/// ```python
+/// with open("data.nc", "rb") as f:
+///     nf = PyNetcdfFile(f.read())
+/// print(nf.variable_names())
+/// print(nf.read_variable("temperature"))
+/// ```
 #[pyclass]
 pub struct PyNetcdfFile {
     data: Vec<u8>,
@@ -518,12 +520,14 @@ fn attrs_to_py<'py>(
 /// Add dimensions and variables, then call :meth:`write` to produce a
 /// self-contained HDF5/netCDF-4 byte string.
 ///
-/// Example::
+/// Example:
 ///
-///     w = PyNetcdfWriter()
-///     w.add_dimension("x", 5)
-///     w.add_variable("temperature", "f32", ["x"], [1.0, 2.0, 3.0, 4.0, 5.0])
-///     raw = w.write()
+/// ```python
+/// w = PyNetcdfWriter()
+/// w.add_dimension("x", 5)
+/// w.add_variable("temperature", "f32", ["x"], [1.0, 2.0, 3.0, 4.0, 5.0])
+/// raw = w.write()
+/// ```
 #[pyclass]
 pub struct PyNetcdfWriter {
     group: NetcdfGroup,
