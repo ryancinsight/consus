@@ -97,6 +97,35 @@ pub fn decode_each<T: EndianScalar>(
     Some(())
 }
 
+/// Decodes every `T` in `bytes` in `byte_order` and appends `map` of each to
+/// `out`: [`decode_each`] for the common case of collecting into a vector.
+///
+/// `out` is extended from an exact-length iterator, so the elements are
+/// written into reserved capacity with no per-element capacity check. Returns
+/// `None`, leaving `out` unchanged, when `bytes.len()` is not a whole number
+/// of scalars.
+#[cfg(feature = "alloc")]
+pub fn decode_extend<T: EndianScalar, U>(
+    bytes: &[u8],
+    byte_order: ByteOrder,
+    out: &mut alloc::vec::Vec<U>,
+    mut map: impl FnMut(T) -> U,
+) -> Option<()> {
+    if !bytes.len().is_multiple_of(T::BYTE_WIDTH) {
+        return None;
+    }
+    let chunks = bytes.chunks_exact(T::BYTE_WIDTH);
+    match byte_order {
+        ByteOrder::LittleEndian => {
+            out.extend(chunks.map(|chunk| map(scalar(chunk, ByteOrder::LittleEndian))));
+        }
+        ByteOrder::BigEndian => {
+            out.extend(chunks.map(|chunk| map(scalar(chunk, ByteOrder::BigEndian))));
+        }
+    }
+    Some(())
+}
+
 /// Appends every value to `out` as `T` in `byte_order`: the bulk form of
 /// [`write_integer`]. The byte order is resolved once, outside the loop.
 #[cfg(feature = "alloc")]
