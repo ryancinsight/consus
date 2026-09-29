@@ -233,3 +233,17 @@ so the compiled API surface is unchanged.
 - Status: todo; priority: structure; integrator: pi-session; updated: 2026-09-24. Claimed for delivery in this change's PR.
 - Scope: `crates/consus-hdf5/src/heap/fractal.rs` (1 218 lines) becomes a `heap/fractal/` tree: header (252), ids (129), read (281), huge (164), tests (365); bodies verbatim.
 - Acceptance: every emitted file below the 500-line target; clippy `-D warnings` and nextest pass; the `heap::fractal::*` public surface unchanged.
+
+<a id="CONSUS-MACOS-PYO3-LINK-001"></a>
+## CONSUS-MACOS-PYO3-LINK-001 — macOS `cdylib` link fails on undefined Python symbols [patch]
+- Status: todo; priority: correctness; updated: 2026-09-29. Red `main`: CI push run `36505452839` fails `Test (macos-latest)` while the same-SHA pull-request run (`00:53:48Z`, Ubuntu-only) and the preceding push run (`23:08:00Z`) are green.
+- Scope: `crates/consus-python` linkage on `macos-latest` under `cargo nextest run --workspace --locked --all-features`. Nothing else fails; Ubuntu, Windows, Documentation, and pages lanes are green on the same head (`ea7a36ed`).
+- Evidence (all read from the failing log, run `36505452839`):
+  - `rustc` linking `target/debug/deps/libconsus.dylib` (which is `consus-python`'s output: `[lib] name = "consus", crate-type = ["cdylib"]`) dies with `ld: symbol(s) not found for architecture arm64`, naming `_PyBaseObject_Type`, `_PyBool_Type`, and other `pyo3_ffi` references from `consus.consus.*.rcgu.o` and `libpyo3-*.rlib`.
+  - The CI matrix (`ci.yml:113`) runs Ubuntu-only on `pull_request` and Ubuntu+Windows+macOS on `push`, so this lane merged untested: no PR run ever links the macOS `cdylib`.
+  - `cargo tree -p consus-python --all-features -e features` (checked locally) shows `pyo3 feature "extension-module"` unified, so the manifest declares the right feature; whether `pyo3-ffi`'s build script emitted `-undefined dynamic_lookup` for this link is unproven because `rustc` omits arguments in its note (`some arguments are omitted`), and a log grep for the flag is therefore unsound either way.
+  - Same-SHA green-then-red with the `ci/consus-cache-keys-per-job` change (#123) in between is consistent with a latent link defect unmasked by a cold cache: the previous green run likely reused a cached `dylib`, the fresh link fails. This is the exposure event, not necessarily the cause.
+  - Interpreter is pinned (`setup-python` CPython 3.13.15), so a 3.14 surprise is excluded.
+- Acceptance: `Test (macos-latest)` green on a push run; no change to the Ubuntu/Windows lanes' behavior; the `consus-python` public surface unchanged.
+- Next: reproduce the feature set locally with `cargo tree -e features` on macOS if available, else iterate in CI on (1) whether `-undefined dynamic_lookup` reaches the failing link (print the full link line with `--verbose`), then (2) the minimal linkage correction (pyo3 version, feature, or explicit link arg) that makes the cold-cache link pass. Do not paper it over with a warmer cache.
+- Risk: the defect is macOS-only and not reproducible on the usual Linux dev host, so every hypothesis costs a hosted CI round trip; keep each round to one falsifiable change.
