@@ -47,7 +47,7 @@ pub trait EndianScalar: sealed::Sealed + Sized {
 
 /// Widest [`EndianScalar::BYTE_WIDTH`]: every sealed scalar fits a buffer of
 /// this size.
-#[cfg(feature = "std")]
+#[cfg(any(feature = "std", feature = "alloc"))]
 const MAX_SCALAR_WIDTH: usize = 8;
 
 /// Reads one fixed-width scalar without allocation or runtime type dispatch.
@@ -70,6 +70,64 @@ pub fn write_integer<T: EndianScalar>(
     byte_order: ByteOrder,
 ) -> Option<()> {
     value.to_bytes(out.get_mut(..T::BYTE_WIDTH)?, byte_order)
+}
+
+/// Decodes every `T` in `bytes` in `byte_order`, handing each to `sink` in
+/// order: the bulk form of [`read_integer`] for sample buffers.
+///
+/// The byte order is resolved once for the whole buffer, outside the loop.
+/// Returns `None`, calling `sink` for nothing, when `bytes.len()` is not a
+/// whole number of scalars; a trailing partial scalar is never dropped
+/// silently.
+pub fn decode_each<T: EndianScalar>(
+    bytes: &[u8],
+    byte_order: ByteOrder,
+    mut sink: impl FnMut(T),
+) -> Option<()> {
+    if !bytes.len().is_multiple_of(T::BYTE_WIDTH) {
+        return None;
+    }
+    let chunks = bytes.chunks_exact(T::BYTE_WIDTH);
+    match byte_order {
+        ByteOrder::LittleEndian => {
+            chunks.for_each(|chunk| sink(scalar(chunk, ByteOrder::LittleEndian)))
+        }
+        ByteOrder::BigEndian => chunks.for_each(|chunk| sink(scalar(chunk, ByteOrder::BigEndian))),
+    }
+    Some(())
+}
+
+/// Appends every value to `out` as `T` in `byte_order`: the bulk form of
+/// [`write_integer`]. The byte order is resolved once, outside the loop.
+#[cfg(feature = "alloc")]
+pub fn extend_encoded<T: EndianScalar>(
+    out: &mut alloc::vec::Vec<u8>,
+    values: impl IntoIterator<Item = T>,
+    byte_order: ByteOrder,
+) {
+    let mut encode = |value: T, order: ByteOrder| {
+        let mut buf = [0_u8; MAX_SCALAR_WIDTH];
+        let bytes = &mut buf[..T::BYTE_WIDTH];
+        value
+            .to_bytes(bytes, order)
+            .expect("invariant: the buffer holds exactly BYTE_WIDTH bytes");
+        out.extend_from_slice(bytes);
+    };
+    match byte_order {
+        ByteOrder::LittleEndian => values
+            .into_iter()
+            .for_each(|v| encode(v, ByteOrder::LittleEndian)),
+        ByteOrder::BigEndian => values
+            .into_iter()
+            .for_each(|v| encode(v, ByteOrder::BigEndian)),
+    }
+}
+
+/// One scalar from an exact-width chunk, with the byte order a constant at
+/// each call site so the per-element conversion carries no branch on it.
+#[inline(always)]
+fn scalar<T: EndianScalar>(chunk: &[u8], byte_order: ByteOrder) -> T {
+    T::from_bytes(chunk, byte_order).expect("invariant: chunks_exact yields BYTE_WIDTH bytes")
 }
 
 /// Reads one fixed-width scalar from a stream.
