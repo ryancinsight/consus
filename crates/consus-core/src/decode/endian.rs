@@ -1,4 +1,4 @@
-//! Zero-copy fixed-width scalar reads and multi-byte integer read/write.
+//! Zero-copy fixed-width scalar reads and writes, and multi-byte integer read/write.
 //!
 //! This module is the single home for fixed-width byte-order decoding in
 //! Consus: the [`EndianScalar`] scalars, the arbitrary-width integer readers
@@ -37,7 +37,18 @@ pub trait EndianScalar: sealed::Sealed + Sized {
 
     /// Converts an exact-width byte slice using the requested byte order.
     fn from_bytes(bytes: &[u8], byte_order: ByteOrder) -> Option<Self>;
+
+    /// Writes the scalar into an exact-width byte slice in `byte_order`.
+    ///
+    /// Returns `None`, writing nothing, when `out` is not exactly
+    /// [`Self::BYTE_WIDTH`] bytes long.
+    fn to_bytes(self, out: &mut [u8], byte_order: ByteOrder) -> Option<()>;
 }
+
+/// Widest [`EndianScalar::BYTE_WIDTH`]: every sealed scalar fits a buffer of
+/// this size.
+#[cfg(feature = "std")]
+const MAX_SCALAR_WIDTH: usize = 8;
 
 /// Reads one fixed-width scalar without allocation or runtime type dispatch.
 ///
@@ -46,6 +57,56 @@ pub trait EndianScalar: sealed::Sealed + Sized {
 /// intermediate buffer is allocated.
 pub fn read_integer<T: EndianScalar>(bytes: &[u8], byte_order: ByteOrder) -> Option<T> {
     T::from_bytes(bytes.get(..T::BYTE_WIDTH)?, byte_order)
+}
+
+/// Writes one fixed-width scalar into the start of `out`, the inverse of
+/// [`read_integer`].
+///
+/// Returns `None`, writing nothing, when `out` is shorter than the scalar's
+/// compile-time width. Bytes past that width are left unchanged.
+pub fn write_integer<T: EndianScalar>(
+    out: &mut [u8],
+    value: T,
+    byte_order: ByteOrder,
+) -> Option<()> {
+    value.to_bytes(out.get_mut(..T::BYTE_WIDTH)?, byte_order)
+}
+
+/// Reads one fixed-width scalar from a stream.
+///
+/// # Errors
+///
+/// Returns the reader's error, including `UnexpectedEof` when the stream
+/// ends before the scalar's width.
+#[cfg(feature = "std")]
+pub fn read_from<T: EndianScalar, R: std::io::Read + ?Sized>(
+    reader: &mut R,
+    byte_order: ByteOrder,
+) -> std::io::Result<T> {
+    let mut buf = [0_u8; MAX_SCALAR_WIDTH];
+    let bytes = &mut buf[..T::BYTE_WIDTH];
+    reader.read_exact(bytes)?;
+    Ok(T::from_bytes(bytes, byte_order)
+        .expect("invariant: the buffer holds exactly BYTE_WIDTH bytes"))
+}
+
+/// Writes one fixed-width scalar to a stream.
+///
+/// # Errors
+///
+/// Returns the writer's error.
+#[cfg(feature = "std")]
+pub fn write_to<T: EndianScalar, W: std::io::Write + ?Sized>(
+    writer: &mut W,
+    value: T,
+    byte_order: ByteOrder,
+) -> std::io::Result<()> {
+    let mut buf = [0_u8; MAX_SCALAR_WIDTH];
+    let bytes = &mut buf[..T::BYTE_WIDTH];
+    value
+        .to_bytes(bytes, byte_order)
+        .expect("invariant: the buffer holds exactly BYTE_WIDTH bytes");
+    writer.write_all(bytes)
 }
 
 /// Reads an unsigned integer of `width` bytes (`0..=8`) with `byte_order`.
@@ -238,6 +299,12 @@ impl EndianScalar for u8 {
         let bytes: [u8; Self::BYTE_WIDTH] = bytes.try_into().ok()?;
         Some(bytes[0])
     }
+
+    fn to_bytes(self, out: &mut [u8], _byte_order: ByteOrder) -> Option<()> {
+        let out: &mut [u8; Self::BYTE_WIDTH] = out.try_into().ok()?;
+        out[0] = self;
+        Some(())
+    }
 }
 
 impl EndianScalar for i8 {
@@ -246,6 +313,12 @@ impl EndianScalar for i8 {
     fn from_bytes(bytes: &[u8], _byte_order: ByteOrder) -> Option<Self> {
         let bytes: [u8; Self::BYTE_WIDTH] = bytes.try_into().ok()?;
         Some(bytes[0] as i8)
+    }
+
+    fn to_bytes(self, out: &mut [u8], _byte_order: ByteOrder) -> Option<()> {
+        let out: &mut [u8; Self::BYTE_WIDTH] = out.try_into().ok()?;
+        *out = self.to_ne_bytes();
+        Some(())
     }
 }
 
@@ -261,6 +334,15 @@ macro_rules! impl_endian_scalar {
                         ByteOrder::LittleEndian => Self::from_le_bytes(bytes),
                         ByteOrder::BigEndian => Self::from_be_bytes(bytes),
                     })
+                }
+
+                fn to_bytes(self, out: &mut [u8], byte_order: ByteOrder) -> Option<()> {
+                    let out: &mut [u8; Self::BYTE_WIDTH] = out.try_into().ok()?;
+                    *out = match byte_order {
+                        ByteOrder::LittleEndian => self.to_le_bytes(),
+                        ByteOrder::BigEndian => self.to_be_bytes(),
+                    };
+                    Some(())
                 }
             }
         )+
@@ -279,114 +361,4 @@ impl_endian_scalar!(
 );
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        EndianScalar, read_int_width, read_integer, read_uint_arbitrary, read_uint_width,
-        sign_extend,
-    };
-    use crate::types::datatype::ByteOrder;
-
-    fn assert_round_trip<T>(little: &[u8], big: &[u8], expected: T)
-    where
-        T: EndianScalar + Copy + PartialEq + core::fmt::Debug,
-    {
-        assert_eq!(
-            read_integer(little, ByteOrder::LittleEndian),
-            Some(expected)
-        );
-        assert_eq!(read_integer(big, ByteOrder::BigEndian), Some(expected));
-        assert_eq!(read_integer::<T>(&[], ByteOrder::LittleEndian), None);
-    }
-
-    #[test]
-    fn reads_all_supported_scalar_widths_and_orders() {
-        assert_round_trip(&[0x34, 0x12], &[0x12, 0x34], 0x1234_u16);
-        assert_round_trip(&[0xCC, 0xED], &[0xED, 0xCC], -4_660_i16);
-        assert_round_trip(
-            &[0x78, 0x56, 0x34, 0x12],
-            &[0x12, 0x34, 0x56, 0x78],
-            0x1234_5678_u32,
-        );
-        assert_round_trip(
-            &[0x88, 0xA9, 0xCB, 0xED],
-            &[0xED, 0xCB, 0xA9, 0x88],
-            -305_419_896_i32,
-        );
-        assert_round_trip(
-            &[0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01],
-            &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08],
-            0x0102_0304_0506_0708_u64,
-        );
-        assert_round_trip(
-            &[0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF],
-            &[0xFF, 0xFE, 0xFD, 0xFC, 0xFB, 0xFA, 0xF9, 0xF8],
-            -283_686_952_306_184_i64,
-        );
-    }
-
-    #[test]
-    fn reads_narrow_scalars_and_floats() {
-        assert_eq!(
-            read_integer::<u8>(&[0xAB], ByteOrder::LittleEndian),
-            Some(0xAB)
-        );
-        assert_eq!(
-            read_integer::<i8>(&[0xFF], ByteOrder::BigEndian),
-            Some(-1_i8)
-        );
-        assert_round_trip(
-            &[0x00, 0x00, 0xC0, 0x3F],
-            &[0x3F, 0xC0, 0x00, 0x00],
-            1.5_f32,
-        );
-        assert_round_trip(
-            &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x40],
-            &[0x40, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-            2.5_f64,
-        );
-    }
-
-    #[test]
-    fn read_uint_width_covers_arbitrary_widths() {
-        let data = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
-        assert_eq!(read_uint_width(&data, 0, ByteOrder::LittleEndian), Some(0));
-        assert_eq!(
-            read_uint_width(&data, 3, ByteOrder::LittleEndian),
-            Some(0x0003_0201)
-        );
-        assert_eq!(
-            read_uint_width(&data, 3, ByteOrder::BigEndian),
-            Some(0x0001_0203)
-        );
-        assert_eq!(
-            read_uint_width(&data, 8, ByteOrder::LittleEndian),
-            Some(0x0807_0605_0403_0201)
-        );
-        assert_eq!(read_uint_width(&data, 9, ByteOrder::LittleEndian), None);
-        assert_eq!(
-            read_uint_width(&data[..2], 4, ByteOrder::LittleEndian),
-            None
-        );
-        assert_eq!(
-            read_uint_arbitrary::<2>(&data, ByteOrder::LittleEndian),
-            0x0201
-        );
-    }
-
-    #[test]
-    fn read_int_width_sign_extends() {
-        assert_eq!(
-            read_int_width(&[0xFF], 1, ByteOrder::LittleEndian),
-            Some(-1)
-        );
-        assert_eq!(
-            read_int_width(&[0xFE, 0xFF], 2, ByteOrder::LittleEndian),
-            Some(-2)
-        );
-        assert_eq!(
-            read_int_width(&[0x00, 0x80], 2, ByteOrder::LittleEndian),
-            Some(-32768)
-        );
-        assert_eq!(sign_extend(0, 2), 0);
-    }
-}
+mod tests;
