@@ -23,6 +23,8 @@ fn main() {
     }
     // `-undefined dynamic_lookup` defers Python symbol resolution to load
     // time, which is the defining property of an extension module.
-    println!("cargo:rustc-link-arg-bins=-Wl,-undefined,dynamic_lookup");
-    println!("cargo:rustc-link-arg-cdylib=-Wl,-undefined,dynamic_lookup");
+    // `rustc-cdylib-link-arg` targets exactly this crate's cdylib artifact;
+    // the `rustc-link-arg-*` family applies to bins and is rejected for a
+    // package that declares none.
+    println!("cargo:rustc-cdylib-link-arg=-Wl,-undefined,dynamic_lookup");
 }
