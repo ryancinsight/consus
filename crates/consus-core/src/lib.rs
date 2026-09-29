@@ -68,8 +68,6 @@ pub use parse::ParseBudget;
 // Re-export byte-decoding helpers at the crate root for convenience.
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "alloc")]
-pub use decode::extend_encoded;
 pub use decode::{
     EndianScalar, decode_each, read_int_width, read_integer, read_length, read_offset,
     read_uint_arbitrary, read_uint_be, read_uint_le, read_uint_width, sign_extend, swap_bytes,
@@ -77,6 +75,8 @@ pub use decode::{
 };
 #[cfg(feature = "alloc")]
 pub use decode::{decode_bytes_to_f64, decode_to_f64, decode_to_u64};
+#[cfg(feature = "alloc")]
+pub use decode::{decode_extend, extend_encoded};
 #[cfg(feature = "std")]
 pub use decode::{read_from, write_to};
 

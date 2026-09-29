@@ -42,13 +42,13 @@ use super::types::datatype::Datatype;
 
 mod endian;
 
-#[cfg(feature = "alloc")]
-pub use endian::extend_encoded;
 pub use endian::{
     EndianScalar, decode_each, read_int_width, read_integer, read_length, read_offset,
     read_uint_arbitrary, read_uint_be, read_uint_le, read_uint_width, sign_extend, swap_bytes,
     write_integer, write_uint_be, write_uint_le,
 };
+#[cfg(feature = "alloc")]
+pub use endian::{decode_extend, extend_encoded};
 #[cfg(feature = "std")]
 pub use endian::{read_from, write_to};
 
@@ -63,7 +63,7 @@ fn decode_mapped<T: EndianScalar, U>(
     mut map: impl FnMut(T) -> U,
 ) -> Vec<U> {
     let mut out = Vec::with_capacity(bytes.len() / T::BYTE_WIDTH);
-    decode_each(bytes, byte_order, |value: T| out.push(map(value)))
+    decode_extend(bytes, byte_order, &mut out, |value: T| map(value))
         .expect("invariant: callers reject lengths that are not a whole number of elements");
     out
 }

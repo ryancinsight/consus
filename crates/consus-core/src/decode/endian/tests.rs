@@ -253,3 +253,28 @@ fn extend_encoded_round_trips_through_decode_each() {
         assert_eq!(back, values);
     }
 }
+
+#[cfg(feature = "alloc")]
+#[test]
+fn decode_extend_matches_decode_each_and_keeps_out_on_misalignment() {
+    use super::decode_extend;
+
+    let bytes: Vec<u8> = (0_u8..=63).collect();
+    for order in [ByteOrder::LittleEndian, ByteOrder::BigEndian] {
+        let mut each = Vec::new();
+        decode_each::<i32>(&bytes, order, |value| each.push(i64::from(value) * 3))
+            .expect("whole scalars");
+        let mut extended = vec![-1_i64];
+        decode_extend::<i32, i64>(&bytes, order, &mut extended, |value| i64::from(value) * 3)
+            .expect("whole scalars");
+        assert_eq!(extended[0], -1, "existing elements are kept");
+        assert_eq!(&extended[1..], each.as_slice());
+
+        let mut untouched = vec![7_i64];
+        assert_eq!(
+            decode_extend::<i32, i64>(&bytes[..5], order, &mut untouched, i64::from),
+            None
+        );
+        assert_eq!(untouched, [7]);
+    }
+}
