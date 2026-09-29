@@ -42,13 +42,31 @@ use super::types::datatype::Datatype;
 
 mod endian;
 
+#[cfg(feature = "alloc")]
+pub use endian::extend_encoded;
 pub use endian::{
-    EndianScalar, read_int_width, read_integer, read_length, read_offset, read_uint_arbitrary,
-    read_uint_be, read_uint_le, read_uint_width, sign_extend, swap_bytes, write_integer,
-    write_uint_be, write_uint_le,
+    EndianScalar, decode_each, read_int_width, read_integer, read_length, read_offset,
+    read_uint_arbitrary, read_uint_be, read_uint_le, read_uint_width, sign_extend, swap_bytes,
+    write_integer, write_uint_be, write_uint_le,
 };
 #[cfg(feature = "std")]
 pub use endian::{read_from, write_to};
+
+/// Decodes every `T` in `bytes` in `byte_order`, mapping each through `map`.
+///
+/// Callers check the length is a whole number of elements first, so the
+/// bulk decode cannot reject it.
+#[cfg(feature = "alloc")]
+fn decode_mapped<T: EndianScalar, U>(
+    bytes: &[u8],
+    byte_order: ByteOrder,
+    mut map: impl FnMut(T) -> U,
+) -> Vec<U> {
+    let mut out = Vec::with_capacity(bytes.len() / T::BYTE_WIDTH);
+    decode_each(bytes, byte_order, |value: T| out.push(map(value)))
+        .expect("invariant: callers reject lengths that are not a whole number of elements");
+    out
+}
 
 #[cfg(feature = "alloc")]
 macro_rules! decode_integer_bytes_as {
@@ -57,42 +75,12 @@ macro_rules! decode_integer_bytes_as {
         match ($bits, $signed) {
             (8, false) => Ok($bytes.iter().map(|&v| v as $output).collect()),
             (8, true) => Ok($bytes.iter().map(|&v| (v as i8) as $output).collect()),
-            (16, false) => Ok($bytes
-                .chunks_exact(2)
-                .map(|c| {
-                    read_integer::<u16>(c, bo).expect("chunks_exact supplies a scalar") as $output
-                })
-                .collect()),
-            (16, true) => Ok($bytes
-                .chunks_exact(2)
-                .map(|c| {
-                    read_integer::<i16>(c, bo).expect("chunks_exact supplies a scalar") as $output
-                })
-                .collect()),
-            (32, false) => Ok($bytes
-                .chunks_exact(4)
-                .map(|c| {
-                    read_integer::<u32>(c, bo).expect("chunks_exact supplies a scalar") as $output
-                })
-                .collect()),
-            (32, true) => Ok($bytes
-                .chunks_exact(4)
-                .map(|c| {
-                    read_integer::<i32>(c, bo).expect("chunks_exact supplies a scalar") as $output
-                })
-                .collect()),
-            (64, false) => Ok($bytes
-                .chunks_exact(8)
-                .map(|c| {
-                    read_integer::<u64>(c, bo).expect("chunks_exact supplies a scalar") as $output
-                })
-                .collect()),
-            (64, true) => Ok($bytes
-                .chunks_exact(8)
-                .map(|c| {
-                    read_integer::<i64>(c, bo).expect("chunks_exact supplies a scalar") as $output
-                })
-                .collect()),
+            (16, false) => Ok(decode_mapped($bytes, bo, |v: u16| v as $output)),
+            (16, true) => Ok(decode_mapped($bytes, bo, |v: i16| v as $output)),
+            (32, false) => Ok(decode_mapped($bytes, bo, |v: u32| v as $output)),
+            (32, true) => Ok(decode_mapped($bytes, bo, |v: i32| v as $output)),
+            (64, false) => Ok(decode_mapped($bytes, bo, |v: u64| v as $output)),
+            (64, true) => Ok(decode_mapped($bytes, bo, |v: i64| v as $output)),
             (other, _) => Err(Error::UnsupportedFeature {
                 feature: alloc::format!("{}: {}-bit integer", $context, other),
             }),
@@ -126,27 +114,8 @@ pub fn decode_to_f64(raw: &[u8], dtype: &Datatype) -> Result<Vec<f64>, Error> {
     }
     match dtype {
         Datatype::Float { bits, byte_order } => match bits.get() {
-            64 => Ok(raw
-                .chunks_exact(8)
-                .map(|c| {
-                    let arr = [c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]];
-                    match byte_order {
-                        ByteOrder::LittleEndian => f64::from_le_bytes(arr),
-                        ByteOrder::BigEndian => f64::from_be_bytes(arr),
-                    }
-                })
-                .collect()),
-            32 => Ok(raw
-                .chunks_exact(4)
-                .map(|c| {
-                    let arr = [c[0], c[1], c[2], c[3]];
-                    let v32 = match byte_order {
-                        ByteOrder::LittleEndian => f32::from_le_bytes(arr),
-                        ByteOrder::BigEndian => f32::from_be_bytes(arr),
-                    };
-                    v32 as f64
-                })
-                .collect()),
+            64 => Ok(decode_mapped(raw, *byte_order, |v: f64| v)),
+            32 => Ok(decode_mapped(raw, *byte_order, |v: f32| f64::from(v))),
             _ => Err(Error::UnsupportedFeature {
                 feature: alloc::format!("decode_to_f64: {}-bit float", bits),
             }),

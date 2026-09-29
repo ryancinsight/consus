@@ -1,8 +1,8 @@
 //! Tests for the fixed-width scalar reads and writes.
 
 use super::{
-    EndianScalar, read_int_width, read_integer, read_uint_arbitrary, read_uint_width, sign_extend,
-    write_integer,
+    EndianScalar, decode_each, read_int_width, read_integer, read_uint_arbitrary, read_uint_width,
+    sign_extend, write_integer,
 };
 use crate::types::datatype::ByteOrder;
 
@@ -188,4 +188,68 @@ fn streams_read_back_what_they_write() {
     let end =
         read_from::<u8, _>(&mut reader, ByteOrder::BigEndian).expect_err("the stream is exhausted");
     assert_eq!(end.kind(), std::io::ErrorKind::UnexpectedEof);
+}
+
+fn bulk_matches_scalar_reads<T>(bytes: &[u8])
+where
+    T: EndianScalar + Copy + core::fmt::Debug,
+{
+    let width = T::BYTE_WIDTH;
+    for order in [ByteOrder::LittleEndian, ByteOrder::BigEndian] {
+        let whole = &bytes[..bytes.len() - bytes.len() % width];
+        let mut decoded = Vec::new();
+        assert_eq!(
+            decode_each::<T>(whole, order, |value| decoded.push(value)),
+            Some(())
+        );
+        assert_eq!(decoded.len(), whole.len() / width);
+        for (index, value) in decoded.iter().enumerate() {
+            let expected = read_integer::<T>(&whole[index * width..], order).expect("in range");
+            // Compare bit patterns so NaN payloads compare exactly.
+            let mut got_bytes = [0_u8; 8];
+            let mut want_bytes = [0_u8; 8];
+            super::write_integer(&mut got_bytes, *value, order).expect("fits");
+            super::write_integer(&mut want_bytes, expected, order).expect("fits");
+            assert_eq!(got_bytes, want_bytes);
+        }
+        if width > 1 {
+            let ragged = &bytes[..=width];
+            let mut calls = 0;
+            assert_eq!(decode_each::<T>(ragged, order, |_| calls += 1), None);
+            assert_eq!(calls, 0);
+        }
+    }
+}
+
+proptest::proptest! {
+    #[test]
+    fn decode_each_equals_scalar_reads(bytes in proptest::collection::vec(proptest::num::u8::ANY, 17..256)) {
+        bulk_matches_scalar_reads::<u8>(&bytes);
+        bulk_matches_scalar_reads::<i8>(&bytes);
+        bulk_matches_scalar_reads::<u16>(&bytes);
+        bulk_matches_scalar_reads::<i16>(&bytes);
+        bulk_matches_scalar_reads::<u32>(&bytes);
+        bulk_matches_scalar_reads::<i32>(&bytes);
+        bulk_matches_scalar_reads::<u64>(&bytes);
+        bulk_matches_scalar_reads::<i64>(&bytes);
+        bulk_matches_scalar_reads::<f32>(&bytes);
+        bulk_matches_scalar_reads::<f64>(&bytes);
+    }
+}
+
+#[cfg(feature = "alloc")]
+#[test]
+fn extend_encoded_round_trips_through_decode_each() {
+    use super::extend_encoded;
+
+    let values = [0.0_f32, -1.5, f32::INFINITY, 3.25e-7];
+    for order in [ByteOrder::LittleEndian, ByteOrder::BigEndian] {
+        let mut bytes = vec![0xEE];
+        extend_encoded(&mut bytes, values, order);
+        assert_eq!(bytes.len(), 1 + 4 * values.len());
+        assert_eq!(bytes[0], 0xEE, "existing bytes are kept");
+        let mut back = Vec::new();
+        decode_each::<f32>(&bytes[1..], order, |value| back.push(value)).expect("whole scalars");
+        assert_eq!(back, values);
+    }
 }
