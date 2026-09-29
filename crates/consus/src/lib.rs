@@ -116,7 +116,7 @@ pub use highlevel::{
 
 #[cfg(feature = "alloc")]
 pub use sync::{
-    ByteView as ZeroCopySlice, IoRange, RangeBytes, TypedByteView, ZeroCopyRead, par_read_ranges,
+    ByteView as ZeroCopySlice, IoRange, TypedByteView, ZeroCopyRead, par_read_ranges,
     partition_range, read_ranges, read_typed, selection_byte_len, source_len, write_ranges,
 };
 

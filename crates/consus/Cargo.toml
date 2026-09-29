@@ -70,14 +70,6 @@ consus-fits = { workspace = true, optional = true }
 moirai = { workspace = true }
 themis = { workspace = true, optional = true }
 
-[dev-dependencies]
-criterion = { workspace = true }
-
-[[bench]]
-name = "range_reads"
-harness = false
-required-features = ["std"]
-
 [package.metadata.docs.rs]
 all-features = true
 
