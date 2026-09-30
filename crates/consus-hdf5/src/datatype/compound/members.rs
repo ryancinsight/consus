@@ -1,7 +1,7 @@
 //! Compound datatype member parsing across layout versions.
 
-use super::{parse_datatype_inner, read_uint_le};
-use alloc::{format, string::String, vec::Vec};
+use super::{names::parse_member_name, parse_datatype_inner, read_uint_le};
+use alloc::{format, vec::Vec};
 use consus_core::{CompoundField, Datatype, Error, ParseBudget, Result};
 
 /// Smallest number of property bytes one compound member can occupy: a name
@@ -87,30 +87,7 @@ fn parse_compound_member(
     budget: &ParseBudget,
     depth: u16,
 ) -> Result<(CompoundField, usize)> {
-    let mut pos: usize = 0;
-
-    // -- Name (null-terminated) ----------------------------------------------
-    let name_start = pos;
-    while pos < data.len() && data[pos] != 0 {
-        pos += 1;
-    }
-    if pos >= data.len() {
-        return Err(Error::InvalidFormat {
-            message: format!("unterminated compound member name at index {member_index}"),
-        });
-    }
-    let name = core::str::from_utf8(&data[name_start..pos])
-        .map_err(|_| Error::InvalidFormat {
-            message: format!("compound member {member_index} name is not valid UTF-8"),
-        })
-        .map(String::from)?;
-    pos += 1; // skip null terminator
-
-    // For version 1/2: name field (including null) is padded to 8-byte boundary.
-    if version < 3 {
-        let name_field_len = pos - name_start;
-        pos = name_start + ((name_field_len + 7) & !7);
-    }
+    let (name, mut pos) = parse_member_name(data, 0, version, "compound member", member_index)?;
 
     // -- Byte offset of member within the compound ---------------------------
     let member_offset = if version < 3 {
