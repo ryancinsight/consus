@@ -419,6 +419,7 @@ dependencies = [
  "consus-parquet",
  "consus-zarr",
  "pyo3",
+ "pyo3-build-config",
  "serde_json",
 ]
 

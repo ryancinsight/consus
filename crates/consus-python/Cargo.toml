@@ -37,5 +37,10 @@ consus-hdmf = { workspace = true, features = ["std"] }
 pyo3 = { workspace = true, features = ["extension-module"] }
 serde_json = { workspace = true }
 
+[build-dependencies]
+# Emits the `extension-module` link arguments PyO3 leaves to the extension
+# crate; see build.rs.
+pyo3-build-config = { workspace = true }
+
 [lints]
 workspace = true

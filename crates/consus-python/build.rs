@@ -1,30 +1,30 @@
-//! macOS link behavior for the `consus` Python extension cdylib.
+//! Link behavior for the `consus` Python extension cdylib.
 //!
-//! The cdylib is a Python extension module: it must never link a Python
+//! The cdylib is a Python extension module: it must not link a Python
 //! interpreter library, because the interpreter that loads it supplies the
-//! Python symbols at load time. On Apple's linker that contract is spelled
-//! `-undefined dynamic_lookup`; without it, the link intermittently fails
-//! with undefined `_PyBaseObject_Type` (observed as a flake on the macOS CI
-//! runner: identical commits link on one run and fail on the next, because
-//! the exact link behavior ended up dependent on pyo3's feature resolution
-//! and runner environment rather than being pinned).
+//! Python symbols. PyO3 does not emit that contract's linker arguments for
+//! us — `pyo3-ffi`'s build script runs `emit_link_config` only when
+//! `is_linking_libpython_for_target` is true, and that predicate ends in
+//! `|| !is_extension_module()`, so it is false for exactly this case
+//! (`extension-module` on Darwin). `pyo3`'s own build script emits only
+//! cfgs. PyO3 documents the remaining step as the extension crate's job:
+//! `pyo3_build_config::add_extension_module_link_args`, "should be called
+//! from a build script".
 //!
-//! Emitting the flag from here pins it for every build path that links this
-//! cdylib: `cargo test --workspace`, nextest, maturin wheel builds, and
-//! release packaging. It is emitted only for Apple targets and only for the
-//! final cdylib link of this crate, so dependency builds and other platforms
-//! are untouched.
+//! Calling it covers Apple (`-undefined dynamic_lookup`) and
+//! `wasm32-unknown-emscripten` (`-sSIDE_MODULE=2 -sWASM_BIGINT`), and is a
+//! no-op everywhere else, so the target condition stays upstream's rather
+//! than ours. The arguments reach the final cdylib link of this crate only.
+//!
+//! Why this is load-bearing rather than belt-and-braces: the failure it
+//! fixes is deterministic, not a flake. `cargo test` performs the cdylib's
+//! final link only when the lib target is built with `cdylib` alongside
+//! another crate type; with `cdylib` alone it builds the test harness and
+//! never links the dylib, which is why the defect sat latent in this crate
+//! until `rlib` was added to `crate-type` for the doctest gate
+//! (`b392c17`). From that commit on, every macOS push run failed
+//! `Test (macos-latest)` on undefined `_PyBaseObject_Type`.
 
 fn main() {
-    println!("cargo:rerun-if-changed=build.rs");
-    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    if target_os != "macos" {
-        return;
-    }
-    // `-undefined dynamic_lookup` defers Python symbol resolution to load
-    // time, which is the defining property of an extension module.
-    // `rustc-cdylib-link-arg` targets exactly this crate's cdylib artifact;
-    // the `rustc-link-arg-*` family applies to bins and is rejected for a
-    // package that declares none.
-    println!("cargo:rustc-cdylib-link-arg=-Wl,-undefined,dynamic_lookup");
+    pyo3_build_config::add_extension_module_link_args();
 }
