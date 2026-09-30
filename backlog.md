@@ -249,6 +249,17 @@ so the compiled API surface is unchanged.
 - Acceptance: every emitted file below the 500-line target; clippy `-D warnings` and nextest pass; the `heap::fractal::*` public surface unchanged.
 - Verification 2026-09-30 at `b995bf24`: `fractal/` holds `header.rs` (238), `ids.rs` (127), `read.rs` (280), `huge.rs` (153), `tests.rs` (362) and `mod.rs` (79) — six files, the largest 362 lines, none reaching the 500-line target. The lint and test half is the green main push run `36727023838`.
 
+<a id="CONSUS-COMPOUND-NAME-PARSER-001"></a>
+## CONSUS-COMPOUND-NAME-PARSER-001 — Share compound and enum member name parsing [patch]
+
+- Status: done; priority: structure; integrator: root/consus_member_name_parser; updated: 2026-09-30. Delivery: [PR 121](https://github.com/ryancinsight/consus/pull/121), merge `8652f6cf055d1bd82fa6c6ba900d610ae685345a` (`bb33824`).
+- Scope: `crates/consus-hdf5/src/datatype/compound/{members,classes}.rs`, the new `names.rs`, and this item.
+- Problem: both call sites scanned a null-terminated name, rejected an unterminated one, decoded UTF-8, skipped the terminator, and padded the field to an 8-byte boundary for versions 1 and 2 — the same logic byte for byte, differing only in the diagnostic noun and the index variable's name.
+- Acceptance: one version-aware parser serves both classes; the existing diagnostics are unchanged; clippy `-D warnings` and nextest pass; the `datatype::compound::*` surface unchanged.
+- Verification 2026-09-30 at the head `bb33824`: formatting clean; `cargo clippy --locked -p consus-hdf5 --all-targets --all-features -- -D warnings` clean; `cargo nextest run --locked -p consus-hdf5 --all-features` passes 443/443. Full-matrix dispatch `36727238921` green on Ubuntu, macOS and Windows. The parser's three unit tests pin empty and non-ASCII names, the version-dependent padding, and both diagnostics verbatim.
+- Change beyond the consolidation: the padding arithmetic is now overflow-checked (`checked_add` on the field length and on the start offset), where both call sites previously computed it unchecked.
+- Process: this item was tracked only in its PR body until now; the board carried no entry for it, so the work sat unpublished behind a draft PR while the duplication stayed on `main`.
+
 <a id="CONSUS-MACOS-PYO3-LINK-001"></a>
 ## CONSUS-MACOS-PYO3-LINK-001 — macOS `cdylib` link fails on undefined Python symbols [patch]
 - Status: done; priority: correctness; updated: 2026-09-29. Delivery: [PR 130](https://github.com/ryancinsight/consus/pull/130), merge `12461103` (the link argument); [PR 131](https://github.com/ryancinsight/consus/pull/131) (the cargo instruction that emits it). `Test (macos-latest)` is green on the push run for `12461103`.
