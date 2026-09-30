@@ -123,7 +123,7 @@ so the compiled API surface is unchanged.
   `vec!`/`with_capacity` sites in consus-hdf5) found no unbound
   attacker-chosen length; no code change required. Closed as verified.
 
-## REL-001 — Python release wheels [patch] — blocked
+## REL-001 — Python release wheels [patch] — done
 
 - Owner: Codex `/root`; scope: `consus-python` package metadata, the Python
   release workflow, distribution documentation, committed Nextest budgets,
@@ -134,10 +134,23 @@ so the compiled API surface is unchanged.
   dependency lock, the native-test CI runner and supply-chain pins, and this
   owner-keyed PM entry.
   Python binding behavior and other Consus crate behavior are non-goals.
-- Reopen trigger: the `consus-python` PyPI pending trusted publisher is
-  registered and release authority is granted for the first tagged
-  publication. Implementation and hosted verification are complete; no
-  release or deployment is authorized by this repository state.
+- Delivery: the first tagged publication completed on 2026-07-22. GitHub
+  release `consus-python-v0.1.0` (tag `f21ad50`) carries the 15 locked wheels
+  (CPython 3.9-3.13 x manylinux, universal macOS, win_amd64) plus `SHA256SUMS`;
+  the producing `release` run is `29954523631`, and PyPI's `consus-python`
+  0.1.0 holds the same 15 wheel filenames. `e07c2b1` (PR 2, the corrected
+  distribution contract) is an ancestor of the release tag, so the release
+  contains this item's fixes rather than predating them.
+- Superseded trigger: the former blocker read "the `consus-python` PyPI
+  *pending* trusted publisher is registered". The project now exists on PyPI,
+  and PyPI offers pending publishers only for projects that do not yet exist,
+  so that condition can no longer be satisfied. Further Python releases add a
+  trusted publisher to the existing project instead.
+- Reopen trigger: none for this item; publication of any further Python change
+  is gated by release authority, a standing rule rather than an item blocker.
+- Not re-verified here: the scope's non-release implementation elements
+  (documentation, committed budgets, the CI runner and pins), which this entry
+  already records as complete.
 - Acceptance: a GitHub Release tagged `consus-python-v<version>` builds locked
   Linux, Windows, and universal macOS wheels for every supported CPython,
   installs and imports each wheel, validates metadata against the tag, attests
@@ -217,22 +230,35 @@ so the compiled API surface is unchanged.
 
 <a id="CONSUS-WRITER-SPLIT-001"></a>
 ## CONSUS-WRITER-SPLIT-001 — Split the 3364-line HDF5 writer into leaf modules [patch]
-- Status: todo; integrator: pi-session; updated: 2026-09-24. Claimed for delivery in this change's PR.
-- priority: tightening
+- Status: done; priority: tightening; integrator: pi-session; updated: 2026-09-30. Delivery: [PR 92](https://github.com/ryancinsight/consus/pull/92), merge `a1f5c4120e8764508d25ef025cd8a4ea77aff0e9` (`6c3b279`).
 - Scope: `crates/consus-hdf5/src/file/writer.rs` (3 364 lines) becomes a `writer/` module tree: leaf modules per operation family (state, group, dataset, datatype, dataspace, layout, filters, chunk_index, chunk_data, links, attributes, builder, builder_subgroup, builder_specs) and per-family test modules; bodies verbatim.
 - Acceptance: every emitted file below the 500-line target; conformance oversized_files tightens 81 -> 80 with no other class moving; clippy `-D warnings`, nextest (434/434), fmt, and doc gates green; the `consus_hdf5::file::writer::*` public surface unchanged.
+- Verification 2026-09-30 at `b995bf24`: the tree carries exactly the 14 named leaves plus `mod.rs` and six test modules (21 files), and the largest is 481 lines (`tests/builder.rs`), so no emitted file reaches the 500-line target. The lint and test half is the green main push run `36727023838`, which contains the split on every lane. Not observable from this repository: the Atlas `oversized_files` 81 -> 80 count, which the umbrella scan owns.
 
 <a id="CONSUS-COMPOUND-SPLIT-001"></a>
 ## CONSUS-COMPOUND-SPLIT-001 — Split the 1446-line datatype compound parser [patch]
-- Status: todo; priority: structure; integrator: pi-session; updated: 2026-09-24. Claimed for delivery in this change's PR.
+- Status: done; priority: structure; integrator: pi-session; updated: 2026-09-30. Delivery: [PR 96](https://github.com/ryancinsight/consus/pull/96), merge `3006361c1d10225a40c6c96e3f97f16549b277b9` (`1c84215`).
 - Scope: `crates/consus-hdf5/src/datatype/compound.rs` (1 446 lines) becomes a `datatype/compound/` tree: parse dispatch, scalar parsers, compound members, class parsers (reference/enum/vl/array), plus per-family test modules; bodies verbatim.
 - Acceptance: every emitted file below the 500-line target; clippy `-D warnings` and nextest pass; the `datatype::compound::*` surface unchanged.
+- Verification 2026-09-30 at `b995bf24`: `compound/` holds the four named leaves (`parse.rs`, `scalar.rs`, `members.rs`, `classes.rs`), `mod.rs`, and four test modules (9 files); the largest is 305 lines, so no emitted file reaches the 500-line target. The lint and test half is the green main push run `36727023838`.
 
 <a id="CONSUS-FRACTAL-SPLIT-001"></a>
 ## CONSUS-FRACTAL-SPLIT-001 — Split the 1218-line fractal heap into leaf modules [patch]
-- Status: todo; priority: structure; integrator: pi-session; updated: 2026-09-24. Claimed for delivery in this change's PR.
+- Status: done; priority: structure; integrator: pi-session; updated: 2026-09-30. Delivery: [PR 114](https://github.com/ryancinsight/consus/pull/114), merge `24481e56a8e45c7a8126a7d272752694553ad85c` (`add3cf2`).
 - Scope: `crates/consus-hdf5/src/heap/fractal.rs` (1 218 lines) becomes a `heap/fractal/` tree: header (252), ids (129), read (281), huge (164), tests (365); bodies verbatim.
 - Acceptance: every emitted file below the 500-line target; clippy `-D warnings` and nextest pass; the `heap::fractal::*` public surface unchanged.
+- Verification 2026-09-30 at `b995bf24`: `fractal/` holds `header.rs` (238), `ids.rs` (127), `read.rs` (280), `huge.rs` (153), `tests.rs` (362) and `mod.rs` (79) — six files, the largest 362 lines, none reaching the 500-line target. The lint and test half is the green main push run `36727023838`.
+
+<a id="CONSUS-COMPOUND-NAME-PARSER-001"></a>
+## CONSUS-COMPOUND-NAME-PARSER-001 — Share compound and enum member name parsing [patch]
+
+- Status: done; priority: structure; integrator: root/consus_member_name_parser; updated: 2026-09-30. Delivery: [PR 121](https://github.com/ryancinsight/consus/pull/121), merge `8652f6cf055d1bd82fa6c6ba900d610ae685345a` (`bb33824`).
+- Scope: `crates/consus-hdf5/src/datatype/compound/{members,classes}.rs`, the new `names.rs`, and this item.
+- Problem: both call sites scanned a null-terminated name, rejected an unterminated one, decoded UTF-8, skipped the terminator, and padded the field to an 8-byte boundary for versions 1 and 2 — the same logic byte for byte, differing only in the diagnostic noun and the index variable's name.
+- Acceptance: one version-aware parser serves both classes; the existing diagnostics are unchanged; clippy `-D warnings` and nextest pass; the `datatype::compound::*` surface unchanged.
+- Verification 2026-09-30 at the head `bb33824`: formatting clean; `cargo clippy --locked -p consus-hdf5 --all-targets --all-features -- -D warnings` clean; `cargo nextest run --locked -p consus-hdf5 --all-features` passes 443/443. Full-matrix dispatch `36727238921` green on Ubuntu, macOS and Windows. The parser's three unit tests pin empty and non-ASCII names, the version-dependent padding, and both diagnostics verbatim.
+- Change beyond the consolidation: the padding arithmetic is now overflow-checked (`checked_add` on the field length and on the start offset), where both call sites previously computed it unchecked.
+- Process: this item was tracked only in its PR body until now; the board carried no entry for it, so the work sat unpublished behind a draft PR while the duplication stayed on `main`.
 
 <a id="CONSUS-MACOS-PYO3-LINK-001"></a>
 ## CONSUS-MACOS-PYO3-LINK-001 — macOS `cdylib` link fails on undefined Python symbols [patch]
