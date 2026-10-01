@@ -4,18 +4,18 @@ version = 4
 
 [[package]]
 name = "accesskit"
-version = "0.25.0"
+version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "438a7081a65b95c668db56591a4fef9bc5dad275f448bd6223fc6949d823db38"
+checksum = "ad442f58ee04714aaa0ba0a2768c1ea1935b29507bb22ddece8cbbc76db02932"
 dependencies = [
  "uuid",
 ]
 
 [[package]]
 name = "accesskit_consumer"
-version = "0.39.0"
+version = "0.39.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc882fa0c9c24c53649e256311b51046cf36eca9a8f7e54ff4ef682160b0cb27"
+checksum = "8a45e2bb300bea6d5f33a82c3e051c3ddc6f41c209750f68a0acbe991a284344"
 dependencies = [
  "accesskit",
  "hashbrown",
@@ -23,9 +23,9 @@ dependencies = [
 
 [[package]]
 name = "accesskit_windows"
-version = "0.35.0"
+version = "0.35.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a59e8d7160cbac991c1345c99153783ab96423644ccb1f20617cf80c97596aa1"
+checksum = "ce63f35d6bdcf59f26b76b3379063f738e6412cef46999cc772d46aa3de35adb"
 dependencies = [
  "accesskit",
  "accesskit_consumer",
@@ -74,7 +74,7 @@ checksum = "940b3a0ca603d1eade50a4846a2afffd5ef57a9feac2c0e2ec2e14f9ead76000"
 [[package]]
 name = "apollo-dctdst-core"
 version = "0.16.0"
-source = "git+https://github.com/ryancinsight/apollo#d47b6dfadf0a101e9e53b928a6df0b0e46641e0b"
+source = "git+https://github.com/ryancinsight/apollo#511f66115173e292896b217c3f6b6ac12224fd2e"
 dependencies = [
  "eunomia",
 ]
@@ -170,9 +170,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.4.7"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54413ede23c2daf518f35156dfde027feb2374004d63bd497f983c8db9c0e313"
+checksum = "f360145194ee8e21db5ee7f3fcd4fe52210864c75c985dae33218202c8bbe040"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -558,7 +558,7 @@ dependencies = [
 [[package]]
 name = "eunomia"
 version = "0.8.0"
-source = "git+https://github.com/ryancinsight/eunomia#97a4845d1e2a1fd96be4da6c297cb35043f19ab4"
+source = "git+https://github.com/ryancinsight/eunomia#49ee89edf9c18b259f13a10c65e7d64a59b80182"
 dependencies = [
  "bytemuck",
  "eunomia-derive",
@@ -568,7 +568,7 @@ dependencies = [
 [[package]]
 name = "eunomia-derive"
 version = "0.8.0"
-source = "git+https://github.com/ryancinsight/eunomia#97a4845d1e2a1fd96be4da6c297cb35043f19ab4"
+source = "git+https://github.com/ryancinsight/eunomia#49ee89edf9c18b259f13a10c65e7d64a59b80182"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -583,9 +583,9 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.13"
+version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef25905e51abafe4dcea6c15fec58c57b601cdbd0ee53d22ea1d3016c587d39b"
+checksum = "aedcfb3409746eddb02b9e19ebda1c3394f759a152e48ee875a0844d1b955484"
 
 [[package]]
 name = "flate2"
@@ -827,9 +827,9 @@ checksum = "a0370574b86f7eca156b9f298392b5e69a23f8c86f3f865add60bbc2e79467a6"
 
 [[package]]
 name = "js-sys"
-version = "0.3.105"
+version = "0.3.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce57d20d1ea864ce2ac172ab472d409214f4fd359f0b2a2775abdf522e2af99e"
+checksum = "7883d941dae510fb2d978fc3fe018c71c9e2892fd38854de3e8b92c2e5ad9cc5"
 dependencies = [
  "cfg-if",
  "futures-util",
@@ -838,9 +838,9 @@ dependencies = [
 
 [[package]]
 name = "lazy_static"
-version = "1.5.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 
 [[package]]
 name = "libc"
@@ -896,8 +896,8 @@ dependencies = [
 
 [[package]]
 name = "melinoe"
-version = "0.9.0"
-source = "git+https://github.com/ryancinsight/melinoe.git#0a54ad914c173a2324a290f153d749d23294465a"
+version = "0.10.0"
+source = "git+https://github.com/ryancinsight/melinoe.git#e3d821993bce006ca1ddcb3e99721e5c3598b0b3"
 
 [[package]]
 name = "memchr"
@@ -945,7 +945,7 @@ dependencies = [
 [[package]]
 name = "mnemosyne-arena"
 version = "0.4.0"
-source = "git+https://github.com/ryancinsight/Mnemosyne.git#c8c84091a86113447a40b61e02548b8712242b97"
+source = "git+https://github.com/ryancinsight/Mnemosyne.git#adf6898dd3ae3496853caade519a8938c18bbbb4"
 dependencies = [
  "libc",
  "loom",
@@ -957,7 +957,7 @@ dependencies = [
 [[package]]
 name = "mnemosyne-backend"
 version = "0.5.0"
-source = "git+https://github.com/ryancinsight/Mnemosyne.git#c8c84091a86113447a40b61e02548b8712242b97"
+source = "git+https://github.com/ryancinsight/Mnemosyne.git#adf6898dd3ae3496853caade519a8938c18bbbb4"
 dependencies = [
  "mnemosyne-memory-core",
 ]
@@ -965,12 +965,12 @@ dependencies = [
 [[package]]
 name = "mnemosyne-build-util"
 version = "0.2.0"
-source = "git+https://github.com/ryancinsight/Mnemosyne.git#c8c84091a86113447a40b61e02548b8712242b97"
+source = "git+https://github.com/ryancinsight/Mnemosyne.git#adf6898dd3ae3496853caade519a8938c18bbbb4"
 
 [[package]]
 name = "mnemosyne-decay"
 version = "0.3.0"
-source = "git+https://github.com/ryancinsight/Mnemosyne.git#c8c84091a86113447a40b61e02548b8712242b97"
+source = "git+https://github.com/ryancinsight/Mnemosyne.git#adf6898dd3ae3496853caade519a8938c18bbbb4"
 dependencies = [
  "mnemosyne-arena",
  "mnemosyne-backend",
@@ -980,7 +980,7 @@ dependencies = [
 [[package]]
 name = "mnemosyne-local"
 version = "0.4.0"
-source = "git+https://github.com/ryancinsight/Mnemosyne.git#c8c84091a86113447a40b61e02548b8712242b97"
+source = "git+https://github.com/ryancinsight/Mnemosyne.git#adf6898dd3ae3496853caade519a8938c18bbbb4"
 dependencies = [
  "melinoe",
  "mnemosyne-arena",
@@ -995,7 +995,7 @@ dependencies = [
 [[package]]
 name = "mnemosyne-memory"
 version = "0.7.0"
-source = "git+https://github.com/ryancinsight/Mnemosyne.git#c8c84091a86113447a40b61e02548b8712242b97"
+source = "git+https://github.com/ryancinsight/Mnemosyne.git#adf6898dd3ae3496853caade519a8938c18bbbb4"
 dependencies = [
  "mnemosyne-arena",
  "mnemosyne-backend",
@@ -1008,7 +1008,7 @@ dependencies = [
 [[package]]
 name = "mnemosyne-memory-core"
 version = "0.2.0"
-source = "git+https://github.com/ryancinsight/Mnemosyne.git#c8c84091a86113447a40b61e02548b8712242b97"
+source = "git+https://github.com/ryancinsight/Mnemosyne.git#adf6898dd3ae3496853caade519a8938c18bbbb4"
 dependencies = [
  "loom",
 ]
@@ -1016,16 +1016,17 @@ dependencies = [
 [[package]]
 name = "mnemosyne-prof"
 version = "0.2.0"
-source = "git+https://github.com/ryancinsight/Mnemosyne.git#c8c84091a86113447a40b61e02548b8712242b97"
+source = "git+https://github.com/ryancinsight/Mnemosyne.git#adf6898dd3ae3496853caade519a8938c18bbbb4"
 dependencies = [
  "backtrace",
  "mnemosyne-build-util",
+ "mnemosyne-memory-core",
 ]
 
 [[package]]
 name = "moirai-async"
 version = "0.6.0"
-source = "git+https://github.com/ryancinsight/Moirai#359fc0f8c0c4c455ef1057d95f5e8fe1cc4ddafb"
+source = "git+https://github.com/ryancinsight/Moirai#4b08b523c8828695422055b44bf7b9222b2d96d6"
 dependencies = [
  "futures",
  "libc",
@@ -1040,7 +1041,7 @@ dependencies = [
 [[package]]
 name = "moirai-async-macros"
 version = "0.6.0"
-source = "git+https://github.com/ryancinsight/Moirai#359fc0f8c0c4c455ef1057d95f5e8fe1cc4ddafb"
+source = "git+https://github.com/ryancinsight/Moirai#4b08b523c8828695422055b44bf7b9222b2d96d6"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1050,7 +1051,7 @@ dependencies = [
 [[package]]
 name = "moirai-core"
 version = "0.6.0"
-source = "git+https://github.com/ryancinsight/Moirai#359fc0f8c0c4c455ef1057d95f5e8fe1cc4ddafb"
+source = "git+https://github.com/ryancinsight/Moirai#4b08b523c8828695422055b44bf7b9222b2d96d6"
 dependencies = [
  "bytemuck",
  "libc",
@@ -1062,7 +1063,7 @@ dependencies = [
 [[package]]
 name = "moirai-executor"
 version = "0.6.0"
-source = "git+https://github.com/ryancinsight/Moirai#359fc0f8c0c4c455ef1057d95f5e8fe1cc4ddafb"
+source = "git+https://github.com/ryancinsight/Moirai#4b08b523c8828695422055b44bf7b9222b2d96d6"
 dependencies = [
  "melinoe",
  "mnemosyne-memory",
@@ -1076,7 +1077,7 @@ dependencies = [
 [[package]]
 name = "moirai-iter"
 version = "0.6.0"
-source = "git+https://github.com/ryancinsight/Moirai#359fc0f8c0c4c455ef1057d95f5e8fe1cc4ddafb"
+source = "git+https://github.com/ryancinsight/Moirai#4b08b523c8828695422055b44bf7b9222b2d96d6"
 dependencies = [
  "futures",
  "libc",
@@ -1092,7 +1093,7 @@ dependencies = [
 [[package]]
 name = "moirai-pal"
 version = "0.6.0"
-source = "git+https://github.com/ryancinsight/Moirai#359fc0f8c0c4c455ef1057d95f5e8fe1cc4ddafb"
+source = "git+https://github.com/ryancinsight/Moirai#4b08b523c8828695422055b44bf7b9222b2d96d6"
 dependencies = [
  "accesskit",
  "accesskit_windows",
@@ -1110,7 +1111,7 @@ dependencies = [
 [[package]]
 name = "moirai-parallel"
 version = "0.6.0"
-source = "git+https://github.com/ryancinsight/Moirai#359fc0f8c0c4c455ef1057d95f5e8fe1cc4ddafb"
+source = "git+https://github.com/ryancinsight/Moirai#4b08b523c8828695422055b44bf7b9222b2d96d6"
 dependencies = [
  "melinoe",
  "moirai-core",
@@ -1121,7 +1122,7 @@ dependencies = [
 [[package]]
 name = "moirai-runtime"
 version = "0.6.0"
-source = "git+https://github.com/ryancinsight/Moirai#359fc0f8c0c4c455ef1057d95f5e8fe1cc4ddafb"
+source = "git+https://github.com/ryancinsight/Moirai#4b08b523c8828695422055b44bf7b9222b2d96d6"
 dependencies = [
  "melinoe",
  "mnemosyne-memory",
@@ -1139,7 +1140,7 @@ dependencies = [
 [[package]]
 name = "moirai-scheduler"
 version = "0.6.0"
-source = "git+https://github.com/ryancinsight/Moirai#359fc0f8c0c4c455ef1057d95f5e8fe1cc4ddafb"
+source = "git+https://github.com/ryancinsight/Moirai#4b08b523c8828695422055b44bf7b9222b2d96d6"
 dependencies = [
  "loom",
  "mnemosyne-memory",
@@ -1151,7 +1152,7 @@ dependencies = [
 [[package]]
 name = "moirai-sync"
 version = "0.6.0"
-source = "git+https://github.com/ryancinsight/Moirai#359fc0f8c0c4c455ef1057d95f5e8fe1cc4ddafb"
+source = "git+https://github.com/ryancinsight/Moirai#4b08b523c8828695422055b44bf7b9222b2d96d6"
 dependencies = [
  "libc",
  "moirai-core",
@@ -1161,7 +1162,7 @@ dependencies = [
 [[package]]
 name = "moirai-transport"
 version = "0.6.0"
-source = "git+https://github.com/ryancinsight/Moirai#359fc0f8c0c4c455ef1057d95f5e8fe1cc4ddafb"
+source = "git+https://github.com/ryancinsight/Moirai#4b08b523c8828695422055b44bf7b9222b2d96d6"
 dependencies = [
  "bytemuck",
  "libc",
@@ -1173,7 +1174,7 @@ dependencies = [
 [[package]]
 name = "moirai-utils"
 version = "0.6.0"
-source = "git+https://github.com/ryancinsight/Moirai#359fc0f8c0c4c455ef1057d95f5e8fe1cc4ddafb"
+source = "git+https://github.com/ryancinsight/Moirai#4b08b523c8828695422055b44bf7b9222b2d96d6"
 
 [[package]]
 name = "nu-ansi-term"
@@ -1602,9 +1603,9 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "smallvec"
-version = "1.16.1"
+version = "1.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba467056f1b547ed52077911161fc86985becbc60e8e1857c8a144dab0def891"
+checksum = "f9395f0f0eee849a9b707b2f06bb92a6a422090e2123bb2ef8e87a0e61892a8e"
 
 [[package]]
 name = "snap"
@@ -1671,9 +1672,10 @@ dependencies = [
 
 [[package]]
 name = "themis-topology"
-version = "0.10.1"
-source = "git+https://github.com/ryancinsight/themis#14b3c50f9f714474da7d7f9ced2e4d6cbb2db8b4"
+version = "0.11.0"
+source = "git+https://github.com/ryancinsight/themis#90e7a8cf80354d247d8759215ee47ed930713ea0"
 dependencies = [
+ "libc",
  "melinoe",
 ]
 
@@ -1734,6 +1736,15 @@ checksum = "be4d6b5f19ff7664e8c98d03e2139cb510db9b0a60b55f8e8709b689d939b6bc"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "tokio"
+version = "1.53.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "202caea871b69668250d242070849eb495be178ed697a3e98aebce5bc81a0bed"
+dependencies = [
+ "pin-project-lite",
 ]
 
 [[package]]
@@ -1845,9 +1856,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.128"
+version = "0.2.129"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aecb87a33d3b0c5e3b7aa46336eaf486cffafbd281b195e4c8b80d50df2351bf"
+checksum = "9bb54f33acc68fd454578d9820b0bde1a1a3d17aa17bb7b6595806d02886d409"
 dependencies = [
  "cfg-if",
  "once_cell",
@@ -1858,19 +1869,20 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-futures"
-version = "0.4.78"
+version = "0.4.79"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ef4c5d3d2cdf5c54f4231181768f5510842e350db025faf1f7163b1030ed928"
+checksum = "3cbab34de2d982e9b48e18d216d04c4a6f641066ff19ffb699980f591ee3610e"
 dependencies = [
  "js-sys",
+ "tokio",
  "wasm-bindgen",
 ]
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.128"
+version = "0.2.129"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a690d511e3c1a8b3a55e33511e3c2c00c78415cd23650f32b808627f5696b9ed"
+checksum = "2e29d0c35b16e224a7eeb5cd2d25e3e1968fbd65604117b44d3b789d00ee8535"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -1878,9 +1890,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.128"
+version = "0.2.129"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "411e4887f0071ef2d2164a9d5fdf2d20efbef78fccd3a78b0c10a1dc5295e48a"
+checksum = "6f501a8bc3719dba86ef8ae4728879c08001bea749eb1333ac5b91e040e2a6b7"
 dependencies = [
  "bumpalo",
  "proc-macro2",
@@ -1891,18 +1903,18 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.128"
+version = "0.2.129"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81941cd78d0c92026c33e5e01312845a4cb1e9af3407f9134b100dd03144103e"
+checksum = "23f0c9c52aa7cd7d77769a4cfe2a9adb1b331f489a41d912ce14513d5ab995c6"
 dependencies = [
  "unicode-ident",
 ]
 
 [[package]]
 name = "web-sys"
-version = "0.3.105"
+version = "0.3.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fbddc4a036f00ec4f18c83445bd3115cb306a91da554919a099d9222fe4a7f8"
+checksum = "88261b9deccee56594c11a3460c462c41f58d148598fe70ad77070126a68aba4"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -2044,18 +2056,18 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "zerocopy"
-version = "0.8.58"
+version = "0.8.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c17e8fafad82b542ff3717217ecdc736231b59e387768c9630123b4ce4d2db44"
+checksum = "6df92bf3d9227be3d53173901ddbffac2babc27ae50f397776ffd6dc33f800cb"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.58"
+version = "0.8.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "595f56e044df4f46a0c9a626f65c3d99eb8488f7e8a8baa12dd76326d9710bf2"
+checksum = "ac4f328cf2f05d084e496c3e9c3f33ed0a183656a16e1fcec4d464d8373aec82"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2089,9 +2101,9 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[package]]
 name = "zrip"
-version = "0.8.8"
+version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab0181a3ab0d61f30727381c20ebe7c0ed44edbaa1e279be39665f4d7b6d2168"
+checksum = "9e85bd0b02784d8753fe5cc435dfb65043be505cb621643a3ac4a0c43eb49e4a"
 dependencies = [
  "zrip-core",
  "zrip-decode",
@@ -2100,24 +2112,24 @@ dependencies = [
 
 [[package]]
 name = "zrip-core"
-version = "0.10.1"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a91bc58032e884eb76396eaa2d6607db874dcf95e6752fb15401da494ab72ba7"
+checksum = "6dec95be8c75252532ba0ef5e738d9da26a6f51ad52cb45f4ed90c89979727c1"
 
 [[package]]
 name = "zrip-decode"
-version = "0.8.7"
+version = "0.8.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d931c512bc14f368493e91df8570c5da60e2809e1d0c2cab906b6e4babbab84"
+checksum = "aca029cf83b6a6e282008a9aa1079e13f216b28bac670eb1fb0769c1d256cb0e"
 dependencies = [
  "zrip-core",
 ]
 
 [[package]]
 name = "zrip-encode"
-version = "0.8.7"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8eb51ef0ac2bda5ff1381eccf970be2bf7cc431e44f0e7a4b8cdccf685fd6f7"
+checksum = "b657fa83287fe6799596e53540a7b1f179ca34ffd8589d5c576a5b8a1bcc4260"
 dependencies = [
  "zrip-core",
 ]
