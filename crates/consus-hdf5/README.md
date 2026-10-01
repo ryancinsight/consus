@@ -19,7 +19,8 @@ consus-hdf5 = { version = "0.1", default-features = false }
 
 Read: superblocks v1/v2/v3, object headers, datatype and dataspace parsing, link
 traversal (including soft-link path resolution), attribute parsing, contiguous
-dataset reads, chunk metadata parsing, and dense link/attribute enumeration.
+dataset reads (including a streaming `std::io::Read` over the
+payload, `Hdf5File::contiguous_dataset_reader`), chunk metadata parsing, and dense link/attribute enumeration.
 
 Write: superblock v2, object header v2, datatype/dataspace/layout encoding,
 contiguous dataset data blocks, hard- and soft-link encoding, attribute
