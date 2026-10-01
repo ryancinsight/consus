@@ -78,7 +78,7 @@ pub use decode::{decode_bytes_to_f64, decode_to_f64, decode_to_u64};
 #[cfg(feature = "alloc")]
 pub use decode::{decode_extend, extend_encoded};
 #[cfg(feature = "std")]
-pub use decode::{read_from, write_to};
+pub use decode::{read_extend, read_from, write_to};
 
 // ---------------------------------------------------------------------------
 // Re-export abstract traits at the crate root.
