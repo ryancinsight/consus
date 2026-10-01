@@ -1,8 +1,6 @@
 //! Resource ceilings applied while decoding untrusted input.
 
 #[cfg(feature = "alloc")]
-use alloc::string::String;
-#[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
 use crate::core::error::{Error, Result};

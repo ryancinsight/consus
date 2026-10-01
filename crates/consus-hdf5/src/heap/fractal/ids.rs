@@ -2,6 +2,8 @@
 
 use super::{FractalHeapHeader, read_uint_le};
 #[cfg(feature = "alloc")]
+use alloc::string::String;
+#[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 use consus_core::{Error, Result};
 

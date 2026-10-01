@@ -4,6 +4,8 @@ use super::FractalHeapHeader;
 #[cfg(feature = "alloc")]
 use crate::address::ParseContext;
 #[cfg(feature = "alloc")]
+use alloc::string::String;
+#[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 use consus_core::{Error, Result};
 #[cfg(feature = "alloc")]
