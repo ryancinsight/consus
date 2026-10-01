@@ -2,6 +2,8 @@
 
 #[cfg(feature = "alloc")]
 use crate::address::ParseContext;
+#[cfg(feature = "alloc")]
+use alloc::string::String;
 use consus_core::{Error, Result};
 #[cfg(feature = "alloc")]
 use consus_io::ReadAt;

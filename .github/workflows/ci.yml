@@ -108,6 +108,8 @@ jobs:
         run: cargo check --workspace --locked --all-features
       - name: cargo check (no_std core)
         run: cargo check --locked -p consus-core --no-default-features
+      - name: cargo check (consus-hdf5, alloc without std)
+        run: cargo check --locked -p consus-hdf5 --no-default-features --features alloc
 
   test:
     # Pull requests run one OS; the 3-OS matrix runs on schedule,
