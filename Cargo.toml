@@ -50,6 +50,11 @@ consus-compression = { path = "crates/consus-compression", version = "0.1.0", de
 consus-io = { path = "crates/consus-io", version = "0.1.0", default-features = false }
 consus-npy = { path = "crates/consus-npy", version = "0.1.0" }
 pyo3 = { version = "0.22" }
+# Build-time half of the PyO3 contract: consus-python's build script calls
+# `pyo3_build_config::add_extension_module_link_args()`. Must track `pyo3` --
+# a split would resolve a second copy and emit the link arguments of a
+# different PyO3 than the one being linked against.
+pyo3-build-config = { version = "0.22" }
 consus-onnx = { path = "crates/consus-onnx", version = "0.1.0", default-features = false }
 
 # External dependencies
