@@ -160,36 +160,6 @@ fn writes_every_scalar_in_both_orders() {
     );
 }
 
-#[cfg(feature = "std")]
-#[test]
-fn streams_read_back_what_they_write() {
-    use super::{read_from, write_to};
-
-    let mut stream = Vec::new();
-    write_to(&mut stream, 0x1234_u16, ByteOrder::BigEndian).expect("a Vec accepts writes");
-    write_to(&mut stream, -1.5_f32, ByteOrder::LittleEndian).expect("a Vec accepts writes");
-    write_to(&mut stream, -7_i64, ByteOrder::BigEndian).expect("a Vec accepts writes");
-    assert_eq!(stream.len(), 2 + 4 + 8);
-    assert_eq!(&stream[..2], &[0x12, 0x34]);
-
-    let mut reader = stream.as_slice();
-    assert_eq!(
-        read_from::<u16, _>(&mut reader, ByteOrder::BigEndian).ok(),
-        Some(0x1234)
-    );
-    assert_eq!(
-        read_from::<f32, _>(&mut reader, ByteOrder::LittleEndian).ok(),
-        Some(-1.5)
-    );
-    assert_eq!(
-        read_from::<i64, _>(&mut reader, ByteOrder::BigEndian).ok(),
-        Some(-7)
-    );
-    let end =
-        read_from::<u8, _>(&mut reader, ByteOrder::BigEndian).expect_err("the stream is exhausted");
-    assert_eq!(end.kind(), std::io::ErrorKind::UnexpectedEof);
-}
-
 fn bulk_matches_scalar_reads<T>(bytes: &[u8])
 where
     T: EndianScalar + Copy + core::fmt::Debug,

@@ -50,7 +50,7 @@ pub use endian::{
 #[cfg(feature = "alloc")]
 pub use endian::{decode_extend, extend_encoded};
 #[cfg(feature = "std")]
-pub use endian::{read_from, write_to};
+pub use endian::{read_extend, read_from, write_to};
 
 /// Decodes every `T` in `bytes` in `byte_order`, mapping each through `map`.
 ///

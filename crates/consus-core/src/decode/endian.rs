@@ -50,6 +50,12 @@ pub trait EndianScalar: sealed::Sealed + Sized {
 #[cfg(any(feature = "std", feature = "alloc"))]
 const MAX_SCALAR_WIDTH: usize = 8;
 
+#[cfg(feature = "std")]
+mod stream;
+
+#[cfg(feature = "std")]
+pub use stream::{read_extend, read_from, write_to};
+
 /// Reads one fixed-width scalar without allocation or runtime type dispatch.
 ///
 /// Returns `None` when `bytes` is shorter than the scalar's compile-time
@@ -157,43 +163,6 @@ pub fn extend_encoded<T: EndianScalar>(
 #[inline(always)]
 fn scalar<T: EndianScalar>(chunk: &[u8], byte_order: ByteOrder) -> T {
     T::from_bytes(chunk, byte_order).expect("invariant: chunks_exact yields BYTE_WIDTH bytes")
-}
-
-/// Reads one fixed-width scalar from a stream.
-///
-/// # Errors
-///
-/// Returns the reader's error, including `UnexpectedEof` when the stream
-/// ends before the scalar's width.
-#[cfg(feature = "std")]
-pub fn read_from<T: EndianScalar, R: std::io::Read + ?Sized>(
-    reader: &mut R,
-    byte_order: ByteOrder,
-) -> std::io::Result<T> {
-    let mut buf = [0_u8; MAX_SCALAR_WIDTH];
-    let bytes = &mut buf[..T::BYTE_WIDTH];
-    reader.read_exact(bytes)?;
-    Ok(T::from_bytes(bytes, byte_order)
-        .expect("invariant: the buffer holds exactly BYTE_WIDTH bytes"))
-}
-
-/// Writes one fixed-width scalar to a stream.
-///
-/// # Errors
-///
-/// Returns the writer's error.
-#[cfg(feature = "std")]
-pub fn write_to<T: EndianScalar, W: std::io::Write + ?Sized>(
-    writer: &mut W,
-    value: T,
-    byte_order: ByteOrder,
-) -> std::io::Result<()> {
-    let mut buf = [0_u8; MAX_SCALAR_WIDTH];
-    let bytes = &mut buf[..T::BYTE_WIDTH];
-    value
-        .to_bytes(bytes, byte_order)
-        .expect("invariant: the buffer holds exactly BYTE_WIDTH bytes");
-    writer.write_all(bytes)
 }
 
 /// Reads an unsigned integer of `width` bytes (`0..=8`) with `byte_order`.
