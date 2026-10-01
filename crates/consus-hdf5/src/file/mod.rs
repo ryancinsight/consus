@@ -119,6 +119,10 @@ pub(crate) fn checked_v1_chunk_btree_data_size(
 
 mod access;
 mod chunk_read;
+#[cfg(feature = "std")]
+mod contiguous_reader;
+#[cfg(feature = "std")]
+pub use contiguous_reader::ContiguousDatasetReader;
 mod dataset_io;
 mod navigation;
 
