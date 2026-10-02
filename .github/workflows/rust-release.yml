@@ -3,6 +3,10 @@ name: Crates.io Release
 on:
   release:
     types: [published]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "16 6 * * *"
   workflow_dispatch:
     inputs:
       package:
@@ -18,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: crates-release-${{ github.event.release.tag_name || inputs.package }}
+  group: crates-release-${{ github.event.release.tag_name || inputs.package || github.event_name }}
   cancel-in-progress: false
 
 jobs:
@@ -55,3 +59,16 @@ jobs:
       rust-toolchain: "1.97.1"
       dispatch-package: ${{ inputs.package }}
       dispatch-version: ${{ inputs.version }}
+
+  # Version-change publishing (ADR 0068, ATLAS-PUB-010): a merged version
+  # bump, or the daily sweep, publishes the pending set and tags it. The
+  # release and dispatch jobs above skip these events.
+  publish-pending:
+    name: Publish pending crate versions
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    uses: ryancinsight/atlas/.github/workflows/crates-publish-pending.yml@ee2b7200c4781e39b5ea3e379d2aa97947758099
+    permissions:
+      contents: write # creates the release tags.
+      id-token: write # OIDC trusted publishing; no stored registry token.
+    with:
+      rust-toolchain: "1.97.0"
