@@ -1,6 +1,6 @@
 [package]
 name = "consus-nwb"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "Neurodata Without Borders (NWB) read/write support for Consus"
 homepage.workspace = true

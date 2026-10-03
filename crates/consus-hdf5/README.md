@@ -12,7 +12,7 @@ runtime or trait family.
 
 ```toml
 [dependencies]
-consus-hdf5 = { version = "0.1", default-features = false }
+consus-hdf5 = { version = "0.2", default-features = false }
 ```
 
 ## Coverage

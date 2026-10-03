@@ -8,7 +8,7 @@ protobuf code generator.
 
 ```toml
 [dependencies]
-consus-onnx = { version = "0.1", default-features = false }
+consus-onnx = { version = "0.2", default-features = false }
 ```
 
 ## Copy behavior

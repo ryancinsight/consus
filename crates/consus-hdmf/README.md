@@ -17,7 +17,7 @@ Python 4.x and NWB 2.x files:
 
 ```toml
 [dependencies]
-consus-hdmf = { version = "0.1", default-features = false }
+consus-hdmf = { version = "0.2", default-features = false }
 ```
 
 It is used by `consus-nwb`, and is available directly for other HDMF-based

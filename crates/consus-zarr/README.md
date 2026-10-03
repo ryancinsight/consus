@@ -5,7 +5,7 @@ Pure-Rust Zarr v2 and v3 implementation for the
 
 ```toml
 [dependencies]
-consus-zarr = { version = "0.1", default-features = false }
+consus-zarr = { version = "0.2", default-features = false }
 ```
 
 ## Coverage

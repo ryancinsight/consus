@@ -8,7 +8,7 @@ frames, and catalog tables. This crate reads and writes it without CFITSIO.
 
 ```toml
 [dependencies]
-consus-fits = { version = "0.1", default-features = false }
+consus-fits = { version = "0.2", default-features = false }
 ```
 
 ## Coverage

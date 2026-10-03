@@ -9,7 +9,7 @@ codec set is a dependency decision made in one place.
 
 ```toml
 [dependencies]
-consus-compression = { version = "0.1", default-features = false }
+consus-compression = { version = "0.2", default-features = false }
 ```
 
 ## Contents

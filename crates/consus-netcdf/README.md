@@ -8,7 +8,7 @@ top of `consus-hdf5`, so no `netcdf-sys` or C library is required.
 
 ```toml
 [dependencies]
-consus-netcdf = { version = "0.1", default-features = false }
+consus-netcdf = { version = "0.2", default-features = false }
 ```
 
 ## Coverage

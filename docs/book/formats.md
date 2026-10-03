@@ -60,7 +60,7 @@ Codecs are selected per-dataset at creation time via `DatasetConfig`.
 
 ```toml
 [dependencies]
-consus = { version = "0.1.0", features = ["hdf5", "zarr", "netcdf"] }
+consus = { version = "0.2.0", features = ["hdf5", "zarr", "netcdf"] }
 ```
 
 | Feature | Default | Enables |

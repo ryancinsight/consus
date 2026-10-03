@@ -10,7 +10,7 @@ custom `no_std` transports interchangeable.
 
 ```toml
 [dependencies]
-consus-io = { version = "0.1", default-features = false }
+consus-io = { version = "0.2", default-features = false }
 ```
 
 ## Contents

@@ -10,7 +10,7 @@ over without a representation change (`is_zero_copy_eligible`).
 
 ```toml
 [dependencies]
-consus-arrow = { version = "0.1", default-features = false }
+consus-arrow = { version = "0.2", default-features = false }
 ```
 
 This is a semantic and planning layer. It does not depend on the `arrow` crate

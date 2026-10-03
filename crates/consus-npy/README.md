@@ -7,7 +7,7 @@ Python runtime and without an `ndarray` dependency.
 
 ```toml
 [dependencies]
-consus-npy = "0.1"
+consus-npy = "0.2"
 ```
 
 ## Coverage

@@ -13,7 +13,7 @@ Applications that need only one format can depend on that format crate directly
 
 ```toml
 [dependencies]
-consus = "0.1"
+consus = "0.2"
 ```
 
 ```rust,ignore
