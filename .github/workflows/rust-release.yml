@@ -35,7 +35,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       startsWith(github.event.release.tag_name, 'crate-')
-    uses: ryancinsight/atlas/.github/workflows/semver-gate.yml@da9d549bc50dbb9c4e1d18dca8f37d17059098cb
+    uses: ryancinsight/atlas/.github/workflows/semver-gate.yml@50802ef4c975bdb1e668b94a700d8310f0348e9c
     with:
       release-gate: true
       package: consus,consus-arrow,consus-compression,consus-core,consus-fits,consus-hdf5,consus-hdmf,consus-io,consus-mat,consus-netcdf,consus-npy,consus-nwb,consus-onnx,consus-parquet,consus-zarr
@@ -66,7 +66,7 @@ jobs:
   publish-pending:
     name: Publish pending crate versions
     if: github.event_name == 'push' || github.event_name == 'schedule'
-    uses: ryancinsight/atlas/.github/workflows/crates-publish-pending.yml@ee2b7200c4781e39b5ea3e379d2aa97947758099
+    uses: ryancinsight/atlas/.github/workflows/crates-publish-pending.yml@50802ef4c975bdb1e668b94a700d8310f0348e9c
     permissions:
       contents: write # creates the release tags.
       id-token: write # OIDC trusted publishing; no stored registry token.
