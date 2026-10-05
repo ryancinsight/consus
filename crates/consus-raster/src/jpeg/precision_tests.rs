@@ -4,6 +4,7 @@ use crate::{DecodeErrorKind, DecodeLimits, PixelFormat};
 const BLOCK_SIDE: usize = 8;
 
 mod metadata;
+mod scan_selector;
 
 fn push_segment(bytes: &mut Vec<u8>, marker: u8, payload: &[u8]) {
     bytes.extend_from_slice(&[0xff, marker]);
@@ -134,6 +135,14 @@ fn direct_rgb_fixture() -> Vec<u8> {
 }
 
 fn lossless_midpoint_fixture(precision: u8, point_transform: u8) -> Vec<u8> {
+    lossless_scan_fixture(precision, point_transform, 1)
+}
+
+/// The same 1x1 SOF3 stream with the scan's `Ss` selector parameterised.
+///
+/// `Ss = 1..=7` are T.81's predictor-selection selectors. `Ss = 0` is what DICOM
+/// defines for `JpegLosslessNonHierarchical`: no selector, predict from `Rb`.
+fn lossless_scan_fixture(precision: u8, point_transform: u8, ss: u8) -> Vec<u8> {
     let mut bytes = vec![
         0xff, 0xd8, 0xff, 0xc3, 0, 11, precision, 0, 1, 0, 1, 1, 1, 0x11, 0,
     ];
@@ -141,7 +150,7 @@ fn lossless_midpoint_fixture(precision: u8, point_transform: u8) -> Vec<u8> {
     table.extend_from_slice(&[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     table.push(0);
     push_segment(&mut bytes, 0xc4, &table);
-    push_segment(&mut bytes, 0xda, &[1, 1, 0, 1, 0, point_transform]);
+    push_segment(&mut bytes, 0xda, &[1, 1, 0, ss, 0, point_transform]);
     bytes.push(0x7f);
     bytes.extend_from_slice(&[0xff, 0xd9]);
     bytes

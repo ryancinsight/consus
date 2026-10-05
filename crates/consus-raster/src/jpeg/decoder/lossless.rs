@@ -153,8 +153,11 @@ fn lossless_predictor(
     upper_left: i32,
 ) -> Result<i32, DecodeError> {
     match selection {
+        // `Ss = 0` carries no predictor selector. DICOM defines it in
+        // `JpegLosslessNonHierarchical` as a plain `Rb` prediction, which is
+        // the same reconstruction selector 2 asks for.
+        0 | 2 => Ok(above),
         1 => Ok(left),
-        2 => Ok(above),
         3 => Ok(upper_left),
         4 => left
             .checked_add(above)
