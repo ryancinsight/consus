@@ -98,12 +98,18 @@ impl ChunkSlice {
 /// ## Errors
 ///
 /// - [`Error::ShapeError`] if `hyperslab.rank() != chunk_dims.len()`.
+/// - [`Error::InvalidFormat`] if any chunk dimension is zero.
 #[cfg(feature = "alloc")]
 pub fn decompose_hyperslab(hyperslab: &Hyperslab, chunk_dims: &[usize]) -> Result<Vec<ChunkSlice>> {
     let rank = hyperslab.rank();
     if rank != chunk_dims.len() {
         return Err(Error::ShapeError {
             message: alloc::format!("hyperslab rank {} != chunk rank {}", rank, chunk_dims.len()),
+        });
+    }
+    if chunk_dims.contains(&0) {
+        return Err(Error::InvalidFormat {
+            message: alloc::string::String::from("chunk dimension must be strictly positive"),
         });
     }
 
@@ -301,6 +307,12 @@ fn decompose_points(
     chunk_dims: &[usize],
 ) -> Result<Vec<ChunkSlice>> {
     use consus_core::Error;
+
+    if chunk_dims.contains(&0) {
+        return Err(Error::InvalidFormat {
+            message: alloc::string::String::from("chunk dimension must be strictly positive"),
+        });
+    }
 
     let rank = chunk_dims.len();
     if rank == 0 {

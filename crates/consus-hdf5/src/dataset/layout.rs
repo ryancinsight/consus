@@ -327,6 +327,11 @@ impl DataLayout {
         // Last dimension is the element size, not a spatial dimension.
         let element_size = all_dims.pop();
         let chunk_dims = all_dims;
+        if chunk_dims.contains(&0) {
+            return Err(Error::InvalidFormat {
+                message: String::from("chunk dimension must be strictly positive"),
+            });
+        }
 
         Ok(Self {
             version: 3,
@@ -411,6 +416,11 @@ impl DataLayout {
                 val |= (data[off + b] as u32) << (b * 8);
             }
             chunk_dims.push(val);
+        }
+        if chunk_dims.contains(&0) {
+            return Err(Error::InvalidFormat {
+                message: String::from("chunk dimension must be strictly positive"),
+            });
         }
 
         let indexing_type = data[index_type_offset];
