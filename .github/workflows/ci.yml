@@ -35,7 +35,7 @@ jobs:
   # Atlas ATLAS-SEMVER-GATE-FLEETWIDE-2026-08-28.
   semver:
     name: SemVer gate
-    uses: ryancinsight/atlas/.github/workflows/semver-gate.yml@da9d549bc50dbb9c4e1d18dca8f37d17059098cb
+    uses: ryancinsight/atlas/.github/workflows/semver-gate.yml@50802ef4c975bdb1e668b94a700d8310f0348e9c
     with:
       package: consus-arrow,consus-compression,consus-core,consus-fits,consus-hdf5,consus-hdmf,consus-io,consus-mat,consus-netcdf,consus-npy,consus-nwb,consus-onnx,consus-raster,consus-parquet,consus-zarr,consus
       rust-toolchain: 1.97.0
