@@ -305,9 +305,14 @@ pub(super) fn parse_scan(
         Coding::Progressive if start == 0 && end != 0 => return Err(malformed()),
         Coding::Progressive if start != 0 && count != 1 => return Err(malformed()),
         Coding::Progressive if high != 0 && high != low + 1 => return Err(malformed()),
-        Coding::Lossless
-            if !(1..=7).contains(&start) || end != 0 || high != 0 || low >= frame.precision =>
-        {
+        Coding::Lossless if start > 7 || end != 0 || high != 0 || low >= frame.precision => {
+            // `Ss` 0 is accepted alongside 1..=7. T.81 only defines the
+            // predictor-selection selectors 1 through 7, but DICOM's
+            // `JpegLosslessNonHierarchical` transfer syntax is defined with
+            // `Ss = 0`, meaning no selector and a plain `Rb` prediction.
+            // Rejecting it made every non-hierarchical lossless stream
+            // undecodable here, which is a DICOM-completeness gap rather than
+            // a malformed-input rejection.
             return Err(malformed());
         }
         _ => {}
