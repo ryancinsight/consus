@@ -22,7 +22,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.95.0"
 authors = ["Ryan Clanton <ryanclanton@outlook.com>"]
@@ -36,26 +36,26 @@ description = "Pure-Rust, no_std-compatible, memory-safe hierarchical and array-
 [workspace.dependencies]
 apollo-dctdst-core = { version = "0.16.0", git = "https://github.com/ryancinsight/apollo" }
 # Internal crates
-consus-mat = { path = "crates/consus-mat", version = "0.1.0", default-features = false }
-consus-nwb = { path = "crates/consus-nwb", version = "0.1.0", default-features = false }
-consus-hdmf = { path = "crates/consus-hdmf", version = "0.1.0", default-features = false }
-consus-core = { path = "crates/consus-core", version = "0.1.0", default-features = false }
-consus-hdf5 = { path = "crates/consus-hdf5", version = "0.1.0", default-features = false }
-consus-fits = { path = "crates/consus-fits", version = "0.1.0", default-features = false }
-consus-zarr = { path = "crates/consus-zarr", version = "0.1.0", default-features = false }
-consus-netcdf = { path = "crates/consus-netcdf", version = "0.1.0", default-features = false }
-consus-parquet = { path = "crates/consus-parquet", version = "0.1.0", default-features = false }
-consus-arrow = { path = "crates/consus-arrow", version = "0.1.0", default-features = false }
-consus-compression = { path = "crates/consus-compression", version = "0.1.0", default-features = false }
-consus-io = { path = "crates/consus-io", version = "0.1.0", default-features = false }
-consus-npy = { path = "crates/consus-npy", version = "0.1.0" }
+consus-mat = { path = "crates/consus-mat", version = "0.2.0", default-features = false }
+consus-nwb = { path = "crates/consus-nwb", version = "0.2.0", default-features = false }
+consus-hdmf = { path = "crates/consus-hdmf", version = "0.2.0", default-features = false }
+consus-core = { path = "crates/consus-core", version = "0.2.0", default-features = false }
+consus-hdf5 = { path = "crates/consus-hdf5", version = "0.2.0", default-features = false }
+consus-fits = { path = "crates/consus-fits", version = "0.2.0", default-features = false }
+consus-zarr = { path = "crates/consus-zarr", version = "0.2.0", default-features = false }
+consus-netcdf = { path = "crates/consus-netcdf", version = "0.2.0", default-features = false }
+consus-parquet = { path = "crates/consus-parquet", version = "0.2.0", default-features = false }
+consus-arrow = { path = "crates/consus-arrow", version = "0.2.0", default-features = false }
+consus-compression = { path = "crates/consus-compression", version = "0.2.0", default-features = false }
+consus-io = { path = "crates/consus-io", version = "0.2.0", default-features = false }
+consus-npy = { path = "crates/consus-npy", version = "0.2.0" }
 pyo3 = { version = "0.22" }
 # Build-time half of the PyO3 contract: consus-python's build script calls
 # `pyo3_build_config::add_extension_module_link_args()`. Must track `pyo3` -- a
 # split would resolve a second copy and emit the link arguments of a different
 # PyO3 than the one being linked against.
 pyo3-build-config = { version = "0.22" }
-consus-onnx = { path = "crates/consus-onnx", version = "0.1.0", default-features = false }
+consus-onnx = { path = "crates/consus-onnx", version = "0.2.0", default-features = false }
 
 # External dependencies
 jpeg-encoder = "0.7.1"
