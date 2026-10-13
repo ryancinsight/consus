@@ -8,7 +8,7 @@
 #[cfg(feature = "alloc")]
 use alloc::{format, string::String, vec, vec::Vec};
 
-use consus_core::decode::{decode_to_f64, read_integer};
+use consus_core::decode::{decode_to_f64, decode_to_u64};
 use consus_core::{AttributeValue, Datatype, Error, Result};
 use consus_hdf5::attribute::Hdf5Attribute;
 use consus_hdf5::file::Hdf5File;
@@ -51,120 +51,23 @@ fn decode_as_f64(raw: &[u8], dtype: &Datatype) -> Result<Vec<f64>> {
 
 #[cfg(feature = "alloc")]
 fn decode_as_i64(raw: &[u8], dtype: &Datatype) -> Result<Vec<i64>> {
-    match dtype {
-        Datatype::Integer {
-            bits,
-            signed,
-            byte_order,
-        } => {
-            let bo = *byte_order;
-            Ok(match (bits.get(), *signed) {
-                (8, false) => raw.iter().map(|&v| v as i64).collect(),
-                (8, true) => raw.iter().map(|&v| (v as i8) as i64).collect(),
-                (16, false) => raw
-                    .chunks_exact(2)
-                    .map(|c| {
-                        read_integer::<u16>(c, bo).expect("chunks_exact supplies a scalar") as i64
-                    })
-                    .collect(),
-                (16, true) => raw
-                    .chunks_exact(2)
-                    .map(|c| {
-                        read_integer::<i16>(c, bo).expect("chunks_exact supplies a scalar") as i64
-                    })
-                    .collect(),
-                (32, false) => raw
-                    .chunks_exact(4)
-                    .map(|c| {
-                        read_integer::<u32>(c, bo).expect("chunks_exact supplies a scalar") as i64
-                    })
-                    .collect(),
-                (32, true) => raw
-                    .chunks_exact(4)
-                    .map(|c| {
-                        read_integer::<i32>(c, bo).expect("chunks_exact supplies a scalar") as i64
-                    })
-                    .collect(),
-                (64, false) => raw
-                    .chunks_exact(8)
-                    .map(|c| {
-                        read_integer::<u64>(c, bo).expect("chunks_exact supplies a scalar") as i64
-                    })
-                    .collect(),
-                (64, true) => raw
-                    .chunks_exact(8)
-                    .map(|c| read_integer::<i64>(c, bo).expect("chunks_exact supplies a scalar"))
-                    .collect(),
-                (b, _) => {
-                    return Err(Error::UnsupportedFeature {
-                        feature: format!("HDMF: {b}-bit integer to i64 not supported"),
-                    });
-                }
-            })
-        }
-        other => Err(Error::UnsupportedFeature {
-            feature: format!("HDMF: decode as i64 not supported for {:?}", other),
-        }),
-    }
+    // Widen via the core `u64` decoder: unsigned inputs zero-extend
+    // through `u64` while signed inputs wrap around and back, so the
+    // composition reproduces the direct per-width widening bit for bit
+    // (`u64::MAX` decodes to `-1`). One core entry
+    // point serves both integer targets.
+    decode_to_u64(raw, dtype)
+        .map(|values| values.into_iter().map(u64::cast_signed).collect())
+        .map_err(|err| Error::UnsupportedFeature {
+            feature: format!("HDMF: decode as i64: {err}"),
+        })
 }
 
 #[cfg(feature = "alloc")]
 fn decode_as_u64(raw: &[u8], dtype: &Datatype) -> Result<Vec<u64>> {
-    match dtype {
-        Datatype::Integer {
-            bits,
-            signed,
-            byte_order,
-        } => {
-            let bo = *byte_order;
-            Ok(match (bits.get(), *signed) {
-                (8, false) => raw.iter().map(|&v| v as u64).collect(),
-                (8, true) => raw.iter().map(|&v| (v as i8) as u64).collect(),
-                (16, false) => raw
-                    .chunks_exact(2)
-                    .map(|c| {
-                        read_integer::<u16>(c, bo).expect("chunks_exact supplies a scalar") as u64
-                    })
-                    .collect(),
-                (16, true) => raw
-                    .chunks_exact(2)
-                    .map(|c| {
-                        read_integer::<i16>(c, bo).expect("chunks_exact supplies a scalar") as u64
-                    })
-                    .collect(),
-                (32, false) => raw
-                    .chunks_exact(4)
-                    .map(|c| {
-                        read_integer::<u32>(c, bo).expect("chunks_exact supplies a scalar") as u64
-                    })
-                    .collect(),
-                (32, true) => raw
-                    .chunks_exact(4)
-                    .map(|c| {
-                        read_integer::<i32>(c, bo).expect("chunks_exact supplies a scalar") as u64
-                    })
-                    .collect(),
-                (64, false) => raw
-                    .chunks_exact(8)
-                    .map(|c| read_integer::<u64>(c, bo).expect("chunks_exact supplies a scalar"))
-                    .collect(),
-                (64, true) => raw
-                    .chunks_exact(8)
-                    .map(|c| {
-                        read_integer::<i64>(c, bo).expect("chunks_exact supplies a scalar") as u64
-                    })
-                    .collect(),
-                (b, _) => {
-                    return Err(Error::UnsupportedFeature {
-                        feature: format!("HDMF: {b}-bit integer to u64 not supported"),
-                    });
-                }
-            })
-        }
-        other => Err(Error::UnsupportedFeature {
-            feature: format!("HDMF: decode as u64 not supported for {:?}", other),
-        }),
-    }
+    decode_to_u64(raw, dtype).map_err(|err| Error::UnsupportedFeature {
+        feature: format!("HDMF: decode as u64: {err}"),
+    })
 }
 
 #[cfg(feature = "alloc")]
@@ -394,40 +297,45 @@ pub fn read_string_array_attr_any<R: ReadAt + Sync>(
 // Public dataset helpers
 // ---------------------------------------------------------------------------
 
-/// Read a signed-integer dataset as `Vec<i64>`.
+/// Load dataset bytes once, then hand them to a typed decode routine.
+///
+/// The five typed readers below share this fetch path; only the
+/// `decode` argument varies. Mirrors the `consus-nwb`
+/// storage helper over this crates raw loader.
 #[cfg(feature = "alloc")]
-pub fn read_i64_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Result<Vec<i64>> {
+fn read_dataset_decoded<R, T, F>(file: &Hdf5File<R>, addr: u64, decode: F) -> Result<Vec<T>>
+where
+    R: ReadAt + Sync,
+    F: FnOnce(&[u8], &Datatype) -> Result<Vec<T>>,
+{
     let ds = file.dataset_at(addr)?;
     let dtype = ds.datatype.clone();
     let raw = read_dataset_raw(file, addr)?;
-    decode_as_i64(&raw, &dtype)
+    decode(&raw, &dtype)
+}
+
+/// Read a signed-integer dataset as `Vec<i64>`.
+#[cfg(feature = "alloc")]
+pub fn read_i64_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Result<Vec<i64>> {
+    read_dataset_decoded(file, addr, decode_as_i64)
 }
 
 /// Read an unsigned-integer dataset as `Vec<u64>`.
 #[cfg(feature = "alloc")]
 pub fn read_u64_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Result<Vec<u64>> {
-    let ds = file.dataset_at(addr)?;
-    let dtype = ds.datatype.clone();
-    let raw = read_dataset_raw(file, addr)?;
-    decode_as_u64(&raw, &dtype)
+    read_dataset_decoded(file, addr, decode_as_u64)
 }
 
 /// Read a numeric dataset and auto-widen to `Vec<f64>`.
 #[cfg(feature = "alloc")]
 pub fn read_f64_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Result<Vec<f64>> {
-    let ds = file.dataset_at(addr)?;
-    let dtype = ds.datatype.clone();
-    let raw = read_dataset_raw(file, addr)?;
-    decode_as_f64(&raw, &dtype)
+    read_dataset_decoded(file, addr, decode_as_f64)
 }
 
 /// Read a boolean dataset as `Vec<bool>`.
 #[cfg(feature = "alloc")]
 pub fn read_bool_dataset<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Result<Vec<bool>> {
-    let ds = file.dataset_at(addr)?;
-    let dtype = ds.datatype.clone();
-    let raw = read_dataset_raw(file, addr)?;
-    decode_as_bool(&raw, &dtype)
+    read_dataset_decoded(file, addr, decode_as_bool)
 }
 
 /// Read a string dataset as `Vec<String>`.
@@ -466,5 +374,89 @@ pub fn detect_column_data<R: ReadAt + Sync>(file: &Hdf5File<R>, addr: u64) -> Re
         other => Err(Error::UnsupportedFeature {
             feature: format!("HDMF: unsupported column dtype {:?}", other),
         }),
+    }
+}
+
+#[cfg(all(test, feature = "alloc"))]
+mod tests {
+    use super::*;
+    use consus_core::ByteOrder;
+    use core::num::NonZeroUsize;
+
+    fn le_int(bits: usize, signed: bool) -> Datatype {
+        Datatype::Integer {
+            bits: NonZeroUsize::new(bits).expect("test bit width is non-zero"),
+            signed,
+            byte_order: ByteOrder::LittleEndian,
+        }
+    }
+
+    #[test]
+    fn integer_widths_widen_to_i64() {
+        let cases: &[(Vec<u8>, Datatype, Vec<i64>)] = &[
+            (
+                vec![0x00u8, 0x80, 0xFF],
+                le_int(8, false),
+                vec![0, 128, 255],
+            ),
+            (vec![0xFFu8, 0x01], le_int(8, true), vec![-1, 1]),
+            (
+                0x1234u16.to_le_bytes().to_vec(),
+                le_int(16, false),
+                vec![0x1234],
+            ),
+            ((-2i16).to_le_bytes().to_vec(), le_int(16, true), vec![-2]),
+            (
+                (-123456i32).to_le_bytes().to_vec(),
+                le_int(32, true),
+                vec![-123456],
+            ),
+            (
+                u32::MAX.to_le_bytes().to_vec(),
+                le_int(32, false),
+                vec![4294967295],
+            ),
+            (
+                i64::MIN.to_le_bytes().to_vec(),
+                le_int(64, true),
+                vec![i64::MIN],
+            ),
+        ];
+        for (raw, dtype, expected) in cases {
+            assert_eq!(
+                &decode_as_i64(raw, dtype).expect("valid integer decodes"),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn u64_max_wraps_to_negative_one() {
+        let raw = u64::MAX.to_le_bytes().to_vec();
+        let out = decode_as_i64(&raw, &le_int(64, false)).expect("u64 decodes");
+        assert_eq!(out, vec![-1i64]);
+    }
+
+    #[test]
+    fn u64_decoding_matches_u64_core() {
+        let raw = 0xCAFEBABEu32.to_le_bytes().to_vec();
+        let via_i64 = decode_as_i64(&raw, &le_int(32, false)).expect("decodes")[0];
+        let via_u64 = decode_as_u64(&raw, &le_int(32, false)).expect("decodes")[0];
+        assert_eq!(via_i64, via_u64.cast_signed());
+        assert_eq!(via_i64, 0xCAFEBABE);
+    }
+
+    #[test]
+    fn ragged_buffer_fails_closed() {
+        let err =
+            decode_as_i64(&[0u8; 3], &le_int(16, false)).expect_err("ragged buffer must fail");
+        assert!(matches!(err, Error::UnsupportedFeature { .. }));
+    }
+
+    #[test]
+    fn unsupported_width_fails_closed() {
+        let err =
+            decode_as_i64(&[0u8; 16], &le_int(128, false)).expect_err("wide integer must fail");
+        assert!(matches!(err, Error::UnsupportedFeature { .. }));
     }
 }
