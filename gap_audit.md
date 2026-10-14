@@ -423,3 +423,7 @@ Closure is a test-API reconciliation slice that maps the tests onto the real
 `Hdf5FileBuilder` (in-memory byte emission), `MemCursor`, and either adds the
 `ZarrArray`/`ArrayMetadataV3`/`NcFile` facades (the chunk/`read_model` building
 blocks exist) or rewrites the tests against the existing chunk API.
+
+### Atlas PR 530 provider coherence
+
+The proposal removes direct Moirai requirement lag using approved main `7828f5df7cf76b7fdec68695ee8b2a49da8e5ba7`; QUIC PR 618 stays separate. Standalone metadata and native value tests pass. The published default remains unchanged until review; Atlas must not record this proposal as a default dependency.

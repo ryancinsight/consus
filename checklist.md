@@ -189,3 +189,9 @@
       warning-denied Clippy and rustdoc; focused doctests; ONNX `alloc`-only
       compilation; locked metadata; and all 196 applicable Consus I/O semver
       checks.
+
+### Atlas PR 530 provider coherence — target 0.2.1
+
+- [x] [patch] Resolve approved Moirai 0.9.0 and preserve registry identities.
+- [x] [patch] Pass standalone metadata and the complete native nextest suite.
+- [ ] [patch] Obtain hosted verification and merge review before Atlas adopts this revision.

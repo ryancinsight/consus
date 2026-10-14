@@ -238,7 +238,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "consus"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "consus-arrow",
  "consus-compression",
@@ -255,7 +255,7 @@ dependencies = [
 
 [[package]]
 name = "consus-arrow"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "consus-core",
  "consus-parquet",
@@ -266,7 +266,7 @@ dependencies = [
 
 [[package]]
 name = "consus-compression"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "byteorder",
  "consus-core",
@@ -278,7 +278,7 @@ dependencies = [
 
 [[package]]
 name = "consus-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "byteorder",
  "proptest",
@@ -288,7 +288,7 @@ dependencies = [
 
 [[package]]
 name = "consus-fits"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "consus-compression",
  "consus-core",
@@ -297,7 +297,7 @@ dependencies = [
 
 [[package]]
 name = "consus-hdf5"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "byteorder",
  "consus-compression",
@@ -313,7 +313,7 @@ dependencies = [
 
 [[package]]
 name = "consus-hdmf"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "consus-core",
  "consus-hdf5",
@@ -322,7 +322,7 @@ dependencies = [
 
 [[package]]
 name = "consus-integration-tests"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "byteorder",
  "consus-arrow",
@@ -339,7 +339,7 @@ dependencies = [
 
 [[package]]
 name = "consus-io"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "consus-core",
  "memmap2",
@@ -349,7 +349,7 @@ dependencies = [
 
 [[package]]
 name = "consus-mat"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "consus-core",
  "consus-hdf5",
@@ -360,7 +360,7 @@ dependencies = [
 
 [[package]]
 name = "consus-netcdf"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "consus-core",
  "consus-hdf5",
@@ -371,7 +371,7 @@ dependencies = [
 
 [[package]]
 name = "consus-npy"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "byteorder",
  "consus-io",
@@ -381,7 +381,7 @@ dependencies = [
 
 [[package]]
 name = "consus-nwb"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "consus-core",
  "consus-hdf5",
@@ -391,11 +391,11 @@ dependencies = [
 
 [[package]]
 name = "consus-onnx"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "consus-parquet"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "consus-core",
  "criterion",
@@ -408,7 +408,7 @@ dependencies = [
 
 [[package]]
 name = "consus-python"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "consus-core",
  "consus-hdf5",
@@ -425,7 +425,7 @@ dependencies = [
 
 [[package]]
 name = "consus-raster"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "apollo-dctdst-core",
  "jpeg-encoder",
@@ -434,7 +434,7 @@ dependencies = [
 
 [[package]]
 name = "consus-zarr"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "consus-compression",
  "consus-core",
@@ -945,7 +945,7 @@ dependencies = [
 [[package]]
 name = "mnemosyne-arena"
 version = "0.6.0"
-source = "git+https://github.com/ryancinsight/Mnemosyne.git#8f6ea38ce627980ed003a32482357b053cf0bc13"
+source = "git+https://github.com/ryancinsight/Mnemosyne.git#87f80379629b11baa8c2e2408f77acc19b8c339d"
 dependencies = [
  "libc",
  "loom",
@@ -957,7 +957,7 @@ dependencies = [
 [[package]]
 name = "mnemosyne-backend"
 version = "0.6.0"
-source = "git+https://github.com/ryancinsight/Mnemosyne.git#8f6ea38ce627980ed003a32482357b053cf0bc13"
+source = "git+https://github.com/ryancinsight/Mnemosyne.git#87f80379629b11baa8c2e2408f77acc19b8c339d"
 dependencies = [
  "mnemosyne-memory-core",
 ]
@@ -965,12 +965,12 @@ dependencies = [
 [[package]]
 name = "mnemosyne-build-util"
 version = "0.2.1"
-source = "git+https://github.com/ryancinsight/Mnemosyne.git#8f6ea38ce627980ed003a32482357b053cf0bc13"
+source = "git+https://github.com/ryancinsight/Mnemosyne.git#87f80379629b11baa8c2e2408f77acc19b8c339d"
 
 [[package]]
 name = "mnemosyne-decay"
 version = "0.3.2"
-source = "git+https://github.com/ryancinsight/Mnemosyne.git#8f6ea38ce627980ed003a32482357b053cf0bc13"
+source = "git+https://github.com/ryancinsight/Mnemosyne.git#87f80379629b11baa8c2e2408f77acc19b8c339d"
 dependencies = [
  "mnemosyne-arena",
  "mnemosyne-backend",
@@ -980,7 +980,7 @@ dependencies = [
 [[package]]
 name = "mnemosyne-local"
 version = "0.6.0"
-source = "git+https://github.com/ryancinsight/Mnemosyne.git#8f6ea38ce627980ed003a32482357b053cf0bc13"
+source = "git+https://github.com/ryancinsight/Mnemosyne.git#87f80379629b11baa8c2e2408f77acc19b8c339d"
 dependencies = [
  "melinoe",
  "mnemosyne-arena",
@@ -995,7 +995,7 @@ dependencies = [
 [[package]]
 name = "mnemosyne-memory"
 version = "0.9.0"
-source = "git+https://github.com/ryancinsight/Mnemosyne.git#8f6ea38ce627980ed003a32482357b053cf0bc13"
+source = "git+https://github.com/ryancinsight/Mnemosyne.git#87f80379629b11baa8c2e2408f77acc19b8c339d"
 dependencies = [
  "mnemosyne-arena",
  "mnemosyne-backend",
@@ -1008,7 +1008,7 @@ dependencies = [
 [[package]]
 name = "mnemosyne-memory-core"
 version = "0.3.0"
-source = "git+https://github.com/ryancinsight/Mnemosyne.git#8f6ea38ce627980ed003a32482357b053cf0bc13"
+source = "git+https://github.com/ryancinsight/Mnemosyne.git#87f80379629b11baa8c2e2408f77acc19b8c339d"
 dependencies = [
  "loom",
 ]
@@ -1016,7 +1016,7 @@ dependencies = [
 [[package]]
 name = "mnemosyne-prof"
 version = "0.2.1"
-source = "git+https://github.com/ryancinsight/Mnemosyne.git#8f6ea38ce627980ed003a32482357b053cf0bc13"
+source = "git+https://github.com/ryancinsight/Mnemosyne.git#87f80379629b11baa8c2e2408f77acc19b8c339d"
 dependencies = [
  "backtrace",
  "mnemosyne-build-util",
@@ -1025,8 +1025,8 @@ dependencies = [
 
 [[package]]
 name = "moirai-async"
-version = "0.8.2"
-source = "git+https://github.com/ryancinsight/Moirai#10a828f7e0a8cace10dd30e88e47ce2e64aec6e0"
+version = "0.9.0"
+source = "git+https://github.com/ryancinsight/Moirai#7828f5df7cf76b7fdec68695ee8b2a49da8e5ba7"
 dependencies = [
  "futures",
  "libc",
@@ -1040,8 +1040,8 @@ dependencies = [
 
 [[package]]
 name = "moirai-async-macros"
-version = "0.8.2"
-source = "git+https://github.com/ryancinsight/Moirai#10a828f7e0a8cace10dd30e88e47ce2e64aec6e0"
+version = "0.9.0"
+source = "git+https://github.com/ryancinsight/Moirai#7828f5df7cf76b7fdec68695ee8b2a49da8e5ba7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1050,8 +1050,8 @@ dependencies = [
 
 [[package]]
 name = "moirai-core"
-version = "0.8.2"
-source = "git+https://github.com/ryancinsight/Moirai#10a828f7e0a8cace10dd30e88e47ce2e64aec6e0"
+version = "0.9.0"
+source = "git+https://github.com/ryancinsight/Moirai#7828f5df7cf76b7fdec68695ee8b2a49da8e5ba7"
 dependencies = [
  "bytemuck",
  "libc",
@@ -1062,8 +1062,8 @@ dependencies = [
 
 [[package]]
 name = "moirai-executor"
-version = "0.8.2"
-source = "git+https://github.com/ryancinsight/Moirai#10a828f7e0a8cace10dd30e88e47ce2e64aec6e0"
+version = "0.9.0"
+source = "git+https://github.com/ryancinsight/Moirai#7828f5df7cf76b7fdec68695ee8b2a49da8e5ba7"
 dependencies = [
  "melinoe",
  "mnemosyne-memory",
@@ -1076,8 +1076,8 @@ dependencies = [
 
 [[package]]
 name = "moirai-iter"
-version = "0.8.2"
-source = "git+https://github.com/ryancinsight/Moirai#10a828f7e0a8cace10dd30e88e47ce2e64aec6e0"
+version = "0.9.0"
+source = "git+https://github.com/ryancinsight/Moirai#7828f5df7cf76b7fdec68695ee8b2a49da8e5ba7"
 dependencies = [
  "futures",
  "libc",
@@ -1092,8 +1092,8 @@ dependencies = [
 
 [[package]]
 name = "moirai-pal"
-version = "0.8.2"
-source = "git+https://github.com/ryancinsight/Moirai#10a828f7e0a8cace10dd30e88e47ce2e64aec6e0"
+version = "0.9.0"
+source = "git+https://github.com/ryancinsight/Moirai#7828f5df7cf76b7fdec68695ee8b2a49da8e5ba7"
 dependencies = [
  "accesskit",
  "accesskit_windows",
@@ -1102,6 +1102,7 @@ dependencies = [
  "melinoe",
  "moirai-core",
  "socket2",
+ "tracing",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -1110,8 +1111,8 @@ dependencies = [
 
 [[package]]
 name = "moirai-parallel"
-version = "0.8.2"
-source = "git+https://github.com/ryancinsight/Moirai#10a828f7e0a8cace10dd30e88e47ce2e64aec6e0"
+version = "0.9.0"
+source = "git+https://github.com/ryancinsight/Moirai#7828f5df7cf76b7fdec68695ee8b2a49da8e5ba7"
 dependencies = [
  "melinoe",
  "moirai-core",
@@ -1121,8 +1122,8 @@ dependencies = [
 
 [[package]]
 name = "moirai-runtime"
-version = "0.8.2"
-source = "git+https://github.com/ryancinsight/Moirai#10a828f7e0a8cace10dd30e88e47ce2e64aec6e0"
+version = "0.9.0"
+source = "git+https://github.com/ryancinsight/Moirai#7828f5df7cf76b7fdec68695ee8b2a49da8e5ba7"
 dependencies = [
  "melinoe",
  "mnemosyne-memory",
@@ -1139,8 +1140,8 @@ dependencies = [
 
 [[package]]
 name = "moirai-scheduler"
-version = "0.8.2"
-source = "git+https://github.com/ryancinsight/Moirai#10a828f7e0a8cace10dd30e88e47ce2e64aec6e0"
+version = "0.9.0"
+source = "git+https://github.com/ryancinsight/Moirai#7828f5df7cf76b7fdec68695ee8b2a49da8e5ba7"
 dependencies = [
  "loom",
  "mnemosyne-memory",
@@ -1151,8 +1152,8 @@ dependencies = [
 
 [[package]]
 name = "moirai-sync"
-version = "0.8.2"
-source = "git+https://github.com/ryancinsight/Moirai#10a828f7e0a8cace10dd30e88e47ce2e64aec6e0"
+version = "0.9.0"
+source = "git+https://github.com/ryancinsight/Moirai#7828f5df7cf76b7fdec68695ee8b2a49da8e5ba7"
 dependencies = [
  "libc",
  "moirai-core",
@@ -1161,8 +1162,8 @@ dependencies = [
 
 [[package]]
 name = "moirai-transport"
-version = "0.8.2"
-source = "git+https://github.com/ryancinsight/Moirai#10a828f7e0a8cace10dd30e88e47ce2e64aec6e0"
+version = "0.9.0"
+source = "git+https://github.com/ryancinsight/Moirai#7828f5df7cf76b7fdec68695ee8b2a49da8e5ba7"
 dependencies = [
  "bytemuck",
  "libc",
@@ -1173,8 +1174,8 @@ dependencies = [
 
 [[package]]
 name = "moirai-utils"
-version = "0.8.2"
-source = "git+https://github.com/ryancinsight/Moirai#10a828f7e0a8cace10dd30e88e47ce2e64aec6e0"
+version = "0.9.0"
+source = "git+https://github.com/ryancinsight/Moirai#7828f5df7cf76b7fdec68695ee8b2a49da8e5ba7"
 
 [[package]]
 name = "nu-ansi-term"
