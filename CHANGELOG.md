@@ -1,7 +1,14 @@
 # Changelog
 
-## [0.2.1] - 2026-10-13
+## [0.2.1] - 2026-10-15
 
 ### Fixed
 
-- [patch] Resolve the async and parallel providers through approved Moirai 0.9.0 default `7828f5df7cf76b7fdec68695ee8b2a49da8e5ba7`. Canonical Git sources remain intact; QUIC PR 618 is excluded.
+- [patch] Admit Apollo DCT/DST core 0.17 in the private JPEG transform. The
+  former 0.16 requirement rejects current Apollo main before compilation.
+- [patch] Complete the approved Moirai update with 0.9.3 and canonical Git
+  locks. Preserve every registry identity, public API, feature, and Rust 1.95
+  minimum. The async public boundary already uses the Moirai 0.9 contract on
+  main; this patch retains that contract.
+- [patch] Add an overlay-free fresh-consumer regression that exercises real
+  JPEG encode/decode, exact constant samples, and image metadata.

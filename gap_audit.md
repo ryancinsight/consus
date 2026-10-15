@@ -424,6 +424,27 @@ Closure is a test-API reconciliation slice that maps the tests onto the real
 `ZarrArray`/`ArrayMetadataV3`/`NcFile` facades (the chunk/`read_model` building
 blocks exist) or rewrites the tests against the existing chunk API.
 
-### Atlas PR 530 provider coherence
+### Atlas PR 530 provider coherence [patch] — 2026-10-15
 
-The proposal removes direct Moirai requirement lag using approved main `7828f5df7cf76b7fdec68695ee8b2a49da8e5ba7`; QUIC PR 618 stays separate. Standalone metadata and native value tests pass. The published default remains unchanged until review; Atlas must not record this proposal as a default dependency.
+A fresh real raster consumer on main 3510db09 fails resolution: Apollo core
+`^0.16.0` rejects current default 0.17.0. Existing PR 172 retains both owner
+commits, merges current main, and admits 0.17 in the private JPEG transform.
+The same fresh consumer then reconstructs five constant 8x8 JPEG blocks,
+including both sample limits, with exact samples and metadata. Existing DC,
+AC, 8/12-bit and reference-fixture tests remain intact.
+
+The lock selects Apollo f266bb0b (DCT/DST core identical to the published
+730f6262 source), Eunomia 15fbb94c, Moirai 44a962f0, and Mnemosyne 481c7452.
+Every registry identity and unrelated Git revision is preserved. Apollo types
+are private; the public Moirai async boundary remains on the 0.9 contract
+already present on main. No public Rust signature or feature changes; the
+existing patch target 0.2.1 and Rust 1.95 minimum remain appropriate.
+
+Run `python3 scripts/check_provider_cohort.py` from outside the Atlas overlay;
+`--root` selects the baseline or repaired source without changing either
+source lock. Local validation passes all 2,811 native tests (zero skips),
+strict all-feature Clippy, Rust 1.95, 14 doctests (one existing ignore),
+no_std/alloc checks, both MAT feature suites (90 / 70), all fuzz target checks,
+and strict documentation. Normalized-package and hosted verification remain
+delivery gates. The earlier source3510db09 upload command
+is obsolete; first registry authentication remains a separate human action.

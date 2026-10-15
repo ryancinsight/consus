@@ -34,7 +34,7 @@ categories = ["science", "filesystem", "encoding", "no-std"]
 description = "Pure-Rust, no_std-compatible, memory-safe hierarchical and array-oriented storage formats"
 
 [workspace.dependencies]
-apollo-dctdst-core = { version = "0.16.0", git = "https://github.com/ryancinsight/apollo" }
+apollo-dctdst-core = { version = "0.17.0", git = "https://github.com/ryancinsight/apollo" }
 # Internal crates
 consus-mat = { path = "crates/consus-mat", version = "0.2.1", default-features = false }
 consus-nwb = { path = "crates/consus-nwb", version = "0.2.1", default-features = false }
@@ -76,8 +76,8 @@ lz4_flex = { version = "0.11", default-features = false }
 
 # Parallelism: Moirai defaults provide the data-parallel API, Mnemosyne memory
 # integration, and Mellinoe branded partitioning.
-moirai = { package = "moirai-runtime", version = "0.9.0", git = "https://github.com/ryancinsight/Moirai" }
-moirai-async = { version = "0.9.0", git = "https://github.com/ryancinsight/Moirai", default-features = false }
+moirai = { package = "moirai-runtime", version = "0.9.3", git = "https://github.com/ryancinsight/Moirai.git" }
+moirai-async = { version = "0.9.3", git = "https://github.com/ryancinsight/Moirai.git", default-features = false }
 themis = { package = "themis-topology", version = "0.11.0", git = "https://github.com/ryancinsight/themis", default-features = false, features = ["std"] }
 
 # Testing

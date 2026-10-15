@@ -190,8 +190,17 @@
       compilation; locked metadata; and all 196 applicable Consus I/O semver
       checks.
 
-### Atlas PR 530 provider coherence — target 0.2.1
+### Atlas PR 530 provider coherence — target 0.2.1 [patch]
 
-- [x] [patch] Resolve approved Moirai 0.9.0 and preserve registry identities.
-- [x] [patch] Pass standalone metadata and the complete native nextest suite.
-- [ ] [patch] Obtain hosted verification and merge review before Atlas adopts this revision.
+- [x] Preserve both PR 172 owner commits and merge current main additively.
+- [x] Reproduce rejection of Apollo 0.17 by the old 0.16 requirement in a fresh
+      consumer; admit the current private provider and Moirai 0.9.3.
+- [x] Verify real JPEG sample and metadata reconstruction in that same consumer.
+- [x] Preserve all registry identities and existing production source, feature,
+      workflow, and native-test budgets.
+- [x] Pass all 2,811 native tests (zero skips), strict Clippy, Rust 1.95,
+      14 doctests (one existing ignore), no_std/alloc checks, MAT feature
+      suites (90 default / 70 minimal), and strict documentation.
+- [ ] Complete normalized-package and hosted final-head gates.
+- [ ] Record the new clean source and archive for the separate human-controlled
+      first registry upload; the source 3510db09 command is obsolete.
