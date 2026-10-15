@@ -74,7 +74,7 @@ checksum = "940b3a0ca603d1eade50a4846a2afffd5ef57a9feac2c0e2ec2e14f9ead76000"
 [[package]]
 name = "apollo-dctdst-core"
 version = "0.16.0"
-source = "git+https://github.com/ryancinsight/apollo#0d81501e9013a80ff95203eddb68e365b058f1e5"
+source = "git+https://github.com/ryancinsight/apollo#5950e1b5bb40489275a5596f48a8e3fc5f7c85b0"
 dependencies = [
  "eunomia",
 ]
