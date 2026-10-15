@@ -423,3 +423,32 @@ Closure is a test-API reconciliation slice that maps the tests onto the real
 `Hdf5FileBuilder` (in-memory byte emission), `MemCursor`, and either adds the
 `ZarrArray`/`ArrayMetadataV3`/`NcFile` facades (the chunk/`read_model` building
 blocks exist) or rewrites the tests against the existing chunk API.
+
+### Atlas PR 530 provider coherence [patch] — 2026-10-15
+
+A fresh real raster consumer on main 3510db09 fails resolution: Apollo core
+`^0.16.0` rejects current default 0.17.0. Existing PR 172 retains both owner
+commits, merges current main, and admits 0.17 in the private JPEG transform.
+The same fresh consumer then reconstructs five constant 8x8 JPEG blocks,
+including both sample limits, with exact samples and metadata. Existing DC,
+AC, 8/12-bit and reference-fixture tests remain intact.
+
+The lock selects Apollo f266bb0b (DCT/DST core identical to the published
+730f6262 source), Eunomia 15fbb94c, Moirai 44a962f0, and Mnemosyne 481c7452.
+Every registry identity and unrelated Git revision is preserved. Apollo types
+are private; the public Moirai async boundary remains on the 0.9 contract
+already present on main. No public Rust signature or feature changes; the
+existing patch target 0.2.1 and Rust 1.95 minimum remain appropriate.
+
+Run `python3 scripts/check_provider_cohort.py` from outside the Atlas overlay;
+`--root` selects the baseline or repaired source without changing either
+source lock. Local validation passes all 2,811 native tests (zero skips),
+strict all-feature Clippy, Rust 1.95, 14 doctests (one existing ignore),
+no_std/alloc checks, both MAT feature suites (90 / 70), all fuzz target checks,
+and strict documentation. The normalized registry archive passes all 76 tests
+with zero skips on Apollo 0.17 and Eunomia 0.10. HDF5 and raster each pass all
+223 applicable patch-class SemVer checks against current main. CI
+[38787639519](https://github.com/ryancinsight/consus/actions/runs/38787639519)
+passes every active context at fda3d838; final documentation-only source
+retains the same gate before adoption. The earlier source3510db09 upload command
+is obsolete; first registry authentication remains a separate human action.

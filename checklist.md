@@ -189,3 +189,24 @@
       warning-denied Clippy and rustdoc; focused doctests; ONNX `alloc`-only
       compilation; locked metadata; and all 196 applicable Consus I/O semver
       checks.
+
+### Atlas PR 530 provider coherence — target 0.2.1 [patch]
+
+- [x] Preserve both PR 172 owner commits and merge current main additively.
+- [x] Reproduce rejection of Apollo 0.17 by the old 0.16 requirement in a fresh
+      consumer; admit the current private provider and Moirai 0.9.3.
+- [x] Verify real JPEG sample and metadata reconstruction in that same consumer.
+- [x] Preserve all registry identities and existing production source, feature,
+      workflow, and native-test budgets.
+- [x] Pass all 2,811 native tests (zero skips), strict Clippy, Rust 1.95,
+      14 doctests (one existing ignore), no_std/alloc checks, MAT feature
+      suites (90 default / 70 minimal), and strict documentation.
+- [x] Verify the clean raster 0.2.1 archive against registry Apollo 0.17 and
+      Eunomia 0.10; all 76 packaged tests pass with zero skips. HDF5 and raster
+      each pass 223 applicable patch-class API checks.
+- [x] Pass every active hosted context at fda3d838 (CI 38787639519); recheck
+      the final documentation-only head before default-branch adoption.
+- [x] Prepare the clean-source raster 0.2.1 archive for the separate human
+      first upload; use the final delivery receipt for source and checksum.
+      The source 3510db09 command is obsolete. Authentication and publisher
+      registration are separate human actions, not part of this repair.
