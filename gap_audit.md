@@ -445,6 +445,10 @@ Run `python3 scripts/check_provider_cohort.py` from outside the Atlas overlay;
 source lock. Local validation passes all 2,811 native tests (zero skips),
 strict all-feature Clippy, Rust 1.95, 14 doctests (one existing ignore),
 no_std/alloc checks, both MAT feature suites (90 / 70), all fuzz target checks,
-and strict documentation. Normalized-package and hosted verification remain
-delivery gates. The earlier source3510db09 upload command
+and strict documentation. The normalized registry archive passes all 76 tests
+with zero skips on Apollo 0.17 and Eunomia 0.10. HDF5 and raster each pass all
+223 applicable patch-class SemVer checks against current main. CI
+[38787639519](https://github.com/ryancinsight/consus/actions/runs/38787639519)
+passes every active context at fda3d838; final documentation-only source
+retains the same gate before adoption. The earlier source3510db09 upload command
 is obsolete; first registry authentication remains a separate human action.

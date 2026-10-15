@@ -201,6 +201,12 @@
 - [x] Pass all 2,811 native tests (zero skips), strict Clippy, Rust 1.95,
       14 doctests (one existing ignore), no_std/alloc checks, MAT feature
       suites (90 default / 70 minimal), and strict documentation.
-- [ ] Complete normalized-package and hosted final-head gates.
-- [ ] Record the new clean source and archive for the separate human-controlled
-      first registry upload; the source 3510db09 command is obsolete.
+- [x] Verify the clean raster 0.2.1 archive against registry Apollo 0.17 and
+      Eunomia 0.10; all 76 packaged tests pass with zero skips. HDF5 and raster
+      each pass 223 applicable patch-class API checks.
+- [x] Pass every active hosted context at fda3d838 (CI 38787639519); recheck
+      the final documentation-only head before default-branch adoption.
+- [x] Prepare the clean-source raster 0.2.1 archive for the separate human
+      first upload; use the final delivery receipt for source and checksum.
+      The source 3510db09 command is obsolete. Authentication and publisher
+      registration are separate human actions, not part of this repair.
