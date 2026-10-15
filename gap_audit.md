@@ -443,3 +443,11 @@ existing workflow gates and budgets remain identical. Run the new public-boundar
 and existing JPEG consumer, then unchanged native/package/final-head checks.
 Initial registry authentication and publisher registration remain separate
 human actions; no credentials, permissions or compatibility adapter changes.
+
+Local0.3 verification passes all2811 native tests (zero skips),14 doctests
+(one existing ignore), MAT90/70, strict Clippy/docs, Rust1.95, default/all-
+feature/no_std/alloc checks, both real consumer regressions, and all76 tests
+from the normalized clean0.3 raster archive. A strict patch-class diagnostic
+against actual published HDF50.2 still passes223 checks and misses the nominal
+break; the executed E0277 consumer determines the release class. Exact-head
+hosted/default and archive provenance gates remain before the new handoff.

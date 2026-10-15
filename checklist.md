@@ -202,6 +202,9 @@
 - [x] Pass all 2,811 native tests, zero skips, strict all-feature Clippy and
       Rust1.95; append both consumer regressions to the existing three-OS
       test job without changing budgets or existing gates.
-- [ ] Complete remaining feature/strict/package/API/final-head
-      checks and the corrected source/archive handoff. Initial-upload
-      authentication remains a separate human action.
+- [x] Pass default/all-feature, no_std/alloc, MAT90/70, strict docs,
+      14 doctests (one existing ignore), clean0.3 raster package/dry-run and
+      all76 normalized registry tests. The strict published-baseline scanner
+      passes223 checks but misses the executed nominal identity regression.
+- [ ] Complete exact-head hosted/default adoption and the corrected merged
+      source/archive handoff. Initial-upload authentication remains separate.
