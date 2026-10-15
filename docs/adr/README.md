@@ -13,3 +13,4 @@
 | [0002](0002-generic-plain-decoder.md) | Generic Parquet PLAIN scalar decoder | Accepted |
 | [0003](0003-hdf5-shuffle-element-size.md) | Carry HDF5 shuffle element size through chunk filters | Accepted |
 | [0004](0004-raster-codecs.md) | Shared raster codecs | Accepted |
+| [0005](0005-public-async-provider-identity.md) | Public async provider identity | Accepted |

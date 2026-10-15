@@ -153,6 +153,10 @@ jobs:
         run: cargo nextest run --workspace --locked --all-features
       - name: cargo test --doc (workspace)
         run: cargo test --doc --workspace --locked
+      - name: Published async provider contract
+        run: python scripts/check_async_provider_boundary.py
+      - name: Fresh JPEG provider consumer
+        run: python scripts/check_provider_cohort.py
 
   msrv:
     name: MSRV (1.95.0)

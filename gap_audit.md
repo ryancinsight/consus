@@ -424,31 +424,22 @@ Closure is a test-API reconciliation slice that maps the tests onto the real
 `ZarrArray`/`ArrayMetadataV3`/`NcFile` facades (the chunk/`read_model` building
 blocks exist) or rewrites the tests against the existing chunk API.
 
-### Atlas PR 530 provider coherence [patch] — 2026-10-15
+### Atlas PR 530 public provider contract [major] — 2026-10-15
 
-A fresh real raster consumer on main 3510db09 fails resolution: Apollo core
-`^0.16.0` rejects current default 0.17.0. Existing PR 172 retains both owner
-commits, merges current main, and admits 0.17 in the private JPEG transform.
-The same fresh consumer then reconstructs five constant 8x8 JPEG blocks,
-including both sample limits, with exact samples and metadata. Existing DC,
-AC, 8/12-bit and reference-fixture tests remain intact.
+The published HDF50.2.0 archive (sourcecf30dc29) exposes Moirai0.7's own
+AsyncReadAt/AsyncLength traits; current source exposes Moirai0.9. The same
+real generic consumer passes the published pair, fails exactly two E0277
+errors on current Consus with old bounds, and passes after migrating the
+caller. The earlier 223-check comparison against current main is too narrow
+for published compatibility. The 0.2.1 release claim is withdrawn, its
+publisher38788613541 is cancelled before publishing job steps execute, and
+both earlier upload commands are obsolete.
 
-The lock selects Apollo f266bb0b (DCT/DST core identical to the published
-730f6262 source), Eunomia 15fbb94c, Moirai 44a962f0, and Mnemosyne 481c7452.
-Every registry identity and unrelated Git revision is preserved. Apollo types
-are private; the public Moirai async boundary remains on the 0.9 contract
-already present on main. No public Rust signature or feature changes; the
-existing patch target 0.2.1 and Rust 1.95 minimum remain appropriate.
-
-Run `python3 scripts/check_provider_cohort.py` from outside the Atlas overlay;
-`--root` selects the baseline or repaired source without changing either
-source lock. Local validation passes all 2,811 native tests (zero skips),
-strict all-feature Clippy, Rust 1.95, 14 doctests (one existing ignore),
-no_std/alloc checks, both MAT feature suites (90 / 70), all fuzz target checks,
-and strict documentation. The normalized registry archive passes all 76 tests
-with zero skips on Apollo 0.17 and Eunomia 0.10. HDF5 and raster each pass all
-223 applicable patch-class SemVer checks against current main. CI
-[38787639519](https://github.com/ryancinsight/consus/actions/runs/38787639519)
-passes every active context at fda3d838; final documentation-only source
-retains the same gate before adoption. The earlier source3510db09 upload command
-is obsolete; first registry authentication remains a separate human action.
+ADR0005 precedes the uniform 0.3.0 version correction. The inherited Apollo
+core0.17 numerical repair and all PR172 owner history remain intact. Only
+workspace package versions and internal requirements change in the canonical
+lock; all provider/registry records, production Rust, tests, features, MSRV1.95,
+existing workflow gates and budgets remain identical. Run the new public-boundary checker
+and existing JPEG consumer, then unchanged native/package/final-head checks.
+Initial registry authentication and publisher registration remain separate
+human actions; no credentials, permissions or compatibility adapter changes.
