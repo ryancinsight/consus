@@ -190,23 +190,21 @@
       compilation; locked metadata; and all 196 applicable Consus I/O semver
       checks.
 
-### Atlas PR 530 provider coherence — target 0.2.1 [patch]
+### Atlas PR 530 public provider contract — target 0.3.0 [major]
 
-- [x] Preserve both PR 172 owner commits and merge current main additively.
-- [x] Reproduce rejection of Apollo 0.17 by the old 0.16 requirement in a fresh
-      consumer; admit the current private provider and Moirai 0.9.3.
-- [x] Verify real JPEG sample and metadata reconstruction in that same consumer.
-- [x] Preserve all registry identities and existing production source, feature,
-      workflow, and native-test budgets.
-- [x] Pass all 2,811 native tests (zero skips), strict Clippy, Rust 1.95,
-      14 doctests (one existing ignore), no_std/alloc checks, MAT feature
-      suites (90 default / 70 minimal), and strict documentation.
-- [x] Verify the clean raster 0.2.1 archive against registry Apollo 0.17 and
-      Eunomia 0.10; all 76 packaged tests pass with zero skips. HDF5 and raster
-      each pass 223 applicable patch-class API checks.
-- [x] Pass every active hosted context at fda3d838 (CI 38787639519); recheck
-      the final documentation-only head before default-branch adoption.
-- [x] Prepare the clean-source raster 0.2.1 archive for the separate human
-      first upload; use the final delivery receipt for source and checksum.
-      The source 3510db09 command is obsolete. Authentication and publisher
-      registration are separate human actions, not part of this repair.
+- [x] Verify the actual published HDF5 archive/source and Moirai0.7 dependency.
+- [x] Execute the identical generic consumer on published/current providers:
+      baseline pass, exactly two E0277 errors, migrated caller pass.
+- [x] Cancel incorrect 0.2.1 publication before publishing steps execute and
+      retire both earlier first-upload commands; preserve owner commits.
+- [x] Record ADR0005 before the uniform 0.3.0 correction; preserve production
+      source, provider graph, features, MSRV and all gates/budgets.
+- [x] Pass all 2,811 native tests, zero skips, strict all-feature Clippy and
+      Rust1.95; append both consumer regressions to the existing three-OS
+      test job without changing budgets or existing gates.
+- [x] Pass default/all-feature, no_std/alloc, MAT90/70, strict docs,
+      14 doctests (one existing ignore), clean0.3 raster package/dry-run and
+      all76 normalized registry tests. The strict published-baseline scanner
+      passes223 checks but misses the executed nominal identity regression.
+- [ ] Complete exact-head hosted/default adoption and the corrected merged
+      source/archive handoff. Initial-upload authentication remains separate.
