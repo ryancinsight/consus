@@ -22,10 +22,10 @@ def main():
     args = parser.parse_args()
     output = args.output or Path(tempfile.mkdtemp(prefix="consus-async-boundary-evidence-"))
     output.mkdir(parents=True, exist_ok=True)
-    fixture = Path(__file__).resolve().parent / "regressions/async_provider_boundary.rs"
+    fixture = Path(__file__).resolve().parent / "scratch/async_provider_boundary.rs"
     candidate = json.dumps(str(args.root.resolve() / "crates/consus-hdf5"))
     old = 'moirai-async = { version = "=0.7.0", default-features = false }\n'
-    new = 'moirai-async = { version = "0.9.3", git = "https://github.com/ryancinsight/Moirai.git", default-features = false }\n'
+    new = 'moirai-async = { version = "0.10.0", git = "https://github.com/ryancinsight/Moirai.git", default-features = false }\n'
     phases = [
         ("published", 'consus-hdf5 = { version = "=0.2.0", features = ["async"] }\n' + old, True),
         ("unchanged-caller", 'consus-hdf5 = { path = ' + candidate + ', features = ["async"] }\n' + old, False),

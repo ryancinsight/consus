@@ -20,7 +20,7 @@ def main():
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
     args = parser.parse_args()
     raster = args.root.resolve() / "crates/consus-raster"
-    fixture = Path(__file__).resolve().parent / "regressions/jpeg_provider_cohort.rs"
+    fixture = Path(__file__).resolve().parent / "scratch/jpeg_provider_cohort.rs"
     with tempfile.TemporaryDirectory(prefix="consus-provider-cohort-") as directory:
         root = Path(directory)
         (root / "src").mkdir()
