@@ -11,7 +11,7 @@ use crate::error::from_consus_mat;
 // ---------------------------------------------------------------------------
 
 /// A single variable loaded from a MATLAB `.mat` file.
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Clone)]
 pub struct PyMatVariable {
     /// Variable name as stored in the file.
@@ -50,7 +50,7 @@ impl PyMatVariable {
     ///
     /// Returns empty bytes for non-numeric variables.
     fn read_data<'py>(&self, py: Python<'py>) -> Py<PyBytes> {
-        PyBytes::new_bound(py, &self.raw_data).unbind()
+        PyBytes::new(py, &self.raw_data).unbind()
     }
 }
 

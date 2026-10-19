@@ -164,7 +164,7 @@ impl PyHdf5File {
                 ));
             }
         };
-        Ok(PyBytes::new_bound(py, &bytes).unbind())
+        Ok(PyBytes::new(py, &bytes).unbind())
     }
 
     /// Return attributes of the object at `path` as a ``dict[str, bytes]``.
@@ -173,9 +173,9 @@ impl PyHdf5File {
         let file = Hdf5File::open(cursor).map_err(from_consus)?;
         let address = file.open_path(path).map_err(from_consus)?;
         let attrs = file.attributes_at(address).map_err(from_consus)?;
-        let dict = PyDict::new_bound(py);
+        let dict = PyDict::new(py);
         for attr in attrs {
-            let value = PyBytes::new_bound(py, &attr.raw_data);
+            let value = PyBytes::new(py, &attr.raw_data);
             dict.set_item(&attr.name, value)?;
         }
         Ok(dict.unbind())
@@ -350,6 +350,6 @@ impl PyFileBuilder {
             .take()
             .ok_or_else(|| PyRuntimeError::new_err("FileBuilder already consumed by finish()"))?;
         let bytes = builder.finish().map_err(from_consus)?;
-        Ok(PyBytes::new_bound(py, &bytes).unbind())
+        Ok(PyBytes::new(py, &bytes).unbind())
     }
 }

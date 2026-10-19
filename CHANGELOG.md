@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.4.0] - Unreleased
+
+### Breaking
+
+- [major] Public HDF5 async reader bounds use Moirai 0.10's nominal
+  AsyncReadAt/AsyncLength traits. Published 0.3 used 0.9.3; callers crossing
+  this boundary migrate provider identity. Workspace and internal versions
+  advance together to 0.4. ADR0006 records the published baseline.
+
+### Added
+
+- [minor] Support CPython 3.14 with PyO3/build-config 0.29.3, preserving the
+  Python names, values and cloned class extraction contract. Retain the older
+  wheel interpreters and run the actual format interoperability suite in CI.
+
+### Fixed
+
+- [patch] Forward the caller-supplied variable element width through chunked
+  HDF5 reads. Keep fixed-width dispatch and missing-width rejection; verify
+  actual plain/compressed global-heap string references without weakening the
+  existing HDMF string-column oracle.
+- [patch] Admit patched ZIP 9.0.5 with the existing format/compression features,
+  and refresh all compatible root/fuzz dependencies through normal resolution.
+- [patch] Compare the async provider regression with published HDF5 0.3 and
+  Moirai 0.9.3, retaining the identical caller and two E0277 error assertions.
+
 ## [0.3.0] - 2026-10-15
 
 ### Breaking

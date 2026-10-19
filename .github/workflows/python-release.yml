@@ -28,7 +28,7 @@ jobs:
       atlas-ref: 227ff172612b8aff553be22be89fabdf71838a03
       tag-prefix: consus-python-v
       abi3: false
-      python-versions: '["3.9", "3.10", "3.11", "3.12", "3.13"]'
+      python-versions: '["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]'
 
   publish:
     if: startsWith(github.event.release.tag_name, 'consus-python-v')

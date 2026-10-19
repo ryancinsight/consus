@@ -74,18 +74,9 @@ checksum = "940b3a0ca603d1eade50a4846a2afffd5ef57a9feac2c0e2ec2e14f9ead76000"
 [[package]]
 name = "apollo-dctdst-core"
 version = "0.17.0"
-source = "git+https://github.com/ryancinsight/apollo#bc8961c9337c0bdbae4a89d96fd4aa0eb6da1012"
+source = "git+https://github.com/ryancinsight/apollo#8eeaa1a0c8c735ab31368ff89a2a548002aebac0"
 dependencies = [
  "eunomia",
-]
-
-[[package]]
-name = "arbitrary"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bc62ac97cc33321f50863d514c3bc38a453947a8f9e781137e47c7401020aed"
-dependencies = [
- "derive_arbitrary",
 ]
 
 [[package]]
@@ -204,9 +195,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.8.0"
+version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6651c9ed80effdc7db0ff72512157f901af5e3549e341e24b1dd4887d836d838"
+checksum = "877bf67ac8e52449eb2f9e98a344ea163beb70dd1f9eebe3cc5357dcfeaee4df"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -289,7 +280,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "consus"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "consus-arrow",
  "consus-compression",
@@ -306,7 +297,7 @@ dependencies = [
 
 [[package]]
 name = "consus-arrow"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "consus-core",
  "consus-parquet",
@@ -317,7 +308,7 @@ dependencies = [
 
 [[package]]
 name = "consus-compression"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "byteorder",
  "consus-core",
@@ -329,7 +320,7 @@ dependencies = [
 
 [[package]]
 name = "consus-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "byteorder",
  "proptest",
@@ -339,7 +330,7 @@ dependencies = [
 
 [[package]]
 name = "consus-fits"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "consus-compression",
  "consus-core",
@@ -348,7 +339,7 @@ dependencies = [
 
 [[package]]
 name = "consus-hdf5"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "byteorder",
  "consus-compression",
@@ -364,7 +355,7 @@ dependencies = [
 
 [[package]]
 name = "consus-hdmf"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "consus-core",
  "consus-hdf5",
@@ -373,7 +364,7 @@ dependencies = [
 
 [[package]]
 name = "consus-integration-tests"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "byteorder",
  "consus-arrow",
@@ -390,7 +381,7 @@ dependencies = [
 
 [[package]]
 name = "consus-io"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "consus-core",
  "memmap2",
@@ -400,7 +391,7 @@ dependencies = [
 
 [[package]]
 name = "consus-mat"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "consus-core",
  "consus-hdf5",
@@ -411,7 +402,7 @@ dependencies = [
 
 [[package]]
 name = "consus-netcdf"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "consus-core",
  "consus-hdf5",
@@ -422,7 +413,7 @@ dependencies = [
 
 [[package]]
 name = "consus-npy"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "byteorder",
  "consus-io",
@@ -432,7 +423,7 @@ dependencies = [
 
 [[package]]
 name = "consus-nwb"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "consus-core",
  "consus-hdf5",
@@ -442,11 +433,11 @@ dependencies = [
 
 [[package]]
 name = "consus-onnx"
-version = "0.3.0"
+version = "0.4.0"
 
 [[package]]
 name = "consus-parquet"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "consus-core",
  "criterion",
@@ -459,7 +450,7 @@ dependencies = [
 
 [[package]]
 name = "consus-python"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "consus-core",
  "consus-hdf5",
@@ -476,7 +467,7 @@ dependencies = [
 
 [[package]]
 name = "consus-raster"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "apollo-dctdst-core",
  "jpeg-encoder",
@@ -485,7 +476,7 @@ dependencies = [
 
 [[package]]
 name = "consus-zarr"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "consus-compression",
  "consus-core",
@@ -589,17 +580,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
-name = "derive_arbitrary"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b034bd7d5f032402a2479444dcc6f74e36a03f31854d41680fb240ef682a1ac"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.9",
-]
-
-[[package]]
 name = "either"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -649,9 +629,9 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.14"
+version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aedcfb3409746eddb02b9e19ebda1c3394f759a152e48ee875a0844d1b955484"
+checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
 
 [[package]]
 name = "flate2"
@@ -840,15 +820,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "indoc"
-version = "2.0.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a37b2691796cffeb8a8cd305ac66e65841559f147f4e63231d0eafa4db5384d1"
-dependencies = [
- "rustversion",
-]
-
-[[package]]
 name = "is-terminal"
 version = "0.4.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -967,15 +938,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "memoffset"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
-dependencies = [
- "autocfg",
 ]
 
 [[package]]
@@ -1233,6 +1195,18 @@ version = "0.10.0"
 source = "git+https://github.com/ryancinsight/Moirai.git#68466225913301d30281b134d42b17c604baf78e"
 
 [[package]]
+name = "nix"
+version = "0.31.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
+dependencies = [
+ "bitflags",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
+]
+
+[[package]]
 name = "nu-ansi-term"
 version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1361,37 +1335,32 @@ dependencies = [
 
 [[package]]
 name = "pyo3"
-version = "0.22.6"
+version = "0.29.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f402062616ab18202ae8319da13fa4279883a2b8a9d9f83f20dbade813ce1884"
+checksum = "700d18fa267b73b9b521fd7e13580e2f446916f176cacee1ab63fcc8191f1655"
 dependencies = [
- "cfg-if",
- "indoc",
  "libc",
- "memoffset",
  "once_cell",
  "portable-atomic",
  "pyo3-build-config",
  "pyo3-ffi",
  "pyo3-macros",
- "unindent",
 ]
 
 [[package]]
 name = "pyo3-build-config"
-version = "0.22.6"
+version = "0.29.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b14b5775b5ff446dd1056212d778012cbe8a0fbffd368029fd9e25b514479c38"
+checksum = "7b3fc0c4d08f6bb10e71fe39dfb9e2f59c6eb6854e22ec8092f50c69a4499adb"
 dependencies = [
- "once_cell",
  "target-lexicon",
 ]
 
 [[package]]
 name = "pyo3-ffi"
-version = "0.22.6"
+version = "0.29.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ab5bcf04a2cdcbb50c7d6105de943f543f9ed92af55818fd17b660390fc8636"
+checksum = "dfc0b8e19df29aad7086cf977bb0c2a2f143e30567eb113e9cf72b62ca698330"
 dependencies = [
  "libc",
  "pyo3-build-config",
@@ -1399,9 +1368,9 @@ dependencies = [
 
 [[package]]
 name = "pyo3-macros"
-version = "0.22.6"
+version = "0.29.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fd24d897903a9e6d80b968368a34e1525aeb719d568dba8b3d4bfa5dc67d453"
+checksum = "6100e8a4b5eba53afaa5ed078364851a0b2499c553a44c31026b929049b49dc6"
 dependencies = [
  "proc-macro2",
  "pyo3-macros-backend",
@@ -1411,13 +1380,12 @@ dependencies = [
 
 [[package]]
 name = "pyo3-macros-backend"
-version = "0.22.6"
+version = "0.29.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36c011a03ba1e50152b4b394b479826cad97e7a21eb52df179cd91ac411cbfbe"
+checksum = "6143877a16e82b5a727b7127ff4cd86858a24a28d745d72f43e6f227c7b1bdb3"
 dependencies = [
  "heck",
  "proc-macro2",
- "pyo3-build-config",
  "quote",
  "syn 2.0.119",
 ]
@@ -1691,9 +1659,9 @@ dependencies = [
 
 [[package]]
 name = "target-lexicon"
-version = "0.12.16"
+version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
+checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
 
 [[package]]
 name = "tempfile"
@@ -1710,8 +1678,8 @@ dependencies = [
 
 [[package]]
 name = "themis-topology"
-version = "0.11.1"
-source = "git+https://github.com/ryancinsight/themis#63c544108fc0e8408bf2096ddaf8e99dfa49f90c"
+version = "0.11.2"
+source = "git+https://github.com/ryancinsight/themis#5595fc0a5fdae7d9c017a26023f8960b8f8511fb"
 dependencies = [
  "libc",
  "melinoe",
@@ -1865,6 +1833,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "typed-path"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e28f89b80c87b8fb0cf04ab448d5dd0dd0ade2f8891bae878de66a75a28600e"
+
+[[package]]
 name = "unarray"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1875,12 +1849,6 @@ name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
-
-[[package]]
-name = "unindent"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7264e107f553ccae879d21fbea1d6724ac785e8c3bfc762137959b5802826ef3"
 
 [[package]]
 name = "uuid"
@@ -2138,15 +2106,16 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "6.0.0"
+version = "9.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb2a05c7c36fde6c09b08576c9f7fb4cda705990f73b58fe011abf7dfb24168b"
+checksum = "6e04976da629d3b04204ba8105b396a193af8ad2583b2c79bfb3ab8af580a11e"
 dependencies = [
- "arbitrary",
  "crc32fast",
  "flate2",
  "indexmap",
  "memchr",
+ "nix",
+ "typed-path",
 ]
 
 [[package]]
@@ -2163,9 +2132,9 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[package]]
 name = "zrip"
-version = "0.8.11"
+version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e85bd0b02784d8753fe5cc435dfb65043be505cb621643a3ac4a0c43eb49e4a"
+checksum = "4433b2e67d67b10d0833d4a485f6e25684e485cdc00acd75f528949a8a244553"
 dependencies = [
  "zrip-core",
  "zrip-decode",
@@ -2174,24 +2143,24 @@ dependencies = [
 
 [[package]]
 name = "zrip-core"
-version = "0.11.0"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dec95be8c75252532ba0ef5e738d9da26a6f51ad52cb45f4ed90c89979727c1"
+checksum = "80f6de2d9ed313cfb14a113e6da994e6ddd7891c3c6af2eed5ccb887e40178ec"
 
 [[package]]
 name = "zrip-decode"
-version = "0.8.10"
+version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aca029cf83b6a6e282008a9aa1079e13f216b28bac670eb1fb0769c1d256cb0e"
+checksum = "54a8b5fdab562e69236b85c659721d371ed1306aa42b57aa84917e9ae18ce6c7"
 dependencies = [
  "zrip-core",
 ]
 
 [[package]]
 name = "zrip-encode"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b657fa83287fe6799596e53540a7b1f179ca34ffd8589d5c576a5b8a1bcc4260"
+checksum = "085e6bbd60a55c7db27f8f0d3776e5e772af6b66f9d7833955dcc10f95cbad3d"
 dependencies = [
  "zrip-core",
 ]

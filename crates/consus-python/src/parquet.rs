@@ -137,8 +137,8 @@ fn phys_type_str(pt: ParquetPhysicalType) -> &'static str {
     }
 }
 
-fn column_values_to_python(cv: &ColumnValues, py: Python<'_>) -> PyResult<PyObject> {
-    let list = PyList::empty_bound(py);
+fn column_values_to_python(cv: &ColumnValues, py: Python<'_>) -> PyResult<Py<PyAny>> {
+    let list = PyList::empty(py);
     match cv {
         ColumnValues::Boolean(v) => {
             for &b in v {
@@ -168,17 +168,17 @@ fn column_values_to_python(cv: &ColumnValues, py: Python<'_>) -> PyResult<PyObje
         }
         ColumnValues::ByteArray(v) => {
             for b in v {
-                list.append(PyBytes::new_bound(py, b))?;
+                list.append(PyBytes::new(py, b))?;
             }
         }
         ColumnValues::FixedLenByteArray { values, .. } => {
             for b in values {
-                list.append(PyBytes::new_bound(py, b))?;
+                list.append(PyBytes::new(py, b))?;
             }
         }
         ColumnValues::Int96(v) => {
             for arr in v {
-                list.append(PyBytes::new_bound(py, arr.as_ref()))?;
+                list.append(PyBytes::new(py, arr.as_ref()))?;
             }
         }
     }
@@ -253,7 +253,7 @@ impl PyParquetFile {
         col_ordinal: usize,
         row_group_idx: usize,
         py: Python<'_>,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         let reader = ParquetReader::new(&self.bytes).map_err(from_consus)?;
         let cv = reader
             .read_column_chunk(row_group_idx, col_ordinal)
@@ -349,7 +349,7 @@ impl PyParquetBuilder {
                 .get_item(name)?
                 .ok_or_else(|| PyValueError::new_err(format!("missing column: {name}")))?;
             let py_list: &Bound<'_, PyList> = py_col
-                .downcast()
+                .cast()
                 .map_err(|_| PyTypeError::new_err(format!("column '{name}' must be a list")))?;
             let n = py_list.len();
             if let Some(expected) = row_count {
@@ -414,7 +414,7 @@ impl PyParquetBuilder {
         let bytes = ParquetWriter::new()
             .write_dataset_bytes(&dataset, &row_source)
             .map_err(from_consus)?;
-        Ok(PyBytes::new_bound(py, &bytes).unbind())
+        Ok(PyBytes::new(py, &bytes).unbind())
     }
 }
 

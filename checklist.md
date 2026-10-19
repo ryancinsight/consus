@@ -1,5 +1,16 @@
 # Consus — Implementation Checklist
 
+## CONSUS-MOIRAI-010-PUBLIC-IDENTITY [major] — Target 0.4.0
+
+- [x] Identify the published HDF5 0.3/Moirai 0.9.3 public trait boundary.
+- [x] Prepare ADR0006 and uniform workspace/internal 0.4 requirements.
+- [x] Refresh the unchanged caller fixture's actual published baseline.
+- [x] Execute published/unchanged/migrated consumer regressions (two E0277 failures in the unchanged phase).
+- [x] Reproduce and fix discarded chunked variable-element width with three native tests.
+- [x] Pass all 45 unchanged Python format interoperability cases on the rebuilt CPython 3.14 wheel.
+- [ ] Pass current dependency, native, advisory, API and normalized-package gates.
+- [ ] Complete exact-head hosted gates and independent review before release.
+
 ## ATLAS-CONSUS-PARSE-LIMITS-035 — Bound remaining untrusted length/depth sites
 
 - [x] Reconcile the stale brief against the current provider default and keep

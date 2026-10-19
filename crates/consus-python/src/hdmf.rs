@@ -282,7 +282,7 @@ impl PyHdmfFileBuilder {
                 b = b.add_column(name.clone(), desc.clone(), data.clone());
             }
         }
-        Python::with_gil(|py| py.allow_threads(|| b.finish().map_err(to_py)))
+        Python::attach(|py| py.detach(|| b.finish().map_err(to_py)))
     }
 
     fn __repr__(&self) -> String {

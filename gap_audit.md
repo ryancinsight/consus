@@ -1,5 +1,37 @@
 # Consus - Gap Audit
 
+## Current provider/version renewal — 2026-10-19 [major]
+
+Current Consus `441738cd` keeps version 0.3 while migrating public HDF5 async
+traits to Moirai 0.10. Published HDF5 0.3 at `beae4ce7` uses Moirai 0.9.3.
+The actual published caller passes; unchanged provider bounds fail with two
+E0277 errors; migrated bounds pass. Prepare uniform 0.4 (ADR0006).
+
+The ZIP 6 requirement predates RustSec 2026-0367/0368/0369. The normal current
+root graph selects ZIP 9.0.5 and passes the advisory check without ignores.
+Strict Clippy, the Rust 1.95 all-feature check, default/no_std/alloc checks,
+2,811 native tests and warning-denied Rustdoc pass before the final string
+forwarding repair; final post-repair acceptance remains required.
+
+## CONSUS-CHUNKED-VL-WIDTH — 2026-10-19 [patch]
+
+The unchanged current HDMF interoperability suite passes 44 cases and fails its
+chunked string column because raw-read dispatch discards the provided on-disk
+reference width. Two new real-file native string regressions fail before the
+fix, while the fixed-width control passes. The shared chunked algorithm now
+receives the width; all three regressions pass. The rebuilt Python wheel passes all 45 unchanged format interoperability
+cases; full post-fix native execution passes 2,814 tests, zero skips. API,
+normalized-package and hosted/independent review gates remain required.
+
+## CONSUS-PYTHON-314 — 2026-10-19 [minor]
+
+PyO3 0.22 rejects Python 3.14 before compilation. The coordinated 0.29.3 runtime
+and build-config pair compiles and builds the CPython 3.14 wheel after direct
+binding API migration. Preserve names, values and Clone extraction. Remove the
+obsolete macro lint exemption. Existing wheel interpreters, native tests,
+workflow timeouts and parser budgets remain unchanged; CI now also exercises
+the actual Python format interoperability suite.
+
 ## ATLAS-CONSUS-TYPES-057 — Generic endian scalar reads (2026-08-15)
 
 The core decoder had six duplicated public readers whose names encoded the
