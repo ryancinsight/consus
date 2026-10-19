@@ -1,6 +1,8 @@
 # 0006 — Version the Moirai 0.10 public async identity
 
-Status: Proposed; exact-head validation and independent review remain required.
+Status: Proposed
+
+Exact-head validation and independent review remain required.
 
 Date: 2026-10-19
 
