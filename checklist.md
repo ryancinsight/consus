@@ -14,7 +14,10 @@
 - [x] Pass the version gate and stricter all-feature API diagnostic (3,568 checks).
 - [x] Verify all 16 normalized packages through standard dry-runs with uploads aborted.
 - [x] Renew the crate/book consumer instructions to the pending 0.4 release.
-- [ ] Collect final source/archive identity after documentation synchronization.
+- [x] Reproduce the rejected optimized Mach-O artifact and retain the bad binary.
+- [x] Pass the same 45 Python cases on the aligned, unstripped release extension.
+- [x] Keep release optimizations and test the production wheel in the existing CI job.
+- [ ] Collect merged-default release provenance after final acceptance.
 - [ ] Complete exact-head hosted gates and independent review before release.
 
 ## ATLAS-CONSUS-PARSE-LIMITS-035 — Bound remaining untrusted length/depth sites

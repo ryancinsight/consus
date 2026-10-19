@@ -29,7 +29,7 @@ required, as does final archive identity after documentation synchronization.
 
 ## CONSUS-PYTHON-314 — 2026-10-19 [minor]
 
-PyO3 0.22 rejects Python 3.14 before compilation. The coordinated 0.29.3 runtime
+PyO3 0.22 rejects Python 3.14 before compilation. The coordinated 0.30.1 runtime
 and build-config pair compiles and builds the CPython 3.14 wheel after direct
 binding API migration. Preserve names, values and Clone extraction. Remove the
 obsolete macro lint exemption. Existing wheel interpreters, native tests,
@@ -487,3 +487,14 @@ from the normalized clean0.3 raster archive. A strict patch-class diagnostic
 against actual published HDF50.2 still passes223 checks and misses the nominal
 break; the executed E0277 consumer determines the release class. Exact-head
 hosted/default and archive provenance gates remain before the new handoff.
+
+## CONSUS-RELEASE-MACHO — 2026-10-19 [patch]
+
+The actual optimized PyO3 0.30.1 wheel builds, but its stripped extension fails
+all six module imports with dyld's misaligned LINKEDIT string-pool error.
+The preserved rejected artifact has string-pool offset 0x001AB024 (4 modulo
+8). Retaining symbols aligns the pool (offset 1838432, 0 modulo 8), and all
+45 unchanged format interoperability cases pass on the optimized wheel. Thin
+LTO, opt-level 3 and codegen-units 1 remain fixed. CI now validates that release
+artifact. Final normalized provenance, hosted gates and independent review are
+still required; no all-platform wheel pass is inferred from local macOS.

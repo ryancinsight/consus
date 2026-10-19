@@ -11,12 +11,15 @@
 
 ### Added
 
-- [minor] Support CPython 3.14 with PyO3/build-config 0.29.3, preserving the
+- [minor] Support CPython 3.14 with PyO3/build-config 0.30.1, preserving the
   Python names, values and cloned class extraction contract. Retain the older
   wheel interpreters and run the actual format interoperability suite in CI.
 
 ### Fixed
 
+- [patch] Retain symbols in optimized release artifacts: Apple dyld rejects the
+  stripped extension's misaligned LINKEDIT string pool. Preserve thin LTO,
+  opt-level 3 and one codegen unit; CI now imports and tests the release wheel.
 - [patch] Forward the caller-supplied variable element width through chunked
   HDF5 reads. Keep fixed-width dispatch and missing-width rejection; verify
   actual plain/compressed global-heap string references without weakening the

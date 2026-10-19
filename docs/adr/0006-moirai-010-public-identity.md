@@ -38,11 +38,13 @@ the advisories, remove format support or weaken extraction tests.
 ## Binding and storage checks
 
 The full graph previously failed because PyO3 0.22 rejects Python 3.14.
-Upgrade PyO3 and its build-config package together to 0.29.3, migrate the
+Upgrade PyO3 and its build-config package together to 0.30.1, migrate the
 binding calls without changing Python names or numeric values, and explicitly
 retain the cloned MatVariable extraction contract. Remove the obsolete macro
 lint exemption. Exercise Python 3.14 in CI and add it to the existing wheel
 matrix, retaining every previous interpreter.
+PyO3 0.30.1's minimum CPython version is 3.9, matching the existing floor.
+Build and exercise the optimized wheel locally and in the existing CI job.
 
 The unchanged HDMF reference suite then exposes a discarded parameter:
 `read_dataset_raw` accepts a variable element width but loses it at chunked
@@ -51,6 +53,17 @@ Fixed-width datatypes retain their own width, and unknown variable widths
 retain the existing error. A h5py-generated native fixture covers plain and
 compressed two-chunk UTF-8/empty/unequal strings plus fixed-width dispatch;
 the existing HDMF oracle remains unchanged.
+
+## Release artifact contract
+
+With Rust 1.97 and Apple ld27037.1, `strip = "symbols"` produces a release
+extension whose string pool begins at 0x001AB024 (4 modulo the 8-byte alignment).
+The optimized wheel builds but dyld rejects it before all six format modules
+can import. Retain symbols with `strip = "none"`; the resulting string pool
+is aligned, and the unchanged 45 interoperability cases pass. Thin LTO,
+opt-level 3, one codegen unit, tests and timeouts remain unchanged. CI builds
+and imports the release wheel so a development-only pass cannot conceal this
+artifact failure. No global linker or credential configuration changes.
 
 ## Acceptance
 

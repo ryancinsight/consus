@@ -31,10 +31,21 @@ Current work is recorded below. Earlier delivery checkpoints remain historical.
 
 - Status: in progress; priority: P1; target: 0.4.0; last-update: 2026-10-19.
 - PyO3 0.22 rejects the current interpreter. Upgrade runtime/build-config together
-  to 0.29.3 and migrate direct calls without aliases or weakened lints. Preserve
+  to 0.30.1 and migrate direct calls without aliases or weakened lints. Preserve
   Python names and values; extend the existing wheel matrix to CPython 3.14 and
   execute the unchanged HDF5/HDMF/MAT/netCDF/Parquet/Zarr interoperability suite.
 - Existing interpreter support, limits and all previous gates remain required.
+
+<a id="CONSUS-RELEASE-MACHO"></a>
+## CONSUS-RELEASE-MACHO — Import the optimized macOS extension [patch]
+
+- Status: in progress; priority: P1; target: 0.4.0; last-update: 2026-10-19.
+- The release wheel builds but all six format modules fail to import because
+  symbol stripping leaves a misaligned LINKEDIT string pool. Preserve the
+  rejected binary and offsets, retain release symbols, and execute the unchanged
+  45 value-semantic cases against the optimized wheel. They pass after repair.
+- Keep thin LTO, opt-level 3, one codegen unit, all limits and existing gates.
+  CI tests the production artifact; final provenance/hosted/review gates remain.
 
 <a id="atlas-pr530-provider-coherence"></a>
 ## ATLAS-PR530-PROVIDER-COHERENCE — Public provider contract [major] — historical publication
