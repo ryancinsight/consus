@@ -5,7 +5,7 @@ Apache Parquet interoperability layer for the
 
 ```toml
 [dependencies]
-consus-parquet = { version = "0.1", default-features = false }
+consus-parquet = { version = "0.4", default-features = false }
 ```
 
 ## Coverage

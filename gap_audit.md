@@ -20,8 +20,12 @@ chunked string column because raw-read dispatch discards the provided on-disk
 reference width. Two new real-file native string regressions fail before the
 fix, while the fixed-width control passes. The shared chunked algorithm now
 receives the width; all three regressions pass. The rebuilt Python wheel passes all 45 unchanged format interoperability
-cases; full post-fix native execution passes 2,814 tests, zero skips. API,
-normalized-package and hosted/independent review gates remain required.
+cases; full post-fix native execution passes 2,814 tests, zero skips. The standard normalized workspace dry-run verifies all 16 packages, with
+16 uploads aborted; its archive receipt matches 469 Rust/regression-fixture
+files. The stricter all-feature patch API diagnostic passes 3,568 checks,
+which does not override the external nominal-identity regression. All four
+unchanged fuzz targets compile. Hosted and exact-head independent review remain
+required, as does final archive identity after documentation synchronization.
 
 ## CONSUS-PYTHON-314 — 2026-10-19 [minor]
 

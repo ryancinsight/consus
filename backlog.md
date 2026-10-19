@@ -9,9 +9,10 @@ Current work is recorded below. Earlier delivery checkpoints remain historical.
 - Contract: published HDF5 0.3/beae4ce7 exposes Moirai 0.9.3 traits; current
   Git `441738cd` exposes 0.10 traits under the same version. ADR0006 records the
   uniform 0.4 boundary; implementations, features and source URLs stay fixed.
-- Verification: update the existing actual published/unchanged/migrated consumer
-  baseline; retain E0277 and AsyncReadAt/AsyncLength assertions. Run full current
-  dependency, native, advisory, package, API and exact-head hosted/review gates.
+- Verification: the actual published/unchanged/migrated consumer passes,
+  retaining two E0277 and AsyncReadAt/AsyncLength assertions. Local native,
+  Python, feature/MSRV, advisory, API, fuzz-build and normalized package gates
+  pass. Exact-head hosted/review and final synchronized archive identity remain.
 - Security: admit patched ZIP 9, preserving compression/format tests and limits.
 - Hold: no release until exact-revision gates and independent review pass; use
   existing authorized credentials only, with no configuration/access changes.
@@ -36,17 +37,21 @@ Current work is recorded below. Earlier delivery checkpoints remain historical.
 - Existing interpreter support, limits and all previous gates remain required.
 
 <a id="atlas-pr530-provider-coherence"></a>
-## ATLAS-PR530-PROVIDER-COHERENCE — Current public provider contract [major] — blocked
+## ATLAS-PR530-PROVIDER-COHERENCE — Public provider contract [major] — historical publication
 
-- Target: 0.3.0; ADR0005 precedes the version correction. Preserve PR172's
+- Historical target: 0.3.0. All 16 package names now have an unyanked 0.3.0
+  publication; the current registry baseline receipt is independently queried
+  on 2026-10-19. This section records the earlier migration, not a new upload
+  instruction. The current 0.4 repair is tracked above.
+- ADR0005 precedes the version correction. Preserve PR172's
   owner history and numerical repair; its 0.2.1 release claim is withdrawn.
 - The actual published HDF50.2.0/Moirai0.7 generic consumer passes; the same
   caller fails with two E0277 errors on current Moirai0.9; migrated bounds
   pass. A current-main API comparison cannot establish published compatibility.
 - priority: correctness
 - Retain all production Rust, features, Rust1.95, provider/registry identities,
-  existing workflow gates and test limits. Re-run the unchanged native/package/final-head
-  gates for the corrected uniform workspace and internal 0.3.0 requirements.
+  existing workflow gates and test limits. The earlier uniform workspace/internal 0.3 requirements are published;
+  current final-head acceptance belongs to the 0.4 work above.
 - The cancelled 0.2.1 publishing job executes no steps. Both earlier upload
-  commands are obsolete. Prepare a new exact-source raster0.3.0 handoff only
-  after verification; authentication/publisher registration stay separate.
+  commands are obsolete. The exact-source raster 0.3 publication is independently verified; no
+  further 0.3 handoff is requested. Authentication/registration stays separate.
