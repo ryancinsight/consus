@@ -15,7 +15,8 @@ consus-compression = { version = "0.4", default-features = false }
 ## Contents
 
 - `codec` — the `Codec` trait, `CodecId`, and `CompressionLevel`, with
-  feature-gated implementations for deflate/zlib, gzip (Zarr), zstd, and lz4.
+  feature-gated implementations for deflate/zlib, raw DEFLATE (ZIP method 8),
+  gzip (Zarr), zstd, and lz4.
 - `checksum` — CRC-32 (IEEE 802.3), Fletcher-32 (HDF5 filter ID 3), and Jenkins
   lookup3 (HDF5 v2 metadata checksums).
 - A runtime registry mapping codec identifiers to implementations, used by the

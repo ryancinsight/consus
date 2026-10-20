@@ -1,41 +1,5 @@
 # Consus - Gap Audit
 
-## Current provider/version renewal — 2026-10-19 [major]
-
-Current Consus `441738cd` keeps version 0.3 while migrating public HDF5 async
-traits to Moirai 0.10. Published HDF5 0.3 at `beae4ce7` uses Moirai 0.9.3.
-The actual published caller passes; unchanged provider bounds fail with two
-E0277 errors; migrated bounds pass. Prepare uniform 0.4 (ADR0006).
-
-The ZIP 6 requirement predates RustSec 2026-0367/0368/0369. The normal current
-root graph selects ZIP 9.0.5 and passes the advisory check without ignores.
-Strict Clippy, the Rust 1.95 all-feature check, default/no_std/alloc checks,
-2,811 native tests and warning-denied Rustdoc pass before the final string
-forwarding repair; final post-repair acceptance remains required.
-
-## CONSUS-CHUNKED-VL-WIDTH — 2026-10-19 [patch]
-
-The unchanged current HDMF interoperability suite passes 44 cases and fails its
-chunked string column because raw-read dispatch discards the provided on-disk
-reference width. Two new real-file native string regressions fail before the
-fix, while the fixed-width control passes. The shared chunked algorithm now
-receives the width; all three regressions pass. The rebuilt Python wheel passes all 45 unchanged format interoperability
-cases; full post-fix native execution passes 2,814 tests, zero skips. The standard normalized workspace dry-run verifies all 16 packages, with
-16 uploads aborted; its archive receipt matches 469 Rust/regression-fixture
-files. The stricter all-feature patch API diagnostic passes 3,568 checks,
-which does not override the external nominal-identity regression. All four
-unchanged fuzz targets compile. Hosted and exact-head independent review remain
-required, as does final archive identity after documentation synchronization.
-
-## CONSUS-PYTHON-314 — 2026-10-19 [minor]
-
-PyO3 0.22 rejects Python 3.14 before compilation. The coordinated 0.30.1 runtime
-and build-config pair compiles and builds the CPython 3.14 wheel after direct
-binding API migration. Preserve names, values and Clone extraction. Remove the
-obsolete macro lint exemption. Existing wheel interpreters, native tests,
-workflow timeouts and parser budgets remain unchanged; CI now also exercises
-the actual Python format interoperability suite.
-
 ## ATLAS-CONSUS-TYPES-057 — Generic endian scalar reads (2026-08-15)
 
 The core decoder had six duplicated public readers whose names encoded the
@@ -487,14 +451,3 @@ from the normalized clean0.3 raster archive. A strict patch-class diagnostic
 against actual published HDF50.2 still passes223 checks and misses the nominal
 break; the executed E0277 consumer determines the release class. Exact-head
 hosted/default and archive provenance gates remain before the new handoff.
-
-## CONSUS-RELEASE-MACHO — 2026-10-19 [patch]
-
-The actual optimized PyO3 0.30.1 wheel builds, but its stripped extension fails
-all six module imports with dyld's misaligned LINKEDIT string-pool error.
-The preserved rejected artifact has string-pool offset 0x001AB024 (4 modulo
-8). Retaining symbols aligns the pool (offset 1838432, 0 modulo 8), and all
-45 unchanged format interoperability cases pass on the optimized wheel. Thin
-LTO, opt-level 3 and codegen-units 1 remain fixed. CI now validates that release
-artifact. Final normalized provenance, hosted gates and independent review are
-still required; no all-platform wheel pass is inferred from local macOS.

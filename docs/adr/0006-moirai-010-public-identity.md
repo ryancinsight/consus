@@ -30,10 +30,9 @@ Moirai 0.9.3. The identical caller must compile there, fail nominal trait bounds
 against current Consus with its unchanged old provider, and compile after its
 provider migrates. A comparison with HDF5 0.2 alone misses this new boundary.
 
-Also admit patched ZIP 9 for the existing format implementations, retaining the
-declared compression feature and real archive tests. Current ZIP 6 is affected
-by the same RustSec 2026-0367/0368/0369 family as the Gaia renewal. Do not ignore
-the advisories, remove format support or weaken extraction tests.
+Revised 2026-10-20: the ZIP 9 admission is superseded by ADR0007. NPZ moves
+onto the first-party `consus-zip` container, which removes the `zip` crate and
+its RustSec 2026-0367/0368/0369 extraction surface rather than tracking it.
 
 ## Binding and storage checks
 
