@@ -5,6 +5,7 @@
 
 mod error;
 mod format;
+mod locate;
 mod read;
 mod write;
 
