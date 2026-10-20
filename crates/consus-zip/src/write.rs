@@ -52,7 +52,6 @@ pub struct ZipWriter<W> {
     offset: u64,
     members: Vec<Written>,
     names: HashSet<String>,
-    level: CompressionLevel,
 }
 
 impl<W: Write> ZipWriter<W> {
@@ -64,7 +63,6 @@ impl<W: Write> ZipWriter<W> {
             offset: 0,
             members: Vec::new(),
             names: HashSet::new(),
-            level: CompressionLevel::default(),
         }
     }
 
@@ -98,7 +96,7 @@ impl<W: Write> ZipWriter<W> {
             Method::Stored => data,
             Method::Deflated => {
                 compressed = RawDeflateCodec
-                    .compress(data, self.level)
+                    .compress(data, CompressionLevel::default())
                     .map_err(|source| Error::Compression {
                         name: name.to_owned(),
                         source,
@@ -170,11 +168,17 @@ impl<W: Write> ZipWriter<W> {
         let members = std::mem::take(&mut self.members);
         for member in &members {
             let zip64 = member.zip64_values();
-            let extra_len = if zip64.is_empty() {
-                0
-            } else {
-                4 + 8 * zip64.len()
-            };
+            let mut extra = Record::default();
+            if !zip64.is_empty() {
+                let mut values = Record::default();
+                for value in &zip64 {
+                    values.put::<u64>(*value);
+                }
+                extra
+                    .put::<u16>(ZIP64_EXTRA_ID)
+                    .put::<u16>(field_len(values.as_slice().len())?)
+                    .bytes(values.as_slice());
+            }
             let mut header = Record::default();
             header
                 .put::<u32>(CENTRAL_HEADER_SIGNATURE)
@@ -192,24 +196,20 @@ impl<W: Write> ZipWriter<W> {
                 .put::<u32>(narrow_32(member.compressed_size))
                 .put::<u32>(narrow_32(member.uncompressed_size))
                 .put::<u16>(field_len(member.name.len())?)
-                .put::<u16>(field_len(extra_len)?)
+                .put::<u16>(field_len(extra.as_slice().len())?)
                 .put::<u16>(0) // comment length
                 .put::<u16>(0) // disk number start
                 .put::<u16>(0) // internal attributes
                 .put::<u32>(0) // external attributes
                 .put::<u32>(narrow_32(member.local_header_offset))
-                .bytes(member.name.as_bytes());
-            if !zip64.is_empty() {
-                header
-                    .put::<u16>(ZIP64_EXTRA_ID)
-                    .put::<u16>(field_len(8 * zip64.len())?);
-                for value in zip64 {
-                    header.put::<u64>(value);
-                }
-            }
+                .bytes(member.name.as_bytes())
+                .bytes(extra.as_slice());
             self.emit(header.as_slice())?;
         }
-        let directory_size = self.offset - directory_offset;
+        let directory_size = self
+            .offset
+            .checked_sub(directory_offset)
+            .expect("invariant: the offset only grows while the directory is written");
         let count = to_offset(members.len(), "entry count")?;
 
         let zip64 = narrow_16(count) == SENTINEL_16

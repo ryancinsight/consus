@@ -382,6 +382,103 @@ fn input_without_an_end_record_is_rejected() {
     ));
 }
 
+fn hex(text: &str) -> Vec<u8> {
+    (0..text.len())
+        .step_by(2)
+        .map(|at| u8::from_str_radix(&text[at..at + 2], 16).unwrap())
+        .collect()
+}
+
+/// A stored member whose central header sets all four ZIP64 sentinels and
+/// carries the standard 28-byte extra field: both sizes, the offset, and a
+/// 4-byte disk number (APPNOTE §4.5.3). Python's `zipfile` opens it.
+const ZIP64_ALL_SENTINELS: &str = "504b030414000000000000002100c24124350300000003000000010000006d616263504b01022d002d000000000000002100c2412435ffffffffffffffff010020000000ffff000000000000ffffffff6d01001c0003000000000000000300000000000000000000000000000000000000504b050600000000010001004f000000220000000000";
+
+#[test]
+fn zip64_disk_number_is_four_bytes_wide() {
+    let mut reader = open(hex(ZIP64_ALL_SENTINELS)).unwrap();
+    assert_eq!(reader.entries()[0].name(), "m");
+    assert_eq!(reader.read_entry(0).unwrap(), b"abc");
+}
+
+#[test]
+fn zip64_disk_number_other_than_zero_is_rejected() {
+    let mut bytes = hex(ZIP64_ALL_SENTINELS);
+    // The disk number is the last four bytes of the 28-byte extra field, which
+    // ends where the central directory ends, 22 bytes before the archive end.
+    let disk_at = bytes.len() - END_LEN - 4;
+    bytes[disk_at] = 7;
+    assert!(matches!(open(bytes), Err(Error::MultiDisk)));
+}
+
+#[test]
+fn trailing_extra_bytes_too_short_for_a_block_are_ignored() {
+    let mut bytes = archive(&[("m", b"abc", Method::Stored)]);
+    let header = central_header_offset(&bytes, "m");
+    // Append two padding bytes to the central extra field and shift the end
+    // record's directory size accordingly.
+    let name_end = header + CENTRAL_HEADER_LEN + 1;
+    bytes.splice(name_end..name_end, [0, 0]);
+    bytes[header + 30] = 2;
+    let end = bytes.len() - END_LEN;
+    let size = u32::from_le_bytes(bytes[end + 12..end + 16].try_into().unwrap()) + 2;
+    bytes[end + 12..end + 16].copy_from_slice(&size.to_le_bytes());
+    assert_eq!(open(bytes).unwrap().read_entry(0).unwrap(), b"abc");
+}
+
+#[test]
+fn classic_end_record_with_65535_entries_and_no_zip64_records_is_read() {
+    // Write 65,534 members, then patch in one more central header by hand so
+    // the classic count is exactly 0xFFFF and no ZIP64 records exist.
+    let mut writer = ZipWriter::new(Vec::new());
+    for i in 0..65_534u32 {
+        writer
+            .add_entry(&format!("{i:05}"), b"", Method::Stored)
+            .unwrap();
+    }
+    let mut bytes = writer.finish().unwrap();
+    let end = bytes.len() - END_LEN;
+    let count = u16::from_le_bytes([bytes[end + 10], bytes[end + 11]]);
+    assert_eq!(count, 65_534);
+    let first = usize::try_from(u32::from_le_bytes(
+        bytes[end + 16..end + 20].try_into().unwrap(),
+    ))
+    .unwrap();
+    let mut extra_header = bytes[first..first + CENTRAL_HEADER_LEN + 5].to_vec();
+    extra_header[CENTRAL_HEADER_LEN..].copy_from_slice(b"extra");
+    extra_header[28..30].copy_from_slice(&5u16.to_le_bytes());
+    let mut tail = bytes.split_off(end);
+    bytes.extend_from_slice(&extra_header);
+    tail[8..12].copy_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF]);
+    let size = u32::from_le_bytes(tail[12..16].try_into().unwrap())
+        + u32::try_from(extra_header.len()).unwrap();
+    tail[12..16].copy_from_slice(&size.to_le_bytes());
+    bytes.extend_from_slice(&tail);
+
+    let reader = open(bytes).unwrap();
+    assert_eq!(reader.entries().len(), 65_535);
+    assert_eq!(reader.entries()[65_534].name(), "extra");
+}
+
+#[test]
+fn overstated_deflate_size_within_the_bound_is_a_size_mismatch() {
+    let mut bytes = archive(&[("m", &[5u8; 512], Method::Deflated)]);
+    let header = central_header_offset(&bytes, "m");
+    bytes[header + 24..header + 28].copy_from_slice(&600u32.to_le_bytes());
+    let err = open(bytes).unwrap().read_entry(0).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            Error::SizeMismatch {
+                declared: 600,
+                actual: 512,
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+}
+
 proptest! {
     #[test]
     fn arbitrary_members_round_trip(

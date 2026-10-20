@@ -19,7 +19,7 @@ use std::io::{Read, Seek, SeekFrom};
 
 use consus_compression::Crc32;
 use consus_compression::codec::flate::{RawDeflateFraming, flate2_decompress};
-use consus_core::ParseBudget;
+use consus_core::{EndianScalar, ParseBudget};
 
 use crate::error::{Error, Result};
 use crate::format::{
@@ -150,26 +150,29 @@ impl<R: Read + Seek> ZipReader<R> {
 fn locate_directory<R: Read + Seek>(source: &mut R, len: u64) -> Result<Directory> {
     let window = to_offset(END_LEN + MAX_COMMENT_LEN, "end record search")?;
     let tail_start = len.saturating_sub(window);
-    let mut tail = vec![0; to_index(len - tail_start, "end record search")?];
+    let mut tail = vec![0; to_index(len.saturating_sub(tail_start), "end record search")?];
     source.seek(SeekFrom::Start(tail_start))?;
     source.read_exact(&mut tail)?;
 
-    // The end record is the last one whose comment length reaches exactly to
-    // the end of the archive; scan backwards so a comment that embeds the
-    // signature cannot shadow it.
-    let found = (0..=tail.len().saturating_sub(END_LEN))
+    // The end record is the last signature whose comment length reaches
+    // exactly to the end of the archive. Scanning backwards skips a bare
+    // signature inside the comment; a comment that embeds a whole end record
+    // with a consistent length is indistinguishable and wins, as it does for
+    // other readers.
+    let record = (0..=tail.len().saturating_sub(END_LEN))
         .rev()
-        .find(|&at| {
-            let record = &tail[at..];
-            record.len() >= END_LEN
-                && record[..4] == END_SIGNATURE.to_le_bytes()
-                && usize::from(u16::from_le_bytes([record[20], record[21]]))
-                    == record.len() - END_LEN
-        })
+        .find_map(|at| tail.get(at..).filter(|record| is_end_record(record)))
         .ok_or(Error::MissingEndOfCentralDirectory)?;
-    let end_offset = tail_start + to_offset(found, "end record")?;
+    let end_offset = tail_start
+        .checked_add(to_offset(
+            tail.len().saturating_sub(record.len()),
+            "end record",
+        )?)
+        .ok_or(Error::TooLarge {
+            structure: "end record",
+        })?;
 
-    let mut fields = Fields::new(&tail[found..], "end of central directory record");
+    let mut fields = Fields::new(record, "end of central directory record");
     fields.signature(END_SIGNATURE)?;
     let disk = fields.read::<u16>()?;
     let directory_disk = fields.read::<u16>()?;
@@ -181,7 +184,13 @@ fn locate_directory<R: Read + Seek>(source: &mut R, len: u64) -> Result<Director
         return Err(Error::MultiDisk);
     }
 
-    let directory = if entries == SENTINEL_16 || size == SENTINEL_32 || offset == SENTINEL_32 {
+    // A sentinel defers to the ZIP64 records. An archive of exactly 65,535
+    // entries may carry that count without them, so a missing locator falls
+    // back to the classic fields when the size and offset are not sentinels.
+    let zip64 = size == SENTINEL_32
+        || offset == SENTINEL_32
+        || (entries == SENTINEL_16 && has_zip64_locator(source, end_offset)?);
+    let directory = if zip64 {
         locate_zip64_directory(source, end_offset)?
     } else {
         Directory {
@@ -201,7 +210,10 @@ fn locate_directory<R: Read + Seek>(source: &mut R, len: u64) -> Result<Director
             structure: "central directory",
         });
     }
-    let capacity = directory.size / to_offset(CENTRAL_HEADER_LEN, "central directory")?;
+    let capacity = directory
+        .size
+        .checked_div(to_offset(CENTRAL_HEADER_LEN, "central directory")?)
+        .expect("invariant: the minimum header length is nonzero");
     if directory.entries > capacity {
         return Err(Error::EntryCount {
             declared: directory.entries,
@@ -209,6 +221,30 @@ fn locate_directory<R: Read + Seek>(source: &mut R, len: u64) -> Result<Director
         });
     }
     Ok(directory)
+}
+
+/// Whether `record` starts with an end record whose comment fills the rest.
+fn is_end_record(record: &[u8]) -> bool {
+    let mut fields = Fields::new(record, "end of central directory record");
+    // Signature, then 16 bytes of disk numbers, counts, size and offset.
+    if fields.signature(END_SIGNATURE).is_err() || fields.take(16).is_err() {
+        return false;
+    }
+    fields
+        .read::<u16>()
+        .is_ok_and(|comment_len| usize::from(comment_len) == fields.remaining())
+}
+
+/// Whether a ZIP64 locator signature precedes the end record.
+fn has_zip64_locator<R: Read + Seek>(source: &mut R, end_offset: u64) -> Result<bool> {
+    let Some(locator_offset) = end_offset.checked_sub(to_offset(ZIP64_LOCATOR_LEN, "locator")?)
+    else {
+        return Ok(false);
+    };
+    let mut signature = [0; 4];
+    source.seek(SeekFrom::Start(locator_offset))?;
+    source.read_exact(&mut signature)?;
+    Ok(u32::from_le_bytes(signature) == ZIP64_LOCATOR_SIGNATURE)
 }
 
 /// Reads the ZIP64 locator before the end record, then the record it names.
@@ -326,9 +362,12 @@ fn parse_central_header(fields: &mut Fields<'_>) -> Result<Entry> {
     let uncompressed_size = zip64.resolve(uncompressed, "uncompressed size")?;
     let compressed_size = zip64.resolve(compressed, "compressed size")?;
     let local_header_offset = zip64.resolve(offset, "local header offset")?;
-    if disk == SENTINEL_16 {
-        zip64.next("disk number")?;
-    } else if disk != 0 {
+    let disk = if disk == SENTINEL_16 {
+        zip64.next::<u32>("disk number")?
+    } else {
+        u32::from(disk)
+    };
+    if disk != 0 {
         return Err(Error::MultiDisk);
     }
 
@@ -373,36 +412,38 @@ struct Zip64Fields<'a> {
 }
 
 impl<'a> Zip64Fields<'a> {
-    fn find(mut extra: &'a [u8]) -> Result<Self> {
-        while !extra.is_empty() {
-            let mut header = Fields::new(extra, "extra field");
-            let id = header.read::<u16>()?;
-            let len = usize::from(header.read::<u16>()?);
-            let data = header.take(len)?;
+    /// Finds the ZIP64 block. Fewer than four trailing bytes cannot hold a
+    /// block header and are padding some writers leave, so they are skipped.
+    fn find(extra: &'a [u8]) -> Result<Self> {
+        let mut blocks = Fields::new(extra, "extra field");
+        while blocks.remaining() >= 4 {
+            let id = blocks.read::<u16>()?;
+            let len = usize::from(blocks.read::<u16>()?);
+            let data = blocks.take(len)?;
             if id == ZIP64_EXTRA_ID {
                 return Ok(Self {
                     fields: Some(Fields::new(data, "ZIP64 extra field")),
                 });
             }
-            extra = &extra[4 + len..];
         }
         Ok(Self { fields: None })
     }
 
-    fn next(&mut self, field: &'static str) -> Result<u64> {
+    /// The next field: 8 bytes for sizes and offsets, 4 for the disk number.
+    fn next<T: EndianScalar>(&mut self, field: &'static str) -> Result<T> {
         let fields = self
             .fields
             .as_mut()
             .ok_or(Error::MissingZip64Field { field })?;
         fields
-            .read::<u64>()
+            .read::<T>()
             .map_err(|_| Error::MissingZip64Field { field })
     }
 
     /// The 64-bit value when `narrow` is the sentinel, else `narrow` itself.
     fn resolve(&mut self, narrow: u32, field: &'static str) -> Result<u64> {
         if narrow == SENTINEL_32 {
-            self.next(field)
+            self.next::<u64>(field)
         } else {
             Ok(u64::from(narrow))
         }
@@ -463,9 +504,13 @@ fn decode(entry: &Entry, payload: Vec<u8>) -> Result<Vec<u8>> {
     let bytes = match entry.method {
         Method::Stored => payload,
         Method::Deflated => {
+            // The declared size is the ceiling. The initial reservation is at
+            // most the compressed size, so a hostile declaration cannot reserve
+            // 1032 times the input before the stream proves it.
             let defaults = ParseBudget::default();
             let budget = ParseBudget::new(declared, defaults.max_elements, defaults.max_depth);
-            flate2_decompress::<RawDeflateFraming>(&payload, declared, &budget).map_err(
+            let initial = declared.min(payload.len());
+            flate2_decompress::<RawDeflateFraming>(&payload, initial, &budget).map_err(
                 |source| Error::Compression {
                     name: entry.name.clone(),
                     source,

@@ -48,9 +48,9 @@ pub(crate) const VERSION_DEFLATE: u16 = 20;
 pub(crate) const VERSION_ZIP64: u16 = 45;
 
 /// MS-DOS date for 1980-01-01, the format's earliest date: day 1 in bits
-/// 0-4, month 1 in bits 5-8, year offset 0 in bits 9-15. Written members
-/// carry this fixed stamp so equal inputs produce equal archives.
-pub(crate) const DOS_DATE_EPOCH: u16 = (1 << 5) | 1;
+/// 0-4, month 1 in bits 5-8 (0x0020), year offset 0 in bits 9-15. Written
+/// members carry this fixed stamp so equal inputs produce equal archives.
+pub(crate) const DOS_DATE_EPOCH: u16 = 0x0021;
 pub(crate) const DOS_TIME_MIDNIGHT: u16 = 0;
 
 /// Largest DEFLATE expansion ratio, uncompressed bytes per compressed byte.
@@ -59,7 +59,7 @@ pub(crate) const DOS_TIME_MIDNIGHT: u16 = 0;
 /// block can code its length and distance symbols in one bit each, so two
 /// input bits yield at most 258 output bytes: 8 / 2 × 258 = 1032. Block
 /// headers only lower the ratio. Source: zlib technical details,
-/// <https://zlib.net/zlib_tech.html>, "Maximum Expansion Factor".
+/// <https://zlib.net/zlib_tech.html>, "Maximum Compression Factor".
 pub(crate) const MAX_DEFLATE_RATIO: u64 = 1032;
 
 /// Member compression method.
@@ -168,10 +168,15 @@ pub(crate) struct Record(Vec<u8>);
 impl Record {
     /// Appends one little-endian integer field.
     pub(crate) fn put<T: EndianScalar>(&mut self, value: T) -> &mut Self {
-        let start = self.0.len();
-        self.0.resize(start + T::BYTE_WIDTH, 0);
-        write_integer(&mut self.0[start..], value, ByteOrder::LittleEndian)
-            .expect("invariant: the record was just extended by the field width");
+        // Eight bytes hold the widest field (u64).
+        let mut field = [0; 8];
+        write_integer(&mut field, value, ByteOrder::LittleEndian)
+            .expect("invariant: every field type is at most eight bytes wide");
+        self.0.extend_from_slice(
+            field
+                .get(..T::BYTE_WIDTH)
+                .expect("invariant: every field type is at most eight bytes wide"),
+        );
         self
     }
 

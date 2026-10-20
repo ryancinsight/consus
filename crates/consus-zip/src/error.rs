@@ -139,7 +139,7 @@ pub enum Error {
         structure: &'static str,
     },
     /// The DEFLATE codec rejected a member's payload.
-    #[error("ZIP member {name:?} DEFLATE stream failed: {source}")]
+    #[error("ZIP member {name:?} DEFLATE stream failed")]
     Compression {
         /// Member name.
         name: String,
