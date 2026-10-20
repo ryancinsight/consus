@@ -1,0 +1,24 @@
+[package]
+name = "consus-zip"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Bounded pure-Rust ZIP container reader and writer for stored and deflated members"
+homepage.workspace = true
+readme = "README.md"
+keywords = ["zip", "archive", "npz", "3mf", "deflate"]
+categories = ["compression", "encoding", "parser-implementations"]
+
+[dependencies]
+consus-core = { workspace = true, features = ["std"] }
+consus-compression = { workspace = true, features = ["std", "deflate"] }
+thiserror = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true

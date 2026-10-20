@@ -123,7 +123,7 @@ impl PyZarrArray {
     fn read_chunk(&self, coords: Vec<u64>, py: Python<'_>) -> PyResult<Py<PyBytes>> {
         let data = read_chunk(&self.store, "", &coords, &self.meta)
             .map_err(|e: ChunkError| PyRuntimeError::new_err(format!("{e}")))?;
-        Ok(PyBytes::new_bound(py, &data).unbind())
+        Ok(PyBytes::new(py, &data).unbind())
     }
 
     /// Export the in-memory store as a ``dict[str, bytes]``.
@@ -132,10 +132,10 @@ impl PyZarrArray {
     /// ``MemoryStore`` after wrapping values in
     /// ``zarr.core.buffer.cpu.Buffer.from_bytes(v)``.
     fn to_store(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let dict = PyDict::new_bound(py);
+        let dict = PyDict::new(py);
         for key in self.store.keys() {
             let value = self.store.get(key).map_err(from_consus)?;
-            dict.set_item(key, PyBytes::new_bound(py, &value))?;
+            dict.set_item(key, PyBytes::new(py, &value))?;
         }
         Ok(dict.unbind())
     }

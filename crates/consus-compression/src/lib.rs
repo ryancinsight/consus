@@ -21,6 +21,7 @@
 //! ├── codec/           # Codec trait and implementations
 //! │   ├── traits       # Codec trait, CompressionLevel, CodecId
 //! │   ├── deflate      # Deflate/zlib codec (feature-gated)
+//! │   ├── raw_deflate  # Unframed DEFLATE, ZIP method 8 (feature-gated)
 //! │   ├── gzip         # Gzip codec, Zarr-specific (feature-gated)
 //! │   ├── zstd         # Zstandard codec (feature-gated)
 //! │   ├── lz4          # LZ4 block codec (feature-gated)

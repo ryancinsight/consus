@@ -12,6 +12,9 @@ pub mod flate;
 #[cfg(feature = "deflate")]
 pub mod deflate;
 
+#[cfg(feature = "deflate")]
+pub mod raw_deflate;
+
 #[cfg(all(feature = "gzip", feature = "std"))]
 pub mod gzip;
 

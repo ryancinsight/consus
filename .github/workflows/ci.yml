@@ -132,13 +132,11 @@ jobs:
           workspaces: .
           shared-key: consus-test
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      # The workspace build includes consus-python, whose pyo3 0.22 build
-      # script rejects interpreters past 3.13; runner images default newer
-      # (macos-latest ships 3.14). Pin the newest interpreter the bindings
-      # declare in pyproject.toml.
+      # Exercise the newest declared CPython with the same PyO3 pair used by
+      # the workspace and wheel build; older interpreters remain in the wheel matrix.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
       - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
         with:
           tool: nextest@0.9.140
@@ -157,6 +155,13 @@ jobs:
         run: python scripts/check_async_provider_boundary.py
       - name: Fresh JPEG provider consumer
         run: python scripts/check_provider_cohort.py
+      - name: Build and test the Python format bindings
+        shell: bash
+        run: |
+          python -m pip install maturin pytest numpy h5py scipy netCDF4 pyarrow zarr hdmf
+          maturin build --release --manifest-path crates/consus-python/Cargo.toml --locked --out python-dist
+          python -m pip install --no-deps python-dist/*.whl
+          python -m pytest -q scripts/compare_hdf5.py scripts/compare_hdmf.py scripts/compare_mat.py scripts/compare_netcdf.py scripts/compare_parquet.py scripts/compare_zarr.py
 
   msrv:
     name: MSRV (1.95.0)
@@ -256,6 +261,7 @@ jobs:
           - fuzz_hdf5_parser
           - fuzz_parquet_decoder
           - fuzz_mat_reader
+          - fuzz_zip_reader
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4

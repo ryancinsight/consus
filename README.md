@@ -69,6 +69,7 @@ consus (facade)
 ├── consus-hdmf        # HDMF DynamicTable read/write
 ├── consus-nwb         # Neurodata Without Borders models over HDF5/HDMF
 ├── consus-npy         # Typed NPY arrays and NPZ archives
+├── consus-zip         # Bounded ZIP container (NPZ, 3MF)
 ├── consus-onnx        # Bounded zero-copy ONNX document decoding
 └── consus-parquet     # Parquet interop layer
 
@@ -76,7 +77,7 @@ consus-raster          # JPEG samples and bounded EXIF metadata
 consus-python          # PyO3 extension module (wheel-only, publish = false)
 ```
 
-All seventeen crates above are `[workspace] members` of the root `Cargo.toml`;
+All eighteen crates above are `[workspace] members` of the root `Cargo.toml`;
 `tests` is an additional non-publishable integration-test member.
 
 ## Quick Start
@@ -147,8 +148,8 @@ Current repository verification indicates:
   mapping call in `consus-io/src/io/sync/mmap.rs` and one slice reinterpretation
   in `consus/src/builders/dataset.rs`, both carrying `// SAFETY:` comments. No
   format parser or encoder contains `unsafe`. This is currently a property of
-  the code rather than a compiler-enforced one: only `consus-hdmf` and
-  `consus-npy` declare `#![forbid(unsafe_code)]`
+  the code rather than a compiler-enforced one: only `consus-hdmf`,
+  `consus-npy` and `consus-zip` declare `#![forbid(unsafe_code)]`
 - **Astronomy pipeline interoperability**: FITS support enables direct ingestion of telescope image products, calibration frames, and catalog tables into the same unified API used for other scientific formats
 - **Spectral and survey R&D continuity**: One storage facade now spans astronomy archive interchange and downstream analysis workflows, reducing format-specific glue code in spectral reduction, sky survey processing, and observatory data engineering
 

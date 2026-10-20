@@ -16,7 +16,7 @@ categories = ["science", "encoding", "parser-implementations"]
 byteorder = { workspace = true, features = ["std"] }
 consus-io = { workspace = true, features = ["std", "alloc"] }
 thiserror.workspace = true
-zip.workspace = true
+consus-zip.workspace = true
 
 [lints]
 workspace = true

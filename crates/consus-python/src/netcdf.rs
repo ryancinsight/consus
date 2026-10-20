@@ -135,7 +135,7 @@ fn dtype_tag(dt: &Datatype) -> &'static str {
 
 /// Decode a raw byte buffer into a Python list of numeric values according to
 /// `dt`.  Handles both little-endian and big-endian variants.
-fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject> {
+fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<Py<PyAny>> {
     let nbytes = match dt.element_size() {
         Some(n) if n > 0 => n,
         _ => {
@@ -153,7 +153,7 @@ fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResult<PyObject
         )));
     }
     let n = data.len() / nbytes;
-    let list = PyList::empty_bound(py);
+    let list = PyList::empty(py);
     for i in 0..n {
         let s = &data[i * nbytes..(i + 1) * nbytes];
         match dt {
@@ -431,7 +431,7 @@ impl PyNetcdfFile {
     /// Read the flat (row-major) data of a root-group variable as a Python list.
     ///
     /// Returns a list of `int` or `float` values.
-    pub fn read_variable(&self, py: Python<'_>, name: &str) -> PyResult<PyObject> {
+    pub fn read_variable(&self, py: Python<'_>, name: &str) -> PyResult<Py<PyAny>> {
         let cursor = MemCursor::from_bytes(self.data.clone());
         let file = Hdf5File::open(cursor).map_err(from_consus)?;
         let model = read_model(&file).map_err(from_consus)?;
@@ -454,7 +454,7 @@ impl PyNetcdfFile {
     ///
     /// Numeric attributes are returned as `int` or `float`; string attributes
     /// as `str`; array attributes as a Python list.
-    pub fn group_attributes(&self, py: Python<'_>) -> PyResult<Vec<(String, PyObject)>> {
+    pub fn group_attributes(&self, py: Python<'_>) -> PyResult<Vec<(String, Py<PyAny>)>> {
         let model = self.open_model()?;
         attrs_to_py(py, &model.root.attributes)
     }
@@ -479,32 +479,32 @@ fn find_variable<'g>(group: &'g NetcdfGroup, name: &str) -> PyResult<&'g NetcdfV
 fn attrs_to_py<'py>(
     py: Python<'py>,
     attrs: &[(String, consus_core::AttributeValue)],
-) -> PyResult<Vec<(String, PyObject)>> {
+) -> PyResult<Vec<(String, Py<PyAny>)>> {
     use consus_core::AttributeValue;
     let mut out = Vec::new();
     for (k, v) in attrs {
-        let obj: PyObject = match v {
-            AttributeValue::Int(n) => (*n).to_object(py),
-            AttributeValue::Uint(n) => (*n).to_object(py),
-            AttributeValue::Float(f) => (*f).to_object(py),
-            AttributeValue::String(s) => s.to_object(py),
+        let obj: Py<PyAny> = match v {
+            AttributeValue::Int(n) => (*n).into_pyobject(py)?.into_any().unbind(),
+            AttributeValue::Uint(n) => (*n).into_pyobject(py)?.into_any().unbind(),
+            AttributeValue::Float(f) => (*f).into_pyobject(py)?.into_any().unbind(),
+            AttributeValue::String(s) => s.into_pyobject(py)?.into_any().unbind(),
             AttributeValue::IntArray(arr) => {
-                let list = PyList::new_bound(py, arr.iter());
+                let list = PyList::new(py, arr.iter())?;
                 list.into_any().unbind()
             }
             AttributeValue::UintArray(arr) => {
-                let list = PyList::new_bound(py, arr.iter());
+                let list = PyList::new(py, arr.iter())?;
                 list.into_any().unbind()
             }
             AttributeValue::FloatArray(arr) => {
-                let list = PyList::new_bound(py, arr.iter());
+                let list = PyList::new(py, arr.iter())?;
                 list.into_any().unbind()
             }
             AttributeValue::StringArray(arr) => {
-                let list = PyList::new_bound(py, arr.iter());
+                let list = PyList::new(py, arr.iter())?;
                 list.into_any().unbind()
             }
-            AttributeValue::Bytes(b) => PyBytes::new_bound(py, b).into_any().unbind(),
+            AttributeValue::Bytes(b) => PyBytes::new(py, b).into_any().unbind(),
         };
         out.push((k.clone(), obj));
     }
@@ -633,6 +633,6 @@ impl PyNetcdfWriter {
         let bytes = NetcdfWriter::new()
             .write_model(&model)
             .map_err(from_consus)?;
-        Ok(PyBytes::new_bound(py, &bytes).unbind())
+        Ok(PyBytes::new(py, &bytes).unbind())
     }
 }

@@ -14,3 +14,5 @@
 | [0003](0003-hdf5-shuffle-element-size.md) | Carry HDF5 shuffle element size through chunk filters | Accepted |
 | [0004](0004-raster-codecs.md) | Shared raster codecs | Accepted |
 | [0005](0005-public-async-provider-identity.md) | Public async provider identity | Accepted |
+| [0006](0006-moirai-010-public-identity.md) | Version the Moirai 0.10 public async identity | Proposed |
+| [0007](0007-first-party-zip-container.md) | First-party ZIP container | Accepted |

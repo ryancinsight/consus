@@ -43,6 +43,15 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
     /// a B-tree v2 chunk index leaf.
     #[cfg(feature = "alloc")]
     pub fn read_chunked_dataset_all_bytes(&self, object_header_address: u64) -> Result<Vec<u8>> {
+        self.read_chunked_dataset_bytes(object_header_address, None)
+    }
+
+    #[cfg(feature = "alloc")]
+    fn read_chunked_dataset_bytes(
+        &self,
+        object_header_address: u64,
+        variable_element_size: Option<usize>,
+    ) -> Result<Vec<u8>> {
         let header = reader::read_object_header(&self.source, object_header_address, &self.ctx)?;
         let dataset = reader::read_dataset_metadata(&header, &self.ctx)?;
 
@@ -71,13 +80,13 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
             .map(|&d| d as usize)
             .collect();
 
-        let element_size =
-            dataset
-                .datatype
-                .element_size()
-                .ok_or_else(|| Error::UnsupportedFeature {
-                    feature: String::from("chunked full read requires fixed-size element datatype"),
-                })?;
+        let element_size = dataset
+            .datatype
+            .element_size()
+            .or(variable_element_size)
+            .ok_or_else(|| Error::UnsupportedFeature {
+                feature: String::from("chunked full read requires fixed-size element datatype"),
+            })?;
         let total_bytes = checked_dataset_byte_count(&self.ctx, &dataset.shape, element_size)?;
         let mut out = self.ctx.budget.zeroed(
             u64::try_from(total_bytes).map_err(|_| Error::Overflow)?,
@@ -288,9 +297,8 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
                 self.read_contiguous_dataset_bytes(data_addr, 0, &mut buf)?;
                 Ok(buf)
             }
-            StorageLayout::Chunked => {
-                self.read_chunked_dataset_all_bytes(dataset.object_header_address)
-            }
+            StorageLayout::Chunked => self
+                .read_chunked_dataset_bytes(dataset.object_header_address, variable_element_size),
             StorageLayout::Compact => Err(Error::UnsupportedFeature {
                 feature: String::from("compact dataset layout is not supported"),
             }),

@@ -9,7 +9,7 @@ and `std::error::Error` implementations.
 
 ```toml
 [dependencies]
-consus-core = { version = "0.1", default-features = false }
+consus-core = { version = "0.4", default-features = false }
 ```
 
 ## Contents
