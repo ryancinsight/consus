@@ -31,7 +31,10 @@ use pyo3::prelude::*;
 ///
 /// Provides in-memory read/write for HDF5, Zarr v2, Apache Parquet,
 /// netCDF-4, and MATLAB .mat files.
-#[pymodule]
+// PyO3 0.30 assumes free-threaded safety unless told otherwise. The binding
+// surface has no free-threading audit or concurrency test yet, so the module
+// keeps the GIL on free-threaded interpreters until that audit lands.
+#[pymodule(gil_used = true)]
 fn consus(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // HDF5
     m.add_class::<PyHdf5File>()?;
