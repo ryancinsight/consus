@@ -8,9 +8,9 @@
 //! - the central directory lies before the end record, and its entry count is
 //!   at most its size divided by the 46-byte minimum header (see `locate`);
 //! - each member's local header and payload lie before the central directory;
-//! - a DEFLATE member's declared output is at most
-//!   [`MAX_DEFLATE_RATIO`](crate::format::MAX_DEFLATE_RATIO) times its
-//!   compressed size, and a stored member's output equals its compressed size.
+//! - a DEFLATE member's declared output is at most [`MAX_DEFLATE_RATIO`] times
+//!   its compressed size, and a stored member's output equals its compressed
+//!   size.
 //!
 //! Decoded members are checked against their declared size and CRC-32.
 
