@@ -13,6 +13,21 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import tomllib
+
+
+def compatible(version, requirement):
+    """Whether `version` satisfies caret `requirement` under Cargo's 0.x rule.
+
+    A pre-1.0 caret requirement admits only its own minor line at or above
+    itself (https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html).
+    A fresh consumer resolves the provider's current main, so it must land
+    inside that line, not on the patch release the requirement names.
+    """
+    have = tuple(int(part) for part in version.split("."))
+    want = tuple(int(part) for part in requirement.split("."))
+    assert want[0] == 0, requirement
+    return have[:2] == want[:2] and have >= want
 
 
 def main():
@@ -20,6 +35,8 @@ def main():
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
     args = parser.parse_args()
     raster = args.root.resolve() / "crates/consus-raster"
+    manifest = tomllib.loads((args.root.resolve() / "Cargo.toml").read_text(encoding="utf-8"))
+    requirement = manifest["workspace"]["dependencies"]["apollo-dctdst-core"]["version"]
     fixture = Path(__file__).resolve().parent / "scratch/jpeg_provider_cohort.rs"
     with tempfile.TemporaryDirectory(prefix="consus-provider-cohort-") as directory:
         root = Path(directory)
@@ -37,7 +54,10 @@ def main():
             cwd=root, timeout=60,
         ))
         provider = [p for p in metadata["packages"] if p["name"] == "apollo-dctdst-core"]
-        assert len(provider) == 1 and provider[0]["version"] == "0.17.0", provider
+        assert len(provider) == 1 and compatible(provider[0]["version"], requirement), (
+            requirement,
+            provider,
+        )
         assert provider[0]["source"].startswith("git+https://github.com/ryancinsight/apollo#"), provider
         print(json.dumps({k: provider[0][k] for k in ["name", "version", "source"]}), flush=True)
         target = Path(os.environ.get("CARGO_TARGET_DIR", root / "target"))
