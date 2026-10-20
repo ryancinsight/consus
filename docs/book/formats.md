@@ -15,6 +15,7 @@ format is a separate crate that can be used independently or through the
 | `consus-arrow` | Apache Arrow | In-memory columnar data interchange |
 | `consus-fits` | FITS | Astronomical imaging and spectral data |
 | `consus-npy` | NumPy NPY/NPZ | Python array interchange |
+| `consus-zip` | ZIP container | NPZ and 3MF member storage |
 | `consus-mat` | MATLAB MAT | MATLAB workspace files |
 | `consus-nwb` | NWB | Neurodata Without Borders (neuroscience) |
 | `consus-onnx` | ONNX | ML model interchange |

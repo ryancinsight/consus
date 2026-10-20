@@ -17,6 +17,7 @@ consus-parquet = { path = "../crates/consus-parquet", default-features = false, 
 consus-mat = { path = "../crates/consus-mat", default-features = false, features = ["std"] }
 consus-io = { path = "../crates/consus-io", default-features = false, features = ["std", "alloc"] }
 consus-fits = { path = "../crates/consus-fits", default-features = false, features = ["std"] }
+consus-zip = { path = "../crates/consus-zip" }
 
 # Prevent this crate from being adopted into the workspace when Cargo resolves
 # dependencies from the workspace root directory.
@@ -43,5 +44,11 @@ doc = false
 [[bin]]
 name = "fuzz_fits_table"
 path = "fuzz_targets/fuzz_fits_table.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_zip_reader"
+path = "fuzz_targets/fuzz_zip_reader.rs"
 test = false
 doc = false

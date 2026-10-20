@@ -11,7 +11,7 @@ pub enum Error {
     Io(#[from] std::io::Error),
     /// ZIP archive access failed.
     #[error("NPZ archive failed: {0}")]
-    Zip(#[from] zip::result::ZipError),
+    Zip(#[from] consus_zip::Error),
     /// The input violates the NPY format contract.
     #[error("invalid NPY input: {0}")]
     InvalidFormat(String),

@@ -18,6 +18,7 @@ members = [
     "crates/consus-python",
     "crates/consus-onnx",
     "crates/consus-npy",
+    "crates/consus-zip",
     "crates/consus-raster",
 ]
 
@@ -49,6 +50,7 @@ consus-arrow = { path = "crates/consus-arrow", version = "0.4.0", default-featur
 consus-compression = { path = "crates/consus-compression", version = "0.4.0", default-features = false }
 consus-io = { path = "crates/consus-io", version = "0.4.0", default-features = false }
 consus-npy = { path = "crates/consus-npy", version = "0.4.0" }
+consus-zip = { path = "crates/consus-zip", version = "0.4.0" }
 pyo3 = { version = "0.30.1" }
 # Build-time half of the PyO3 contract: consus-python's build script calls
 # `pyo3_build_config::add_extension_module_link_args()`. Must track `pyo3` -- a
@@ -64,7 +66,6 @@ bytes = { version = "1", default-features = false }
 smallvec = { version = "1", default-features = false }
 zerocopy = { version = "0.8", default-features = false }
 byteorder = { version = "1", default-features = false }
-zip = { version = "9.0.5", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 memmap2      = { version = "0.9" }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 serde_json = { version = "1", default-features = false, features = ["alloc"] }
