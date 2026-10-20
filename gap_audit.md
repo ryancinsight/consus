@@ -192,8 +192,8 @@ Recovery rebases the canonical bounded-read and ONNX history plus the NPY/NPZ
 provider onto current `main`. Current-tree verification found and fixed an
 unbounded NPY payload reservation, a hidden `consus-io/alloc` feature-unification
 dependency, test-only type inference drift, and the stale `zip` 0.6 dependency.
-The recovered surface uses `zip` 6.0, the newest maintained line compatible
-with the workspace Rust 1.85 MSRV. Focused evidence: NPY 4/4, ONNX 3/3, and
+The recovered surface used `zip` 6.0; NPZ now uses the first-party
+`consus-zip` container (ADR0007). Focused evidence: NPY 4/4, ONNX 3/3, and
 Consus I/O 251/251 Nextest tests; warning-denied Clippy and rustdoc; three
 doctests; ONNX `alloc`-only compilation; locked metadata; and 196/196
 applicable Consus I/O semver checks.

@@ -27,7 +27,9 @@ permission surface: members are returned as bytes.
 
 - **Placement.** The two consumers share no existing crate, so the container is a
   leaf crate at their common ancestor, following the workspace convention of one
-  crate per format. gaia depends on it by Git; consus does not depend on gaia.
+  crate per format. gaia is to depend on it by Git (its 3MF writer moves in
+  the gaia 0.6.10 change of the atlas `ATLAS-ZIP9-COHORT-SWEEP` item); consus
+  does not depend on gaia.
 - **DEFLATE.** Raw DEFLATE comes from the new `consus-compression`
   `RawDeflateCodec`. Decoding goes through the shared bounded flate path.
 - **Bounds.** Every declared offset and length is checked against the region that
@@ -53,7 +55,8 @@ permission surface: members are returned as bytes.
 
 ## Consequences
 
-- Neither the consus graph nor gaia's carries the `zip` crate.
+- The consus graph carries no `zip` crate. gaia still does until its 3MF
+  writer moves onto `consus-zip` under `ATLAS-ZIP9-COHORT-SWEEP`.
 - The first crates.io publish of `consus-zip` needs an owner API token. After that,
   trusted publishing applies, and `consus-npy` 0.4.0 publishes once `consus-zip`
   exists on the registry.

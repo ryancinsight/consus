@@ -17,7 +17,7 @@ use crate::format::{
     CENTRAL_HEADER_SIGNATURE, DOS_DATE_EPOCH, DOS_TIME_MIDNIGHT, END_SIGNATURE, FLAG_UTF8,
     LOCAL_HEADER_SIGNATURE, Method, Record, SENTINEL_16, SENTINEL_32, VERSION_DEFLATE,
     VERSION_ZIP64, ZIP64_END_RECORD_SIZE, ZIP64_END_SIGNATURE, ZIP64_EXTRA_ID,
-    ZIP64_LOCATOR_SIGNATURE, narrow_16, narrow_32, to_offset,
+    ZIP64_LOCATOR_SIGNATURE, narrow, to_offset,
 };
 
 /// Directory facts retained for one written member.
@@ -41,7 +41,7 @@ impl Written {
             self.local_header_offset,
         ]
         .into_iter()
-        .filter(|&value| narrow_32(value) == SENTINEL_32)
+        .filter(|&value| narrow(value, SENTINEL_32) == SENTINEL_32)
         .collect()
     }
 }
@@ -116,8 +116,8 @@ impl<W: Write> ZipWriter<W> {
 
         // The local header carries both sizes in its ZIP64 field whenever
         // either needs it (APPNOTE §4.5.3); the offset never appears there.
-        let local_zip64 = narrow_32(member.uncompressed_size) == SENTINEL_32
-            || narrow_32(member.compressed_size) == SENTINEL_32;
+        let local_zip64 = narrow(member.uncompressed_size, SENTINEL_32) == SENTINEL_32
+            || narrow(member.compressed_size, SENTINEL_32) == SENTINEL_32;
         let mut header = Record::default();
         header
             .put::<u32>(LOCAL_HEADER_SIGNATURE)
@@ -144,8 +144,8 @@ impl<W: Write> ZipWriter<W> {
                 .put::<u64>(member.compressed_size);
         } else {
             header
-                .put::<u32>(narrow_32(member.compressed_size))
-                .put::<u32>(narrow_32(member.uncompressed_size))
+                .put::<u32>(narrow(member.compressed_size, SENTINEL_32))
+                .put::<u32>(narrow(member.uncompressed_size, SENTINEL_32))
                 .put::<u16>(name_len)
                 .put::<u16>(0)
                 .bytes(name.as_bytes());
@@ -193,15 +193,15 @@ impl<W: Write> ZipWriter<W> {
                 .put::<u16>(DOS_TIME_MIDNIGHT)
                 .put::<u16>(DOS_DATE_EPOCH)
                 .put::<u32>(member.crc32)
-                .put::<u32>(narrow_32(member.compressed_size))
-                .put::<u32>(narrow_32(member.uncompressed_size))
+                .put::<u32>(narrow(member.compressed_size, SENTINEL_32))
+                .put::<u32>(narrow(member.uncompressed_size, SENTINEL_32))
                 .put::<u16>(field_len(member.name.len())?)
                 .put::<u16>(field_len(extra.as_slice().len())?)
                 .put::<u16>(0) // comment length
                 .put::<u16>(0) // disk number start
                 .put::<u16>(0) // internal attributes
                 .put::<u32>(0) // external attributes
-                .put::<u32>(narrow_32(member.local_header_offset))
+                .put::<u32>(narrow(member.local_header_offset, SENTINEL_32))
                 .bytes(member.name.as_bytes())
                 .bytes(extra.as_slice());
             self.emit(header.as_slice())?;
@@ -212,9 +212,9 @@ impl<W: Write> ZipWriter<W> {
             .expect("invariant: the offset only grows while the directory is written");
         let count = to_offset(members.len(), "entry count")?;
 
-        let zip64 = narrow_16(count) == SENTINEL_16
-            || narrow_32(directory_size) == SENTINEL_32
-            || narrow_32(directory_offset) == SENTINEL_32;
+        let zip64 = narrow(count, SENTINEL_16) == SENTINEL_16
+            || narrow(directory_size, SENTINEL_32) == SENTINEL_32
+            || narrow(directory_offset, SENTINEL_32) == SENTINEL_32;
         let mut tail = Record::default();
         if zip64 {
             let record_offset = self.offset;
@@ -236,10 +236,10 @@ impl<W: Write> ZipWriter<W> {
         tail.put::<u32>(END_SIGNATURE)
             .put::<u16>(0) // this disk
             .put::<u16>(0) // directory disk
-            .put::<u16>(narrow_16(count))
-            .put::<u16>(narrow_16(count))
-            .put::<u32>(narrow_32(directory_size))
-            .put::<u32>(narrow_32(directory_offset))
+            .put::<u16>(narrow(count, SENTINEL_16))
+            .put::<u16>(narrow(count, SENTINEL_16))
+            .put::<u32>(narrow(directory_size, SENTINEL_32))
+            .put::<u32>(narrow(directory_offset, SENTINEL_32))
             .put::<u16>(0); // comment length
         self.emit(tail.as_slice())?;
         self.sink.flush()?;

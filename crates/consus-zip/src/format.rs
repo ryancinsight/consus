@@ -145,20 +145,13 @@ pub(crate) fn to_offset(value: usize, structure: &'static str) -> Result<u64> {
     u64::try_from(value).map_err(|_| Error::TooLarge { structure })
 }
 
-/// The 32-bit field value, or the sentinel when ZIP64 must carry it.
-pub(crate) fn narrow_32(value: u64) -> u32 {
-    u32::try_from(value)
+/// The narrow field value, or `sentinel` when ZIP64 must carry it: when
+/// `value` does not fit the field or equals the sentinel itself.
+pub(crate) fn narrow<T: TryFrom<u64> + PartialEq + Copy>(value: u64, sentinel: T) -> T {
+    T::try_from(value)
         .ok()
-        .filter(|&narrow| narrow != SENTINEL_32)
-        .unwrap_or(SENTINEL_32)
-}
-
-/// The 16-bit count value, or the sentinel when ZIP64 must carry it.
-pub(crate) fn narrow_16(value: u64) -> u16 {
-    u16::try_from(value)
-        .ok()
-        .filter(|&narrow| narrow != SENTINEL_16)
-        .unwrap_or(SENTINEL_16)
+        .filter(|&narrow| narrow != sentinel)
+        .unwrap_or(sentinel)
 }
 
 /// Little-endian record builder.
@@ -205,13 +198,13 @@ mod tests {
 
     #[test]
     fn narrowing_uses_the_sentinel_at_and_above_the_field_maximum() {
-        assert_eq!(narrow_32(0), 0);
-        assert_eq!(narrow_32(u64::from(u32::MAX) - 1), u32::MAX - 1);
-        assert_eq!(narrow_32(u64::from(u32::MAX)), SENTINEL_32);
-        assert_eq!(narrow_32(u64::MAX), SENTINEL_32);
-        assert_eq!(narrow_16(65_534), 65_534);
-        assert_eq!(narrow_16(65_535), SENTINEL_16);
-        assert_eq!(narrow_16(1 << 20), SENTINEL_16);
+        assert_eq!(narrow(0, SENTINEL_32), 0);
+        assert_eq!(narrow(u64::from(u32::MAX) - 1, SENTINEL_32), u32::MAX - 1);
+        assert_eq!(narrow(u64::from(u32::MAX), SENTINEL_32), SENTINEL_32);
+        assert_eq!(narrow(u64::MAX, SENTINEL_32), SENTINEL_32);
+        assert_eq!(narrow(65_534, SENTINEL_16), 65_534);
+        assert_eq!(narrow(65_535, SENTINEL_16), SENTINEL_16);
+        assert_eq!(narrow(1 << 20, SENTINEL_16), SENTINEL_16);
     }
 
     #[test]
