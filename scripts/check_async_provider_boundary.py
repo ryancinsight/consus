@@ -3,7 +3,7 @@
 
 The identical generic consumer must build on published Consus HDF5 0.3.0 and
 Moirai 0.9.3, fail with E0277 on the candidate's new public Moirai identity, and
-build after the caller migrates to the candidate's Moirai 0.10 provider.
+build after the caller migrates to the candidate's Moirai 0.11 provider.
 This fixture supplies no patch, old Git revision, or compatibility adapter.
 """
 
@@ -25,7 +25,7 @@ def main():
     fixture = Path(__file__).resolve().parent / "scratch/async_provider_boundary.rs"
     candidate = json.dumps(str(args.root.resolve() / "crates/consus-hdf5"))
     old = 'moirai-async = { version = "=0.9.3", default-features = false }\n'
-    new = 'moirai-async = { version = "0.10.0", git = "https://github.com/ryancinsight/Moirai.git", default-features = false }\n'
+    new = 'moirai-async = { version = "0.11.0", git = "https://github.com/ryancinsight/Moirai.git", default-features = false }\n'
     phases = [
         ("published", 'consus-hdf5 = { version = "=0.3.0", features = ["async"] }\n' + old, True),
         ("unchanged-caller", 'consus-hdf5 = { path = ' + candidate + ', features = ["async"] }\n' + old, False),
