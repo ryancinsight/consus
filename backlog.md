@@ -1,6 +1,14 @@
 # Consus — Backlog
 
-## CONSUS-NPY-HEADER-001 — Parse complete typed header dictionaries [patch] — review
+<a id="consus-npy-header-001"></a>
+## CONSUS-NPY-HEADER-001 — Parse complete typed header dictionaries [patch] — in_progress
+
+- status: in_progress
+- priority: correctness
+- scope: crates/consus-npy/src/format.rs and format/header.rs, regression tests,
+  version-cohort manifests, and authoritative documentation.
+- next step: close independent review findings, then qualify the final revision
+  and preserve the existing provider/registry/documentation delivery holds.
 
 - Target: 0.4.1, retaining the existing uniform workspace release cohort.
 - Reproduced: double-quoted dictionary keys are rejected, while malformed
