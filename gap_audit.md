@@ -16,8 +16,11 @@ Independent review also identified previously accepted parenthesized headers,
 inline comments and adjacent strings. Three retained fixtures pass NumPy 2.4.5
 and now have native public NPY and NPZ regressions. The parser skips comments
 only at token boundaries, preserves quoted markers and uses checked integer
-conversions.
-Native tests include 2,304 scalar/key-order/quote/version/layout permutations
+conversions. A second review reproduced bare-CR comment hiding and rejected
+explicit line joining. The parser now normalizes physical newlines once and
+retains token boundaries when joining lines. All three retained witnesses and
+21 LF/CRLF/CR combinations are covered through real NPY and NPZ readers; NumPy
+2.4.5 agrees with their values or rejection. Native tests include 2,304 scalar/key-order/quote/version/layout permutations
 and exact error diagnostics; tracing captures arrange/act/assert spans.
 
 This source fix does not qualify the inherited provider graph, authorize

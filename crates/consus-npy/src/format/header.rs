@@ -18,7 +18,10 @@ pub(super) struct Header {
 
 impl Header {
     pub(super) fn parse(text: &str) -> Result<Self> {
-        let mut parser = Parser { rest: text };
+        // Python normalizes physical CRLF and CR before tokenization, including
+        // within quoted strings. Keep the common LF-only header allocation-free.
+        let normalized = physical_lines(text);
+        let mut parser = Parser { rest: &normalized };
         let mut groups = 0;
         while parser.take('(') {
             groups += 1;
@@ -62,6 +65,25 @@ impl Header {
     }
 }
 
+fn physical_lines(text: &str) -> Cow<'_, str> {
+    if !text.contains('\r') {
+        return Cow::Borrowed(text);
+    }
+    let mut normalized = String::with_capacity(text.len());
+    let mut characters = text.chars().peekable();
+    while let Some(character) = characters.next() {
+        if character == '\r' {
+            if characters.peek() == Some(&'\n') {
+                characters.next();
+            }
+            normalized.push('\n');
+        } else {
+            normalized.push(character);
+        }
+    }
+    Cow::Owned(normalized)
+}
+
 fn whitespace(character: char) -> bool {
     matches!(character, ' ' | '\t' | '\n' | '\r' | '\x0c')
 }
@@ -81,7 +103,15 @@ fn dimension(axis: &str) -> Result<usize> {
     } else {
         Cow::Borrowed(axis)
     };
-    let mut text = uncommented.trim_matches(whitespace);
+    // Explicit joining separates tokens rather than fusing them: `2\\\n0`
+    // is not the integer `20`. Comments are removed first because a backslash
+    // inside a comment has no line-joining meaning.
+    let joined = if uncommented.contains("\\\n") {
+        Cow::Owned(uncommented.replace("\\\n", " "))
+    } else {
+        Cow::Borrowed(uncommented.as_ref())
+    };
+    let mut text = joined.trim_matches(whitespace);
     while text.starts_with('(') && text.ends_with(')') {
         text = text[1..text.len() - 1].trim_matches(whitespace);
     }
@@ -142,6 +172,10 @@ impl Parser<'_> {
     fn skip_trivia(&mut self) {
         loop {
             self.rest = self.rest.trim_start_matches(whitespace);
+            if let Some(rest) = self.rest.strip_prefix("\\\n") {
+                self.rest = rest;
+                continue;
+            }
             if !self.rest.starts_with('#') {
                 return;
             }

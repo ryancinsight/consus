@@ -151,3 +151,128 @@ fn adjacent_text_literals_preserve_prefix_and_quote_forms() {
         assert_eq!(array.values(), [7, -3]);
     }
 }
+
+fn check_newline_header(bytes: &[u8], valid: bool) {
+    let archive = {
+        let _span = tracing::info_span!("arrange").entered();
+        let mut writer = ZipWriter::new(Vec::new());
+        writer
+            .add_entry("array.npy", bytes, Method::Deflated)
+            .expect("write real NPZ member");
+        writer.finish().expect("finish real NPZ archive")
+    };
+    let results = {
+        let _span = tracing::info_span!("act").entered();
+        let mut reader = NpzReader::new(Cursor::new(archive)).expect("valid ZIP container");
+        [read_npy::<i32>(bytes), reader.by_name::<i32>("array")]
+    };
+    let _span = tracing::info_span!("assert").entered();
+    for result in results {
+        if valid {
+            let array = result.expect("valid Python physical-line syntax");
+            assert_eq!(array.shape(), [2]);
+            assert_eq!(array.values(), [7, -3]);
+            assert!(!array.is_fortran_order());
+        } else {
+            match result {
+                Err(consus_npy::Error::InvalidFormat(message)) => assert!(!message.is_empty()),
+                other => panic!("invalid physical-line syntax accepted: {other:?}"),
+            }
+        }
+    }
+}
+
+#[test]
+fn preserves_reviewed_physical_line_semantics() {
+    let _trace = trace();
+    let _test = tracing::info_span!("reviewed_physical_lines").entered();
+    for (fixture, valid) in [
+        (
+            include_bytes!("data/invalid-bare-cr-shape-token.npy").as_slice(),
+            false,
+        ),
+        (
+            include_bytes!("data/valid-bare-cr-comment.npy").as_slice(),
+            true,
+        ),
+        (
+            include_bytes!("data/valid-explicit-line-join.npy").as_slice(),
+            true,
+        ),
+    ] {
+        let _case = tracing::info_span!("case", valid).entered();
+        check_newline_header(fixture, valid);
+    }
+}
+
+#[test]
+fn comments_accept_all_python_line_endings_without_hiding_tokens() {
+    let _trace = trace();
+    let _test = tracing::info_span!("comment_line_endings").entered();
+    for newline in ["\n", "\r\n", "\r"] {
+        let _case = tracing::info_span!("case", newline).entered();
+        for (header, valid) in [
+            (
+                format!(
+                    "# leading comment{newline}({{'descr': '<i4', # dtype{newline}'fortran_order': False, 'shape': (2 # dimension ){newline},),}})"
+                ),
+                true,
+            ),
+            (
+                format!(
+                    "{{'descr': '<i4', 'fortran_order': False, 'shape': (2 # comment{newline}0\n,),}}"
+                ),
+                false,
+            ),
+        ] {
+            let bytes = {
+                let _span = tracing::info_span!("arrange").entered();
+                encoded(&header)
+            };
+            check_newline_header(&bytes, valid);
+        }
+    }
+}
+
+#[test]
+fn explicit_joins_preserve_string_and_integer_token_boundaries() {
+    let _trace = trace();
+    let _test = tracing::info_span!("explicit_line_joins").entered();
+    for newline in ["\n", "\r\n", "\r"] {
+        let _case = tracing::info_span!("case", newline).entered();
+        for (header, valid) in [
+            (
+                format!(
+                    "{{'descr': '<i4' \\{newline} '', 'fortran_order': False, 'shape': (2,),}}"
+                ),
+                true,
+            ),
+            (
+                format!(
+                    "{{'de'\\{newline}'scr': '<i4', 'fortran_order': False, 'shape': (2\\{newline},),}}"
+                ),
+                true,
+            ),
+            (
+                format!("{{'descr': '<i4', 'fortran_order': False, 'shape': (2\\{newline}0,),}}"),
+                false,
+            ),
+            (
+                format!(
+                    "{{'descr': '<i4' \\ {newline} '', 'fortran_order': False, 'shape': (2,),}}"
+                ),
+                false,
+            ),
+            (
+                format!("{{'descr': '<i4', 'fortran_order': Fal\\{newline}se, 'shape': (2,),}}"),
+                false,
+            ),
+        ] {
+            let bytes = {
+                let _span = tracing::info_span!("arrange").entered();
+                encoded(&header)
+            };
+            check_newline_header(&bytes, valid);
+        }
+    }
+}

@@ -20,10 +20,9 @@
   configuration remain with their existing owners. Do not merge or publish
   until those delivery holds are resolved.
 
-No open items. Every item this board carried has been delivered; each one's
-delivery is recorded by its pull request and the `Item:` trailer on its
-commits, not here. See `gap_audit.md` for risks nobody is fixing and
-`checklist.md` for the historical checklist.
+Completed work is recorded by its pull request and the `Item:` trailer on its
+commits. Active delivery holds remain on this board. See `gap_audit.md` for
+other risks and `checklist.md` for the historical checklist.
 
 <a id="atlas-pr530-provider-coherence"></a>
 ## ATLAS-PR530-PROVIDER-COHERENCE — Current public provider contract [major] — blocked

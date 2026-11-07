@@ -7,6 +7,8 @@
 - [x] Preserve all four scalar types across 2,304 quote/order/version/layout cases.
 - [x] Check malformed dictionaries, shape token boundaries, scalar/empty arrays,
       repeated keys, escapes and real NPZ member reads.
+- [x] Preserve reviewed literal framing, physical newlines and explicit line
+      joining without hiding or fusing malformed tokens.
 - [ ] Obtain independent final-revision review and all applicable aggregate gates.
 - [ ] Resolve existing provider/registry/documentation delivery holds before merge.
 
