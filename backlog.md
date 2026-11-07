@@ -1,9 +1,9 @@
 # Consus — Backlog
 
 <a id="consus-npy-header-001"></a>
-## CONSUS-NPY-HEADER-001 — Parse complete typed header dictionaries [patch] — in_progress
+## CONSUS-NPY-HEADER-001 — Parse complete typed header dictionaries [patch] — blocked
 
-- status: in_progress
+- status: blocked
 - priority: correctness
 - scope: crates/consus-npy/src/format.rs and format/header.rs, regression tests,
   version-cohort manifests, and authoritative documentation.
