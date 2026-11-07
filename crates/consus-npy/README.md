@@ -19,7 +19,9 @@ individually.
 Scalar headers accept either quote delimiter and arbitrary dictionary-key
 order. The reader requires complete dictionary and tuple boundaries, rejects
 unknown or missing fields, and preserves the stored Fortran-order flag.
-Header metadata is parsed as literals, never executed as Python code.
+Parenthesized dictionaries, comments between tokens and adjacent strings are
+accepted. Comment markers inside quoted strings remain data. Header metadata
+is parsed as literals, never executed as Python code.
 
 The crate declares `#![forbid(unsafe_code)]`.
 

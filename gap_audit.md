@@ -12,6 +12,11 @@ The repair consumes dictionary keys, values and separators in order, requires
 all three known fields, accepts either quote delimiter and retains the typed
 little-endian payload boundary. Scalar counts, empty dimensions and Fortran
 metadata preserve their existing behavior. NPZ delegates to the same reader.
+Independent review also identified previously accepted parenthesized headers,
+inline comments and adjacent strings. Three retained fixtures pass NumPy 2.4.5
+and now have native public NPY and NPZ regressions. The parser skips comments
+only at token boundaries, preserves quoted markers and uses checked integer
+conversions.
 Native tests include 2,304 scalar/key-order/quote/version/layout permutations
 and exact error diagnostics; tracing captures arrange/act/assert spans.
 

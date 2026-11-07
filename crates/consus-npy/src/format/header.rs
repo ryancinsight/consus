@@ -3,10 +3,12 @@
 //! The three entries may appear in any order and use either quote delimiter.
 //! Each token must end at the next dictionary/tuple separator. In particular,
 //! `Falsehood` is not `False`, `(n)` is not a tuple, and `(n,,)` has a missing
-//! element. Consuming the closing dictionary and all trailing whitespace also
+//! element. Parenthesized dictionaries, comments between tokens and adjacent
+//! strings retain Python literal semantics. Consuming all trailing trivia also
 //! prevents field-looking text outside the dictionary from becoming metadata.
 
 use crate::{Error, Result};
+use std::borrow::Cow;
 
 pub(super) struct Header {
     pub dtype: String,
@@ -17,6 +19,10 @@ pub(super) struct Header {
 impl Header {
     pub(super) fn parse(text: &str) -> Result<Self> {
         let mut parser = Parser { rest: text };
+        let mut groups = 0;
+        while parser.take('(') {
+            groups += 1;
+        }
         parser.expect('{')?;
         let (mut dtype, mut fortran_order, mut shape) = (None, None, None);
         if !parser.take('}') {
@@ -41,7 +47,11 @@ impl Header {
                 }
             }
         }
-        if !parser.rest.trim_matches(whitespace).is_empty() {
+        for _ in 0..groups {
+            parser.expect(')')?;
+        }
+        parser.skip_trivia();
+        if !parser.rest.is_empty() {
             return Err(invalid("content follows the header dictionary"));
         }
         Ok(Self {
@@ -58,7 +68,20 @@ fn whitespace(character: char) -> bool {
 
 fn dimension(axis: &str) -> Result<usize> {
     let failure = || invalid(format!("invalid shape axis {axis:?}"));
-    let mut text = axis.trim_matches(whitespace);
+    // Shape components are integer tokens, so a comment cannot be quoted
+    // within a valid component. Preserve line boundaries when removing it:
+    // `2 # comment\n 0` must not turn into the integer `20`.
+    let uncommented = if axis.contains('#') {
+        let mut text = String::with_capacity(axis.len());
+        for line in axis.lines() {
+            text.push_str(line.split('#').next().unwrap_or_default());
+            text.push('\n');
+        }
+        Cow::Owned(text)
+    } else {
+        Cow::Borrowed(axis)
+    };
+    let mut text = uncommented.trim_matches(whitespace);
     while text.starts_with('(') && text.ends_with(')') {
         text = text[1..text.len() - 1].trim_matches(whitespace);
     }
@@ -81,6 +104,7 @@ fn dimension(axis: &str) -> Result<usize> {
     } else {
         digits.strip_prefix('_').unwrap_or(digits)
     };
+    let multiplier = usize::try_from(radix).map_err(|_| failure())?;
     let mut value = 0usize;
     let mut previous_digit = false;
     for character in digits.chars() {
@@ -89,9 +113,10 @@ fn dimension(axis: &str) -> Result<usize> {
             continue;
         }
         let digit = character.to_digit(radix).ok_or_else(failure)?;
+        let digit = usize::try_from(digit).map_err(|_| failure())?;
         value = value
-            .checked_mul(radix as usize)
-            .and_then(|value| value.checked_add(digit as usize))
+            .checked_mul(multiplier)
+            .and_then(|value| value.checked_add(digit))
             .ok_or_else(failure)?;
         previous_digit = true;
     }
@@ -113,8 +138,19 @@ struct Parser<'a> {
 }
 
 impl Parser<'_> {
+    // Called only between tokens; '#' inside a quoted string is data.
+    fn skip_trivia(&mut self) {
+        loop {
+            self.rest = self.rest.trim_start_matches(whitespace);
+            if !self.rest.starts_with('#') {
+                return;
+            }
+            self.rest = self.rest.find('\n').map_or("", |end| &self.rest[end + 1..]);
+        }
+    }
+
     fn take(&mut self, expected: char) -> bool {
-        self.rest = self.rest.trim_start_matches(whitespace);
+        self.skip_trivia();
         if let Some(rest) = self.rest.strip_prefix(expected) {
             self.rest = rest;
             true
@@ -142,18 +178,62 @@ impl Parser<'_> {
     }
 
     fn string(&mut self) -> Result<String> {
-        self.rest = self.rest.trim_start_matches(whitespace);
+        let mut value = self.quoted_string()?;
+        loop {
+            self.skip_trivia();
+            if !self.string_start() {
+                return Ok(value);
+            }
+            value.push_str(&self.quoted_string()?);
+        }
+    }
+
+    fn string_start(&self) -> bool {
+        let text = self
+            .rest
+            .strip_prefix(['r', 'R', 'u', 'U'])
+            .unwrap_or(self.rest);
+        text.starts_with(['\'', '"'])
+    }
+
+    fn quoted_string(&mut self) -> Result<String> {
+        self.skip_trivia();
+        let raw = self.rest.starts_with(['r', 'R']);
+        if self.rest.starts_with(['r', 'R', 'u', 'U']) {
+            self.next()?;
+        }
         let quote = self.next()?;
         if quote != '\'' && quote != '"' {
             return Err(invalid("header key or dtype must be a quoted string"));
         }
+        let pair = if quote == '\'' { "''" } else { "\"\"" };
+        let triple = self.rest.starts_with(pair);
+        if triple {
+            self.rest = &self.rest[2..];
+        }
         let mut value = String::new();
         loop {
             match self.next()? {
-                character if character == quote => return Ok(value),
-                '\n' | '\r' => return Err(invalid("unescaped newline in header string")),
+                character if character == quote => {
+                    if !triple {
+                        return Ok(value);
+                    }
+                    if let Some(rest) = self.rest.strip_prefix(pair) {
+                        self.rest = rest;
+                        return Ok(value);
+                    }
+                    value.push(character);
+                }
+                '\n' | '\r' if !triple => {
+                    return Err(invalid("unescaped newline in header string"));
+                }
                 '\\' => {
                     let escaped = self.next()?;
+                    if raw {
+                        value.push('\\');
+                        value.push(escaped);
+                        continue;
+                    }
                     match escaped {
                         '\\' | '\'' | '"' => value.push(escaped),
                         'n' => value.push('\n'),
@@ -164,12 +244,17 @@ impl Parser<'_> {
                         'f' => value.push('\x0c'),
                         'v' => value.push('\x0b'),
                         '\n' => {}
+                        '\r' => {
+                            if let Some(rest) = self.rest.strip_prefix('\n') {
+                                self.rest = rest;
+                            }
+                        }
                         'x' => value.push(self.escape(2)?),
                         'u' => value.push(self.escape(4)?),
                         'U' => value.push(self.escape(8)?),
                         // Python retains unknown escapes verbatim. They then
-                        // fail the exact key/dtype comparison rather than
-                        // silently changing the value.
+                        // fail exact key/dtype comparison rather than silently
+                        // changing the value.
                         _ => {
                             value.push('\\');
                             value.push(escaped);
@@ -197,7 +282,7 @@ impl Parser<'_> {
     }
 
     fn boolean(&mut self) -> Result<bool> {
-        self.rest = self.rest.trim_start_matches(whitespace);
+        self.skip_trivia();
         for (token, value) in [("True", true), ("False", false)] {
             if let Some(rest) = self.rest.strip_prefix(token) {
                 if rest
@@ -219,13 +304,19 @@ impl Parser<'_> {
             return Ok(shape);
         }
         loop {
-            self.rest = self.rest.trim_start_matches(whitespace);
+            self.skip_trivia();
             let mut depth = 0usize;
+            let mut comment = false;
             let end = self
                 .rest
                 .char_indices()
                 .find_map(|(index, character)| {
+                    if comment {
+                        comment = character != '\n';
+                        return None;
+                    }
                     match character {
+                        '#' => comment = true,
                         '(' => depth += 1,
                         ')' if depth > 0 => depth -= 1,
                         ')' | ',' if depth == 0 => return Some(index),
