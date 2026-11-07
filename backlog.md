@@ -1,5 +1,17 @@
 # Consus — Backlog
 
+## CONSUS-NPY-HEADER-001 — Parse complete typed header dictionaries [patch] — review
+
+- Target: 0.4.1, retaining the existing uniform workspace release cohort.
+- Reproduced: double-quoted dictionary keys are rejected, while malformed
+  boolean and shape tokens can be read as valid metadata.
+- Local repair: structural dictionary parsing, exact separators and integer
+  tokens, value-semantic NPY/NPZ regressions and NumPy oracle comparison.
+- Pending: independent exact-revision review and all applicable gates.
+  Provider-refresh PR #186, registry publication and documentation deployment
+  configuration remain with their existing owners. Do not merge or publish
+  until those delivery holds are resolved.
+
 No open items. Every item this board carried has been delivered; each one's
 delivery is recorded by its pull request and the `Item:` trailer on its
 commits, not here. See `gap_audit.md` for risks nobody is fixing and

@@ -280,7 +280,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "consus"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "consus-arrow",
  "consus-compression",
@@ -297,7 +297,7 @@ dependencies = [
 
 [[package]]
 name = "consus-arrow"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "consus-core",
  "consus-parquet",
@@ -308,7 +308,7 @@ dependencies = [
 
 [[package]]
 name = "consus-compression"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "byteorder",
  "consus-core",
@@ -320,7 +320,7 @@ dependencies = [
 
 [[package]]
 name = "consus-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "byteorder",
  "proptest",
@@ -330,7 +330,7 @@ dependencies = [
 
 [[package]]
 name = "consus-fits"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "consus-compression",
  "consus-core",
@@ -339,7 +339,7 @@ dependencies = [
 
 [[package]]
 name = "consus-hdf5"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "byteorder",
  "consus-compression",
@@ -355,7 +355,7 @@ dependencies = [
 
 [[package]]
 name = "consus-hdmf"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "consus-core",
  "consus-hdf5",
@@ -364,7 +364,7 @@ dependencies = [
 
 [[package]]
 name = "consus-integration-tests"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "byteorder",
  "consus-arrow",
@@ -381,7 +381,7 @@ dependencies = [
 
 [[package]]
 name = "consus-io"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "consus-core",
  "memmap2",
@@ -391,7 +391,7 @@ dependencies = [
 
 [[package]]
 name = "consus-mat"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "consus-core",
  "consus-hdf5",
@@ -402,7 +402,7 @@ dependencies = [
 
 [[package]]
 name = "consus-netcdf"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "consus-core",
  "consus-hdf5",
@@ -413,12 +413,14 @@ dependencies = [
 
 [[package]]
 name = "consus-npy"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "byteorder",
  "consus-io",
  "consus-zip",
  "thiserror 2.0.21",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -433,11 +435,11 @@ dependencies = [
 
 [[package]]
 name = "consus-onnx"
-version = "0.4.0"
+version = "0.4.1"
 
 [[package]]
 name = "consus-parquet"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "consus-core",
  "criterion",
@@ -450,7 +452,7 @@ dependencies = [
 
 [[package]]
 name = "consus-python"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "consus-core",
  "consus-hdf5",
@@ -467,7 +469,7 @@ dependencies = [
 
 [[package]]
 name = "consus-raster"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "apollo-dctdst-core",
  "jpeg-encoder",
@@ -476,7 +478,7 @@ dependencies = [
 
 [[package]]
 name = "consus-zarr"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "consus-compression",
  "consus-core",
@@ -490,7 +492,7 @@ dependencies = [
 
 [[package]]
 name = "consus-zip"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "consus-compression",
  "consus-core",

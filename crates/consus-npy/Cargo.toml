@@ -18,5 +18,9 @@ consus-io = { workspace = true, features = ["std", "alloc"] }
 thiserror.workspace = true
 consus-zip.workspace = true
 
+[dev-dependencies]
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }
+
 [lints]
 workspace = true

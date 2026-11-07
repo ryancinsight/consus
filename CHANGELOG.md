@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.1] - Unreleased
+
+### Fixed
+
+- [patch] Parse scalar NPY header dictionaries by structure. Accept either
+  key quote delimiter and arbitrary key order, reject malformed boolean/tuple
+  tokens, and consume the complete dictionary before reading payload values.
+  NPZ member reads use the same boundary. Preserve the uniform workspace and
+  internal dependency versions; release remains subject to the existing
+  provider cohort, registry and deployment holds.
+
 ## [0.4.0] - Unreleased
 
 ### Breaking

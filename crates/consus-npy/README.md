@@ -16,6 +16,11 @@ Typed little-endian `f32`, `f64`, `i32`, and `i64` arrays, with validated
 shape and header parsing. `.npz` archives expose their named arrays
 individually.
 
+Scalar headers accept either quote delimiter and arbitrary dictionary-key
+order. The reader requires complete dictionary and tuple boundaries, rejects
+unknown or missing fields, and preserves the stored Fortran-order flag.
+Header metadata is parsed as literals, never executed as Python code.
+
 The crate declares `#![forbid(unsafe_code)]`.
 
 Part of the [Consus](https://github.com/ryancinsight/consus) scientific storage
