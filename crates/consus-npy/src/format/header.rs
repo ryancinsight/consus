@@ -88,30 +88,39 @@ fn whitespace(character: char) -> bool {
     matches!(character, ' ' | '\t' | '\n' | '\r' | '\x0c')
 }
 
+// Remove trivia in one lexical pass. A comment cannot manufacture an explicit
+// join from a preceding backslash, and a backslash inside a comment cannot
+// extend it onto the next physical line. Neither operation fuses integer tokens.
+fn integer_tokens(axis: &str) -> Cow<'_, str> {
+    if !axis.contains('#') && !axis.contains("\\\n") {
+        return Cow::Borrowed(axis);
+    }
+    let mut text = String::with_capacity(axis.len());
+    let mut characters = axis.chars().peekable();
+    while let Some(character) = characters.next() {
+        match character {
+            '#' => {
+                for character in characters.by_ref() {
+                    if character == '\n' {
+                        break;
+                    }
+                }
+                text.push('\n');
+            }
+            '\\' if characters.peek() == Some(&'\n') => {
+                characters.next();
+                text.push(' ');
+            }
+            character => text.push(character),
+        }
+    }
+    Cow::Owned(text)
+}
+
 fn dimension(axis: &str) -> Result<usize> {
     let failure = || invalid(format!("invalid shape axis {axis:?}"));
-    // Shape components are integer tokens, so a comment cannot be quoted
-    // within a valid component. Preserve line boundaries when removing it:
-    // `2 # comment\n 0` must not turn into the integer `20`.
-    let uncommented = if axis.contains('#') {
-        let mut text = String::with_capacity(axis.len());
-        for line in axis.lines() {
-            text.push_str(line.split('#').next().unwrap_or_default());
-            text.push('\n');
-        }
-        Cow::Owned(text)
-    } else {
-        Cow::Borrowed(axis)
-    };
-    // Explicit joining separates tokens rather than fusing them: `2\\\n0`
-    // is not the integer `20`. Comments are removed first because a backslash
-    // inside a comment has no line-joining meaning.
-    let joined = if uncommented.contains("\\\n") {
-        Cow::Owned(uncommented.replace("\\\n", " "))
-    } else {
-        Cow::Borrowed(uncommented.as_ref())
-    };
-    let mut text = joined.trim_matches(whitespace);
+    let tokens = integer_tokens(axis);
+    let mut text = tokens.trim_matches(whitespace);
     while text.starts_with('(') && text.ends_with(')') {
         text = text[1..text.len() - 1].trim_matches(whitespace);
     }

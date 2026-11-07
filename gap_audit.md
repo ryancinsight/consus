@@ -18,8 +18,9 @@ and now have native public NPY and NPZ regressions. The parser skips comments
 only at token boundaries, preserves quoted markers and uses checked integer
 conversions. A second review reproduced bare-CR comment hiding and rejected
 explicit line joining. The parser now normalizes physical newlines once and
-retains token boundaries when joining lines. All three retained witnesses and
-21 LF/CRLF/CR combinations are covered through real NPY and NPZ readers; NumPy
+retains token boundaries when joining lines. One lexical pass handles comments
+and explicit joins so removing a comment cannot create a join. All six retained
+witnesses and 27 LF/CRLF/CR combinations use real NPY and NPZ readers; NumPy
 2.4.5 agrees with their values or rejection. Native tests include 2,304 scalar/key-order/quote/version/layout permutations
 and exact error diagnostics; tracing captures arrange/act/assert spans.
 

@@ -276,3 +276,24 @@ fn explicit_joins_preserve_string_and_integer_token_boundaries() {
         }
     }
 }
+
+#[test]
+fn removing_comments_cannot_create_or_extend_line_joins() {
+    let _trace = trace();
+    let _test = tracing::info_span!("comment_join_boundaries").entered();
+    for newline in ["\n", "\r\n", "\r"] {
+        let _case = tracing::info_span!("case", newline).entered();
+        for axis in [
+            format!("2\\# comment{newline}"),
+            format!("2 # comment\\{newline}0"),
+        ] {
+            let bytes = {
+                let _span = tracing::info_span!("arrange").entered();
+                encoded(&format!(
+                    "{{'descr': '<i4', 'fortran_order': False, 'shape': ({axis},),}}"
+                ))
+            };
+            check_newline_header(&bytes, false);
+        }
+    }
+}
