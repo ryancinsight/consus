@@ -1,5 +1,21 @@
 # Consus - Gap Audit
 
+## Pending publish blocked by a missing crate publisher (2026-11-09)
+
+The Crates.io Release workflow publishes with OIDC trusted publishing, but
+crates.io rejects `consus-raster` with "the provided access token is not
+valid for crate consus-raster" (403). The crates ahead of it in the
+dependency order reached the registry at 0.4.1 (consus-core, consus-io,
+consus-compression, consus-onnx); every crate behind it is blocked behind
+that one upload, so the default branch's release run stays red. The
+registry side is a crates.io trusted-publisher entry for `consus-raster`
+and for each other crate the pending 0.4.1 set still carries, which the
+crates.io account owner configures outside this repository.
+
+Re-open check: a pending release reaches the registry without a 403, and
+every published Consus crate carries a trusted publisher for this
+repository's release workflow.
+
 ## CONSUS-NPY-HEADER-001 [patch] — dictionary token boundaries (2026-11-07)
 
 Current main `ef082711` searches for single-quoted key substrings, accepts
