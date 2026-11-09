@@ -40,6 +40,11 @@
 
 ### Fixed
 
+- [patch] Refresh the provider lock onto the current cohort: Apollo DCT/DST
+  core 0.17.2, Eunomia 0.12, Aequitas 0.3.2, Hephaestus 0.28, Moirai 0.11.3,
+  and Hermes 0.9.2 at their fetched default heads. The previous lock pinned
+  Apollo 0.17.1, whose Eunomia requirement excluded 0.12 and broke fresh
+  resolution.
 - [patch] Retain symbols in optimized release artifacts: Apple dyld rejects the
   stripped extension's misaligned LINKEDIT string pool. Preserve thin LTO,
   opt-level 3 and one codegen unit; CI now imports and tests the release wheel.
