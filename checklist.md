@@ -1,5 +1,17 @@
 # Consus — Implementation Checklist
 
+## CONSUS-NPY-HEADER-001 [patch] — target 0.4.1
+
+- [x] Reproduce quote rejection and malformed boolean acceptance against NumPy.
+- [x] Replace substring extraction with one structural dictionary parser.
+- [x] Preserve all four scalar types across 2,304 quote/order/version/layout cases.
+- [x] Check malformed dictionaries, shape token boundaries, scalar/empty arrays,
+      repeated keys, escapes and real NPZ member reads.
+- [x] Preserve reviewed literal framing, physical newlines and explicit line
+      joining without hiding or fusing malformed tokens.
+- [ ] Obtain independent final-revision review and all applicable aggregate gates.
+- [ ] Resolve existing provider/registry/documentation delivery holds before merge.
+
 ## ATLAS-CONSUS-PARSE-LIMITS-035 — Bound remaining untrusted length/depth sites
 
 - [x] Reconcile the stale brief against the current provider default and keep

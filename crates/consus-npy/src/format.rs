@@ -6,6 +6,8 @@ use std::io::{Read, Write};
 
 use crate::{Error, NpyArray, NpyElement, Result};
 
+mod header;
+
 const MAGIC: &[u8; 6] = b"\x93NUMPY";
 const MAX_HEADER_BYTES: usize = 1 << 20;
 
@@ -37,15 +39,16 @@ pub fn read_npy<T: NpyElement>(mut reader: impl Read) -> Result<NpyArray<T>> {
     reader.read_exact(&mut header)?;
     let header = std::str::from_utf8(&header)
         .map_err(|error| Error::InvalidFormat(format!("header is not UTF-8: {error}")))?;
-    let dtype = quoted_value(header, "'descr'")?;
+    let header = header::Header::parse(header)?;
+    let dtype = header.dtype;
     if dtype != T::DTYPE && dtype != T::DTYPE.replacen('<', "=", 1) {
         return Err(Error::DtypeMismatch {
             stored: dtype,
             requested: T::DTYPE,
         });
     }
-    let fortran_order = bool_value(header, "'fortran_order'")?;
-    let shape = shape_value(header)?;
+    let fortran_order = header.fortran_order;
+    let shape = header.shape;
     let count = shape.iter().try_fold(1usize, |count, &axis| {
         count
             .checked_mul(axis)
@@ -104,62 +107,6 @@ pub fn write_npy<T: NpyElement>(mut writer: impl Write, array: &NpyArray<T>) -> 
         value.write_to(&mut writer)?;
     }
     Ok(())
-}
-
-fn value_tail<'a>(header: &'a str, key: &str) -> Result<&'a str> {
-    let start = header
-        .find(key)
-        .ok_or_else(|| Error::InvalidFormat(format!("header missing {key}")))?;
-    let tail = &header[start + key.len()..];
-    tail.split_once(':')
-        .map(|(_, value)| value.trim_start())
-        .ok_or_else(|| Error::InvalidFormat(format!("header key {key} has no value")))
-}
-
-fn quoted_value(header: &str, key: &str) -> Result<String> {
-    let tail = value_tail(header, key)?;
-    let quote = tail
-        .chars()
-        .next()
-        .filter(|character| *character == '\'' || *character == '"')
-        .ok_or_else(|| Error::InvalidFormat(format!("{key} value is not quoted")))?;
-    let remainder = &tail[quote.len_utf8()..];
-    let end = remainder
-        .find(quote)
-        .ok_or_else(|| Error::InvalidFormat(format!("{key} quote is unterminated")))?;
-    Ok(remainder[..end].to_owned())
-}
-
-fn bool_value(header: &str, key: &str) -> Result<bool> {
-    let tail = value_tail(header, key)?;
-    if tail.starts_with("True") {
-        Ok(true)
-    } else if tail.starts_with("False") {
-        Ok(false)
-    } else {
-        Err(Error::InvalidFormat(format!("{key} is not a boolean")))
-    }
-}
-
-fn shape_value(header: &str) -> Result<Vec<usize>> {
-    let tail = value_tail(header, "'shape'")?;
-    let end = tail
-        .find(')')
-        .ok_or_else(|| Error::InvalidFormat("shape tuple is unterminated".into()))?;
-    let body = tail
-        .strip_prefix('(')
-        .ok_or_else(|| Error::InvalidFormat("shape value is not a tuple".into()))?
-        .get(..end.saturating_sub(1))
-        .ok_or_else(|| Error::InvalidFormat("invalid shape tuple".into()))?;
-    body.split(',')
-        .map(str::trim)
-        .filter(|axis| !axis.is_empty())
-        .map(|axis| {
-            axis.parse::<usize>().map_err(|error| {
-                Error::InvalidFormat(format!("invalid shape axis {axis}: {error}"))
-            })
-        })
-        .collect()
 }
 
 #[cfg(test)]

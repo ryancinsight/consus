@@ -1,5 +1,34 @@
 # Consus - Gap Audit
 
+## CONSUS-NPY-HEADER-001 [patch] — dictionary token boundaries (2026-11-07)
+
+Current main `ef082711` searches for single-quoted key substrings, accepts
+boolean prefixes and drops empty shape components. NumPy 2.4.5 accepts a
+double-quoted dictionary that this reader rejects, and rejects `Falsehood`,
+`(2,,)` and `(2)` where the old token extraction can report valid metadata.
+The baseline six native tests pass, while both new regression tests fail.
+
+The repair consumes dictionary keys, values and separators in order, requires
+all three known fields, accepts either quote delimiter and retains the typed
+little-endian payload boundary. Scalar counts, empty dimensions and Fortran
+metadata preserve their existing behavior. NPZ delegates to the same reader.
+Independent review also identified previously accepted parenthesized headers,
+inline comments and adjacent strings. Three retained fixtures pass NumPy 2.4.5
+and now have native public NPY and NPZ regressions. The parser skips comments
+only at token boundaries, preserves quoted markers and uses checked integer
+conversions. A second review reproduced bare-CR comment hiding and rejected
+explicit line joining. The parser now normalizes physical newlines once and
+retains token boundaries when joining lines. One lexical pass handles comments
+and explicit joins so removing a comment cannot create a join. All six retained
+witnesses and 27 LF/CRLF/CR combinations use real NPY and NPZ readers; NumPy
+2.4.5 agrees with their values or rejection. Native tests include 2,304 scalar/key-order/quote/version/layout permutations
+and exact error diagnostics; tracing captures arrange/act/assert spans.
+
+This source fix does not qualify the inherited provider graph, authorize
+registry changes or repair deployment settings. Consus provider-refresh #186
+and existing release owners retain those scopes. Independent review and final
+aggregate validation remain mandatory.
+
 ## ATLAS-CONSUS-TYPES-057 — Generic endian scalar reads (2026-08-15)
 
 The core decoder had six duplicated public readers whose names encoded the
