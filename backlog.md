@@ -27,6 +27,7 @@ other risks and `checklist.md` for the historical checklist.
 <a id="atlas-pr530-provider-coherence"></a>
 ## ATLAS-PR530-PROVIDER-COHERENCE — Current public provider contract [major] — blocked
 
+- milestone: M-1.0
 - Target: 0.3.0; ADR0005 precedes the version correction. Preserve PR172's
   owner history and numerical repair; its 0.2.1 release claim is withdrawn.
 - The actual published HDF50.2.0/Moirai0.7 generic consumer passes; the same
@@ -43,6 +44,7 @@ other risks and `checklist.md` for the historical checklist.
 <a id="consus-parquet-raw-deflate"></a>
 ## CONSUS-PARQUET-RAW-DEFLATE — Compress Parquet GZIP pages through RawDeflateCodec [patch] — todo
 
+- milestone: M-interop-contracts
 - outcome: `consus-parquet`'s `compress_page_values` uses
   `consus_compression::codec::raw_deflate::RawDeflateCodec` instead of its own
   inline `flate2::read::DeflateEncoder`, so one raw-DEFLATE compressor remains.
@@ -56,6 +58,7 @@ other risks and `checklist.md` for the historical checklist.
 <a id="consus-python-free-threading"></a>
 ## CONSUS-PYTHON-FREE-THREADING — Audit the binding surface for free-threaded Python [minor] — todo
 
+- milestone: M-1.0
 - outcome: `consus-python` drops `#[pymodule(gil_used = true)]` after an audit of
   every `#[pyclass]` for `Sync`-safe interior mutability.
 - acceptance: a thread-pool test drives one object of each class on a `python3.14t`
