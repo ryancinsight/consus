@@ -259,7 +259,13 @@ def test_dynamic_table_shared_reads():
             repr(table),
         )
     )
-    assert fields[4:8] == (3, ["rt", "n"], [0.3, 0.5, 0.4], [4, 5, 6])
+    # fmt: off
+    assert fields == (
+        "root", "trial table", ["rt", "n"], [0, 1, 2], 3,
+        ["rt", "n"], [0.3, 0.5, 0.4], [4, 5, 6],
+        "DynamicTable(name='root', rows=3, columns=[rt, n])",
+    )
+    # fmt: on
 
 
 # ---------------------------------------------------------------------------
@@ -356,5 +362,5 @@ def test_mat_file_and_variable_shared_reads():
     )
     assert result[:2] == ("v4", ["a", "m"])
     assert result[2][0][4] == struct.pack("<3d", 1.0, 2.0, 3.0)
-    assert result[3][2:] == ([2, 2], result[3][3], struct.pack("<4d", 1.0, 3.0, 2.0, 4.0))
+    assert result[3][2:] == ([2, 2], "double", struct.pack("<4d", 1.0, 3.0, 2.0, 4.0))
     assert result[4] is None
