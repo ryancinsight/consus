@@ -9,8 +9,10 @@ use consus_zarr::{
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
+use std::sync::RwLock;
 
 use crate::error::from_consus;
+use crate::locking;
 
 // ---------------------------------------------------------------------------
 // Helper: build .zarray JSON
@@ -47,9 +49,14 @@ fn make_zarray_json(shape: &[u64], chunks: &[u64], dtype: &str, compressor: &str
 /// and read them back via :meth:`read_chunk`. Export to a zarr-python
 /// compatible store dict via :meth:`to_store`, or import from one via
 /// :meth:`ZarrArray.from_store`.
-#[pyclass]
+///
+/// One array may be shared between threads: `read_chunk` and `to_store` run
+/// concurrently, and `write_chunk` excludes both while it runs. `shape`,
+/// `chunks`, `dtype`, `num_chunks` and `chunk_key` read immutable metadata and
+/// take no lock.
+#[pyclass(frozen)]
 pub struct PyZarrArray {
-    store: InMemoryStore,
+    store: RwLock<InMemoryStore>,
     meta: ArrayMetadata,
 }
 
@@ -76,7 +83,10 @@ impl PyZarrArray {
         let v2 = ArrayMetadataV2::parse(&json)
             .map_err(|e| PyRuntimeError::new_err(format!("invalid zarr metadata: {e:?}")))?;
         let meta = v2.to_canonical();
-        Ok(Self { store, meta })
+        Ok(Self {
+            store: RwLock::new(store),
+            meta,
+        })
     }
 
     /// Array shape.
@@ -114,15 +124,19 @@ impl PyZarrArray {
     }
 
     /// Write raw `data` bytes for the chunk at `coords`.
-    fn write_chunk(&mut self, coords: Vec<u64>, data: &[u8]) -> PyResult<()> {
-        write_chunk(&mut self.store, "", &coords, &self.meta, data)
+    fn write_chunk(&self, py: Python<'_>, coords: Vec<u64>, data: &[u8]) -> PyResult<()> {
+        let mut store = locking::write(&self.store, py, "ZarrArray")?;
+        write_chunk(&mut *store, "", &coords, &self.meta, data)
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     /// Read the raw bytes for the chunk at `coords`.
     fn read_chunk(&self, coords: Vec<u64>, py: Python<'_>) -> PyResult<Py<PyBytes>> {
-        let data = read_chunk(&self.store, "", &coords, &self.meta)
-            .map_err(|e: ChunkError| PyRuntimeError::new_err(format!("{e}")))?;
+        let data = {
+            let store = locking::read(&self.store, py, "ZarrArray")?;
+            read_chunk(&*store, "", &coords, &self.meta)
+                .map_err(|e: ChunkError| PyRuntimeError::new_err(format!("{e}")))?
+        };
         Ok(PyBytes::new(py, &data).unbind())
     }
 
@@ -132,9 +146,16 @@ impl PyZarrArray {
     /// ``MemoryStore`` after wrapping values in
     /// ``zarr.core.buffer.cpu.Buffer.from_bytes(v)``.
     fn to_store(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let entries = {
+            let store = locking::read(&self.store, py, "ZarrArray")?;
+            store
+                .keys()
+                .map(|key| store.get(key).map(|value| (key.to_owned(), value)))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(from_consus)?
+        };
         let dict = PyDict::new(py);
-        for key in self.store.keys() {
-            let value = self.store.get(key).map_err(from_consus)?;
+        for (key, value) in entries {
             dict.set_item(key, PyBytes::new(py, &value))?;
         }
         Ok(dict.unbind())
@@ -170,6 +191,9 @@ impl PyZarrArray {
         let v2 = ArrayMetadataV2::parse(json)
             .map_err(|e| PyRuntimeError::new_err(format!("invalid .zarray JSON: {e:?}")))?;
         let meta = v2.to_canonical();
-        Ok(Self { store, meta })
+        Ok(Self {
+            store: RwLock::new(store),
+            meta,
+        })
     }
 }

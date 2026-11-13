@@ -11,8 +11,10 @@ use consus_parquet::{
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyList};
+use std::sync::Mutex;
 
 use crate::error::from_consus;
+use crate::locking;
 
 // ---------------------------------------------------------------------------
 // Cell value bridge
@@ -270,16 +272,20 @@ impl PyParquetFile {
 ///
 /// Add columns with :meth:`add_column`, then call :meth:`write` with a
 /// ``dict[str, list]`` of column data to produce a Parquet file as ``bytes``.
-#[pyclass]
+///
+/// One builder may be shared between threads: each call is atomic, and
+/// :meth:`write` uses the schema present when it starts.
+#[pyclass(frozen)]
+#[derive(Default)]
 pub struct PyParquetBuilder {
-    fields: Vec<(String, ParquetPhysicalType)>,
+    fields: Mutex<Vec<(String, ParquetPhysicalType)>>,
 }
 
 #[pymethods]
 impl PyParquetBuilder {
     #[new]
     fn new() -> Self {
-        Self { fields: Vec::new() }
+        Self::default()
     }
 
     /// Add a column to the schema.
@@ -291,20 +297,21 @@ impl PyParquetBuilder {
     /// dtype : str
     ///     Parquet physical type: ``"INT32"``, ``"INT64"``, ``"FLOAT"``,
     ///     ``"DOUBLE"``, ``"BYTE_ARRAY"``, ``"BOOLEAN"``, ``"INT96"``.
-    fn add_column(&mut self, name: &str, dtype: &str) -> PyResult<()> {
+    fn add_column(&self, py: Python<'_>, name: &str, dtype: &str) -> PyResult<()> {
         let pt = parse_phys_type(dtype)?;
-        self.fields.push((name.to_owned(), pt));
+        locking::lock(&self.fields, py, "ParquetBuilder")?.push((name.to_owned(), pt));
         Ok(())
     }
 
     /// List of column names in schema order.
-    fn column_names(&self) -> Vec<String> {
-        self.fields.iter().map(|(n, _)| n.clone()).collect()
+    fn column_names(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        let fields = locking::lock(&self.fields, py, "ParquetBuilder")?;
+        Ok(fields.iter().map(|(n, _)| n.clone()).collect())
     }
 
     /// Number of columns in the schema.
-    fn num_columns(&self) -> usize {
-        self.fields.len()
+    fn num_columns(&self, py: Python<'_>) -> PyResult<usize> {
+        Ok(locking::lock(&self.fields, py, "ParquetBuilder")?.len())
     }
 
     /// Write a single-row-group Parquet file from column data.
@@ -324,13 +331,15 @@ impl PyParquetBuilder {
         columns: &Bound<'_, pyo3::types::PyDict>,
         py: Python<'_>,
     ) -> PyResult<Py<PyBytes>> {
-        if self.fields.is_empty() {
+        // Snapshot the schema so no lock is held while element conversion runs
+        // Python code.
+        let fields = locking::lock(&self.fields, py, "ParquetBuilder")?.clone();
+        if fields.is_empty() {
             return Err(PyValueError::new_err("no columns defined"));
         }
 
         // Build schema using FieldDescriptor::required (Required, no logical type, no children).
-        let schema_fields: Vec<FieldDescriptor> = self
-            .fields
+        let schema_fields: Vec<FieldDescriptor> = fields
             .iter()
             .enumerate()
             .map(|(i, (name, pt))| {
@@ -344,7 +353,7 @@ impl PyParquetBuilder {
         let mut col_data: Option<ColumnMatrix> = None;
         let mut row_count: Option<usize> = None;
 
-        for (name, pt) in &self.fields {
+        for (name, pt) in &fields {
             let py_col = columns
                 .get_item(name)?
                 .ok_or_else(|| PyValueError::new_err(format!("missing column: {name}")))?;
@@ -384,11 +393,13 @@ impl PyParquetBuilder {
                 cells.push(cell);
             }
             col_data
-                .get_or_insert_with(|| ColumnMatrix::with_capacity(self.fields.len(), n))
+                .get_or_insert_with(|| ColumnMatrix::with_capacity(fields.len(), n))
                 .push_column(cells);
         }
 
-        let row_count = row_count.unwrap_or(0);
+        let (Some(col_data), Some(row_count)) = (col_data, row_count) else {
+            return Err(PyValueError::new_err("no columns defined"));
+        };
         if row_count == 0 {
             return Err(PyValueError::new_err(
                 "cannot write Parquet file with 0 rows",
@@ -396,7 +407,7 @@ impl PyParquetBuilder {
         }
 
         // Build dataset descriptor.
-        let chunks: Vec<ColumnChunkDescriptor> = (0..self.fields.len())
+        let chunks: Vec<ColumnChunkDescriptor> = (0..fields.len())
             .map(|i| {
                 ColumnChunkDescriptor::new(FieldId::new(i as u32), row_count, row_count)
                     .map_err(from_consus)
@@ -407,7 +418,7 @@ impl PyParquetBuilder {
             ParquetDatasetDescriptor::new(schema, vec![row_group]).map_err(from_consus)?;
 
         let row_source = VecRowSource {
-            columns: col_data.expect("self.fields is non-empty, checked above"),
+            columns: col_data,
             row_count,
         };
 
