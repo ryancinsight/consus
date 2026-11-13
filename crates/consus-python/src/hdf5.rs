@@ -13,8 +13,10 @@ use consus_io::MemCursor;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
+use std::sync::Mutex;
 
 use crate::error::from_consus;
+use crate::locking;
 
 // ---------------------------------------------------------------------------
 // DatasetInfo — read-only view of dataset metadata
@@ -267,9 +269,12 @@ fn parse_compression(compression: &str) -> PyResult<Compression> {
 /// HDF5 file writer.
 ///
 /// Build datasets and call :meth:`FileBuilder.finish` to obtain the HDF5 bytes.
-#[pyclass]
+///
+/// One builder may be shared between threads: calls are serialized, and
+/// :meth:`FileBuilder.finish` consumes the builder for every caller.
+#[pyclass(frozen)]
 pub struct PyFileBuilder {
-    builder: Option<Hdf5FileBuilder>,
+    builder: Mutex<Option<Hdf5FileBuilder>>,
 }
 
 #[pymethods]
@@ -277,7 +282,7 @@ impl PyFileBuilder {
     #[new]
     fn new() -> Self {
         Self {
-            builder: Some(Hdf5FileBuilder::new(FileCreationProps::default())),
+            builder: Mutex::new(Some(Hdf5FileBuilder::new(FileCreationProps::default()))),
         }
     }
 
@@ -303,7 +308,8 @@ impl PyFileBuilder {
     ///     Layout message version (3 or 4). ``None`` selects version 3.
     #[pyo3(signature = (name, dtype, shape, data, layout="contiguous", chunk_dims=None, compression="none", layout_version=None))]
     fn add_dataset(
-        &mut self,
+        &self,
+        py: Python<'_>,
         name: &str,
         dtype: &str,
         shape: Vec<u64>,
@@ -335,7 +341,7 @@ impl PyFileBuilder {
             layout_version,
             ..Default::default()
         };
-        self.builder
+        locking::lock(&self.builder, py, "FileBuilder")?
             .as_mut()
             .ok_or_else(|| PyRuntimeError::new_err("FileBuilder already consumed by finish()"))?
             .add_dataset(name, &dt, &sh, data, &dcpl)
@@ -344,12 +350,11 @@ impl PyFileBuilder {
     }
 
     /// Finalize the HDF5 file and return the raw bytes.
-    fn finish(&mut self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
-        let builder = self
-            .builder
+    fn finish(&self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
+        let builder = locking::lock(&self.builder, py, "FileBuilder")?
             .take()
             .ok_or_else(|| PyRuntimeError::new_err("FileBuilder already consumed by finish()"))?;
-        let bytes = builder.finish().map_err(from_consus)?;
+        let bytes = py.detach(|| builder.finish()).map_err(from_consus)?;
         Ok(PyBytes::new(py, &bytes).unbind())
     }
 }

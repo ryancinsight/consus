@@ -13,6 +13,7 @@ extern crate alloc;
 mod error;
 mod hdf5;
 mod hdmf;
+mod locking;
 mod mat;
 mod netcdf;
 mod parquet;

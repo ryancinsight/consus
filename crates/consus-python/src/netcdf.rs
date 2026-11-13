@@ -22,8 +22,10 @@ use consus_netcdf::{
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyList};
+use std::sync::{Mutex, MutexGuard};
 
 use crate::error::from_consus;
+use crate::locking;
 
 // ---------------------------------------------------------------------------
 // Dtype helpers
@@ -528,9 +530,18 @@ fn attrs_to_py<'py>(
 /// w.add_variable("temperature", "f32", ["x"], [1.0, 2.0, 3.0, 4.0, 5.0])
 /// raw = w.write()
 /// ```
-#[pyclass]
+///
+/// One writer may be shared between threads: each call is atomic, and a
+/// variable may only reference dimensions added before its call.
+#[pyclass(frozen)]
 pub struct PyNetcdfWriter {
-    group: NetcdfGroup,
+    group: Mutex<NetcdfGroup>,
+}
+
+impl PyNetcdfWriter {
+    fn group(&self, py: Python<'_>) -> PyResult<MutexGuard<'_, NetcdfGroup>> {
+        locking::lock(&self.group, py, "NetcdfWriter")
+    }
 }
 
 #[pymethods]
@@ -539,20 +550,21 @@ impl PyNetcdfWriter {
     #[new]
     pub fn new() -> Self {
         Self {
-            group: NetcdfGroup::new(String::from("/")),
+            group: Mutex::new(NetcdfGroup::new(String::from("/"))),
         }
     }
 
     /// Add a fixed-size dimension with `name` and `size`.
     ///
     /// Raises `ValueError` if a dimension with this name already exists.
-    pub fn add_dimension(&mut self, name: &str, size: usize) -> PyResult<()> {
-        if self.group.dimensions.iter().any(|d| d.name == name) {
+    pub fn add_dimension(&self, py: Python<'_>, name: &str, size: usize) -> PyResult<()> {
+        let mut group = self.group(py)?;
+        if group.dimensions.iter().any(|d| d.name == name) {
             return Err(PyValueError::new_err(format!(
                 "dimension '{name}' already defined"
             )));
         }
-        self.group
+        group
             .dimensions
             .push(NetcdfDimension::new(name.to_string(), size));
         Ok(())
@@ -570,36 +582,45 @@ impl PyNetcdfWriter {
     ///
     /// Raises `ValueError` on dtype, dim-reference, or length mismatch.
     pub fn add_variable(
-        &mut self,
+        &self,
+        py: Python<'_>,
         name: &str,
         dtype: &str,
         dims: Vec<String>,
         data: &Bound<'_, PyList>,
     ) -> PyResult<()> {
-        if self.group.variables.iter().any(|v| v.name == name) {
-            return Err(PyValueError::new_err(format!(
-                "variable '{name}' already defined"
-            )));
-        }
+        let check_unique = |group: &NetcdfGroup| -> PyResult<()> {
+            if group.variables.iter().any(|v| v.name == name) {
+                return Err(PyValueError::new_err(format!(
+                    "variable '{name}' already defined"
+                )));
+            }
+            Ok(())
+        };
+        let guard = self.group(py)?;
+        check_unique(&guard)?;
+        drop(guard);
 
         let dt = parse_dtype(dtype)?;
 
         // Resolve shape from declared dimensions.
-        let shape_dims: Vec<usize> = dims
-            .iter()
-            .map(|d| {
-                self.group
-                    .dimensions
-                    .iter()
-                    .find(|dim| &dim.name == d)
-                    .map(|dim| dim.size)
-                    .ok_or_else(|| {
-                        PyValueError::new_err(format!(
-                            "dimension '{d}' not found; add it with add_dimension() first"
-                        ))
-                    })
-            })
-            .collect::<PyResult<Vec<_>>>()?;
+        let shape_dims: Vec<usize> = {
+            let group = self.group(py)?;
+            dims.iter()
+                .map(|d| {
+                    group
+                        .dimensions
+                        .iter()
+                        .find(|dim| &dim.name == d)
+                        .map(|dim| dim.size)
+                        .ok_or_else(|| {
+                            PyValueError::new_err(format!(
+                                "dimension '{d}' not found; add it with add_dimension() first"
+                            ))
+                        })
+                })
+                .collect::<PyResult<Vec<_>>>()?
+        };
 
         let expected = shape_dims.iter().product::<usize>();
         if data.len() != expected {
@@ -621,17 +642,21 @@ impl PyNetcdfWriter {
             .with_shape(shape)
             .with_data(raw);
 
-        self.group.variables.push(var);
+        // Element conversion above may run Python code, so the lock is taken
+        // again here and uniqueness re-checked against concurrent callers.
+        let mut group = self.group(py)?;
+        check_unique(&group)?;
+        group.variables.push(var);
         Ok(())
     }
 
     /// Serialise the model to netCDF-4/HDF5 bytes.
     pub fn write(&self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
         let model = NetcdfModel {
-            root: self.group.clone(),
+            root: self.group(py)?.clone(),
         };
-        let bytes = NetcdfWriter::new()
-            .write_model(&model)
+        let bytes = py
+            .detach(|| NetcdfWriter::new().write_model(&model))
             .map_err(from_consus)?;
         Ok(PyBytes::new(py, &bytes).unbind())
     }
