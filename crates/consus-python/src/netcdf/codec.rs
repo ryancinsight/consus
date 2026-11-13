@@ -56,7 +56,7 @@ pub(super) fn decode_bytes(py: Python<'_>, data: &[u8], dt: &Datatype) -> PyResu
                 signed: true,
                 byte_order,
             } if bits.get() == 8 => {
-                let v = s[0] as i8;
+                let v = s[0].cast_signed();
                 list.append(v)?;
             }
             Datatype::Integer {
