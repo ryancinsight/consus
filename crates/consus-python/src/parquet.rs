@@ -397,7 +397,9 @@ impl PyParquetBuilder {
                 .push_column(cells);
         }
 
-        let row_count = row_count.unwrap_or(0);
+        let (Some(col_data), Some(row_count)) = (col_data, row_count) else {
+            return Err(PyValueError::new_err("no columns defined"));
+        };
         if row_count == 0 {
             return Err(PyValueError::new_err(
                 "cannot write Parquet file with 0 rows",
@@ -416,7 +418,7 @@ impl PyParquetBuilder {
             ParquetDatasetDescriptor::new(schema, vec![row_group]).map_err(from_consus)?;
 
         let row_source = VecRowSource {
-            columns: col_data.expect("fields is non-empty, checked above"),
+            columns: col_data,
             row_count,
         };
 
