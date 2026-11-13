@@ -151,3 +151,37 @@ def test_netcdf_writer_duplicate_name_races_to_one_winner():
     results = run_pooled(add)
     assert results.count(None) == 1
     assert set(results) - {None} == {"dimension 'same' already defined"}
+
+
+class BarrierFloat:
+    """A float whose conversion blocks until both racing callers reach it, so
+    each caller has passed its first name check before either one inserts."""
+
+    def __init__(self, barrier, value):
+        self.barrier = barrier
+        self.value = value
+
+    def __float__(self):
+        self.barrier.wait()
+        return self.value
+
+
+def test_netcdf_writer_duplicate_variable_races_to_one_winner():
+    writer = consus.NetcdfWriter()
+    writer.add_dimension("x", 1)
+    barrier = threading.Barrier(2, timeout=30)
+
+    def add(index):
+        try:
+            writer.add_variable("v", "f64", ["x"], [BarrierFloat(barrier, float(index))])
+        except ValueError as err:
+            return str(err)
+        return None
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(add, range(2)))
+    assert results.count(None) == 1
+    assert set(results) - {None} == {"variable 'v' already defined"}
+    reader = consus.NetcdfFile(writer.write())
+    assert reader.variable_names() == ["v"]
+    assert reader.read_variable("v") == [float(results.index(None))]
