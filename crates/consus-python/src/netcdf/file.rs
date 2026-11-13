@@ -37,18 +37,18 @@ pub struct PyNetcdfFile {
 impl PyNetcdfFile {
     /// Construct from raw netCDF-4/HDF5 bytes.
     #[new]
-    pub fn new(data: &[u8]) -> PyResult<Self> {
+    pub fn new(py: Python<'_>, data: &[u8]) -> PyResult<Self> {
         // Validate the bytes open as a valid HDF5 file before storing.
-        let cursor = MemCursor::from_bytes(data.to_vec());
-        Hdf5File::open(cursor).map_err(from_consus)?;
+        py.detach(|| Hdf5File::open(MemCursor::from_bytes(data.to_vec())))
+            .map_err(from_consus)?;
         Ok(Self {
             data: data.to_vec(),
         })
     }
 
     /// Names of all root-group variables (non-dimension-scale datasets).
-    pub fn variable_names(&self) -> PyResult<Vec<String>> {
-        let model = self.open_model()?;
+    pub fn variable_names(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        let model = self.open_model(py)?;
         Ok(model
             .root
             .variables
@@ -58,8 +58,8 @@ impl PyNetcdfFile {
     }
 
     /// Names of all root-group dimensions.
-    pub fn dimension_names(&self) -> PyResult<Vec<String>> {
-        let model = self.open_model()?;
+    pub fn dimension_names(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        let model = self.open_model(py)?;
         Ok(model
             .root
             .dimensions
@@ -69,8 +69,8 @@ impl PyNetcdfFile {
     }
 
     /// Dict-like list of `(name, size)` pairs for root-group dimensions.
-    pub fn dimension_sizes(&self) -> PyResult<Vec<(String, usize)>> {
-        let model = self.open_model()?;
+    pub fn dimension_sizes(&self, py: Python<'_>) -> PyResult<Vec<(String, usize)>> {
+        let model = self.open_model(py)?;
         Ok(model
             .root
             .dimensions
@@ -82,8 +82,8 @@ impl PyNetcdfFile {
     /// Dtype string ("f32", "f64", "i32", …) and dimension names for a variable.
     ///
     /// Returns `(dtype_str, [dim_names...])`.
-    pub fn variable_info(&self, name: &str) -> PyResult<(String, Vec<String>)> {
-        let model = self.open_model()?;
+    pub fn variable_info(&self, py: Python<'_>, name: &str) -> PyResult<(String, Vec<String>)> {
+        let model = self.open_model(py)?;
         let var = find_variable(&model.root, name)?;
         Ok((dtype_tag(&var.datatype).to_string(), var.dimensions.clone()))
     }
@@ -92,17 +92,20 @@ impl PyNetcdfFile {
     ///
     /// Returns a list of `int` or `float` values.
     pub fn read_variable(&self, py: Python<'_>, name: &str) -> PyResult<Py<PyAny>> {
-        let cursor = MemCursor::from_bytes(self.data.clone());
-        let file = Hdf5File::open(cursor).map_err(from_consus)?;
-        let model = read_model(&file).map_err(from_consus)?;
-        let var = find_variable(&model.root, name)?;
-        let raw = read_variable_bytes(&file, var).map_err(from_consus)?;
-        decode_bytes(py, &raw, &var.datatype)
+        let (raw, datatype) = py.detach(|| {
+            let file =
+                Hdf5File::open(MemCursor::from_bytes(self.data.clone())).map_err(from_consus)?;
+            let model = read_model(&file).map_err(from_consus)?;
+            let var = find_variable(&model.root, name)?;
+            let raw = read_variable_bytes(&file, var).map_err(from_consus)?;
+            Ok::<_, PyErr>((raw, var.datatype.clone()))
+        })?;
+        decode_bytes(py, &raw, &datatype)
     }
 
     /// Shape (list of dimension sizes in axis order) of a root-group variable.
-    pub fn variable_shape(&self, name: &str) -> PyResult<Vec<usize>> {
-        let model = self.open_model()?;
+    pub fn variable_shape(&self, py: Python<'_>, name: &str) -> PyResult<Vec<usize>> {
+        let model = self.open_model(py)?;
         let var = find_variable(&model.root, name)?;
         match &var.shape {
             Some(s) => Ok(s.current_dims().as_slice().to_vec()),
@@ -115,16 +118,19 @@ impl PyNetcdfFile {
     /// Numeric attributes are returned as `int` or `float`; string attributes
     /// as `str`; array attributes as a Python list.
     pub fn group_attributes(&self, py: Python<'_>) -> PyResult<Vec<(String, Py<PyAny>)>> {
-        let model = self.open_model()?;
+        let model = self.open_model(py)?;
         attrs_to_py(py, &model.root.attributes)
     }
 }
 
 impl PyNetcdfFile {
-    fn open_model(&self) -> PyResult<NetcdfModel> {
-        let cursor = MemCursor::from_bytes(self.data.clone());
-        let file = Hdf5File::open(cursor).map_err(from_consus)?;
-        read_model(&file).map_err(from_consus)
+    /// Parse the stored bytes into the group model with the interpreter detached.
+    fn open_model(&self, py: Python<'_>) -> PyResult<NetcdfModel> {
+        py.detach(|| {
+            let file =
+                Hdf5File::open(MemCursor::from_bytes(self.data.clone())).map_err(from_consus)?;
+            read_model(&file).map_err(from_consus)
+        })
     }
 }
 

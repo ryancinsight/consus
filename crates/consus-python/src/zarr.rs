@@ -125,16 +125,18 @@ impl PyZarrArray {
 
     /// Write raw `data` bytes for the chunk at `coords`.
     fn write_chunk(&self, py: Python<'_>, coords: Vec<u64>, data: &[u8]) -> PyResult<()> {
-        let mut store = locking::write(&self.store, py, "ZarrArray")?;
-        write_chunk(&mut *store, "", &coords, &self.meta, data)
+        let mut guard = locking::write(&self.store, py, "ZarrArray")?;
+        let store = &mut *guard;
+        py.detach(|| write_chunk(store, "", &coords, &self.meta, data))
             .map_err(|e| PyRuntimeError::new_err(format!("{e}")))
     }
 
     /// Read the raw bytes for the chunk at `coords`.
     fn read_chunk(&self, coords: Vec<u64>, py: Python<'_>) -> PyResult<Py<PyBytes>> {
         let data = {
-            let store = locking::read(&self.store, py, "ZarrArray")?;
-            read_chunk(&*store, "", &coords, &self.meta)
+            let guard = locking::read(&self.store, py, "ZarrArray")?;
+            let store = &*guard;
+            py.detach(|| read_chunk(store, "", &coords, &self.meta))
                 .map_err(|e: ChunkError| PyRuntimeError::new_err(format!("{e}")))?
         };
         Ok(PyBytes::new(py, &data).unbind())

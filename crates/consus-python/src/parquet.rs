@@ -210,39 +210,48 @@ impl PyParquetFile {
     }
 
     /// Schema as a list of ``(name, physical_type_str)`` tuples.
-    fn schema(&self) -> PyResult<Vec<(String, String)>> {
-        let reader = ParquetReader::new(&self.bytes).map_err(from_consus)?;
-        Ok(reader
-            .dataset()
-            .schema()
-            .fields()
-            .iter()
-            .map(|f| (f.name().to_owned(), phys_type_str(f.physical_type()).into()))
-            .collect())
+    fn schema(&self, py: Python<'_>) -> PyResult<Vec<(String, String)>> {
+        py.detach(|| {
+            let reader = ParquetReader::new(&self.bytes).map_err(from_consus)?;
+            Ok(reader
+                .dataset()
+                .schema()
+                .fields()
+                .iter()
+                .map(|f| (f.name().to_owned(), phys_type_str(f.physical_type()).into()))
+                .collect())
+        })
     }
 
     /// Total number of logical rows across all row groups.
-    fn row_count(&self) -> PyResult<usize> {
-        let reader = ParquetReader::new(&self.bytes).map_err(from_consus)?;
-        Ok(reader.metadata().num_rows as usize)
+    fn row_count(&self, py: Python<'_>) -> PyResult<usize> {
+        py.detach(|| {
+            let reader = ParquetReader::new(&self.bytes).map_err(from_consus)?;
+            usize::try_from(reader.metadata().num_rows)
+                .map_err(|_| PyValueError::new_err("row count does not fit usize"))
+        })
     }
 
     /// Number of row groups.
-    fn num_row_groups(&self) -> PyResult<usize> {
-        let reader = ParquetReader::new(&self.bytes).map_err(from_consus)?;
-        Ok(reader.metadata().row_groups.len())
+    fn num_row_groups(&self, py: Python<'_>) -> PyResult<usize> {
+        py.detach(|| {
+            let reader = ParquetReader::new(&self.bytes).map_err(from_consus)?;
+            Ok(reader.metadata().row_groups.len())
+        })
     }
 
     /// List of column names in schema order.
-    fn column_names(&self) -> PyResult<Vec<String>> {
-        let reader = ParquetReader::new(&self.bytes).map_err(from_consus)?;
-        Ok(reader
-            .dataset()
-            .schema()
-            .fields()
-            .iter()
-            .map(|f| f.name().to_owned())
-            .collect())
+    fn column_names(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        py.detach(|| {
+            let reader = ParquetReader::new(&self.bytes).map_err(from_consus)?;
+            Ok(reader
+                .dataset()
+                .schema()
+                .fields()
+                .iter()
+                .map(|f| f.name().to_owned())
+                .collect())
+        })
     }
 
     /// Read a column by ordinal index and row group index.
@@ -256,10 +265,11 @@ impl PyParquetFile {
         row_group_idx: usize,
         py: Python<'_>,
     ) -> PyResult<Py<PyAny>> {
-        let reader = ParquetReader::new(&self.bytes).map_err(from_consus)?;
-        let cv = reader
-            .read_column_chunk(row_group_idx, col_ordinal)
-            .map_err(from_consus)?;
+        let cv = py.detach(|| {
+            ParquetReader::new(&self.bytes)
+                .and_then(|reader| reader.read_column_chunk(row_group_idx, col_ordinal))
+                .map_err(from_consus)
+        })?;
         column_values_to_python(&cv, py)
     }
 }
@@ -422,8 +432,8 @@ impl PyParquetBuilder {
             row_count,
         };
 
-        let bytes = ParquetWriter::new()
-            .write_dataset_bytes(&dataset, &row_source)
+        let bytes = py
+            .detach(|| ParquetWriter::new().write_dataset_bytes(&dataset, &row_source))
             .map_err(from_consus)?;
         Ok(PyBytes::new(py, &bytes).unbind())
     }
