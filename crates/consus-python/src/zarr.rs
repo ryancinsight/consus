@@ -50,8 +50,10 @@ fn make_zarray_json(shape: &[u64], chunks: &[u64], dtype: &str, compressor: &str
 /// compatible store dict via :meth:`to_store`, or import from one via
 /// :meth:`ZarrArray.from_store`.
 ///
-/// One array may be shared between threads: reads run concurrently, and a
-/// chunk write excludes every other call on the array while it runs.
+/// One array may be shared between threads: `read_chunk` and `to_store` run
+/// concurrently, and `write_chunk` excludes both while it runs. `shape`,
+/// `chunks`, `dtype`, `num_chunks` and `chunk_key` read immutable metadata and
+/// take no lock.
 #[pyclass(frozen)]
 pub struct PyZarrArray {
     store: RwLock<InMemoryStore>,
