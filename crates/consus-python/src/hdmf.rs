@@ -9,6 +9,9 @@
 use consus_hdmf::{ColumnData, DynamicTable, HdmfFile, HdmfFileBuilder};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use std::sync::Mutex;
+
+use crate::locking;
 
 // ---------------------------------------------------------------------------
 // Error bridge
@@ -23,7 +26,7 @@ fn to_py(e: consus_core::Error) -> PyErr {
 // ---------------------------------------------------------------------------
 
 /// A decoded HDMF DynamicTable read from an HDF5 file.
-#[pyclass(name = "DynamicTable")]
+#[pyclass(frozen, name = "DynamicTable")]
 pub struct PyDynamicTable {
     inner: DynamicTable,
 }
@@ -173,11 +176,36 @@ fn column_type_name(data: &ColumnData) -> &'static str {
 /// b.add_column_bool("correct", "outcome", [True, False, True])
 /// data = b.finish()   # bytes — save or pass to HdmfFile.open
 /// ```
-#[pyclass(name = "HdmfFileBuilder")]
+///
+/// One builder may be shared between threads: calls are serialized, and
+/// concurrently added columns appear in an unspecified relative order.
+#[pyclass(frozen, name = "HdmfFileBuilder")]
 pub struct PyHdmfFileBuilder {
     name: String,
     description: String,
-    columns: Vec<(String, String, ColumnData, Option<Vec<u64>>)>,
+    columns: Mutex<Vec<Column>>,
+}
+
+/// Column name, description, data, and optional cumulative `VectorIndex`.
+type Column = (String, String, ColumnData, Option<Vec<u64>>);
+
+impl PyHdmfFileBuilder {
+    fn push_column(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        description: &str,
+        data: ColumnData,
+        index: Option<Vec<u64>>,
+    ) -> PyResult<()> {
+        locking::lock(&self.columns, py, "HdmfFileBuilder")?.push((
+            name.to_owned(),
+            description.to_owned(),
+            data,
+            index,
+        ));
+        Ok(())
+    }
 }
 
 #[pymethods]
@@ -195,58 +223,63 @@ impl PyHdmfFileBuilder {
         Self {
             name: name.to_owned(),
             description: description.to_owned(),
-            columns: Vec::new(),
+            columns: Mutex::new(Vec::new()),
         }
     }
 
     /// Add a float64 column.
-    fn add_column_f64(&mut self, name: &str, description: &str, data: Vec<f64>) {
-        self.columns.push((
-            name.to_owned(),
-            description.to_owned(),
-            ColumnData::F64(data),
-            None,
-        ));
+    fn add_column_f64(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        description: &str,
+        data: Vec<f64>,
+    ) -> PyResult<()> {
+        self.push_column(py, name, description, ColumnData::F64(data), None)
     }
 
     /// Add a signed int64 column.
-    fn add_column_i64(&mut self, name: &str, description: &str, data: Vec<i64>) {
-        self.columns.push((
-            name.to_owned(),
-            description.to_owned(),
-            ColumnData::I64(data),
-            None,
-        ));
+    fn add_column_i64(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        description: &str,
+        data: Vec<i64>,
+    ) -> PyResult<()> {
+        self.push_column(py, name, description, ColumnData::I64(data), None)
     }
 
     /// Add an unsigned uint64 column.
-    fn add_column_u64(&mut self, name: &str, description: &str, data: Vec<u64>) {
-        self.columns.push((
-            name.to_owned(),
-            description.to_owned(),
-            ColumnData::U64(data),
-            None,
-        ));
+    fn add_column_u64(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        description: &str,
+        data: Vec<u64>,
+    ) -> PyResult<()> {
+        self.push_column(py, name, description, ColumnData::U64(data), None)
     }
 
     /// Add a boolean column.
-    fn add_column_bool(&mut self, name: &str, description: &str, data: Vec<bool>) {
-        self.columns.push((
-            name.to_owned(),
-            description.to_owned(),
-            ColumnData::Bool(data),
-            None,
-        ));
+    fn add_column_bool(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        description: &str,
+        data: Vec<bool>,
+    ) -> PyResult<()> {
+        self.push_column(py, name, description, ColumnData::Bool(data), None)
     }
 
     /// Add a string column.
-    fn add_column_str(&mut self, name: &str, description: &str, data: Vec<String>) {
-        self.columns.push((
-            name.to_owned(),
-            description.to_owned(),
-            ColumnData::Str(data),
-            None,
-        ));
+    fn add_column_str(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        description: &str,
+        data: Vec<String>,
+    ) -> PyResult<()> {
+        self.push_column(py, name, description, ColumnData::Str(data), None)
     }
 
     /// Add a ragged (variable-length rows) column with a cumulative VectorIndex.
@@ -254,18 +287,14 @@ impl PyHdmfFileBuilder {
     /// `index` must have length equal to the number of rows; each element is
     /// the exclusive end position in `data` for that row.
     fn add_ragged_column_i64(
-        &mut self,
+        &self,
+        py: Python<'_>,
         name: &str,
         description: &str,
         data: Vec<i64>,
         index: Vec<u64>,
-    ) {
-        self.columns.push((
-            name.to_owned(),
-            description.to_owned(),
-            ColumnData::I64(data),
-            Some(index),
-        ));
+    ) -> PyResult<()> {
+        self.push_column(py, name, description, ColumnData::I64(data), Some(index))
     }
 
     /// Serialise the table and return the HDF5 image as `bytes`.
@@ -273,24 +302,25 @@ impl PyHdmfFileBuilder {
     /// ## Errors
     ///
     /// Raises `ValueError` if encoding or HDF5 serialisation fails.
-    fn finish(&self) -> PyResult<Vec<u8>> {
+    fn finish(&self, py: Python<'_>) -> PyResult<Vec<u8>> {
+        let columns = locking::lock(&self.columns, py, "HdmfFileBuilder")?.clone();
         let mut b = HdmfFileBuilder::new(self.name.clone(), self.description.clone());
-        for (name, desc, data, index) in &self.columns {
+        for (name, desc, data, index) in columns {
             if let Some(idx) = index {
-                b = b.add_ragged_column(name.clone(), desc.clone(), data.clone(), idx.clone());
+                b = b.add_ragged_column(name, desc, data, idx);
             } else {
-                b = b.add_column(name.clone(), desc.clone(), data.clone());
+                b = b.add_column(name, desc, data);
             }
         }
-        Python::attach(|py| py.detach(|| b.finish().map_err(to_py)))
+        py.detach(|| b.finish().map_err(to_py))
     }
 
-    fn __repr__(&self) -> String {
-        format!(
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        Ok(format!(
             "HdmfFileBuilder(name='{}', columns={})",
             self.name,
-            self.columns.len()
-        )
+            locking::lock(&self.columns, py, "HdmfFileBuilder")?.len()
+        ))
     }
 }
 

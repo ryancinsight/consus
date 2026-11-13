@@ -163,6 +163,41 @@ jobs:
           python -m pip install --no-deps python-dist/*.whl
           python -m pytest -q scripts/compare_hdf5.py scripts/compare_hdmf.py scripts/compare_mat.py scripts/compare_netcdf.py scripts/compare_parquet.py scripts/compare_zarr.py scripts/concurrent_bindings.py
 
+  # PYTHON_GIL=0 forces the GIL off whatever the module declares; the unset run
+  # fails if `consus` re-enables the GIL on import.
+  test-free-threaded:
+    name: Test Python bindings (free-threaded 3.14t)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
+        with:
+          workspaces: .
+          shared-key: consus-test-free-threaded
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14t"
+      - name: Normalize lock onto current provider heads
+        shell: bash
+        run: cargo metadata --format-version 1 --all-features > /dev/null
+      - name: Build and install the free-threaded wheel
+        shell: bash
+        run: |
+          python -m pip install maturin pytest
+          maturin build --release --manifest-path crates/consus-python/Cargo.toml --locked --out python-dist
+          python -m pip install --no-deps python-dist/*.whl
+      - name: Concurrent access with the GIL forced off
+        shell: bash
+        run: PYTHON_GIL=0 python -m pytest -q scripts/concurrent_bindings.py
+      - name: Concurrent access with the module's own GIL declaration
+        shell: bash
+        run: env -u PYTHON_GIL python -m pytest -q scripts/concurrent_bindings.py
+
   msrv:
     name: MSRV (1.95.0)
     runs-on: ubuntu-latest

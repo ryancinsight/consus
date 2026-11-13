@@ -370,7 +370,7 @@ fn encode_bytes(data: &Bound<'_, PyList>, dt: &Datatype) -> PyResult<Vec<u8>> {
 /// print(nf.variable_names())
 /// print(nf.read_variable("temperature"))
 /// ```
-#[pyclass]
+#[pyclass(frozen)]
 pub struct PyNetcdfFile {
     data: Vec<u8>,
 }
