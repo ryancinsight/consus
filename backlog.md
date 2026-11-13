@@ -68,3 +68,18 @@ other risks and `checklist.md` for the historical checklist.
 - needs: CONSUS-ZIP-OWN (consus#180)
 - scope: crates/consus-python/src
 - next step: list the `#[pyclass]` types and their interior-mutability fields.
+
+<a id="consus-moirai-012-requirement"></a>
+## CONSUS-MOIRAI-012-REQUIREMENT — Require the Moirai 0.12 providers [major] — todo
+
+- milestone: M-1.0
+- outcome: the workspace `moirai` and `moirai-async` requirements admit the
+  current Moirai 0.12 line, so a fresh resolution of the provider head builds.
+- acceptance: `cargo update -p moirai-async --precise <0.12 rev>` followed by
+  `cargo build --workspace --locked --all-features` and
+  `cargo nextest run --workspace --locked --all-features` pass, and
+  `python scripts/check_async_provider_boundary.py` passes with its migrated
+  caller on the 0.12 requirement.
+- priority: architecture
+- scope: Cargo.toml, Cargo.lock, scripts/check_async_provider_boundary.py
+- next step: land after the Moirai consumers earlier in the provider layer order.

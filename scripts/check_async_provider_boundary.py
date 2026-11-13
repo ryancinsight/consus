@@ -5,14 +5,44 @@ The identical generic consumer must build on published Consus HDF5 0.3.0 and
 Moirai 0.9.3, fail with E0277 on the candidate's new public Moirai identity, and
 build after the caller migrates to the candidate's Moirai 0.11 provider.
 This fixture supplies no patch, old Git revision, or compatibility adapter.
+
+Each phase starts from the workspace's committed `Cargo.lock`, so every Git
+provider keeps its locked revision instead of resolving to the provider's
+current head. Cargo then adds only the fixture's own entries, and the build runs
+with `--locked` against that normalized lock.
 """
 
 import argparse
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
+import tomllib
+
+
+def git_packages(lock):
+    """The `(name, version, source)` triples of a lock file's Git packages."""
+    packages = tomllib.loads(lock.read_text(encoding="utf-8")).get("package", [])
+    return {(p["name"], p["version"], p["source"]) for p in packages
+            if p.get("source", "").startswith("git+")}
+
+
+def pin_workspace_lock(workspace_lock, root):
+    """Seed `root` with the workspace lock and normalize it for the fixture.
+
+    `cargo metadata` adds the fixture package and any registry packages the
+    workspace does not use while keeping every locked Git revision. The result
+    must not contain a Git package the workspace lock does not pin identically,
+    which would mean a provider resolved to its current head.
+    """
+    shutil.copyfile(workspace_lock, root / "Cargo.lock")
+    normalized = subprocess.run(["cargo", "metadata", "--format-version", "1"], cwd=root,
+                                capture_output=True, text=True, timeout=300)
+    assert normalized.returncode == 0, normalized.stderr
+    drift = git_packages(root / "Cargo.lock") - git_packages(workspace_lock)
+    assert not drift, ("fixture resolved Git providers the workspace lock does not pin", sorted(drift))
 
 
 def main():
@@ -23,6 +53,7 @@ def main():
     output = args.output or Path(tempfile.mkdtemp(prefix="consus-async-boundary-evidence-"))
     output.mkdir(parents=True, exist_ok=True)
     fixture = Path(__file__).resolve().parent / "scratch/async_provider_boundary.rs"
+    workspace_lock = args.root.resolve() / "Cargo.lock"
     candidate = json.dumps(str(args.root.resolve() / "crates/consus-hdf5"))
     old = 'moirai-async = { version = "=0.9.3", default-features = false }\n'
     new = 'moirai-async = { version = "0.11.0", git = "https://github.com/ryancinsight/Moirai.git", default-features = false }\n'
@@ -41,7 +72,8 @@ def main():
                 'edition = "2024"\n[workspace]\n[dependencies]\n' + dependencies,
                 encoding="utf-8",
             )
-            result = subprocess.run(["cargo", "build", "--message-format=json"], cwd=root,
+            pin_workspace_lock(workspace_lock, root)
+            result = subprocess.run(["cargo", "build", "--locked", "--message-format=json"], cwd=root,
                                     capture_output=True, text=True, timeout=300)
             (output / (name + ".stdout.jsonl")).write_text(result.stdout, encoding="utf-8")
             (output / (name + ".stderr.log")).write_text(result.stderr, encoding="utf-8")
