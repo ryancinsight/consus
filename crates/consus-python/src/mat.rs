@@ -103,20 +103,22 @@ impl PyMatFile {
 /// Supports MAT v4, v5, and v7.3 (HDF5-backed) containers.  Returns a
 /// :class:`MatFile` with all top-level variables.
 #[pyfunction]
-pub fn loadmat_bytes(data: &[u8]) -> PyResult<PyMatFile> {
-    let mat = consus_loadmat_bytes(data).map_err(from_consus_mat)?;
-    let version = match mat.version {
-        consus_mat::MatVersion::V4 => "v4",
-        consus_mat::MatVersion::V5 => "v5",
-        consus_mat::MatVersion::V73 => "v7.3",
-    }
-    .to_string();
-    let variables: Vec<PyMatVariable> = mat
-        .variables
-        .into_iter()
-        .map(|(name, array)| build_var(name, array))
-        .collect();
-    Ok(PyMatFile { version, variables })
+pub fn loadmat_bytes(py: Python<'_>, data: &[u8]) -> PyResult<PyMatFile> {
+    py.detach(|| {
+        let mat = consus_loadmat_bytes(data).map_err(from_consus_mat)?;
+        let version = match mat.version {
+            consus_mat::MatVersion::V4 => "v4",
+            consus_mat::MatVersion::V5 => "v5",
+            consus_mat::MatVersion::V73 => "v7.3",
+        }
+        .to_string();
+        let variables: Vec<PyMatVariable> = mat
+            .variables
+            .into_iter()
+            .map(|(name, array)| build_var(name, array))
+            .collect();
+        Ok(PyMatFile { version, variables })
+    })
 }
 
 // ---------------------------------------------------------------------------

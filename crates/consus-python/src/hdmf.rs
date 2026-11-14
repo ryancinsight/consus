@@ -313,8 +313,10 @@ impl PyHdmfFileBuilder {
 ///
 /// Raises `ValueError` if the data is not a valid HDMF DynamicTable HDF5 file.
 #[pyfunction]
-pub fn read_dynamic_table_bytes(data: &[u8]) -> PyResult<PyDynamicTable> {
-    let file = HdmfFile::open(data).map_err(to_py)?;
-    let table = file.read_table().map_err(to_py)?;
-    Ok(PyDynamicTable { inner: table })
+pub fn read_dynamic_table_bytes(py: Python<'_>, data: &[u8]) -> PyResult<PyDynamicTable> {
+    py.detach(|| {
+        let file = HdmfFile::open(data).map_err(to_py)?;
+        let table = file.read_table().map_err(to_py)?;
+        Ok(PyDynamicTable { inner: table })
+    })
 }
