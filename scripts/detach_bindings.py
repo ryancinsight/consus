@@ -2,12 +2,15 @@
 
 A helper thread waits on an event; the main thread sets it, makes one long
 binding call and appends "main" after it, while the helper appends "helper"
-when it runs. The GIL switch interval is set far beyond the test, so the
-helper can run during the call only if the call released the GIL. A binding
-that detaches yields ["helper", "main"]; one that holds the GIL yields
-["main", "helper"], because the helper first runs when the main thread blocks
-in `join`. The order is a fact about GIL ownership, not about call duration.
-A free-threaded build has no GIL to release, so the test skips there."""
+when it runs. The GIL switch interval is set to 1000 s before the helper
+starts, so the helper cannot force a GIL handoff during the test and runs
+during the call only if the call released the GIL. A binding that detaches
+yields ["helper", "main"]; one that holds the GIL yields ["main", "helper"],
+because the helper first runs when the main thread blocks in `join`. The
+order reflects GIL ownership under two assumptions: the call lasts far less
+than the interval, and a detaching call stays detached long enough (about a
+millisecond) for the helper to wake. A free-threaded build has no GIL to
+release, so the test skips there."""
 
 import struct
 import sys
@@ -30,11 +33,11 @@ def run_order(call):
         go.wait()
         order.append("helper")
 
-    thread = threading.Thread(target=helper)
-    thread.start()
     previous = sys.getswitchinterval()
     sys.setswitchinterval(SWITCH_INTERVAL_SECONDS)
     try:
+        thread = threading.Thread(target=helper)
+        thread.start()
         go.set()
         call()
         order.append("main")
