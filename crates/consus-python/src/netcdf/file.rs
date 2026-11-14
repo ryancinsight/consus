@@ -28,7 +28,7 @@ use crate::error::from_consus;
 /// print(nf.variable_names())
 /// print(nf.read_variable("temperature"))
 /// ```
-#[pyclass]
+#[pyclass(frozen)]
 pub struct PyNetcdfFile {
     data: Vec<u8>,
 }

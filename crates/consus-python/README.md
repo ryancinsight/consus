@@ -58,6 +58,15 @@ Reads are in-memory: you hand over the bytes and the reader parses them.
 That keeps the boundary explicit — nothing opens a file handle behind your
 back, and the same call works on bytes that never touched a filesystem.
 
+## Threads
+
+Every class may be shared between threads. Readers, `DatasetInfo`,
+`MatVariable`, and `DynamicTable` are immutable; the builders, writers, and
+`ZarrArray` serialize their calls, so concurrent use raises no "already
+borrowed" error, and `FileBuilder.finish()` succeeds for one caller. On a
+free-threaded CPython build, importing `consus` leaves the GIL disabled. The
+published wheel matrix does not yet include a free-threaded interpreter.
+
 ## Why the format logic is not here
 
 This package converts Python values, maps Rust failures onto Python

@@ -194,7 +194,7 @@ fn column_values_to_python(cv: &ColumnValues, py: Python<'_>) -> PyResult<Py<PyA
 /// Read-only view of an in-memory Parquet file.
 ///
 /// Instantiate with raw Parquet bytes via :meth:`ParquetFile.__init__`.
-#[pyclass]
+#[pyclass(frozen)]
 pub struct PyParquetFile {
     bytes: Vec<u8>,
 }

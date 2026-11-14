@@ -11,7 +11,7 @@ use crate::error::from_consus_mat;
 // ---------------------------------------------------------------------------
 
 /// A single variable loaded from a MATLAB `.mat` file.
-#[pyclass(from_py_object)]
+#[pyclass(frozen, from_py_object)]
 #[derive(Clone)]
 pub struct PyMatVariable {
     /// Variable name as stored in the file.
@@ -61,7 +61,7 @@ impl PyMatVariable {
 /// A parsed MATLAB `.mat` file.
 ///
 /// Obtain via :func:`loadmat_bytes`.
-#[pyclass]
+#[pyclass(frozen)]
 pub struct PyMatFile {
     /// Detected container version: ``"v4"``, ``"v5"``, or ``"v7.3"``.
     #[pyo3(get)]

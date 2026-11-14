@@ -23,7 +23,7 @@ use crate::locking;
 // ---------------------------------------------------------------------------
 
 /// Metadata for a single HDF5 dataset.
-#[pyclass]
+#[pyclass(frozen)]
 pub struct PyDatasetInfo {
     #[pyo3(get)]
     pub address: u64,
@@ -85,7 +85,7 @@ fn layout_str(l: StorageLayout) -> &'static str {
 /// In-memory HDF5 file reader.
 ///
 /// Instantiate via :meth:`Hdf5File.open_path` with the raw file bytes.
-#[pyclass]
+#[pyclass(frozen)]
 pub struct PyHdf5File {
     data: Vec<u8>,
 }
