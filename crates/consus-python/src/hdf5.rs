@@ -101,86 +101,95 @@ impl PyHdf5File {
     }
 
     /// List direct children of the root group. Returns a list of names.
-    fn list_root_group(&self) -> PyResult<Vec<String>> {
-        let cursor = MemCursor::from_bytes(self.data.clone());
-        let file = Hdf5File::open(cursor).map_err(from_consus)?;
-        let children = file.list_root_group().map_err(from_consus)?;
-        Ok(children.into_iter().map(|(name, _, _)| name).collect())
+    fn list_root_group(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        py.detach(|| {
+            let children = self.open_file()?.list_root_group().map_err(from_consus)?;
+            Ok(children.into_iter().map(|(name, _, _)| name).collect())
+        })
     }
 
     /// List children of the group at `path`. Returns a list of names.
-    fn list_group_at(&self, path: &str) -> PyResult<Vec<String>> {
-        let cursor = MemCursor::from_bytes(self.data.clone());
-        let file = Hdf5File::open(cursor).map_err(from_consus)?;
-        let address = file.open_path(path).map_err(from_consus)?;
-        let children = file.list_group_at(address).map_err(from_consus)?;
-        Ok(children.into_iter().map(|(name, _, _)| name).collect())
+    fn list_group_at(&self, py: Python<'_>, path: &str) -> PyResult<Vec<String>> {
+        py.detach(|| {
+            let file = self.open_file()?;
+            let address = file.open_path(path).map_err(from_consus)?;
+            let children = file.list_group_at(address).map_err(from_consus)?;
+            Ok(children.into_iter().map(|(name, _, _)| name).collect())
+        })
     }
 
     /// Return dataset metadata for the object at `path`.
-    fn dataset_at(&self, path: &str) -> PyResult<PyDatasetInfo> {
-        let cursor = MemCursor::from_bytes(self.data.clone());
-        let file = Hdf5File::open(cursor).map_err(from_consus)?;
-        let address = file.open_path(path).map_err(from_consus)?;
-        let ds = file.dataset_at(address).map_err(from_consus)?;
-        let shape: Vec<usize> = ds.shape.current_dims().to_vec();
-        let chunk_shape = ds.chunk_shape.as_ref().map(|cs| cs.dims().to_vec());
-        Ok(PyDatasetInfo {
-            address,
-            dtype: dtype_str(&ds.datatype),
-            shape,
-            layout: layout_str(ds.layout).into(),
-            chunk_shape,
-            filters: ds.filters,
+    fn dataset_at(&self, py: Python<'_>, path: &str) -> PyResult<PyDatasetInfo> {
+        py.detach(|| {
+            let file = self.open_file()?;
+            let address = file.open_path(path).map_err(from_consus)?;
+            let ds = file.dataset_at(address).map_err(from_consus)?;
+            let shape: Vec<usize> = ds.shape.current_dims().to_vec();
+            let chunk_shape = ds.chunk_shape.as_ref().map(|cs| cs.dims().to_vec());
+            Ok(PyDatasetInfo {
+                address,
+                dtype: dtype_str(&ds.datatype),
+                shape,
+                layout: layout_str(ds.layout).into(),
+                chunk_shape,
+                filters: ds.filters,
+            })
         })
     }
 
     /// Read the raw byte payload of the dataset at `path`.
     fn read_dataset(&self, path: &str, py: Python<'_>) -> PyResult<Py<PyBytes>> {
-        let cursor = MemCursor::from_bytes(self.data.clone());
-        let file = Hdf5File::open(cursor).map_err(from_consus)?;
-        let address = file.open_path(path).map_err(from_consus)?;
-        let ds = file.dataset_at(address).map_err(from_consus)?;
-        let bytes = match ds.layout {
-            StorageLayout::Chunked => file
-                .read_chunked_dataset_all_bytes(address)
-                .map_err(from_consus)?,
-            StorageLayout::Contiguous | StorageLayout::Compact => {
-                let elem_size = ds.datatype.element_size().ok_or_else(|| {
-                    PyRuntimeError::new_err(
-                        "variable-length datasets are not supported by read_dataset",
-                    )
-                })?;
-                let total = ds.shape.num_elements() * elem_size;
-                let data_address = ds.data_address.ok_or_else(|| {
-                    PyRuntimeError::new_err("contiguous dataset has no data address")
-                })?;
-                let mut buf = vec![0u8; total];
-                file.read_contiguous_dataset_bytes(data_address, 0, &mut buf)
-                    .map_err(from_consus)?;
-                buf
-            }
-            StorageLayout::Virtual => {
-                return Err(PyRuntimeError::new_err(
+        let bytes = py.detach(|| {
+            let file = self.open_file()?;
+            let address = file.open_path(path).map_err(from_consus)?;
+            let ds = file.dataset_at(address).map_err(from_consus)?;
+            match ds.layout {
+                StorageLayout::Chunked => file
+                    .read_chunked_dataset_all_bytes(address)
+                    .map_err(from_consus),
+                StorageLayout::Contiguous | StorageLayout::Compact => {
+                    let elem_size = ds.datatype.element_size().ok_or_else(|| {
+                        PyRuntimeError::new_err(
+                            "variable-length datasets are not supported by read_dataset",
+                        )
+                    })?;
+                    let total = ds.shape.num_elements() * elem_size;
+                    let data_address = ds.data_address.ok_or_else(|| {
+                        PyRuntimeError::new_err("contiguous dataset has no data address")
+                    })?;
+                    let mut buf = vec![0u8; total];
+                    file.read_contiguous_dataset_bytes(data_address, 0, &mut buf)
+                        .map_err(from_consus)?;
+                    Ok(buf)
+                }
+                StorageLayout::Virtual => Err(PyRuntimeError::new_err(
                     "virtual datasets are not supported",
-                ));
+                )),
             }
-        };
+        })?;
         Ok(PyBytes::new(py, &bytes).unbind())
     }
 
     /// Return attributes of the object at `path` as a ``dict[str, bytes]``.
     fn attributes_at(&self, path: &str, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let cursor = MemCursor::from_bytes(self.data.clone());
-        let file = Hdf5File::open(cursor).map_err(from_consus)?;
-        let address = file.open_path(path).map_err(from_consus)?;
-        let attrs = file.attributes_at(address).map_err(from_consus)?;
+        let attrs = py.detach(|| {
+            let file = self.open_file()?;
+            let address = file.open_path(path).map_err(from_consus)?;
+            file.attributes_at(address).map_err(from_consus)
+        })?;
         let dict = PyDict::new(py);
         for attr in attrs {
             let value = PyBytes::new(py, &attr.raw_data);
             dict.set_item(&attr.name, value)?;
         }
         Ok(dict.unbind())
+    }
+}
+
+impl PyHdf5File {
+    /// Parse the stored bytes into a reader over a private copy of them.
+    fn open_file(&self) -> PyResult<Hdf5File<MemCursor>> {
+        Hdf5File::open(MemCursor::from_bytes(self.data.clone())).map_err(from_consus)
     }
 }
 
@@ -341,10 +350,11 @@ impl PyFileBuilder {
             layout_version,
             ..Default::default()
         };
-        locking::lock(&self.builder, py, "FileBuilder")?
+        let mut guard = locking::lock(&self.builder, py, "FileBuilder")?;
+        let builder = guard
             .as_mut()
-            .ok_or_else(|| PyRuntimeError::new_err("FileBuilder already consumed by finish()"))?
-            .add_dataset(name, &dt, &sh, data, &dcpl)
+            .ok_or_else(|| PyRuntimeError::new_err("FileBuilder already consumed by finish()"))?;
+        py.detach(|| builder.add_dataset(name, &dt, &sh, data, &dcpl))
             .map_err(from_consus)?;
         Ok(())
     }

@@ -161,7 +161,7 @@ jobs:
           python -m pip install maturin pytest numpy h5py scipy netCDF4 pyarrow zarr hdmf
           maturin build --release --manifest-path crates/consus-python/Cargo.toml --locked --out python-dist
           python -m pip install --no-deps python-dist/*.whl
-          python -m pytest -q scripts/compare_hdf5.py scripts/compare_hdmf.py scripts/compare_mat.py scripts/compare_netcdf.py scripts/compare_parquet.py scripts/compare_zarr.py scripts/concurrent_bindings.py
+          python -m pytest -q scripts/compare_hdf5.py scripts/compare_hdmf.py scripts/compare_mat.py scripts/compare_netcdf.py scripts/compare_parquet.py scripts/compare_zarr.py scripts/concurrent_bindings.py scripts/detach_bindings.py
 
   # The reference packages and the seven binding scripts match the GIL job
   # above, except for any script that asserts a GIL release: a free-threaded
