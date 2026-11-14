@@ -165,9 +165,9 @@ jobs:
 
   # The reference packages and the seven binding scripts match the GIL job
   # above, except for any script that asserts a GIL release: a free-threaded
-  # build has no GIL to release. PYTHON_GIL=0 forces the GIL off whatever the
-  # module declares; the unset run fails if `consus` re-enables the GIL on
-  # import.
+  # build has no GIL to release. Every suite step runs with PYTHON_GIL=0: a
+  # reference package that does not declare free-threaded support (netCDF4)
+  # re-enables the GIL on import. Only the unset run checks `consus` alone.
   test-free-threaded:
     name: Test Python bindings (free-threaded 3.14t)
     runs-on: ubuntu-latest
@@ -200,9 +200,9 @@ jobs:
       - name: Concurrent access with the module's own GIL declaration
         shell: bash
         run: env -u PYTHON_GIL python -m pytest -q scripts/concurrent_bindings.py
-      - name: Compare against the reference packages
+      - name: Compare against the reference packages with the GIL off
         shell: bash
-        run: env -u PYTHON_GIL python -m pytest -q scripts/compare_hdf5.py scripts/compare_hdmf.py scripts/compare_mat.py scripts/compare_netcdf.py scripts/compare_parquet.py scripts/compare_zarr.py
+        run: PYTHON_GIL=0 python -m pytest -q scripts/compare_hdf5.py scripts/compare_hdmf.py scripts/compare_mat.py scripts/compare_netcdf.py scripts/compare_parquet.py scripts/compare_zarr.py
 
   msrv:
     name: MSRV (1.95.0)
