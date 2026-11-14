@@ -8,9 +8,9 @@ during the call only if the call released the GIL. A binding that detaches
 yields ["helper", "main"]; one that holds the GIL yields ["main", "helper"],
 because the helper first runs when the main thread blocks in `join`. The
 order reflects GIL ownership under two assumptions: the call lasts far less
-than the interval, and a detaching call stays detached long enough (about a
-millisecond) for the helper to wake. A free-threaded build has no GIL to
-release, so the test skips there."""
+than the interval, and a detaching call stays detached until the helper has
+woken and taken the GIL. A free-threaded build has no GIL to release, so the
+test skips there."""
 
 import struct
 import sys
