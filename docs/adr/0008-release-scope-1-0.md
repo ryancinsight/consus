@@ -36,3 +36,5 @@ Adopt a three-milestone ladder to 1.0 recorded in `backlog/milestones.md`:
 - Milestones close only when exit checks pass on fetched default commits; 1.0
   release/publication remains authority-gated.
 - This ADR is rewritten in place as scope evidence changes.
+
+Revision 2026-11-15: the M-interop-contracts and M-1.0 exit checks named the delivered items `CONSUS-PARQUET-RAW-DEFLATE` and `CONSUS-PYTHON-FREE-THREADING`, which the ladder rule forbids; they now name the runnable checks those deliveries added, `compress_gzip_and_zlib_emit_level_6_raw_deflate` (PR 204) and `scripts/concurrent_bindings.py` on `python3.14t` (PRs 195 and 200). No check is removed or weakened; `ATLAS-PR530-PROVIDER-COHERENCE` stays until its item has a runnable check.
