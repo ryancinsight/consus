@@ -19,10 +19,11 @@ alloc = ["consus-core/alloc"]
 snappy = ["dep:snap"]
 zstd = ["dep:zrip"]
 lz4 = ["dep:lz4_flex"]
-gzip = ["dep:flate2", "std"]
+gzip = ["dep:flate2", "dep:consus-compression", "consus-compression/deflate", "std"]
 
 [dependencies]
 consus-core = { workspace = true }
+consus-compression = { workspace = true, optional = true }
 snap = { version = "1", default-features = false, optional = true }
 zrip = { workspace = true, optional = true }
 lz4_flex = { workspace = true, optional = true }
