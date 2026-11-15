@@ -41,20 +41,6 @@ other risks and `checklist.md` for the historical checklist.
   commands are obsolete. Prepare a new exact-source raster0.3.0 handoff only
   after verification; authentication/publisher registration stay separate.
 
-<a id="consus-parquet-raw-deflate"></a>
-## CONSUS-PARQUET-RAW-DEFLATE — Compress Parquet GZIP pages through RawDeflateCodec [patch] — todo
-
-- milestone: M-interop-contracts
-- outcome: `consus-parquet`'s `compress_page_values` uses
-  `consus_compression::codec::raw_deflate::RawDeflateCodec` instead of its own
-  inline `flate2::read::DeflateEncoder`, so one raw-DEFLATE compressor remains.
-- acceptance: the existing GZIP/ZLIB writer round-trip tests pass unchanged, and
-  `git grep DeflateEncoder -- crates/consus-parquet/src` returns no production hit.
-- priority: tightening
-- needs: CONSUS-ZIP-OWN (consus#180)
-- scope: crates/consus-parquet/src/encoding/compression.rs, crates/consus-parquet/Cargo.toml
-- next step: route the `gzip` feature through `consus-compression/deflate`.
-
 <a id="consus-python-free-threading"></a>
 ## CONSUS-PYTHON-FREE-THREADING — Audit the binding surface for free-threaded Python [minor] — todo
 
