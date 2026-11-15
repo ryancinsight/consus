@@ -73,6 +73,7 @@ dependencies = [
  "consus-hdf5",
  "consus-io",
  "consus-mat",
+ "consus-npy",
  "consus-parquet",
  "consus-zip",
  "libfuzzer-sys",
@@ -101,6 +102,16 @@ version = "0.4.1"
 dependencies = [
  "consus-core",
  "consus-io",
+]
+
+[[package]]
+name = "consus-npy"
+version = "0.4.1"
+dependencies = [
+ "byteorder",
+ "consus-io",
+ "consus-zip",
+ "thiserror",
 ]
 
 [[package]]
