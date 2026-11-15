@@ -1,5 +1,7 @@
 # Consus — Backlog
 
+Risks that no item fixes are recorded in `gap_audit.md`.
+
 <a id="atlas-pr530-provider-coherence"></a>
 ## ATLAS-PR530-PROVIDER-COHERENCE — Current public provider contract [major] — blocked
 
