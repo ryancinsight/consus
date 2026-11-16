@@ -16,7 +16,7 @@
 //! | 3 | LZO | (none) | always `UnsupportedFeature` |
 //! | 4 | BROTLI | (none) | always `UnsupportedFeature` |
 //! | 5 | LZ4 | (none) | always `UnsupportedFeature` (deprecated framing) |
-//! | 6 | ZSTD | `zstd` | `zrip::decompress_with_limit` |
+//! | 6 | ZSTD | `zstd` | `zrip::DecompressContext::decompress_into_with_limit` |
 //! | 7 | LZ4_RAW | `lz4` | `lz4_flex::decompress` (raw block) |
 
 #[cfg(not(all(
@@ -78,9 +78,9 @@ impl CompressionCodec {
     }
 }
 
-/// Error for a codec this crate has no implementation of (LZO, BROTLI, LZ4).
-fn unsupported_codec(codec: CompressionCodec) -> Error {
-    let name = match codec {
+/// Parquet name of `codec` as written in `CompressionCodec` of `parquet.thrift`.
+const fn codec_name(codec: CompressionCodec) -> &'static str {
+    match codec {
         CompressionCodec::Uncompressed => "UNCOMPRESSED",
         CompressionCodec::Snappy => "SNAPPY",
         CompressionCodec::Gzip => "GZIP",
@@ -89,9 +89,17 @@ fn unsupported_codec(codec: CompressionCodec) -> Error {
         CompressionCodec::Lz4 => "LZ4",
         CompressionCodec::Zstd => "ZSTD",
         CompressionCodec::Lz4Raw => "LZ4_RAW",
-    };
+    }
+}
+
+/// Error for a codec this crate has no implementation of (LZO, BROTLI, LZ4).
+fn unsupported_codec(codec: CompressionCodec) -> Error {
     Error::UnsupportedFeature {
-        feature: format!("parquet compression codec {} ({name})", codec.to_i32()),
+        feature: format!(
+            "parquet compression codec {} ({})",
+            codec.to_i32(),
+            codec_name(codec)
+        ),
     }
 }
 
@@ -186,24 +194,74 @@ pub(crate) fn compress_page_values(data: &[u8], codec: CompressionCodec) -> Resu
     }
 }
 
+/// Bytes `zrip-decode` 0.8.13 reserves past its output limit (`WILDCOPY_OVERLENGTH`,
+/// `fast_vec.rs:7`), so the buffer for a ZSTD page is the declared size plus these.
+#[cfg(feature = "zstd")]
+const ZSTD_OVERLENGTH: usize = 64;
+
 /// Decompress page value bytes according to the Parquet compression codec.
 ///
-/// `uncompressed_size` is the expected decompressed size, used as a capacity
-/// hint for allocators and as a required parameter for some codecs (zstd, lz4).
+/// `uncompressed_size` is the size the page header declares, and the header is
+/// untrusted; a DataPage v2 caller passes the declared size less the level
+/// sections, or zero when the header is smaller. The outcome by case, for
+/// every codec that is enabled:
+///
+/// - A declaration above the shared [`ParseBudget`] allocation bound is
+///   `ResourceLimit`, before any data is decoded; for ZSTD the bound applies
+///   to the declaration plus 64 bytes (see Allocation).
+/// - A declaration within the bound, with decoded output above the bound:
+///   `ResourceLimit` for UNCOMPRESSED (payload length), SNAPPY (the length
+///   its stream states) and GZIP (decoded output); `CompressionError` for
+///   ZSTD and LZ4_RAW, which decode into a limit equal to the declaration.
+/// - Any other decoded length that differs from the declaration:
+///   `CompressionError`. A page is never returned truncated or padded.
+///
+/// Allocation: UNCOMPRESSED reserves the payload length, SNAPPY the length
+/// its stream states, LZ4_RAW the declared size, each at most the bound.
+/// GZIP reserves the declared size, then doubles its buffer with the
+/// capacity capped at the bound. ZSTD reserves the declared size plus
+/// `ZSTD_OVERLENGTH` (64) bytes, which must also be within the bound, and decodes
+/// with the declaration as its output limit. `zrip-decode` 0.8.13 then never
+/// grows that buffer: its only reservations are `lib.rs:279`,
+/// `fast_vec.rs:23` and `fast_vec.rs:262`, each at most the output limit
+/// plus 64 bytes (`WILDCOPY_OVERLENGTH`, `fast_vec.rs:7`), and every write is
+/// checked against the limit first (`lib.rs:339-353`, `lib.rs:477-491`,
+/// `fast_vec.rs:41-58`). A frame's limit is the limit less what earlier
+/// frames wrote (`context.rs:180`), so the bound holds for a stream of many
+/// frames. A `Vec` doubles only when a request exceeds its capacity.
 ///
 /// # Errors
 ///
 /// - `Error::UnsupportedFeature` — codec is not implemented (LZO, BROTLI, LZ4)
 ///   or the corresponding feature flag is not enabled.
+/// - `Error::ResourceLimit` — the declaration (for ZSTD, the declaration plus
+///   64 bytes), or for UNCOMPRESSED, SNAPPY and GZIP the decoded output,
+///   exceeds the shared budget.
 /// - `Error::CompressionError` — the compressed data is malformed,
-///   decompression fails, or a GZIP page decodes to a length other than
+///   decompression fails (ZSTD and LZ4_RAW include output above the
+///   declaration), or the page decodes to a length other than
 ///   `uncompressed_size`.
-/// - `Error::ResourceLimit` — `uncompressed_size` exceeds the shared
-///   allocation budget (GZIP, ZSTD, LZ4_RAW), the input or its declared
-///   decoded size exceeds it (UNCOMPRESSED, SNAPPY), or a GZIP page decodes,
-///   whatever its declared size, to more than the budget summed over all its
-///   members.
 pub fn decompress_page_values(
+    data: &[u8],
+    codec: CompressionCodec,
+    uncompressed_size: usize,
+) -> Result<Vec<u8>> {
+    checked_output_size(uncompressed_size)?;
+    let output = decode_page_bytes(data, codec, uncompressed_size)?;
+    if output.len() != uncompressed_size {
+        return Err(Error::CompressionError {
+            message: format!(
+                "{} page decoded to {} bytes, declared {uncompressed_size}",
+                codec_name(codec),
+                output.len()
+            ),
+        });
+    }
+    Ok(output)
+}
+
+/// Decode `data` under `codec`; `uncompressed_size` is already within the budget.
+fn decode_page_bytes(
     data: &[u8],
     codec: CompressionCodec,
     uncompressed_size: usize,
@@ -214,18 +272,7 @@ pub fn decompress_page_values(
         CompressionCodec::Gzip => {
             #[cfg(feature = "gzip")]
             {
-                let limit = checked_output_size(uncompressed_size)?;
-                let output = GzipCodec.decompress(data, limit)?;
-                // The page header's size is untrusted; the decoded length must match it.
-                if output.len() != uncompressed_size {
-                    return Err(Error::CompressionError {
-                        message: format!(
-                            "gzip page decoded to {} bytes, declared {uncompressed_size}",
-                            output.len()
-                        ),
-                    });
-                }
-                Ok(output)
+                GzipCodec.decompress(data, uncompressed_size)
             }
             #[cfg(not(feature = "gzip"))]
             {
@@ -271,10 +318,21 @@ pub fn decompress_page_values(
         CompressionCodec::Zstd => {
             #[cfg(feature = "zstd")]
             {
-                let limit = checked_output_size(uncompressed_size)?;
-                zrip::decompress_with_limit(data, limit).map_err(|e| Error::CompressionError {
-                    message: format!("zstd decompress failed: {e}"),
-                })
+                let capacity = uncompressed_size
+                    .checked_add(ZSTD_OVERLENGTH)
+                    .ok_or(Error::Overflow)?;
+                // `zeroed` reserves exactly `capacity`, which `clear` keeps.
+                let mut output = ParseBudget::default().zeroed(
+                    u64::try_from(capacity).map_err(|_| Error::Overflow)?,
+                    "decompressed output",
+                )?;
+                output.clear();
+                zrip::DecompressContext::new()
+                    .decompress_into_with_limit(data, &mut output, uncompressed_size)
+                    .map_err(|e| Error::CompressionError {
+                        message: format!("zstd decompress failed: {e}"),
+                    })?;
+                Ok(output)
             }
             #[cfg(not(feature = "zstd"))]
             {
@@ -290,9 +348,8 @@ pub fn decompress_page_values(
         CompressionCodec::Lz4Raw => {
             #[cfg(feature = "lz4")]
             {
-                let output_size = checked_output_size(uncompressed_size)?;
                 let mut output = ParseBudget::default().zeroed(
-                    u64::try_from(output_size).map_err(|_| Error::Overflow)?,
+                    u64::try_from(uncompressed_size).map_err(|_| Error::Overflow)?,
                     "decompressed output",
                 )?;
                 let written = lz4_flex::block::decompress_into(data, &mut output).map_err(|e| {
@@ -336,6 +393,20 @@ fn copy_bounded(data: &[u8]) -> Result<Vec<u8>> {
     )?;
     output.copy_from_slice(data);
     Ok(output)
+}
+
+/// Codecs whose feature is enabled in this build, `UNCOMPRESSED` first.
+#[cfg(test)]
+pub(crate) fn enabled_codecs() -> impl Iterator<Item = CompressionCodec> {
+    [
+        (true, CompressionCodec::Uncompressed),
+        (cfg!(feature = "snappy"), CompressionCodec::Snappy),
+        (cfg!(feature = "gzip"), CompressionCodec::Gzip),
+        (cfg!(feature = "zstd"), CompressionCodec::Zstd),
+        (cfg!(feature = "lz4"), CompressionCodec::Lz4Raw),
+    ]
+    .into_iter()
+    .filter_map(|(enabled, codec)| enabled.then_some(codec))
 }
 
 #[cfg(test)]
@@ -449,19 +520,62 @@ mod tests {
         );
     }
 
-    /// The page header's size hint is untrusted: it must not raise the output ceiling.
-    #[cfg(feature = "gzip")]
+    /// The page header's size hint is untrusted: above the budget it is a
+    /// resource-limit error for every codec, whatever the payload.
     #[test]
-    fn decompress_gzip_rejects_hostile_size_hint() {
-        let compressed = compress_page_values(&[0u8; 16], CompressionCodec::Gzip).unwrap();
+    fn decompress_rejects_hostile_size_hint_for_every_codec() {
         let budget = ParseBudget::default().max_alloc_bytes;
-        for hint in [budget + 1, usize::MAX] {
-            let err =
-                decompress_page_values(&compressed, CompressionCodec::Gzip, hint).unwrap_err();
-            assert!(
-                matches!(err, Error::ResourceLimit { .. }),
-                "{hint}: {err:?}"
-            );
+        for codec in enabled_codecs() {
+            let page = compress_page_values(&[0u8; 16], codec).unwrap();
+            for hint in [budget + 1, usize::MAX] {
+                let err = decompress_page_values(&page, codec, hint).unwrap_err();
+                assert!(
+                    matches!(err, Error::ResourceLimit { .. }),
+                    "{}: {hint}: {err:?}",
+                    codec_name(codec)
+                );
+            }
+        }
+    }
+
+    /// Decoded output above the budget under an in-budget declaration:
+    /// `ResourceLimit` for UNCOMPRESSED (payload length), SNAPPY (stream-stated
+    /// length) and GZIP (decoded output); `CompressionError` from the codec
+    /// for ZSTD and LZ4_RAW, whose limit is the declaration.
+    #[test]
+    fn decompress_output_above_budget_under_small_declaration_for_every_codec() {
+        let budget = ParseBudget::default().max_alloc_bytes;
+        let budget_u64 = u64::try_from(budget).unwrap();
+        let plain = alloc::vec![0u8; budget + 1];
+        for codec in enabled_codecs() {
+            let name = codec_name(codec);
+            let page = compress_page_values(&plain, codec).unwrap();
+            let err = decompress_page_values(&page, codec, 12).unwrap_err();
+            match codec {
+                CompressionCodec::Uncompressed | CompressionCodec::Snappy => assert!(
+                    matches!(err, Error::ResourceLimit { requested, limit, .. }
+                        if requested == budget_u64 + 1 && limit == budget_u64),
+                    "{name}: {err:?}"
+                ),
+                CompressionCodec::Gzip => assert!(
+                    matches!(err, Error::ResourceLimit { requested, limit, .. }
+                        if requested > budget_u64 && limit == budget_u64),
+                    "{name}: {err:?}"
+                ),
+                CompressionCodec::Zstd => assert!(
+                    matches!(err, Error::CompressionError { ref message }
+                        if message.starts_with("zstd decompress failed")),
+                    "{name}: {err:?}"
+                ),
+                CompressionCodec::Lz4Raw => assert!(
+                    matches!(err, Error::CompressionError { ref message }
+                        if message.starts_with("lz4_raw decompress failed")),
+                    "{name}: {err:?}"
+                ),
+                CompressionCodec::Lzo | CompressionCodec::Brotli | CompressionCodec::Lz4 => {
+                    unreachable!("invariant: enabled_codecs yields only implemented codecs")
+                }
+            }
         }
     }
 
@@ -515,8 +629,48 @@ mod tests {
                 decompress_page_values(&members, CompressionCodec::Gzip, declared).unwrap_err();
             assert!(
                 matches!(err, Error::CompressionError { ref message }
-                    if *message == format!("gzip page decoded to 400 bytes, declared {declared}")),
+                    if *message == format!("GZIP page decoded to 400 bytes, declared {declared}")),
                 "{declared}: {err:?}"
+            );
+        }
+    }
+
+    /// The declared size must equal the decoded length for every codec, in
+    /// both directions. Zstd and LZ4_RAW decode into a buffer sized from the
+    /// declaration, so a too-small declaration fails inside the codec; every
+    /// other refusal is the shared length error.
+    #[test]
+    fn decompress_size_off_by_one_is_a_typed_error_for_every_codec() {
+        let plain: Vec<u8> = (0u8..=255).cycle().take(400).collect();
+        for codec in enabled_codecs() {
+            let name = codec_name(codec);
+            let page = compress_page_values(&plain, codec).unwrap();
+            assert_eq!(
+                decompress_page_values(&page, codec, plain.len()).unwrap(),
+                plain,
+                "{name}"
+            );
+
+            let too_large = decompress_page_values(&page, codec, plain.len() + 1).unwrap_err();
+            assert!(
+                matches!(too_large, Error::CompressionError { ref message }
+                    if *message == format!("{name} page decoded to 400 bytes, declared 401")),
+                "{name}: {too_large:?}"
+            );
+
+            let too_small = decompress_page_values(&page, codec, plain.len() - 1).unwrap_err();
+            let native_prefix = match codec {
+                CompressionCodec::Zstd => Some("zstd decompress failed"),
+                CompressionCodec::Lz4Raw => Some("lz4_raw decompress failed"),
+                _ => None,
+            };
+            assert!(
+                matches!(too_small, Error::CompressionError { ref message }
+                if native_prefix.map_or(
+                    *message == format!("{name} page decoded to 400 bytes, declared 399"),
+                    |prefix| message.starts_with(prefix),
+                )),
+                "{name}: {too_small:?}"
             );
         }
     }
@@ -551,6 +705,51 @@ mod tests {
         assert!(
             matches!(err, Error::CompressionError { .. }),
             "expected CompressionError for malformed zstd, got: {err:?}"
+        );
+    }
+
+    /// `zrip-decode` reserves per frame and per block; under one declaration
+    /// of many frames the buffer must not double past the budget. 9 frames of
+    /// 4 MiB double an unreserved buffer from 4 MiB to above 64 MiB.
+    #[cfg(feature = "zstd")]
+    #[test]
+    fn decompress_zstd_of_many_frames_stays_within_the_budget() {
+        const FRAME_BYTES: usize = 4 * 1024 * 1024;
+        const FRAMES: usize = 9;
+        let frame = zrip::compress(&alloc::vec![0u8; FRAME_BYTES], 3).expect("zstd compress");
+        let page = frame.repeat(FRAMES);
+        let declared = FRAME_BYTES * FRAMES;
+        let decoded = decompress_page_values(&page, CompressionCodec::Zstd, declared)
+            .expect("nine frames within the declaration must decode");
+        assert_eq!(decoded.len(), declared);
+        assert!(decoded.iter().all(|&byte| byte == 0));
+        assert!(
+            decoded.capacity() <= ParseBudget::default().max_alloc_bytes,
+            "capacity {} above the budget",
+            decoded.capacity()
+        );
+    }
+
+    /// The buffer is the declaration plus [`ZSTD_OVERLENGTH`], so the largest
+    /// declaration the budget admits is the budget less that slack.
+    #[cfg(feature = "zstd")]
+    #[test]
+    fn decompress_zstd_budget_edge_is_the_declaration_plus_overlength() {
+        let budget = ParseBudget::default().max_alloc_bytes;
+        let page = zrip::compress(b"hello", 3).expect("zstd compress");
+        let largest = budget - ZSTD_OVERLENGTH;
+        let err = decompress_page_values(&page, CompressionCodec::Zstd, largest).unwrap_err();
+        assert!(
+            matches!(err, Error::CompressionError { ref message }
+                if *message == format!("ZSTD page decoded to 5 bytes, declared {largest}")),
+            "{err:?}"
+        );
+        let err = decompress_page_values(&page, CompressionCodec::Zstd, largest + 1).unwrap_err();
+        assert!(
+            matches!(err, Error::ResourceLimit { requested, limit, .. }
+                if requested == u64::try_from(budget + 1).unwrap()
+                    && limit == u64::try_from(budget).unwrap()),
+            "{err:?}"
         );
     }
 
