@@ -119,20 +119,26 @@ fn compressed_values_behind_levels_use_the_levels_subtracted_size() {
     }
 }
 
-/// A declared size smaller than the level sections cannot be subtracted from.
+/// A declared size smaller than the level sections cannot be subtracted from,
+/// whether the values behind them are compressed or stored as is.
 #[test]
 fn declared_size_below_the_levels_is_a_typed_error() {
-    for result in decode_v2(
-        CompressionCodec::Uncompressed,
-        &LEVELS,
-        &[],
-        false,
-        LEVELS.len() - 1,
-    ) {
-        assert!(
-            matches!(result, Err(Error::InvalidFormat { .. })),
-            "{result:?}"
-        );
+    let expected = "parquet: DataPageV2 uncompressed_page_size is smaller than its levels";
+    for codec in enabled_codecs() {
+        let is_compressed = codec != CompressionCodec::Uncompressed;
+        let stored = if is_compressed {
+            compress_page_values(&VALUES, codec).unwrap()
+        } else {
+            VALUES.to_vec()
+        };
+        for declared in [0, LEVELS.len() - 1] {
+            for result in decode_v2(codec, &LEVELS, &stored, is_compressed, declared) {
+                assert!(
+                    matches!(&result, Err(Error::InvalidFormat { message }) if message == expected),
+                    "{codec:?} {declared}: {result:?}"
+                );
+            }
+        }
     }
 }
 

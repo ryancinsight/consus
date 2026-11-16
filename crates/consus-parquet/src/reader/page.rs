@@ -218,9 +218,16 @@ impl ColumnPageDecoder {
     ///
     /// # Errors
     ///
-    /// - `InvalidFormat` — missing required page sub-headers or no data pages found.
+    /// - `InvalidFormat` — missing required page sub-headers, no data pages
+    ///   found, or a DataPage v2 `uncompressed_page_size` smaller than the
+    ///   page's level sections.
     /// - `BufferTooSmall` — a page's `compressed_page_size` exceeds the slice.
-    /// - Propagates decompression and value-decoding errors.
+    /// - `CompressionError` — a page's values decode to a length other than
+    ///   the declared size (for DataPage v2, the header size less the level
+    ///   sections), including values stored as is.
+    /// - `ResourceLimit` — on a page read through `decompress_page_values`, a
+    ///   declared size or decoded output above the shared allocation budget.
+    /// - Propagates other decompression and value-decoding errors.
     pub fn decode_pages_from_chunk_bytes(&mut self, bytes: &[u8]) -> Result<ColumnValues> {
         let mut pos = 0usize;
         let mut parts: Vec<ColumnValues> = Vec::new();

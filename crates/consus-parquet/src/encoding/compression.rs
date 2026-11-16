@@ -203,8 +203,8 @@ pub(crate) const ZSTD_OVERLENGTH: usize = 64;
 ///
 /// `uncompressed_size` is the size the page header declares, and the header is
 /// untrusted; a DataPage v2 caller passes the declared size less the level
-/// sections, or zero when the header is smaller. The outcome by case, for
-/// every codec that is enabled:
+/// sections and refuses, with `InvalidFormat`, a header smaller than them.
+/// The outcome by case, for every codec that is enabled:
 ///
 /// - A declaration above the shared [`ParseBudget`] allocation bound is
 ///   `ResourceLimit`, before any data is decoded; for ZSTD the bound applies
