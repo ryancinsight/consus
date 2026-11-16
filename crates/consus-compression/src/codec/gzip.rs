@@ -335,4 +335,32 @@ mod tests {
             .expect_err("trailing non-member bytes must be rejected");
         assert!(matches!(error, Error::CompressionError { .. }), "{error:?}");
     }
+
+    /// For a capacity hint within the shared allocation budget, the output
+    /// buffer doubles as it grows but its capacity, not only its length,
+    /// stays within the budget.
+    ///
+    /// Derivation: 40 MiB of output under a 40,000,000-byte capacity hint
+    /// fills the buffer at the hint, and uncapped doubling would then
+    /// reserve 80,000,000 bytes, above the 67,108,864-byte budget.
+    #[test]
+    fn decompress_capacity_stays_within_the_budget() {
+        let codec = GzipCodec;
+        let member = codec
+            .compress(&vec![0u8; 1 << 20], CompressionLevel::default())
+            .expect("compress must succeed");
+        let stream = member.repeat(40);
+
+        let decoded = codec
+            .decompress(&stream, 40_000_000)
+            .expect("40 MiB is within the budget");
+        assert_eq!(decoded.len(), 40 << 20);
+        assert!(decoded.iter().all(|&byte| byte == 0));
+        let budget = ParseBudget::default().max_alloc_bytes;
+        assert!(
+            decoded.capacity() <= budget,
+            "capacity {} above budget {budget}",
+            decoded.capacity()
+        );
+    }
 }
