@@ -260,8 +260,9 @@ mod tests {
         assert!(matches!(error, Error::ResourceLimit { .. }));
     }
 
-    /// RFC 1952 section 2.2: a gzip file is a series of members, and a
-    /// decompressor returns the concatenation of every member's data.
+    /// RFC 1952 section 2.2: a gzip file is a series of members that appear
+    /// one after another, so the decoded data is the concatenation of every
+    /// member's data.
     ///
     /// Derivation: `gz(a) ++ gz(b)` decodes to `a ++ b`; a reader that stops
     /// after the first member returns `a`, which has fewer bytes.
@@ -318,8 +319,9 @@ mod tests {
         assert!(matches!(error, Error::CompressionError { .. }), "{error:?}");
     }
 
-    /// Bytes after the last member that do not start a member are an
-    /// invalid stream, not silently ignored padding.
+    /// RFC 1952 section 2.2 allows no additional information after the last
+    /// member, so bytes that do not start a member are an invalid stream,
+    /// not silently ignored padding.
     #[test]
     fn decompress_rejects_trailing_bytes_after_last_member() {
         let codec = GzipCodec;
