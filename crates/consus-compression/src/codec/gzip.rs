@@ -45,8 +45,10 @@ use consus_core::{Error, ParseBudget, Result};
 /// ## Contract
 ///
 /// - `compress` produces a valid gzip stream that `decompress` inverts exactly.
-/// - `decompress` validates the gzip CRC-32 checksum and returns
-///   `Error::CompressionError` on any stream or integrity failure.
+/// - `decompress` returns the concatenated data of every gzip member
+///   (RFC 1952 section 2.2), validates each member's CRC-32 checksum and
+///   length, and returns `Error::CompressionError` on any stream or integrity
+///   failure, including bytes after the last member that are not a member.
 /// - Compression level is clamped to `[0, 9]`.
 #[derive(Debug, Default)]
 pub struct GzipCodec;
@@ -256,5 +258,109 @@ mod tests {
             .decompress(&compressed, usize::MAX)
             .expect_err("declared output above the shared bound must be rejected");
         assert!(matches!(error, Error::ResourceLimit { .. }));
+    }
+
+    /// RFC 1952 section 2.2: a gzip file is a series of members that appear
+    /// one after another, so the decoded data is the concatenation of every
+    /// member's data.
+    ///
+    /// Derivation: `gz(a) ++ gz(b)` decodes to `a ++ b`; a reader that stops
+    /// after the first member returns `a`, which has fewer bytes.
+    #[test]
+    fn decompress_concatenated_members_returns_every_member() {
+        let codec = GzipCodec;
+        let first: Vec<u8> = (0u8..=255).cycle().take(300).collect();
+        let second: Vec<u8> = (0u8..=255).rev().cycle().take(500).collect();
+        let third = Vec::new();
+        let fourth = vec![9u8; 64];
+
+        let mut stream = Vec::new();
+        let mut expected = Vec::new();
+        for member in [&first, &second, &third, &fourth] {
+            stream.extend(
+                codec
+                    .compress(member, CompressionLevel::default())
+                    .expect("compress must succeed"),
+            );
+            expected.extend_from_slice(member);
+        }
+
+        let decoded = codec
+            .decompress(&stream, expected.len())
+            .expect("a multi-member stream must decode");
+        assert_eq!(decoded.len(), 300 + 500 + 64);
+        assert_eq!(decoded, expected);
+    }
+
+    /// RFC 1952 section 2.3.1: each member ends with CRC-32 and ISIZE of its
+    /// own data, so damage in a later member is detected, not skipped.
+    #[test]
+    fn decompress_rejects_corrupt_later_member() {
+        let codec = GzipCodec;
+        let first = vec![1u8; 100];
+        let second = vec![2u8; 100];
+        let mut stream = codec
+            .compress(&first, CompressionLevel::default())
+            .expect("compress must succeed");
+        let second_start = stream.len();
+        stream.extend(
+            codec
+                .compress(&second, CompressionLevel::default())
+                .expect("compress must succeed"),
+        );
+        // The CRC-32 field is the 8 bytes before the end, ISIZE the last 4.
+        let crc_byte = stream.len() - 8;
+        assert!(crc_byte > second_start);
+        stream[crc_byte] ^= 0xFF;
+
+        let error = codec
+            .decompress(&stream, 200)
+            .expect_err("a later member with a wrong CRC-32 must be rejected");
+        assert!(matches!(error, Error::CompressionError { .. }), "{error:?}");
+    }
+
+    /// RFC 1952 section 2.2 allows no additional information after the last
+    /// member, so bytes that do not start a member are an invalid stream,
+    /// not silently ignored padding.
+    #[test]
+    fn decompress_rejects_trailing_bytes_after_last_member() {
+        let codec = GzipCodec;
+        let mut stream = codec
+            .compress(&[5u8; 50], CompressionLevel::default())
+            .expect("compress must succeed");
+        stream.extend_from_slice(&[0u8; 4]);
+
+        let error = codec
+            .decompress(&stream, 50)
+            .expect_err("trailing non-member bytes must be rejected");
+        assert!(matches!(error, Error::CompressionError { .. }), "{error:?}");
+    }
+
+    /// For a capacity hint within the shared allocation budget, the output
+    /// buffer doubles as it grows but its capacity, not only its length,
+    /// stays within the budget.
+    ///
+    /// Derivation: 40 MiB of output under a 40,000,000-byte capacity hint
+    /// fills the buffer at the hint, and uncapped doubling would then
+    /// reserve 80,000,000 bytes, above the 67,108,864-byte budget.
+    #[test]
+    fn decompress_capacity_stays_within_the_budget() {
+        let codec = GzipCodec;
+        let member = codec
+            .compress(&vec![0u8; 1 << 20], CompressionLevel::default())
+            .expect("compress must succeed");
+        let stream = member.repeat(40);
+
+        let decoded = codec
+            .decompress(&stream, 40_000_000)
+            .expect("40 MiB is within the budget");
+        assert_eq!(decoded.len(), 40 << 20);
+        assert!(decoded.iter().all(|&byte| byte == 0));
+        let budget = ParseBudget::default().max_alloc_bytes;
+        assert!(
+            decoded.capacity() <= budget,
+            "capacity {} above budget {budget}",
+            decoded.capacity()
+        );
     }
 }
