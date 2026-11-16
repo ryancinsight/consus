@@ -20,18 +20,17 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   after verification; authentication/publisher registration stay separate.
 
 <a id="consus-parquet-gzip-multimember"></a>
-## CONSUS-PARQUET-GZIP-MULTIMEMBER — Typed length error for every Parquet page [patch] — todo
+## CONSUS-PARQUET-GZIP-MULTIMEMBER — Typed length error for stored v2 values [patch] — todo
 
 - milestone: M-core-formats
-- outcome: a Parquet page whose decoded length differs from `uncompressed_page_size` is a typed
-  error for every codec, and for DataPage v2 values stored as is.
-- evidence (derived from the arms at the basis): `decompress_page_values` compares the decoded
-  length in its GZIP arm only; DataPage v2 values stored as is never reach it.
-- acceptance: a header size one byte off the decoded length returns the typed error for every
-  codec and for stored v2 values.
+- outcome: DataPage v2 values stored as is (UNCOMPRESSED, or `is_compressed = false`) whose length
+  differs from the header size less the level sections are a typed error.
+- evidence (derived from the reader at the basis): stored v2 values do not pass through
+  `decompress_page_values`, so no length is compared for them.
+- acceptance: a v2 page with stored values one byte off the declared size returns the typed error.
 - priority: correctness; needs: none; basis: 5a976d2c9698bd92d520850ba2bcea8cc3aa9a0f
-- scope: crates/consus-parquet/src/encoding/compression.rs, crates/consus-parquet/src/reader/page.rs
-- next step: compare once after the codec arm for every codec; compare stored v2 values in the reader.
+- scope: crates/consus-parquet/src/reader/page.rs
+- next step: compare the stored length in the v2 values decode of the reader.
 
 <a id="consus-registry-zlib-framing"></a>
 ## CONSUS-REGISTRY-ZLIB-FRAMING — Decode zlib-named chunks as RFC 1950 [patch] — todo
