@@ -427,6 +427,98 @@ fn writer_lz4_raw_roundtrip_i32_three_values() {
     assert_eq!(read_all_i32(&bytes), values);
 }
 
+#[test]
+fn writer_deprecated_lz4_codec_returns_unsupported() {
+    use crate::encoding::compression::CompressionCodec;
+    let err = ParquetWriter::new()
+        .with_compression(CompressionCodec::Lz4)
+        .write_dataset_bytes(&i32_dataset(3), &I32Rows(vec![1, 2, 3]))
+        .unwrap_err();
+    assert!(
+        matches!(err, consus_core::Error::UnsupportedFeature { ref feature }
+            if feature == "parquet compression codec 5 (LZ4)"),
+        "got: {err:?}"
+    );
+}
+
+// ── Codec numbers in column chunk metadata (parquet.thrift lines 684-693) ───
+
+/// Write three INT32 values with `codec`; return the file bytes.
+fn write_three_i32(codec: crate::encoding::compression::CompressionCodec) -> Vec<u8> {
+    ParquetWriter::new()
+        .with_compression(codec)
+        .write_dataset_bytes(&i32_dataset(3), &I32Rows(vec![7, 8, 9]))
+        .unwrap()
+}
+
+/// Codec number stored in the first column chunk of the first row group.
+fn column_chunk_codec_number(bytes: &[u8]) -> i32 {
+    let reader = ParquetReader::new(bytes).unwrap();
+    reader.metadata().row_groups[0].columns[0]
+        .meta_data
+        .as_ref()
+        .expect("column metadata present")
+        .codec
+}
+
+#[test]
+fn written_uncompressed_codec_number_is_zero() {
+    use crate::encoding::compression::CompressionCodec;
+    let bytes = write_three_i32(CompressionCodec::Uncompressed);
+    assert_eq!(column_chunk_codec_number(&bytes), 0);
+    assert_eq!(read_all_i32(&bytes), vec![7, 8, 9]);
+}
+
+#[cfg(feature = "snappy")]
+#[test]
+fn written_snappy_codec_number_is_one() {
+    use crate::encoding::compression::CompressionCodec;
+    let bytes = write_three_i32(CompressionCodec::Snappy);
+    assert_eq!(column_chunk_codec_number(&bytes), 1);
+    assert_eq!(read_all_i32(&bytes), vec![7, 8, 9]);
+}
+
+#[cfg(feature = "gzip")]
+#[test]
+fn written_gzip_codec_number_is_two_and_page_is_gzip_member() {
+    use crate::encoding::compression::CompressionCodec;
+    use crate::wire::page::decode_page_header;
+    let bytes = write_three_i32(CompressionCodec::Gzip);
+    assert_eq!(column_chunk_codec_number(&bytes), 2);
+    assert_eq!(read_all_i32(&bytes), vec![7, 8, 9]);
+
+    let reader = ParquetReader::new(&bytes).unwrap();
+    let chunk = reader.metadata().row_groups[0].columns[0]
+        .meta_data
+        .as_ref()
+        .unwrap();
+    let start = usize::try_from(chunk.data_page_offset).unwrap();
+    let (_, header_len) = decode_page_header(&bytes[start..]).unwrap();
+    // RFC 1952 section 2.3.1: ID1 = 0x1f, ID2 = 0x8b, CM = 8 (deflate).
+    assert_eq!(
+        &bytes[start + header_len..start + header_len + 3],
+        &[0x1F, 0x8B, 0x08]
+    );
+}
+
+#[cfg(feature = "zstd")]
+#[test]
+fn written_zstd_codec_number_is_six() {
+    use crate::encoding::compression::CompressionCodec;
+    let bytes = write_three_i32(CompressionCodec::Zstd);
+    assert_eq!(column_chunk_codec_number(&bytes), 6);
+    assert_eq!(read_all_i32(&bytes), vec![7, 8, 9]);
+}
+
+#[cfg(feature = "lz4")]
+#[test]
+fn written_lz4_raw_codec_number_is_seven() {
+    use crate::encoding::compression::CompressionCodec;
+    let bytes = write_three_i32(CompressionCodec::Lz4Raw);
+    assert_eq!(column_chunk_codec_number(&bytes), 7);
+    assert_eq!(read_all_i32(&bytes), vec![7, 8, 9]);
+}
+
 // ── Optional i32 proptest ────────────────────────────────────────────────────
 
 proptest! {
