@@ -26,11 +26,11 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - outcome: `GzipCodec` decodes every gzip member; a Parquet page whose decoded length differs from
   `uncompressed_page_size` is a typed error.
 - evidence: `GzipFraming` (`flate.rs:62-65`) wraps `flate2::read::GzDecoder`, which returns `Ok(0)`
-  after one member (locked flate2 1.1.11, `src/gz/read.rs:95-108`); a probe at basis decodes two
-  13-byte members to 13 bytes, no error (`MultiGzDecoder`: 26). `column.rs:251` compares no length.
+  after one member (locked flate2 1.1.11, `src/gz/read.rs:95-108`); a standalone flate2 1.1.11 probe
+  decodes two 13-byte members to 13 bytes, no error (`MultiGzDecoder`: 26). `column.rs:251` compares no length.
   apache/parquet-format `Compression.md` (GZIP section, lines 61-63): readers should support
   pages containing multiple GZIP members.
-- acceptance: a `gzip.rs` test decodes `gz(a) ++ gz(b)` to `a ++ b` (returns `a` at basis); a page
+- acceptance: a `gzip.rs` test decodes `gz(a) ++ gz(b)` to `a ++ b` (derived to return `a`); a page
   test with a header size one byte off the decoded length returns the typed error.
 - priority: correctness; needs: none; basis: 21769557a13a64530ba5f07cae0227c617c36f93
 - scope: crates/consus-compression/src/codec/{flate,gzip}.rs, crates/consus-parquet/src/encoding/{column,compression}.rs
@@ -43,13 +43,13 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - milestone: M-core-formats
 - outcome: every open block of `backlog/milestones.md` has one failing exit check at the fetched
   default commit (roadmap rule); no exit names an item ID.
-- evidence: no block has one at basis. M-1.0's passes (CI run 43776070564 at `6f850682`, job
+- evidence: no block has one at `6f850682`; basis adds only #206 and #208. M-1.0's passes (CI run 43776070564 at `6f850682`, job
   133002546532: 14 passed with and without `PYTHON_GIL=0`); the others are whole-package `cargo test -p`
   runs that the same run's nextest jobs cover green. Only the standing "no open correctness item"
   holds the ladder, via blocked `ATLAS-PR530-PROVIDER-COHERENCE` (consus#208 round-2 judge, F1).
   #208 removed the item-ID exits; at basis only `docs/adr/0008-release-scope-1-0.md:40` names
   `CONSUS-PARQUET-RAW-DEFLATE` and `CONSUS-PYTHON-FREE-THREADING`.
-- acceptance: each block's exits run at a fetched default commit leave one failing (0 of 3 today),
+- acceptance: each block's exits run at a fetched default commit leave one failing (0 of 3 at `6f850682`),
   or ADR 0008 records the ladder delivered pending the correctness item.
 - priority: verification; needs: none; basis: 21769557a13a64530ba5f07cae0227c617c36f93
 - scope: backlog/milestones.md, docs/adr/0008-release-scope-1-0.md
