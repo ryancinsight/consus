@@ -1,9 +1,9 @@
-//! A DataPage v2 header's declared size against the stored values, through
-//! both `ColumnPageDecoder` entry points.
+//! A DataPage v2 header's declared size against the stored values and the
+//! shared allocation budget, through both `ColumnPageDecoder` entry points.
 
 use alloc::{format, vec::Vec};
 
-use consus_core::Error;
+use consus_core::{Error, ParseBudget};
 
 use super::thrift::encode_page_header;
 use crate::encoding::column::ColumnValues;
@@ -129,6 +129,63 @@ fn declared_size_below_the_levels_is_a_typed_error() {
     ) {
         assert!(
             matches!(result, Err(Error::InvalidFormat { .. })),
+            "{result:?}"
+        );
+    }
+}
+
+/// Compressed values behind four level bytes: the budget applies to the
+/// declared size, the header less the levels, not to the header field.
+/// Headers up to the budget plus the level bytes are within-budget
+/// declarations and fail the length comparison; the next header is the first
+/// above the budget.
+#[test]
+fn compressed_values_budget_boundary_is_the_size_less_the_levels() {
+    let budget = ParseBudget::default().max_alloc_bytes;
+    let budget_u64 = u64::try_from(budget).unwrap();
+    for codec in enabled_codecs().filter(|&codec| codec != CompressionCodec::Uncompressed) {
+        let stored = compress_page_values(&VALUES, codec).unwrap();
+        for declared in [budget + 1, budget + LEVELS.len()] {
+            let expected = format!("declared {}", declared - LEVELS.len());
+            for result in decode_v2(codec, &LEVELS, &stored, true, declared) {
+                assert!(
+                    matches!(&result, Err(Error::CompressionError { message })
+                        if message.ends_with(&expected)),
+                    "{codec:?} {declared}: {result:?}"
+                );
+            }
+        }
+        for result in decode_v2(codec, &LEVELS, &stored, true, budget + LEVELS.len() + 1) {
+            assert!(
+                matches!(&result, Err(Error::ResourceLimit { requested, limit, .. })
+                    if *requested == budget_u64 + 1 && *limit == budget_u64),
+                "{codec:?}: {result:?}"
+            );
+        }
+    }
+}
+
+/// Values stored as is are compared with the declared size and never
+/// decompressed, so a header above the budget is a length mismatch, not a
+/// resource limit.
+#[test]
+fn stored_values_above_the_budget_are_a_length_mismatch() {
+    let budget = ParseBudget::default().max_alloc_bytes;
+    let declared = LEVELS.len() + budget + 1;
+    let expected = format!(
+        "UNCOMPRESSED page decoded to 12 bytes, declared {}",
+        budget + 1
+    );
+    for result in decode_v2(
+        CompressionCodec::Uncompressed,
+        &LEVELS,
+        &VALUES,
+        true,
+        declared,
+    ) {
+        assert!(
+            matches!(&result, Err(Error::CompressionError { message })
+                if *message == expected),
             "{result:?}"
         );
     }
