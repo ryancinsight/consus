@@ -226,7 +226,10 @@ impl ColumnPageDecoder {
     ///   the declared size (for DataPage v2, the header size less the level
     ///   sections), including values stored as is.
     /// - `ResourceLimit` — on a page read through `decompress_page_values`, a
-    ///   declared size or decoded output above the shared allocation budget.
+    ///   declared size above the shared allocation budget (for ZSTD, the
+    ///   declared size plus 64 bytes), or for UNCOMPRESSED, SNAPPY and GZIP
+    ///   decoded output above it; ZSTD and LZ4_RAW output above the declared
+    ///   size is `CompressionError`.
     /// - Propagates other decompression and value-decoding errors.
     pub fn decode_pages_from_chunk_bytes(&mut self, bytes: &[u8]) -> Result<ColumnValues> {
         let mut pos = 0usize;
