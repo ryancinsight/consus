@@ -198,6 +198,11 @@ pub(crate) fn compress_page_values(data: &[u8], codec: CompressionCodec) -> Resu
 /// - `Error::CompressionError` — the compressed data is malformed,
 ///   decompression fails, or a GZIP page decodes to a length other than
 ///   `uncompressed_size`.
+/// - `Error::ResourceLimit` — `uncompressed_size` exceeds the shared
+///   allocation budget (GZIP, ZSTD, LZ4_RAW), the input or its declared
+///   decoded size exceeds it (UNCOMPRESSED, SNAPPY), or a GZIP page decodes,
+///   whatever its declared size, to more than the budget summed over all its
+///   members.
 pub fn decompress_page_values(
     data: &[u8],
     codec: CompressionCodec,
@@ -472,6 +477,28 @@ mod tests {
         let decoded = decompress_page_values(&members, CompressionCodec::Gzip, plain.len())
             .expect("a two-member page must decode");
         assert_eq!(decoded, plain);
+    }
+
+    /// Members that together decode past the budget are `ResourceLimit` under
+    /// an in-budget declaration. `read_bounded` fails on the read that first
+    /// takes the output past the budget, and one read adds at most its
+    /// 8192-byte chunk.
+    #[cfg(feature = "gzip")]
+    #[test]
+    fn decompress_gzip_members_past_the_budget_are_a_resource_limit() {
+        const MEMBER_LEN: usize = 1 << 20;
+        const READ_CHUNK: u64 = 8192;
+        let budget = ParseBudget::default().max_alloc_bytes;
+        let limit = u64::try_from(budget).unwrap();
+        let member =
+            compress_page_values(&alloc::vec![0u8; MEMBER_LEN], CompressionCodec::Gzip).unwrap();
+        let members = member.repeat(budget / MEMBER_LEN + 1);
+        let err = decompress_page_values(&members, CompressionCodec::Gzip, 12).unwrap_err();
+        assert!(
+            matches!(&err, Error::ResourceLimit { what: "decompressed output", requested, limit: reported }
+                if *reported == limit && (limit + 1..=limit + READ_CHUNK).contains(requested)),
+            "{err:?}"
+        );
     }
 
     /// A header size that is one byte off the decoded length is a typed
