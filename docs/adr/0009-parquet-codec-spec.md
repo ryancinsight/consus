@@ -21,7 +21,12 @@ LZ4_RAW = 7 and no ZLIB. `Compression.md` lines 54-63 define GZIP as RFC 1952,
    removed; every other number is rejected by `from_i32` and the reader
    reports `InvalidFormat`.
 2. GZIP pages are one RFC 1952 member written and read by
-   `consus_compression::codec::gzip::GzipCodec`.
+   `consus_compression::codec::gzip::GzipCodec`. The reader decodes the first
+   member only, and `decompress_page_values` returns `CompressionError` when
+   the decoded length differs from the declared size, so a multi-member page
+   is refused, never truncated. `Compression.md` says readers should accept
+   several members; board item CONSUS-PARQUET-GZIP-MULTIMEMBER (consus#211)
+   tracks that.
 3. LZO, BROTLI and the deprecated LZ4 return `UnsupportedFeature` in both
    directions. The former LZ4 (`lz4_flex` size-prepended blocks) matched no
    specified framing, so it is removed rather than renumbered. LZ4_RAW is the
