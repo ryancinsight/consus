@@ -9,10 +9,11 @@
 
 `consus-parquet` stored its own codec numbering in column chunk metadata
 (3 = LZ4_RAW, 4 = ZSTD, 5 = LZ4, 6 = BROTLI, 7 = ZLIB) and wrote bare RFC 1951
-DEFLATE under GZIP. apache/parquet-format at `ec90dd4`
-(`src/main/thrift/parquet.thrift` lines 684-693) defines UNCOMPRESSED = 0,
-SNAPPY = 1, GZIP = 2, LZO = 3, BROTLI = 4, LZ4 = 5 (deprecated), ZSTD = 6,
-LZ4_RAW = 7 and no ZLIB. `Compression.md` lines 54-63 define GZIP as RFC 1952,
+DEFLATE under GZIP. apache/parquet-format
+<https://github.com/apache/parquet-format/blob/ec90dd4661ff1c4d77f06b5b5232c5aedf68ffc5/src/main/thrift/parquet.thrift#L684-L693>
+defines UNCOMPRESSED = 0, SNAPPY = 1, GZIP = 2, LZO = 3, BROTLI = 4,
+LZ4 = 5 (deprecated), ZSTD = 6, LZ4_RAW = 7 and no ZLIB. At the same
+revision, `Compression.md` lines 54-63 define GZIP as RFC 1952,
 "not the closely-related 'zlib' or 'deflate' formats".
 
 ## Decision
