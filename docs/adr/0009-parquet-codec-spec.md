@@ -6,7 +6,8 @@
 - Item: CONSUS-PARQUET-CODEC-SPEC
 - Revision 2026-11-15: GZIP reads every member (was first member only), because
   `Compression.md` says readers should support pages with several members; the
-  decoded length of every codec must equal the declared size (consus#212).
+  decoded length of every codec must equal the declared size (consus#212,
+  consus#213).
 
 ## Context
 
@@ -31,7 +32,8 @@ revision, `Compression.md` lines 54-63 define GZIP as RFC 1952,
    `CompressionError`: section 2.2 allows no additional information after the
    members.
    `decompress_page_values` returns `CompressionError` when the decoded
-   length of any codec differs from the declared size, so a page is never
+   length of any codec differs from a declared size within the shared
+   allocation budget (`ResourceLimit` above it), so a page is never
    returned truncated or padded. A DataPage v2 page whose values are stored
    as is (UNCOMPRESSED, or `is_compressed = false`) is held to the same
    comparison against the declared size less its level sections.
@@ -62,8 +64,20 @@ them from source data. UNCOMPRESSED and SNAPPY files written by consus are
 unaffected, since its writer declares the payload length.
 
 Pages from other writers whose header `uncompressed_page_size` disagrees with
-the payload now fail with `CompressionError` under every codec, UNCOMPRESSED
-and SNAPPY included; readers that ignore the field accepted them.
+the payload now fail with a typed error; readers that ignore the field
+accepted them. The variant depends on the page:
+
+- `CompressionError`: a page read through `decompress_page_values`
+  (dictionary pages, DataPage v1 pages and compressed DataPage v2 values,
+  UNCOMPRESSED codec included) decodes to another length than the declared
+  size, or DataPage v2 values stored as is (UNCOMPRESSED, or
+  `is_compressed = false`) differ from the declared size less the level
+  sections.
+- `ResourceLimit`: a declared size above the shared allocation budget on a
+  page read through `decompress_page_values`.
+- `InvalidFormat`: a DataPage v2 declared size smaller than its level
+  sections.
+- Index pages are skipped without comparing the declared size.
 
 ## Evidence
 
