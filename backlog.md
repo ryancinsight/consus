@@ -53,7 +53,7 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 ## CONSUS-NPY-TEST-HARNESS — Pin NPY rejection reasons in one harness [patch] — todo
 
 - milestone: M-interop-contracts
-- outcome: the rejection loops in `header_contract.rs` and `literal_compatibility.rs` assert
+- outcome: the rejection loops in `header_contract/main.rs` and `literal_compatibility.rs` assert
   the reason, not only `InvalidFormat` with a non-empty message, and the two integration
   binaries become modules of one harness (`tests/npy/main.rs`).
 - acceptance: `cargo nextest list -p consus-npy` names the same tests before and after,
