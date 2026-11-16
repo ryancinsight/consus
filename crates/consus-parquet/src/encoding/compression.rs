@@ -198,6 +198,11 @@ pub(crate) fn compress_page_values(data: &[u8], codec: CompressionCodec) -> Resu
 /// - `Error::CompressionError` — the compressed data is malformed,
 ///   decompression fails, or a GZIP page decodes to a length other than
 ///   `uncompressed_size`.
+/// - `Error::ResourceLimit` — `uncompressed_size` exceeds the shared
+///   allocation budget (GZIP, ZSTD, LZ4_RAW), the input or its declared
+///   decoded size exceeds it (UNCOMPRESSED, SNAPPY), or a GZIP page decodes,
+///   whatever its declared size, to more than the budget summed over all its
+///   members.
 pub fn decompress_page_values(
     data: &[u8],
     codec: CompressionCodec,
@@ -211,7 +216,7 @@ pub fn decompress_page_values(
             {
                 let limit = checked_output_size(uncompressed_size)?;
                 let output = GzipCodec.decompress(data, limit)?;
-                // `GzipCodec` reads only the first member of a multi-member stream.
+                // The page header's size is untrusted; the decoded length must match it.
                 if output.len() != uncompressed_size {
                     return Err(Error::CompressionError {
                         message: format!(
@@ -460,23 +465,60 @@ mod tests {
         }
     }
 
-    /// Compression.md (GZIP section) says readers should accept several
-    /// members; the codec reads the first, so the page must be refused,
-    /// never returned truncated.
+    /// Compression.md (GZIP section) says readers should support pages
+    /// containing multiple GZIP members; every member is decoded.
     #[cfg(feature = "gzip")]
     #[test]
-    fn decompress_gzip_with_two_members_is_a_typed_error() {
+    fn decompress_gzip_with_two_members_returns_both() {
         let plain: Vec<u8> = (0u8..=255).cycle().take(400).collect();
         let (head, tail) = plain.split_at(200);
         let mut members = compress_page_values(head, CompressionCodec::Gzip).unwrap();
         members.extend(compress_page_values(tail, CompressionCodec::Gzip).unwrap());
-        let err =
-            decompress_page_values(&members, CompressionCodec::Gzip, plain.len()).unwrap_err();
+        let decoded = decompress_page_values(&members, CompressionCodec::Gzip, plain.len())
+            .expect("a two-member page must decode");
+        assert_eq!(decoded, plain);
+    }
+
+    /// Members that together decode past the budget are `ResourceLimit` under
+    /// an in-budget declaration. `read_bounded` fails on the read that first
+    /// takes the output past the budget, and one read adds at most its
+    /// 8192-byte chunk.
+    #[cfg(feature = "gzip")]
+    #[test]
+    fn decompress_gzip_members_past_the_budget_are_a_resource_limit() {
+        const MEMBER_LEN: usize = 1 << 20;
+        const READ_CHUNK: u64 = 8192;
+        let budget = ParseBudget::default().max_alloc_bytes;
+        let limit = u64::try_from(budget).unwrap();
+        let member =
+            compress_page_values(&alloc::vec![0u8; MEMBER_LEN], CompressionCodec::Gzip).unwrap();
+        let members = member.repeat(budget / MEMBER_LEN + 1);
+        let err = decompress_page_values(&members, CompressionCodec::Gzip, 12).unwrap_err();
         assert!(
-            matches!(err, Error::CompressionError { ref message }
-                if message == "gzip page decoded to 200 bytes, declared 400"),
+            matches!(&err, Error::ResourceLimit { what: "decompressed output", requested, limit: reported }
+                if *reported == limit && (limit + 1..=limit + READ_CHUNK).contains(requested)),
             "{err:?}"
         );
+    }
+
+    /// A header size that is one byte off the decoded length is a typed
+    /// error in both directions, never a truncated or padded page.
+    #[cfg(feature = "gzip")]
+    #[test]
+    fn decompress_gzip_with_size_off_by_one_is_a_typed_error() {
+        let plain: Vec<u8> = (0u8..=255).cycle().take(400).collect();
+        let (head, tail) = plain.split_at(200);
+        let mut members = compress_page_values(head, CompressionCodec::Gzip).unwrap();
+        members.extend(compress_page_values(tail, CompressionCodec::Gzip).unwrap());
+        for declared in [plain.len() - 1, plain.len() + 1] {
+            let err =
+                decompress_page_values(&members, CompressionCodec::Gzip, declared).unwrap_err();
+            assert!(
+                matches!(err, Error::CompressionError { ref message }
+                    if *message == format!("gzip page decoded to 400 bytes, declared {declared}")),
+                "{declared}: {err:?}"
+            );
+        }
     }
 
     #[cfg(feature = "gzip")]

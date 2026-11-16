@@ -243,7 +243,8 @@ impl ParseBudget {
     /// The initial capacity is only a hint from the format metadata. Every
     /// subsequent growth is checked against `max_alloc_bytes` and uses
     /// fallible reservation, so a compressed stream cannot turn expansion or
-    /// allocator exhaustion into a process abort.
+    /// allocator exhaustion into a process abort. The buffer doubles as it
+    /// grows but its capacity never exceeds `max_alloc_bytes`.
     ///
     /// # Errors
     ///
@@ -284,11 +285,24 @@ impl ParseBudget {
                     limit: self.max_alloc_bytes as u64,
                 });
             }
-            output.try_reserve(read).map_err(|_| Error::ResourceLimit {
-                what,
-                requested: next_len as u64,
-                limit: self.max_alloc_bytes as u64,
-            })?;
+            if output.capacity() < next_len {
+                // Doubling keeps growth amortized; the ceiling keeps the
+                // capacity itself, not only the length, within the budget.
+                let target = output
+                    .capacity()
+                    .saturating_mul(2)
+                    .max(next_len)
+                    .min(self.max_alloc_bytes);
+                let requested = u64::try_from(next_len).map_err(|_| Error::Overflow)?;
+                let limit = u64::try_from(self.max_alloc_bytes).map_err(|_| Error::Overflow)?;
+                output
+                    .try_reserve_exact(target.saturating_sub(output.len()))
+                    .map_err(|_| Error::ResourceLimit {
+                        what,
+                        requested,
+                        limit,
+                    })?;
+            }
             let Some(chunk) = chunk.get(..read) else {
                 return Err(Error::InternalError {
                     message: String::from("reader returned more bytes than its buffer"),
