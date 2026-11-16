@@ -221,16 +221,25 @@ pub fn decompress_page_values(
 ) -> Result<Vec<u8>> {
     checked_output_size(uncompressed_size)?;
     let output = decode_page_bytes(data, codec, uncompressed_size)?;
-    if output.len() != uncompressed_size {
-        return Err(Error::CompressionError {
-            message: format!(
-                "{} page decoded to {} bytes, declared {uncompressed_size}",
-                codec_name(codec),
-                output.len()
-            ),
-        });
-    }
+    check_decoded_length(codec, output.len(), uncompressed_size)?;
     Ok(output)
+}
+
+/// Refuses a page whose decoded length differs from the length its header declares.
+pub(crate) fn check_decoded_length(
+    codec: CompressionCodec,
+    decoded: usize,
+    declared: usize,
+) -> Result<()> {
+    if decoded == declared {
+        return Ok(());
+    }
+    Err(Error::CompressionError {
+        message: format!(
+            "{} page decoded to {decoded} bytes, declared {declared}",
+            codec_name(codec)
+        ),
+    })
 }
 
 /// Decode `data` under `codec`; `uncompressed_size` is already within the budget.
