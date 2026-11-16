@@ -18,6 +18,7 @@ consus-mat = { path = "../crates/consus-mat", default-features = false, features
 consus-io = { path = "../crates/consus-io", default-features = false, features = ["std", "alloc"] }
 consus-fits = { path = "../crates/consus-fits", default-features = false, features = ["std"] }
 consus-zip = { path = "../crates/consus-zip" }
+consus-npy = { path = "../crates/consus-npy" }
 
 # Prevent this crate from being adopted into the workspace when Cargo resolves
 # dependencies from the workspace root directory.
@@ -50,5 +51,11 @@ doc = false
 [[bin]]
 name = "fuzz_zip_reader"
 path = "fuzz_targets/fuzz_zip_reader.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_npy_reader"
+path = "fuzz_targets/fuzz_npy_reader.rs"
 test = false
 doc = false

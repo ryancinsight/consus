@@ -1,7 +1,9 @@
 //! Value-semantic regression witnesses for the NPY dictionary boundary.
-use consus_npy::{Error, read_npy};
+use consus_npy::{Error, NpyElement, read_npy};
 use std::io::Cursor;
 use tracing_subscriber::fmt::format::FmtSpan;
+
+mod versions;
 
 fn trace() -> tracing::subscriber::DefaultGuard {
     tracing::subscriber::set_default(
@@ -14,20 +16,7 @@ fn trace() -> tracing::subscriber::DefaultGuard {
 }
 
 fn fixture(header: &str) -> Vec<u8> {
-    let mut header = header.to_owned();
-    let padding = (64 - ((10 + header.len() + 1) % 64)) % 64;
-    header.extend(std::iter::repeat_n(' ', padding));
-    header.push('\n');
-    let mut bytes = b"\x93NUMPY\x01\x00".to_vec();
-    bytes.extend_from_slice(
-        &u16::try_from(header.len())
-            .expect("small fixture header")
-            .to_le_bytes(),
-    );
-    bytes.extend_from_slice(header.as_bytes());
-    bytes.extend_from_slice(&7_i32.to_le_bytes());
-    bytes.extend_from_slice(&(-3_i32).to_le_bytes());
-    bytes
+    array_fixture(header, 1, &[7_i32, -3])
 }
 
 #[test]
@@ -75,16 +64,11 @@ fn rejects_malformed_boolean_and_shape_literals() {
     }
 }
 
-fn array_fixture<T: consus_npy::NpyElement>(header: &str, major: u8, values: &[T]) -> Vec<u8> {
-    let prefix = if major == 1 { 10 } else { 12 };
-    let mut header = header.to_owned();
-    header.extend(std::iter::repeat_n(
-        ' ',
-        (64 - ((prefix + header.len() + 1) % 64)) % 64,
-    ));
-    header.push('\n');
+/// Frames `header` bytes with the given version and `values` as the payload;
+/// the length field is `u16` for 1.0 and `u32` otherwise.
+fn framed<T: NpyElement>(major: u8, minor: u8, header: &[u8], values: &[T]) -> Vec<u8> {
     let mut bytes = b"\x93NUMPY".to_vec();
-    bytes.extend_from_slice(&[major, 0]);
+    bytes.extend_from_slice(&[major, minor]);
     if major == 1 {
         bytes.extend_from_slice(
             &u16::try_from(header.len())
@@ -98,14 +82,27 @@ fn array_fixture<T: consus_npy::NpyElement>(header: &str, major: u8, values: &[T
                 .to_le_bytes(),
         );
     }
-    bytes.extend_from_slice(header.as_bytes());
+    bytes.extend_from_slice(header);
     for &value in values {
         value.write_to(&mut bytes).expect("in-memory scalar write");
     }
     bytes
 }
 
-fn permutations<T: consus_npy::NpyElement + std::fmt::Debug + PartialEq>(values: [T; 2]) {
+/// Pads `header` with spaces and a newline to a multiple of 64 bytes, as
+/// NumPy writes it, and frames it as `major`.0.
+fn array_fixture<T: NpyElement>(header: &str, major: u8, values: &[T]) -> Vec<u8> {
+    let prefix = if major == 1 { 10 } else { 12 };
+    let mut header = header.to_owned();
+    header.extend(std::iter::repeat_n(
+        ' ',
+        (64 - ((prefix + header.len() + 1) % 64)) % 64,
+    ));
+    header.push('\n');
+    framed(major, 0, header.as_bytes(), values)
+}
+
+fn permutations<T: NpyElement + std::fmt::Debug + PartialEq>(values: [T; 2]) {
     for order in [
         [0, 1, 2],
         [0, 2, 1],

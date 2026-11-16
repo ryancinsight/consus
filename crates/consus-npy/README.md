@@ -25,6 +25,10 @@ between tokens. Comment markers inside quoted strings remain data, and line
 joining cannot fuse separate integer tokens. Header metadata is parsed as
 literals, never executed as Python code.
 
+Format versions 1.0, 2.0 and 3.0 are read, as in NumPy; any other version is
+rejected. Version 1.0 and 2.0 headers decode as Latin-1 and version 3.0 headers
+as UTF-8.
+
 The crate declares `#![forbid(unsafe_code)]`.
 
 Part of the [Consus](https://github.com/ryancinsight/consus) scientific storage
