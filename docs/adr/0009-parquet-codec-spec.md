@@ -6,7 +6,7 @@
 - Item: CONSUS-PARQUET-CODEC-SPEC
 - Revision 2026-11-15: GZIP reads every member (was first member only), because
   `Compression.md` says readers should support pages with several members; the
-  decoded length of every codec must equal the declared size (consus#212).
+  decoded length of every codec must equal the declared size (consus#214).
 
 ## Context
 
@@ -30,9 +30,16 @@ revision, `Compression.md` lines 54-63 define GZIP as RFC 1952,
    several members. Bytes after the last member are rejected with
    `CompressionError`: section 2.2 allows no additional information after the
    members.
-   `decompress_page_values` returns `CompressionError` when the decoded
-   length of any codec differs from the declared size, so a page is never
-   returned truncated or padded.
+   `decompress_page_values` returns the page only when its decoded length
+   equals the declared size, so a page is never returned truncated or padded.
+   A declared size above the shared allocation budget is `ResourceLimit` for
+   every codec, before any data is decoded. With a declared size within the
+   budget, decoded output above the budget is `ResourceLimit` for
+   UNCOMPRESSED, SNAPPY (the length its stream states) and GZIP, and
+   `CompressionError` for ZSTD and LZ4_RAW, whose output limit is the
+   declared size. Any other length that differs from the declared size is
+   `CompressionError`. For compressed DataPage v2 values the declared size
+   is the header size less the level sections, or zero when it is smaller.
 3. LZO, BROTLI and the deprecated LZ4 return `UnsupportedFeature` in both
    directions. The former LZ4 (`lz4_flex` size-prepended blocks) matched no
    specified framing, so it is removed rather than renumbered. LZ4_RAW is the
