@@ -28,8 +28,28 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   "zlib" to `GzipCodec`; numcodecs `Zlib` emits RFC 1950 framing (first bytes `78`), which fails
   the gzip ID1/ID2 check. `docs/book/formats.md:81-83` claims two-way Python interoperability.
 - acceptance: a `consus-zarr` test decodes a zlib stream of known bytes through "zlib" to those bytes.
+- compatibility: `consus-zarr` writes "zlib" chunks through the same entry (`codec/mod.rs:338-342`),
+  so chunks already written under "zlib" are gzip-framed and stop decoding once the name maps to RFC 1950.
+- next step: decide whether those chunks stay readable (gzip fallback on `1f 8b`) or are rewritten,
+  then map "zlib" to `DeflateCodec` with `ZlibFraming` in both scope files.
 - priority: correctness; needs: none; basis: 5a976d2c9698bd92d520850ba2bcea8cc3aa9a0f
 - scope: crates/consus-compression/src/registry/default.rs, crates/consus-zarr/src/codec/mod.rs
+
+<a id="consus-parquet-v2-stored-length"></a>
+## CONSUS-PARQUET-V2-STORED-LENGTH — Check the declared size of stored DataPage v2 values [patch] — todo
+
+- milestone: M-core-formats
+- outcome: a DataPage v2 page stored uncompressed (codec UNCOMPRESSED or `is_compressed = false`) is
+  held to `uncompressed_page_size` like every decompressed page (clause of CONSUS-PARQUET-GZIP-MULTIMEMBER).
+- evidence: `reader/page.rs:306-326` and `:432-452` before this item skip any length comparison for such
+  values; `saturating_sub` (`:312`, `:438`) turns level lengths above the declared size into 0.
+  Judge round 2 of consus#212: declared 11 and 13 for a 12-byte payload returns Ok.
+- acceptance: such a page whose values length differs from the declared size minus the level lengths
+  returns `CompressionError` through both decode methods, one byte short and one long; a declared
+  size below the level lengths returns `InvalidFormat`; a valid page with nonzero levels decodes.
+- priority: correctness; needs: none; basis: 5a976d2c9698bd92d520850ba2bcea8cc3aa9a0f
+- scope: crates/consus-parquet/src/reader/page.rs, crates/consus-parquet/src/writer/tests_page_length.rs
+- next step: `fix/consus-parquet-v2-stored-length` (stacked on consus#212) carries it, deleting this block.
 
 <a id="consus-ladder-failing-exits"></a>
 ## CONSUS-LADDER-FAILING-EXITS — Give each milestone a failing exit check [patch] — todo
