@@ -81,3 +81,20 @@ Zarr metadata (`.zarray`, `.zgroup`, `.zattrs`, `zarr.json`, `.zmetadata`) is
 byte-for-byte compatible with `zarr-python`. Chunk keys follow the canonical
 Zarr convention. This allows Python tools to read arrays written by Consus and
 vice versa without conversion.
+
+Chunk compression follows the codec id in the metadata:
+
+| Zarr codec id | Framing | Written by | Read by |
+|---------------|---------|------------|---------|
+| `zlib` | zlib, RFC 1950 (first byte `78`) | numcodecs `Zlib`, Consus | numcodecs `Zlib`, Consus |
+| `gzip` | gzip, RFC 1952 (first bytes `1f 8b`) | numcodecs `GZip`, Consus | numcodecs `GZip`, Consus |
+
+Earlier Consus versions registered the name `zlib` against the gzip codec, so
+a caller that stored chunks through `CodecId::Name("zlib")` holds gzip streams
+under that name; the Zarr pipeline itself looks codecs up by their own name and
+could not resolve `zlib` at all. Consus keeps the gzip streams readable: when a
+`zlib` chunk begins with the gzip magic `1f 8b`, it is decoded as gzip. No valid
+zlib stream starts with `1f` (its low nibble `15` is the reserved compression
+method of RFC 1950 section 2.2), so the test is unambiguous. The fallback is
+decode-only; every chunk Consus writes under `zlib` is RFC 1950, which numcodecs
+reads. A gzip-framed store is rewritten to be readable by numcodecs.

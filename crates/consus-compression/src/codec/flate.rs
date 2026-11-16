@@ -14,6 +14,8 @@ use std::io::Read;
 
 use consus_core::{Error, ParseBudget, Result};
 
+use super::traits::CompressionLevel;
+
 /// Selects the framing of a `flate2` byte stream.
 ///
 /// Implementations are zero-sized marker types; the associated [`Self::Decoder`]
@@ -122,4 +124,26 @@ pub fn flate2_decompress<F: FlateFraming>(
             },
             error => error,
         })
+}
+
+/// Compress `input` into one zlib stream (RFC 1950).
+///
+/// `level` is clamped to `[0, 9]`. The stream is `CMF FLG <DEFLATE> ADLER32`
+/// with the Adler-32 of `input` stored most-significant byte first
+/// (RFC 1950 section 2.2), which is what `zlib.compress` in CPython and the
+/// HDF5 deflate filter write.
+///
+/// # Errors
+///
+/// Returns [`Error::CompressionError`] when the encoder fails.
+pub fn zlib_compress(input: &[u8], level: CompressionLevel) -> Result<Vec<u8>> {
+    let clamped = level.0.clamp(0, 9).unsigned_abs();
+    let mut encoder = flate2::read::ZlibEncoder::new(input, flate2::Compression::new(clamped));
+    let mut output = Vec::new();
+    encoder
+        .read_to_end(&mut output)
+        .map_err(|e| Error::CompressionError {
+            message: alloc::format!("{} compress failed: {e}", ZlibFraming::LABEL),
+        })?;
+    Ok(output)
 }

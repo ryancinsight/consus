@@ -22,7 +22,7 @@ use alloc::{string::String, vec::Vec};
 ///
 /// | ID | Codec |
 /// |----|-------|
-/// | `"zlib"` | deflate |
+/// | `"zlib"` | zlib (RFC 1950) |
 /// | `"gzip"` | gzip |
 /// | `"blosc"` | blosc |
 /// | `"lz4"` | lz4 |

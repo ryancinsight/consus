@@ -23,6 +23,7 @@
 //! │   ├── deflate      # Deflate/zlib codec (feature-gated)
 //! │   ├── raw_deflate  # Unframed DEFLATE, ZIP method 8 (feature-gated)
 //! │   ├── gzip         # Gzip codec, Zarr and Parquet (feature-gated)
+//! │   ├── zlib         # Zlib codec (RFC 1950), Zarr v2 `zlib` compressor (feature-gated)
 //! │   ├── zstd         # Zstandard codec (feature-gated)
 //! │   ├── lz4          # LZ4 block codec (feature-gated)
 //! │   ├── szip         # Szip/Rice entropy coding, HDF5 filter 4 (feature-gated)

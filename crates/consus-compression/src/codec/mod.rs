@@ -18,6 +18,9 @@ pub mod raw_deflate;
 #[cfg(all(feature = "gzip", feature = "std"))]
 pub mod gzip;
 
+#[cfg(all(feature = "gzip", feature = "std"))]
+pub mod zlib;
+
 #[cfg(feature = "zstd")]
 pub mod zstd;
 

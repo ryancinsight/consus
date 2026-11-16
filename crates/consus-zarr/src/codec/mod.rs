@@ -18,7 +18,8 @@
 //! |------|-----------|-------------|
 //! | "bytes" | Both | Raw byte transport; swaps byte order when the stored endianness differs from the host |
 //! | "crc32" | Both | CRC-32C (Castagnoli) checksum: appended on write, verified and stripped on read |
-//! | "gzip" | Both | Gzip compression |
+//! | "gzip" | Both | Gzip compression (RFC 1952) |
+//! | "zlib" | Both | Zlib compression (RFC 1950), the Zarr v2 `zlib` compressor; a chunk that begins with the gzip magic `1f 8b` decodes as gzip |
 //! | "zstd" | Both | Zstandard compression |
 //! | "lz4" | Both | LZ4 block compression |
 //! | "blosc" | Both | Blosc meta-compressor |
@@ -334,7 +335,8 @@ impl CodecPipeline {
             // reject it at pipeline-application time instead.
             "crc32" => Ok(append_crc32c(data)),
 
-            // Compression codecs
+            // Compression codecs. `zlib` resolves to the RFC 1950 codec, `gzip`
+            // to the RFC 1952 codec; the registry owns the framing.
             "gzip" | "zlib" => {
                 let level = codec.gzip_level().unwrap_or(6) as i32;
                 registry
