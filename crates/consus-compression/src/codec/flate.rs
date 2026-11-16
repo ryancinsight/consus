@@ -53,7 +53,7 @@ impl FlateFraming for ZlibFraming {
     }
 }
 
-/// gzip framing (RFC 1952), used by Zarr's gzip codec.
+/// gzip framing (RFC 1952), used by the Zarr gzip codec and Parquet's GZIP codec.
 pub struct GzipFraming;
 
 impl FlateFraming for GzipFraming {
@@ -70,7 +70,7 @@ impl FlateFraming for GzipFraming {
     }
 }
 
-/// Raw DEFLATE framing (RFC 1951), used by Parquet's GZIP/ZLIB codecs.
+/// Raw DEFLATE framing (RFC 1951), used by ZIP method 8.
 pub struct RawDeflateFraming;
 
 impl FlateFraming for RawDeflateFraming {

@@ -229,7 +229,7 @@ mod deflate_tests {
 }
 
 // =============================================================================
-// GZIP (Zarr-specific, no HDF5 filter ID)
+// GZIP (Zarr and Parquet, no HDF5 filter ID)
 // =============================================================================
 
 #[cfg(feature = "gzip")]

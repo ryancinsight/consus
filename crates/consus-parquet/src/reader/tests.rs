@@ -334,3 +334,46 @@ fn reader_too_short_returns_buffer_too_small() {
     let err = ParquetReader::new(b"PAR1").unwrap_err();
     assert!(matches!(err, consus_core::Error::BufferTooSmall { .. }));
 }
+
+// ── pyarrow-written codec fixtures (cross-implementation differential) ──────
+
+/// Values written by `tests/data/gen_codec_fixtures.py`: `(i * 7) % 31 - 15`.
+#[cfg(any(feature = "gzip", feature = "zstd"))]
+fn pyarrow_fixture_values() -> alloc::vec::Vec<i32> {
+    (0..100).map(|i| (i * 7) % 31 - 15).collect()
+}
+
+/// Read column 0 of the first row group and return it with the stored codec number.
+#[cfg(any(feature = "gzip", feature = "zstd"))]
+fn read_fixture(bytes: &[u8]) -> (i32, alloc::vec::Vec<i32>) {
+    let reader = ParquetReader::new(bytes).unwrap();
+    let codec = reader.metadata().row_groups[0].columns[0]
+        .meta_data
+        .as_ref()
+        .unwrap()
+        .codec;
+    let ColumnValues::Int32(values) = reader.read_column_chunk(0, 0).unwrap() else {
+        panic!("fixture column must decode as INT32");
+    };
+    (codec, values)
+}
+
+/// pyarrow 23.0.1 GZIP file: codec number 2 and RFC 1952 pages decode exactly.
+#[cfg(feature = "gzip")]
+#[test]
+fn pyarrow_gzip_fixture_decodes_with_spec_number() {
+    let bytes = include_bytes!("../../tests/data/parquet_gzip_i32.parquet");
+    let (codec, values) = read_fixture(bytes);
+    assert_eq!(codec, 2);
+    assert_eq!(values, pyarrow_fixture_values());
+}
+
+/// pyarrow 23.0.1 ZSTD file: codec number 6 and zstd pages decode exactly.
+#[cfg(feature = "zstd")]
+#[test]
+fn pyarrow_zstd_fixture_decodes_with_spec_number() {
+    let bytes = include_bytes!("../../tests/data/parquet_zstd_i32.parquet");
+    let (codec, values) = read_fixture(bytes);
+    assert_eq!(codec, 6);
+    assert_eq!(values, pyarrow_fixture_values());
+}

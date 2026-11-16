@@ -17,3 +17,4 @@
 | [0006](0006-moirai-010-public-identity.md) | Version the Moirai 0.10 public async identity | Proposed |
 | [0007](0007-first-party-zip-container.md) | First-party ZIP container | Accepted |
 | [0008](0008-release-scope-1-0.md) | Consus release scope for 1.0 | Accepted |
+| [0009](0009-parquet-codec-spec.md) | Parquet codec numbers and GZIP framing follow the specification | Accepted |

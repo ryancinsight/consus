@@ -81,9 +81,14 @@ impl CompressionCodec {
 /// Error for a codec this crate has no implementation of (LZO, BROTLI, LZ4).
 fn unsupported_codec(codec: CompressionCodec) -> Error {
     let name = match codec {
+        CompressionCodec::Uncompressed => "UNCOMPRESSED",
+        CompressionCodec::Snappy => "SNAPPY",
+        CompressionCodec::Gzip => "GZIP",
         CompressionCodec::Lzo => "LZO",
         CompressionCodec::Brotli => "BROTLI",
-        _ => "LZ4",
+        CompressionCodec::Lz4 => "LZ4",
+        CompressionCodec::Zstd => "ZSTD",
+        CompressionCodec::Lz4Raw => "LZ4_RAW",
     };
     Error::UnsupportedFeature {
         feature: format!("parquet compression codec {} ({name})", codec.to_i32()),
@@ -188,10 +193,11 @@ pub(crate) fn compress_page_values(data: &[u8], codec: CompressionCodec) -> Resu
 ///
 /// # Errors
 ///
-/// - `Error::UnsupportedFeature` — codec is not implemented (Brotli) or the
-///   corresponding feature flag is not enabled.
-/// - `Error::CompressionError` — the compressed data is malformed or
-///   decompression fails.
+/// - `Error::UnsupportedFeature` — codec is not implemented (LZO, BROTLI, LZ4)
+///   or the corresponding feature flag is not enabled.
+/// - `Error::CompressionError` — the compressed data is malformed,
+///   decompression fails, or a GZIP page decodes to a length other than
+///   `uncompressed_size`.
 pub fn decompress_page_values(
     data: &[u8],
     codec: CompressionCodec,
@@ -204,7 +210,17 @@ pub fn decompress_page_values(
             #[cfg(feature = "gzip")]
             {
                 let limit = checked_output_size(uncompressed_size)?;
-                GzipCodec.decompress(data, limit)
+                let output = GzipCodec.decompress(data, limit)?;
+                // `GzipCodec` reads only the first member of a multi-member stream.
+                if output.len() != uncompressed_size {
+                    return Err(Error::CompressionError {
+                        message: format!(
+                            "gzip page decoded to {} bytes, declared {uncompressed_size}",
+                            output.len()
+                        ),
+                    });
+                }
+                Ok(output)
             }
             #[cfg(not(feature = "gzip"))]
             {
@@ -358,6 +374,25 @@ mod tests {
         assert!(matches!(error, Error::ResourceLimit { .. }));
     }
 
+    #[test]
+    fn codecs_without_an_implementation_name_themselves_in_the_error() {
+        for (codec, number_and_name) in [
+            (CompressionCodec::Lzo, "3 (LZO)"),
+            (CompressionCodec::Brotli, "4 (BROTLI)"),
+            (CompressionCodec::Lz4, "5 (LZ4)"),
+        ] {
+            let expected = format!("parquet compression codec {number_and_name}");
+            let decode = decompress_page_values(&[], codec, 0).unwrap_err();
+            let encode = compress_page_values(&[], codec).unwrap_err();
+            for err in [decode, encode] {
+                assert!(
+                    matches!(err, Error::UnsupportedFeature { ref feature } if *feature == expected),
+                    "expected UnsupportedFeature({expected}), got: {err:?}"
+                );
+            }
+        }
+    }
+
     #[cfg(not(feature = "gzip"))]
     #[test]
     fn decompress_disabled_codec_returns_unsupported() {
@@ -381,14 +416,23 @@ mod tests {
         assert_eq!(decompressed, input, "gzip round-trip must be lossless");
     }
 
-    /// A bare RFC 1951 stream is not GZIP and is rejected.
+    /// An independent `flate2` gzip encoder produces a stream the reader
+    /// accepts; a bare RFC 1951 stream is not GZIP and is rejected.
     #[cfg(feature = "gzip")]
     #[test]
-    fn decompress_gzip_rejects_bare_deflate() {
-        use flate2::read::DeflateEncoder;
+    fn decompress_gzip_accepts_independent_gzip_and_rejects_bare_deflate() {
+        use flate2::read::{DeflateEncoder, GzEncoder};
         use std::io::Read;
 
         let input: Vec<u8> = (0u8..=255).cycle().take(1024).collect();
+        let mut gzip = Vec::new();
+        GzEncoder::new(&input[..], flate2::Compression::new(6))
+            .read_to_end(&mut gzip)
+            .expect("gzip encode must succeed");
+        let decompressed = decompress_page_values(&gzip, CompressionCodec::Gzip, input.len())
+            .expect("gzip decompress must succeed");
+        assert_eq!(decompressed, input);
+
         let mut bare = Vec::new();
         DeflateEncoder::new(&input[..], flate2::Compression::new(6))
             .read_to_end(&mut bare)
@@ -405,9 +449,34 @@ mod tests {
     #[test]
     fn decompress_gzip_rejects_hostile_size_hint() {
         let compressed = compress_page_values(&[0u8; 16], CompressionCodec::Gzip).unwrap();
+        let budget = ParseBudget::default().max_alloc_bytes;
+        for hint in [budget + 1, usize::MAX] {
+            let err =
+                decompress_page_values(&compressed, CompressionCodec::Gzip, hint).unwrap_err();
+            assert!(
+                matches!(err, Error::ResourceLimit { .. }),
+                "{hint}: {err:?}"
+            );
+        }
+    }
+
+    /// Compression.md (GZIP section) says readers should accept several
+    /// members; the codec reads the first, so the page must be refused,
+    /// never returned truncated.
+    #[cfg(feature = "gzip")]
+    #[test]
+    fn decompress_gzip_with_two_members_is_a_typed_error() {
+        let plain: Vec<u8> = (0u8..=255).cycle().take(400).collect();
+        let (head, tail) = plain.split_at(200);
+        let mut members = compress_page_values(head, CompressionCodec::Gzip).unwrap();
+        members.extend(compress_page_values(tail, CompressionCodec::Gzip).unwrap());
         let err =
-            decompress_page_values(&compressed, CompressionCodec::Gzip, usize::MAX).unwrap_err();
-        assert!(matches!(err, Error::ResourceLimit { .. }), "{err:?}");
+            decompress_page_values(&members, CompressionCodec::Gzip, plain.len()).unwrap_err();
+        assert!(
+            matches!(err, Error::CompressionError { ref message }
+                if message == "gzip page decoded to 200 bytes, declared 400"),
+            "{err:?}"
+        );
     }
 
     #[cfg(feature = "gzip")]

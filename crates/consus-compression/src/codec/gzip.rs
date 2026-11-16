@@ -2,9 +2,10 @@
 //!
 //! Uses the `flate2` crate with gzip framing (RFC 1952).
 //!
-//! ## Zarr Mapping
+//! ## Format Mapping
 //!
-//! Gzip is a Zarr-specific codec and does not correspond to any HDF5 filter ID.
+//! Gzip is the Zarr gzip codec and Parquet's GZIP codec (`CompressionCodec`
+//! number 2); it does not correspond to any HDF5 filter ID.
 //! Compression levels 0–9 map directly to `flate2::Compression` levels.
 //!
 //! ## Invariant
@@ -55,7 +56,7 @@ impl Codec for GzipCodec {
         "gzip"
     }
 
-    /// Returns `None`; gzip is a Zarr-specific codec with no HDF5 filter ID.
+    /// Returns `None`; gzip has no HDF5 filter ID.
     fn hdf5_filter_id(&self) -> Option<u16> {
         None
     }
