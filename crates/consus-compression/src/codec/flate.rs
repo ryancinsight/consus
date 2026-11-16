@@ -54,15 +54,19 @@ impl FlateFraming for ZlibFraming {
 }
 
 /// gzip framing (RFC 1952), used by the Zarr gzip codec and Parquet's GZIP codec.
+///
+/// RFC 1952 section 2.2 defines a gzip file as a series of members, so the
+/// decoder returns the concatenated data of every member; a decoder that stops
+/// after the first member silently truncates the output.
 pub struct GzipFraming;
 
 impl FlateFraming for GzipFraming {
     const LABEL: &'static str = "gzip";
 
-    type Decoder<'a> = flate2::read::GzDecoder<&'a [u8]>;
+    type Decoder<'a> = flate2::read::MultiGzDecoder<&'a [u8]>;
 
     fn decoder(input: &[u8]) -> Self::Decoder<'_> {
-        flate2::read::GzDecoder::new(input)
+        flate2::read::MultiGzDecoder::new(input)
     }
 
     fn ceiling(expected_size: usize, budget: &ParseBudget) -> usize {
