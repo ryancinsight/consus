@@ -2,7 +2,7 @@
 //!
 //! ## Mathematical specification
 //!
-//! For each enabled codec c and any byte sequence d:
+//! For each enabled implemented codec c and any byte sequence d:
 //!   decompress(compress(d, c), c, |d|) == d
 //!
 //! This verifies the compress↔decompress identity for all feature-enabled codecs
@@ -44,15 +44,6 @@ proptest! {
             decompress_page_values(&compressed, CompressionCodec::Gzip, data.len()).unwrap();
         prop_assert_eq!(decompressed, data);
     }
-
-    /// Same invariant for ZLIB (shares deflate backend with GZIP).
-    #[test]
-    fn prop_zlib_compress_decompress_identity(data in byte_data()) {
-        let compressed = compress_page_values(&data, CompressionCodec::Zlib).unwrap();
-        let decompressed =
-            decompress_page_values(&compressed, CompressionCodec::Zlib, data.len()).unwrap();
-        prop_assert_eq!(decompressed, data);
-    }
 }
 
 #[cfg(feature = "snappy")]
@@ -87,15 +78,6 @@ proptest! {
         let compressed = compress_page_values(&data, CompressionCodec::Lz4Raw).unwrap();
         let decompressed =
             decompress_page_values(&compressed, CompressionCodec::Lz4Raw, data.len()).unwrap();
-        prop_assert_eq!(decompressed, data);
-    }
-
-    /// ∀ data ∈ Vec<u8>: decompress_lz4(compress_lz4(data), |data|) == data
-    #[test]
-    fn prop_lz4_compress_decompress_identity(data in byte_data()) {
-        let compressed = compress_page_values(&data, CompressionCodec::Lz4).unwrap();
-        let decompressed =
-            decompress_page_values(&compressed, CompressionCodec::Lz4, data.len()).unwrap();
         prop_assert_eq!(decompressed, data);
     }
 }

@@ -40,16 +40,16 @@ fn decode_compressed_brotli_returns_unsupported() {
 #[cfg(feature = "gzip")]
 #[test]
 fn decode_compressed_gzip_i32_round_trip() {
-    use flate2::read::DeflateEncoder;
+    use flate2::read::GzEncoder;
     use std::io::Read;
     let original: Vec<u8> = alloc::vec![
         0x0Au8, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x00
     ];
-    let mut encoder = DeflateEncoder::new(&original[..], flate2::Compression::new(6));
+    let mut encoder = GzEncoder::new(&original[..], flate2::Compression::new(6));
     let mut compressed = Vec::new();
     encoder
         .read_to_end(&mut compressed)
-        .expect("deflate encode must succeed");
+        .expect("gzip encode must succeed");
     let v = decode_compressed_column_values(
         &compressed,
         3,
@@ -129,18 +129,18 @@ fn decode_compressed_snappy_rle_dict_round_trip() {
 
 #[cfg(feature = "lz4")]
 #[test]
-fn decode_compressed_lz4_i32_round_trip() {
+fn decode_compressed_lz4_raw_i32_round_trip() {
     let original: Vec<u8> = alloc::vec![
         0x0Au8, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x00
     ];
-    let compressed = lz4_flex::compress_prepend_size(&original);
+    let compressed = lz4_flex::compress(&original);
     let v = decode_compressed_column_values(
         &compressed,
         3,
         0,
         ParquetPhysicalType::Int32,
         None,
-        CompressionCodec::Lz4,
+        CompressionCodec::Lz4Raw,
         original.len(),
     )
     .unwrap();

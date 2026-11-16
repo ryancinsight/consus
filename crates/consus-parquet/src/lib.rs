@@ -227,6 +227,7 @@ mod tests {
             Some(CompressionCodec::Uncompressed)
         );
         assert_eq!(CompressionCodec::from_i32(2), Some(CompressionCodec::Gzip));
+        assert_eq!(CompressionCodec::from_i32(6), Some(CompressionCodec::Zstd));
         assert_eq!(CompressionCodec::from_i32(99), None);
     }
 
