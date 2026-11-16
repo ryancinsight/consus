@@ -20,22 +20,33 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   after verification; authentication/publisher registration stay separate.
 
 <a id="consus-parquet-gzip-multimember"></a>
-## CONSUS-PARQUET-GZIP-MULTIMEMBER — Decode every member of a multi-member GZIP page [patch] — todo
+## CONSUS-PARQUET-GZIP-MULTIMEMBER — Typed length error for stored v2 values [patch] — todo
 
 - milestone: M-core-formats
-- outcome: `GzipCodec` decodes every gzip member; a Parquet page whose decoded length differs from
-  `uncompressed_page_size` is a typed error.
-- evidence: `GzipFraming` (`flate.rs:62-65`) wraps `flate2::read::GzDecoder`, which returns `Ok(0)`
-  after one member (locked flate2 1.1.11, `src/gz/read.rs:95-108`); a standalone flate2 1.1.11 probe
-  decodes two 13-byte members to 13 bytes, no error (`MultiGzDecoder`: 26). `column.rs:251` compares no length.
-  apache/parquet-format `Compression.md` (GZIP section, lines 61-63): readers should support
-  pages containing multiple GZIP members.
-- acceptance: a `gzip.rs` test decodes `gz(a) ++ gz(b)` to `a ++ b` (derived to return `a`); a page
-  test with a header size one byte off the decoded length returns the typed error.
-- priority: correctness; needs: none; basis: 21769557a13a64530ba5f07cae0227c617c36f93
-- scope: crates/consus-compression/src/codec/{flate,gzip}.rs, crates/consus-parquet/src/encoding/{column,compression}.rs
-- next step: pin the test, use `MultiGzDecoder<&[u8]>` in `GzipFraming` (it also serves Zarr gzip);
-  add the length check once consus PRs 209 and 210 move Parquet GZIP onto `GzipCodec`.
+- outcome: DataPage v2 values stored as is (UNCOMPRESSED, or `is_compressed = false`) whose length
+  differs from the header size less the level sections are a typed error.
+- evidence (derived from the reader at the basis): stored v2 values do not pass through
+  `decompress_page_values`, so no length is compared for them.
+- acceptance: a v2 page with stored values one byte off the declared size returns the typed error.
+- priority: correctness; needs: none; basis: 5a976d2c9698bd92d520850ba2bcea8cc3aa9a0f
+- scope: crates/consus-parquet/src/reader/page.rs
+- next step: compare the stored length in the v2 values decode of the reader.
+
+<a id="consus-registry-zlib-framing"></a>
+## CONSUS-REGISTRY-ZLIB-FRAMING — Decode zlib-named chunks as RFC 1950 [patch] — todo
+
+- milestone: M-core-formats
+- outcome: the registry name "zlib" decodes RFC 1950 streams, as numcodecs `Zlib` writes them.
+- evidence (derived, not run): `registry/default.rs:69` and `consus-zarr/src/codec/mod.rs:338` map
+  "zlib" to `GzipCodec`; numcodecs `Zlib` emits RFC 1950 framing (first bytes `78`), which fails
+  the gzip ID1/ID2 check. `docs/book/formats.md:81-83` claims two-way Python interoperability.
+- acceptance: a `consus-zarr` test decodes a zlib stream of known bytes through "zlib" to those bytes.
+- compatibility: `consus-zarr` writes "zlib" chunks through the same entry (`codec/mod.rs:338-342`),
+  so chunks already written under "zlib" are gzip-framed and stop decoding once the name maps to RFC 1950.
+- next step: decide whether those chunks stay readable (gzip fallback on `1f 8b`) or are rewritten,
+  then map "zlib" to `DeflateCodec` with `ZlibFraming` in both scope files.
+- priority: correctness; needs: none; basis: 5a976d2c9698bd92d520850ba2bcea8cc3aa9a0f
+- scope: crates/consus-compression/src/registry/default.rs, crates/consus-zarr/src/codec/mod.rs
 
 <a id="consus-ladder-failing-exits"></a>
 ## CONSUS-LADDER-FAILING-EXITS — Give each milestone a failing exit check [patch] — todo
