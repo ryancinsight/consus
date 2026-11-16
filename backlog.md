@@ -19,19 +19,6 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   commands are obsolete. Prepare a new exact-source raster0.3.0 handoff only
   after verification; authentication/publisher registration stay separate.
 
-<a id="consus-parquet-gzip-multimember"></a>
-## CONSUS-PARQUET-GZIP-MULTIMEMBER — Typed length error for stored v2 values [patch] — todo
-
-- milestone: M-core-formats
-- outcome: DataPage v2 values stored as is (UNCOMPRESSED, or `is_compressed = false`) whose length
-  differs from the header size less the level sections are a typed error.
-- evidence (derived from the reader at the basis): stored v2 values do not pass through
-  `decompress_page_values`, so no length is compared for them.
-- acceptance: a v2 page with stored values one byte off the declared size returns the typed error.
-- priority: correctness; needs: none; basis: 5a976d2c9698bd92d520850ba2bcea8cc3aa9a0f
-- scope: crates/consus-parquet/src/reader/page.rs
-- next step: compare the stored length in the v2 values decode of the reader.
-
 <a id="consus-registry-zlib-framing"></a>
 ## CONSUS-REGISTRY-ZLIB-FRAMING — Decode zlib-named chunks as RFC 1950 [patch] — todo
 

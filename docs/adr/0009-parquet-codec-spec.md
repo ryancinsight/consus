@@ -7,7 +7,7 @@
 - Revision 2026-11-15: GZIP reads every member (was first member only), because
   `Compression.md` says readers should support pages with several members
   (consus#215); the decoded length of every codec must equal the declared size
-  (consus#216).
+  (consus#216, consus#218).
 
 ## Context
 
@@ -34,18 +34,19 @@ revision, `Compression.md` lines 54-63 define GZIP as RFC 1952,
    `decompress_page_values` returns the page only when its decoded length
    equals the declared size, so a page is never returned truncated or padded.
    The declared size is the header `uncompressed_page_size`, less the level
-   sections for compressed DataPage v2 values (zero when the header is
-   smaller). A declared size above the shared allocation budget is
-   `ResourceLimit` for every codec, before any data is decoded; ZSTD decodes
-   into a buffer 64 bytes larger than the declared size, so for ZSTD the
-   budget applies to the declared size plus 64. With a declared size within
-   the budget, decoded output above the budget is `ResourceLimit` for
-   UNCOMPRESSED, SNAPPY (the length its stream states) and GZIP, and
-   `CompressionError` for ZSTD and LZ4_RAW, whose output limit is the
-   declared size. Any other length that differs from the declared size is
-   `CompressionError`. DataPage v2 values stored as is (UNCOMPRESSED, or
-   `is_compressed = false`) do not pass through that function and are not
-   compared.
+   sections for DataPage v2 values. A declared size above the shared
+   allocation budget is `ResourceLimit` for every codec, before any data is
+   decoded; ZSTD decodes into a buffer 64 bytes larger than the declared
+   size, so for ZSTD the budget applies to the declared size plus 64. With a
+   declared size within the budget, decoded output above the budget is
+   `ResourceLimit` for UNCOMPRESSED, SNAPPY (the length its stream states)
+   and GZIP, and `CompressionError` for ZSTD and LZ4_RAW, whose output limit
+   is the declared size. Any other length that differs from the declared
+   size is `CompressionError`. DataPage v2 values stored as is
+   (UNCOMPRESSED, or `is_compressed = false`) do not pass through that
+   function: they are only compared with the declared size, so a difference
+   is `CompressionError` whatever its size. A DataPage v2 header smaller
+   than its level sections is `InvalidFormat`.
 3. LZO, BROTLI and the deprecated LZ4 return `UnsupportedFeature` in both
    directions. The former LZ4 (`lz4_flex` size-prepended blocks) matched no
    specified framing, so it is removed rather than renumbered. LZ4_RAW is the
@@ -74,35 +75,38 @@ unaffected, since its writer declares the payload length. GZIP streams with
 bytes after the last member, as in Zarr gzip chunks, now fail with
 `CompressionError`.
 
-Pages from other writers whose payload decodes to a length other than their
-declared size now fail with a typed error, except DataPage v2 values stored as
-is, which are not compared; readers that ignore the field accepted them. The
-declared size is the header `uncompressed_page_size`, less the level sections
-for compressed DataPage v2 values. A compressed DataPage v2 header smaller
-than its level sections declares size zero, so a values section that decodes
-to no bytes is accepted. The variant depends on the page:
+Pages from other writers whose header `uncompressed_page_size` disagrees with
+the payload now fail with a typed error; readers that ignore the field
+accepted them. The declared size is the header `uncompressed_page_size`, less
+the level sections for DataPage v2 values. The variant depends on the page:
 
 - `ResourceLimit`: on a page read through `decompress_page_values`, a
   declared size above the shared allocation budget (for ZSTD, above the
-  budget less 64 bytes), or, with a declared size within the budget, decoded
-  output above the budget under UNCOMPRESSED, SNAPPY or GZIP.
+  budget less 64 bytes), or, with a declared size within the budget,
+  decoded output above the budget under UNCOMPRESSED, SNAPPY or GZIP. For
+  compressed DataPage v2 values behind `L` level bytes the declared size
+  is the header less `L`, so the first such header is above the budget
+  plus `L` (ZSTD: plus `L` less 64).
 - `CompressionError`: a dictionary page, a DataPage v1 page (any codec,
   UNCOMPRESSED included) or DataPage v2 values compressed under any other
   codec, read through `decompress_page_values`, decodes to another length
   than the declared size and the previous bullet does not apply (ZSTD and
   LZ4_RAW fail inside the codec with its own message when the output exceeds
-  the declared size).
+  the declared size); or DataPage v2 values stored as is (UNCOMPRESSED, or
+  `is_compressed = false`) differ from the declared size, at any size.
+- `InvalidFormat`: a DataPage v2 header smaller than its level sections.
 - Index pages are skipped without comparing the declared size.
 
 ## Evidence
 
 Unit tests assert each specified number, the `1f 8b 08` gzip header, rejection
 of bare DEFLATE, a two-member GZIP page decoded in full, a declared size one
-byte off the decoded length for every supported codec, decoded output above
+byte off the decoded length for every supported codec (DataPage v2 pages
+with stored values and with level sections included), decoded output above
 the budget under a small declared size for every codec, ZSTD pages of several
-frames and at the budget edge, and the codec number stored in column chunk
-metadata for every supported codec. Two pyarrow 23.0.1 files (GZIP, ZSTD)
-generated by
+frames and at the budget edge, the budget boundary behind four level bytes,
+and the codec number stored in column chunk metadata for every supported
+codec. Two pyarrow 23.0.1 files (GZIP, ZSTD) generated by
 `crates/consus-parquet/tests/data/gen_codec_fixtures.py` decode to the written
 values with codec numbers 2 and 6.
 
