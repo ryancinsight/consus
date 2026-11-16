@@ -74,12 +74,13 @@ unaffected, since its writer declares the payload length. GZIP streams with
 bytes after the last member, as in Zarr gzip chunks, now fail with
 `CompressionError`.
 
-Pages from other writers whose header `uncompressed_page_size` disagrees with
-the payload now fail with a typed error, except DataPage v2 values stored as
+Pages from other writers whose payload decodes to a length other than their
+declared size now fail with a typed error, except DataPage v2 values stored as
 is, which are not compared; readers that ignore the field accepted them. The
 declared size is the header `uncompressed_page_size`, less the level sections
-for compressed DataPage v2 values (zero when the header is smaller). The
-variant depends on the page:
+for compressed DataPage v2 values. A compressed DataPage v2 header smaller
+than its level sections declares size zero, so a values section that decodes
+to no bytes is accepted. The variant depends on the page:
 
 - `ResourceLimit`: on a page read through `decompress_page_values`, a
   declared size above the shared allocation budget (for ZSTD, above the
