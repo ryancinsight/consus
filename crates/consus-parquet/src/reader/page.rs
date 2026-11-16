@@ -17,8 +17,8 @@ use crate::encoding::column::{
 };
 use crate::encoding::compression::{CompressionCodec, decompress_page_values};
 use crate::schema::physical::ParquetPhysicalType;
-use crate::wire::page::{PageHeader, PageType, decode_page_header};
-use crate::wire::payload::{split_data_page_v1, split_data_page_v2};
+use crate::wire::page::{DataPageHeaderV2, PageHeader, PageType, decode_page_header};
+use crate::wire::payload::{PagePayload, split_data_page_v1, split_data_page_v2};
 
 /// Advances over one page header and returns its bounded payload.
 ///
@@ -292,42 +292,8 @@ impl ColumnPageDecoder {
                         self.max_rep_level,
                         self.max_def_level,
                     )?;
-                    // is_compressed defaults true per spec when absent; UNCOMPRESSED codec
-                    // short-circuits to a copy so the compressed path is always safe.
-                    let non_null_v2 = if self.max_def_level > 0 && !payload.def_levels.is_empty() {
-                        payload
-                            .def_levels
-                            .iter()
-                            .filter(|&&d| d == self.max_def_level)
-                            .count()
-                    } else {
-                        payload.num_values as usize
-                    };
-                    let is_compressed = v2.is_compressed.unwrap_or(true)
-                        && self.codec != CompressionCodec::Uncompressed;
-                    let values = if is_compressed {
-                        let levels_len = (v2.repetition_levels_byte_length
-                            + v2.definition_levels_byte_length)
-                            as usize;
-                        let values_uncomp = uncompressed_sz.saturating_sub(levels_len);
-                        decode_compressed_column_values(
-                            payload.values_bytes,
-                            non_null_v2,
-                            v2.encoding,
-                            self.physical_type,
-                            self.dictionary.as_ref(),
-                            self.codec,
-                            values_uncomp,
-                        )?
-                    } else {
-                        decode_column_values(
-                            payload.values_bytes,
-                            non_null_v2,
-                            v2.encoding,
-                            self.physical_type,
-                            self.dictionary.as_ref(),
-                        )?
-                    };
+                    let values =
+                        self.decode_v2_values(page_bytes, uncompressed_sz, &v2, &payload)?;
                     parts.push(values);
                 }
 
@@ -420,40 +386,8 @@ impl ColumnPageDecoder {
                     )?;
                     all_rep.extend_from_slice(&payload.rep_levels);
                     all_def.extend_from_slice(&payload.def_levels);
-                    let non_null_v2 = if self.max_def_level > 0 && !payload.def_levels.is_empty() {
-                        payload
-                            .def_levels
-                            .iter()
-                            .filter(|&&d| d == self.max_def_level)
-                            .count()
-                    } else {
-                        payload.num_values as usize
-                    };
-                    let is_compressed = v2.is_compressed.unwrap_or(true)
-                        && self.codec != CompressionCodec::Uncompressed;
-                    let values = if is_compressed {
-                        let levels_len = (v2.repetition_levels_byte_length
-                            + v2.definition_levels_byte_length)
-                            as usize;
-                        let values_uncomp = uncompressed_sz.saturating_sub(levels_len);
-                        decode_compressed_column_values(
-                            payload.values_bytes,
-                            non_null_v2,
-                            v2.encoding,
-                            self.physical_type,
-                            self.dictionary.as_ref(),
-                            self.codec,
-                            values_uncomp,
-                        )?
-                    } else {
-                        decode_column_values(
-                            payload.values_bytes,
-                            non_null_v2,
-                            v2.encoding,
-                            self.physical_type,
-                            self.dictionary.as_ref(),
-                        )?
-                    };
+                    let values =
+                        self.decode_v2_values(page_bytes, uncompressed_sz, &v2, &payload)?;
                     parts.push(values);
                 }
 
@@ -469,5 +403,52 @@ impl ColumnPageDecoder {
             max_rep_level: self.max_rep_level,
             max_def_level: self.max_def_level,
         })
+    }
+
+    /// Decode the values section of a DataPage v2 page.
+    ///
+    /// `uncompressed_sz` is the page header's declared size, which covers the
+    /// level sections.
+    fn decode_v2_values(
+        &self,
+        page_bytes: &[u8],
+        uncompressed_sz: usize,
+        v2: &DataPageHeaderV2,
+        payload: &PagePayload<'_>,
+    ) -> Result<ColumnValues> {
+        let non_null = if self.max_def_level > 0 && !payload.def_levels.is_empty() {
+            payload
+                .def_levels
+                .iter()
+                .filter(|&&d| d == self.max_def_level)
+                .count()
+        } else {
+            usize::try_from(payload.num_values).map_err(|_| Error::InvalidFormat {
+                message: String::from("parquet: DataPageV2 num_values must be non-negative"),
+            })?
+        };
+        // `values_bytes` is the suffix of `page_bytes` that follows the levels.
+        let levels_len = page_bytes.len().saturating_sub(payload.values_bytes.len());
+        let values_declared = uncompressed_sz.saturating_sub(levels_len);
+        // `is_compressed` defaults to true when absent.
+        if v2.is_compressed.unwrap_or(true) && self.codec != CompressionCodec::Uncompressed {
+            decode_compressed_column_values(
+                payload.values_bytes,
+                non_null,
+                v2.encoding,
+                self.physical_type,
+                self.dictionary.as_ref(),
+                self.codec,
+                values_declared,
+            )
+        } else {
+            decode_column_values(
+                payload.values_bytes,
+                non_null,
+                v2.encoding,
+                self.physical_type,
+                self.dictionary.as_ref(),
+            )
+        }
     }
 }
