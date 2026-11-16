@@ -78,9 +78,9 @@ impl CompressionCodec {
     }
 }
 
-/// Error for a codec this crate has no implementation of (LZO, BROTLI, LZ4).
-fn unsupported_codec(codec: CompressionCodec) -> Error {
-    let name = match codec {
+/// Parquet name of `codec` as written in `CompressionCodec` of `parquet.thrift`.
+const fn codec_name(codec: CompressionCodec) -> &'static str {
+    match codec {
         CompressionCodec::Uncompressed => "UNCOMPRESSED",
         CompressionCodec::Snappy => "SNAPPY",
         CompressionCodec::Gzip => "GZIP",
@@ -89,9 +89,17 @@ fn unsupported_codec(codec: CompressionCodec) -> Error {
         CompressionCodec::Lz4 => "LZ4",
         CompressionCodec::Zstd => "ZSTD",
         CompressionCodec::Lz4Raw => "LZ4_RAW",
-    };
+    }
+}
+
+/// Error for a codec this crate has no implementation of (LZO, BROTLI, LZ4).
+fn unsupported_codec(codec: CompressionCodec) -> Error {
     Error::UnsupportedFeature {
-        feature: format!("parquet compression codec {} ({name})", codec.to_i32()),
+        feature: format!(
+            "parquet compression codec {} ({})",
+            codec.to_i32(),
+            codec_name(codec)
+        ),
     }
 }
 
@@ -188,17 +196,41 @@ pub(crate) fn compress_page_values(data: &[u8], codec: CompressionCodec) -> Resu
 
 /// Decompress page value bytes according to the Parquet compression codec.
 ///
-/// `uncompressed_size` is the expected decompressed size, used as a capacity
-/// hint for allocators and as a required parameter for some codecs (zstd, lz4).
+/// `uncompressed_size` is the size the page header declares. It bounds the
+/// output allocation through the shared [`ParseBudget`] and is a required
+/// parameter for some codecs (zstd, lz4). The decoded length must equal it for
+/// every codec; the header is untrusted, so a page that decodes to any other
+/// length is refused, never returned truncated or padded.
 ///
 /// # Errors
 ///
 /// - `Error::UnsupportedFeature` — codec is not implemented (LZO, BROTLI, LZ4)
 ///   or the corresponding feature flag is not enabled.
+/// - `Error::ResourceLimit` — `uncompressed_size` or the decoded output
+///   exceeds the shared budget.
 /// - `Error::CompressionError` — the compressed data is malformed,
-///   decompression fails, or a GZIP page decodes to a length other than
+///   decompression fails, or the page decodes to a length other than
 ///   `uncompressed_size`.
 pub fn decompress_page_values(
+    data: &[u8],
+    codec: CompressionCodec,
+    uncompressed_size: usize,
+) -> Result<Vec<u8>> {
+    let output = decode_page_bytes(data, codec, uncompressed_size)?;
+    if output.len() != uncompressed_size {
+        return Err(Error::CompressionError {
+            message: format!(
+                "{} page decoded to {} bytes, declared {uncompressed_size}",
+                codec_name(codec),
+                output.len()
+            ),
+        });
+    }
+    Ok(output)
+}
+
+/// Decode `data` under `codec`, bounded by the declared `uncompressed_size`.
+fn decode_page_bytes(
     data: &[u8],
     codec: CompressionCodec,
     uncompressed_size: usize,
@@ -210,17 +242,7 @@ pub fn decompress_page_values(
             #[cfg(feature = "gzip")]
             {
                 let limit = checked_output_size(uncompressed_size)?;
-                let output = GzipCodec.decompress(data, limit)?;
-                // The page header's size is untrusted; the decoded length must match it.
-                if output.len() != uncompressed_size {
-                    return Err(Error::CompressionError {
-                        message: format!(
-                            "gzip page decoded to {} bytes, declared {uncompressed_size}",
-                            output.len()
-                        ),
-                    });
-                }
-                Ok(output)
+                GzipCodec.decompress(data, limit)
             }
             #[cfg(not(feature = "gzip"))]
             {
@@ -488,8 +510,58 @@ mod tests {
                 decompress_page_values(&members, CompressionCodec::Gzip, declared).unwrap_err();
             assert!(
                 matches!(err, Error::CompressionError { ref message }
-                    if *message == format!("gzip page decoded to 400 bytes, declared {declared}")),
+                    if *message == format!("GZIP page decoded to 400 bytes, declared {declared}")),
                 "{declared}: {err:?}"
+            );
+        }
+    }
+
+    /// The declared size must equal the decoded length for every codec, in
+    /// both directions. Zstd and LZ4_RAW decode into a buffer sized from the
+    /// declaration, so a too-small declaration fails inside the codec; every
+    /// other refusal is the shared length error.
+    #[test]
+    fn decompress_size_off_by_one_is_a_typed_error_for_every_codec() {
+        let plain: Vec<u8> = (0u8..=255).cycle().take(400).collect();
+        let mut codecs = alloc::vec![CompressionCodec::Uncompressed];
+        #[cfg(feature = "snappy")]
+        codecs.push(CompressionCodec::Snappy);
+        #[cfg(feature = "gzip")]
+        codecs.push(CompressionCodec::Gzip);
+        #[cfg(feature = "zstd")]
+        codecs.push(CompressionCodec::Zstd);
+        #[cfg(feature = "lz4")]
+        codecs.push(CompressionCodec::Lz4Raw);
+
+        for codec in codecs {
+            let name = codec_name(codec);
+            let page = compress_page_values(&plain, codec).unwrap();
+            assert_eq!(
+                decompress_page_values(&page, codec, plain.len()).unwrap(),
+                plain,
+                "{name}"
+            );
+
+            let too_large = decompress_page_values(&page, codec, plain.len() + 1).unwrap_err();
+            assert!(
+                matches!(too_large, Error::CompressionError { ref message }
+                    if *message == format!("{name} page decoded to 400 bytes, declared 401")),
+                "{name}: {too_large:?}"
+            );
+
+            let too_small = decompress_page_values(&page, codec, plain.len() - 1).unwrap_err();
+            let native_prefix = match codec {
+                CompressionCodec::Zstd => Some("zstd decompress failed"),
+                CompressionCodec::Lz4Raw => Some("lz4_raw decompress failed"),
+                _ => None,
+            };
+            assert!(
+                matches!(too_small, Error::CompressionError { ref message }
+                if native_prefix.map_or(
+                    *message == format!("{name} page decoded to 400 bytes, declared 399"),
+                    |prefix| message.starts_with(prefix),
+                )),
+                "{name}: {too_small:?}"
             );
         }
     }

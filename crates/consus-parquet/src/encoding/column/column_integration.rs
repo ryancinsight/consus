@@ -102,7 +102,7 @@ fn decode_compressed_gzip_two_members_and_size_mismatch() {
         .unwrap_err();
         assert!(
             matches!(err, consus_core::Error::CompressionError { ref message }
-                if *message == format!("gzip page decoded to 12 bytes, declared {declared}")),
+                if *message == format!("GZIP page decoded to 12 bytes, declared {declared}")),
             "{declared}: {err:?}"
         );
     }
