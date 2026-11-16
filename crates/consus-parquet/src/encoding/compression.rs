@@ -197,7 +197,7 @@ pub(crate) fn compress_page_values(data: &[u8], codec: CompressionCodec) -> Resu
 /// Bytes `zrip-decode` 0.8.13 reserves past its output limit (`WILDCOPY_OVERLENGTH`,
 /// `fast_vec.rs:7`), so the buffer for a ZSTD page is the declared size plus these.
 #[cfg(feature = "zstd")]
-const ZSTD_OVERLENGTH: usize = 64;
+pub(crate) const ZSTD_OVERLENGTH: usize = 64;
 
 /// Decompress page value bytes according to the Parquet compression codec.
 ///
@@ -248,16 +248,25 @@ pub fn decompress_page_values(
 ) -> Result<Vec<u8>> {
     checked_output_size(uncompressed_size)?;
     let output = decode_page_bytes(data, codec, uncompressed_size)?;
-    if output.len() != uncompressed_size {
-        return Err(Error::CompressionError {
-            message: format!(
-                "{} page decoded to {} bytes, declared {uncompressed_size}",
-                codec_name(codec),
-                output.len()
-            ),
-        });
-    }
+    check_decoded_length(codec, output.len(), uncompressed_size)?;
     Ok(output)
+}
+
+/// Refuses a page whose decoded length differs from the length its header declares.
+pub(crate) fn check_decoded_length(
+    codec: CompressionCodec,
+    decoded: usize,
+    declared: usize,
+) -> Result<()> {
+    if decoded == declared {
+        return Ok(());
+    }
+    Err(Error::CompressionError {
+        message: format!(
+            "{} page decoded to {decoded} bytes, declared {declared}",
+            codec_name(codec)
+        ),
+    })
 }
 
 /// Decode `data` under `codec`; `uncompressed_size` is already within the budget.

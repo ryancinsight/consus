@@ -15,7 +15,9 @@ use crate::encoding::column::{
     ColumnValues, ColumnValuesWithLevels, decode_column_values, decode_compressed_column_values,
     decode_dictionary_page,
 };
-use crate::encoding::compression::{CompressionCodec, decompress_page_values};
+use crate::encoding::compression::{
+    CompressionCodec, check_decoded_length, decompress_page_values,
+};
 use crate::schema::physical::ParquetPhysicalType;
 use crate::wire::page::{DataPageHeaderV2, PageHeader, PageType, decode_page_header};
 use crate::wire::payload::{PagePayload, split_data_page_v1, split_data_page_v2};
@@ -408,7 +410,8 @@ impl ColumnPageDecoder {
     /// Decode the values section of a DataPage v2 page.
     ///
     /// `uncompressed_sz` is the page header's declared size, which covers the
-    /// level sections.
+    /// level sections. The values section must decode to exactly the declared
+    /// size less the levels, whether it is compressed or stored as is.
     fn decode_v2_values(
         &self,
         page_bytes: &[u8],
@@ -428,8 +431,15 @@ impl ColumnPageDecoder {
             })?
         };
         // `values_bytes` is the suffix of `page_bytes` that follows the levels.
-        let levels_len = page_bytes.len().saturating_sub(payload.values_bytes.len());
-        let values_declared = uncompressed_sz.saturating_sub(levels_len);
+        let values_declared = page_bytes
+            .len()
+            .checked_sub(payload.values_bytes.len())
+            .and_then(|levels_len| uncompressed_sz.checked_sub(levels_len))
+            .ok_or_else(|| Error::InvalidFormat {
+                message: String::from(
+                    "parquet: DataPageV2 uncompressed_page_size is smaller than its levels",
+                ),
+            })?;
         // `is_compressed` defaults to true when absent.
         if v2.is_compressed.unwrap_or(true) && self.codec != CompressionCodec::Uncompressed {
             decode_compressed_column_values(
@@ -442,6 +452,11 @@ impl ColumnPageDecoder {
                 values_declared,
             )
         } else {
+            check_decoded_length(
+                CompressionCodec::Uncompressed,
+                payload.values_bytes.len(),
+                values_declared,
+            )?;
             decode_column_values(
                 payload.values_bytes,
                 non_null,
