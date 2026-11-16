@@ -6,66 +6,98 @@
 //!
 //! ## Codec mapping
 //!
-//! | Discriminant | Parquet name | Rust feature | Backend |
-//! |--------------|-------------|-------------|---------|
+//! Numbers: `CompressionCodec` in apache/parquet-format `parquet.thrift`, lines 684-693.
+//!
+//! | Number | Parquet name | Rust feature | Backend |
+//! |--------|--------------|--------------|---------|
 //! | 0 | UNCOMPRESSED | (always) | pass-through |
 //! | 1 | SNAPPY | `snappy` | `snap` crate |
-//! | 2 | GZIP | `gzip` | `RawDeflateCodec` (compress), `flate2::read::DeflateDecoder` (decompress) |
-//! | 3 | LZ4_RAW | `lz4` | `lz4_flex::decompress` (raw block) |
-//! | 4 | ZSTD | `zstd` | `zrip::decompress_with_limit` |
-//! | 5 | LZ4 | `lz4` | `lz4_flex::decompress_size_prepended` |
-//! | 6 | BROTLI | (none) | always `UnsupportedFeature` |
-//! | 7 | ZLIB | `gzip` | `RawDeflateCodec` (compress), `flate2::read::DeflateDecoder` (decompress) |
+//! | 2 | GZIP | `gzip` | `GzipCodec` of `consus-compression` (RFC 1952) |
+//! | 3 | LZO | (none) | always `UnsupportedFeature` |
+//! | 4 | BROTLI | (none) | always `UnsupportedFeature` |
+//! | 5 | LZ4 | (none) | always `UnsupportedFeature` (deprecated framing) |
+//! | 6 | ZSTD | `zstd` | `zrip::decompress_with_limit` |
+//! | 7 | LZ4_RAW | `lz4` | `lz4_flex::decompress` (raw block) |
 
-use alloc::{format, string::String, vec::Vec};
+#[cfg(not(all(
+    feature = "gzip",
+    feature = "snappy",
+    feature = "zstd",
+    feature = "lz4"
+)))]
+use alloc::string::String;
+use alloc::{format, vec::Vec};
 
 #[cfg(feature = "gzip")]
-use consus_compression::{Codec, CompressionLevel, codec::raw_deflate::RawDeflateCodec};
+use consus_compression::{Codec, CompressionLevel, codec::gzip::GzipCodec};
 use consus_core::{Error, ParseBudget, Result};
 
-/// Parquet compression codec, discriminant matches thrift `CompressionCodec`.
+/// Parquet compression codec; [`Self::to_i32`] gives the thrift `CompressionCodec` number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompressionCodec {
-    Uncompressed = 0,
-    Snappy = 1,
-    Gzip = 2,
-    Lz4Raw = 3,
-    Zstd = 4,
-    Lz4 = 5,
-    Brotli = 6,
-    Zlib = 7,
+    Uncompressed,
+    Snappy,
+    Gzip,
+    Lzo,
+    Brotli,
+    Lz4,
+    Zstd,
+    Lz4Raw,
 }
 
 impl CompressionCodec {
     /// Convert an i32 discriminant to a `CompressionCodec`.
     ///
-    /// Returns `None` for values outside the range 0..=7.
-    pub fn from_i32(v: i32) -> Option<Self> {
+    /// Returns `None` for values outside the specified range 0..=7.
+    pub const fn from_i32(v: i32) -> Option<Self> {
         match v {
             0 => Some(Self::Uncompressed),
             1 => Some(Self::Snappy),
             2 => Some(Self::Gzip),
-            3 => Some(Self::Lz4Raw),
-            4 => Some(Self::Zstd),
+            3 => Some(Self::Lzo),
+            4 => Some(Self::Brotli),
             5 => Some(Self::Lz4),
-            6 => Some(Self::Brotli),
-            7 => Some(Self::Zlib),
+            6 => Some(Self::Zstd),
+            7 => Some(Self::Lz4Raw),
             _ => None,
         }
+    }
+
+    /// The thrift `CompressionCodec` number written to column chunk metadata.
+    pub const fn to_i32(self) -> i32 {
+        match self {
+            Self::Uncompressed => 0,
+            Self::Snappy => 1,
+            Self::Gzip => 2,
+            Self::Lzo => 3,
+            Self::Brotli => 4,
+            Self::Lz4 => 5,
+            Self::Zstd => 6,
+            Self::Lz4Raw => 7,
+        }
+    }
+}
+
+/// Error for a codec this crate has no implementation of (LZO, BROTLI, LZ4).
+fn unsupported_codec(codec: CompressionCodec) -> Error {
+    let name = match codec {
+        CompressionCodec::Lzo => "LZO",
+        CompressionCodec::Brotli => "BROTLI",
+        _ => "LZ4",
+    };
+    Error::UnsupportedFeature {
+        feature: format!("parquet compression codec {} ({name})", codec.to_i32()),
     }
 }
 
 /// Compress page value bytes using the given Parquet compression codec.
 ///
 /// UNCOMPRESSED: returns `data.to_vec()` (pass-through, no error).
-/// GZIP / ZLIB: raw deflate via
-///              `consus_compression::codec::raw_deflate::RawDeflateCodec`.
-///              Level: `CompressionLevel::default()` (6).
+/// GZIP: one RFC 1952 member via `GzipCodec` at the default level (6).
 /// SNAPPY: `snap::raw::Encoder::new().compress_vec(data)`.
 /// ZSTD: `zrip::compress(data, 3)`.
 /// LZ4_RAW: `lz4_flex::compress(data)`.
-/// LZ4: `lz4_flex::compress_prepend_size(data)`.
-/// BROTLI: always returns `Error::UnsupportedFeature { feature: "parquet compression codec BROTLI (6)" }`.
+/// LZO, BROTLI, LZ4 (deprecated framing): always `Error::UnsupportedFeature`.
 ///
 /// Feature gating matches `decompress_page_values`: same `#[cfg(feature = "gzip")]` etc.
 /// If the feature is not enabled, returns `Error::UnsupportedFeature` with an actionable message.
@@ -73,23 +105,17 @@ pub(crate) fn compress_page_values(data: &[u8], codec: CompressionCodec) -> Resu
     match codec {
         CompressionCodec::Uncompressed => Ok(data.to_vec()),
 
-        CompressionCodec::Gzip | CompressionCodec::Zlib => {
+        CompressionCodec::Gzip => {
             #[cfg(feature = "gzip")]
             {
-                RawDeflateCodec.compress(data, CompressionLevel::default())
+                GzipCodec.compress(data, CompressionLevel::default())
             }
             #[cfg(not(feature = "gzip"))]
             {
                 let _ = data;
                 Err(Error::UnsupportedFeature {
-                    feature: format!(
-                        "parquet compression codec {} ({}) — enable feature 'gzip'",
-                        codec as i32,
-                        match codec {
-                            CompressionCodec::Gzip => "GZIP",
-                            CompressionCodec::Zlib => "ZLIB",
-                            _ => unreachable!(),
-                        }
+                    feature: String::from(
+                        "parquet compression codec 2 (GZIP) — enable feature 'gzip'",
                     ),
                 })
             }
@@ -127,7 +153,7 @@ pub(crate) fn compress_page_values(data: &[u8], codec: CompressionCodec) -> Resu
                 let _ = data;
                 Err(Error::UnsupportedFeature {
                     feature: String::from(
-                        "parquet compression codec 4 (ZSTD) — enable feature 'zstd'",
+                        "parquet compression codec 6 (ZSTD) — enable feature 'zstd'",
                     ),
                 })
             }
@@ -143,33 +169,14 @@ pub(crate) fn compress_page_values(data: &[u8], codec: CompressionCodec) -> Resu
                 let _ = data;
                 Err(Error::UnsupportedFeature {
                     feature: String::from(
-                        "parquet compression codec 3 (LZ4_RAW) — enable feature 'lz4'",
+                        "parquet compression codec 7 (LZ4_RAW) — enable feature 'lz4'",
                     ),
                 })
             }
         }
 
-        CompressionCodec::Lz4 => {
-            #[cfg(feature = "lz4")]
-            {
-                Ok(lz4_flex::compress_prepend_size(data))
-            }
-            #[cfg(not(feature = "lz4"))]
-            {
-                let _ = data;
-                Err(Error::UnsupportedFeature {
-                    feature: String::from(
-                        "parquet compression codec 5 (LZ4) — enable feature 'lz4'",
-                    ),
-                })
-            }
-        }
-
-        CompressionCodec::Brotli => {
-            let _ = data;
-            Err(Error::UnsupportedFeature {
-                feature: String::from("parquet compression codec BROTLI (6)"),
-            })
+        CompressionCodec::Lzo | CompressionCodec::Brotli | CompressionCodec::Lz4 => {
+            Err(unsupported_codec(codec))
         }
     }
 }
@@ -193,23 +200,18 @@ pub fn decompress_page_values(
     match codec {
         CompressionCodec::Uncompressed => copy_bounded(data),
 
-        CompressionCodec::Gzip | CompressionCodec::Zlib => {
+        CompressionCodec::Gzip => {
             #[cfg(feature = "gzip")]
             {
-                decompress_deflate(data, uncompressed_size)
+                let limit = checked_output_size(uncompressed_size)?;
+                GzipCodec.decompress(data, limit)
             }
             #[cfg(not(feature = "gzip"))]
             {
                 let _ = (data, uncompressed_size);
                 Err(Error::UnsupportedFeature {
-                    feature: format!(
-                        "parquet compression codec {} ({}) — enable feature 'gzip'",
-                        codec as i32,
-                        match codec {
-                            CompressionCodec::Gzip => "GZIP",
-                            CompressionCodec::Zlib => "ZLIB",
-                            _ => unreachable!(),
-                        }
+                    feature: String::from(
+                        "parquet compression codec 2 (GZIP) — enable feature 'gzip'",
                     ),
                 })
             }
@@ -258,7 +260,7 @@ pub fn decompress_page_values(
                 let _ = (data, uncompressed_size);
                 Err(Error::UnsupportedFeature {
                     feature: String::from(
-                        "parquet compression codec 4 (ZSTD) — enable feature 'zstd'",
+                        "parquet compression codec 6 (ZSTD) — enable feature 'zstd'",
                     ),
                 })
             }
@@ -285,71 +287,17 @@ pub fn decompress_page_values(
                 let _ = (data, uncompressed_size);
                 Err(Error::UnsupportedFeature {
                     feature: String::from(
-                        "parquet compression codec 3 (LZ4_RAW) — enable feature 'lz4'",
+                        "parquet compression codec 7 (LZ4_RAW) — enable feature 'lz4'",
                     ),
                 })
             }
         }
 
-        CompressionCodec::Lz4 => {
-            #[cfg(feature = "lz4")]
-            {
-                let (decoded_size, payload) =
-                    lz4_flex::block::uncompressed_size(data).map_err(|e| {
-                        Error::CompressionError {
-                            message: format!("lz4 header decode failed: {e}"),
-                        }
-                    })?;
-                let mut output = ParseBudget::default().zeroed(
-                    u64::try_from(decoded_size).map_err(|_| Error::Overflow)?,
-                    "decompressed output",
-                )?;
-                let written =
-                    lz4_flex::block::decompress_into(payload, &mut output).map_err(|e| {
-                        Error::CompressionError {
-                            message: format!("lz4 decompress failed: {e}"),
-                        }
-                    })?;
-                output.truncate(written);
-                Ok(output)
-            }
-            #[cfg(not(feature = "lz4"))]
-            {
-                let _ = (data, uncompressed_size);
-                Err(Error::UnsupportedFeature {
-                    feature: String::from(
-                        "parquet compression codec 5 (LZ4) — enable feature 'lz4'",
-                    ),
-                })
-            }
-        }
-
-        CompressionCodec::Brotli => {
+        CompressionCodec::Lzo | CompressionCodec::Brotli | CompressionCodec::Lz4 => {
             let _ = (data, uncompressed_size);
-            Err(Error::UnsupportedFeature {
-                feature: String::from("parquet compression codec BROTLI (6)"),
-            })
+            Err(unsupported_codec(codec))
         }
     }
-}
-
-/// Raw deflate decompression using `flate2::read::DeflateDecoder`.
-///
-/// Parquet codec 2 (GZIP) and codec 7 (ZLIB) both use raw deflate,
-/// NOT gzip framing, as defined in the Parquet specification.
-#[cfg(feature = "gzip")]
-fn decompress_deflate(data: &[u8], uncompressed_size: usize) -> Result<Vec<u8>> {
-    use flate2::read::DeflateDecoder;
-
-    let mut decoder = DeflateDecoder::new(data);
-    ParseBudget::default()
-        .read_bounded(&mut decoder, uncompressed_size, "decompressed output")
-        .map_err(|error| match error {
-            Error::Io(error) => Error::CompressionError {
-                message: format!("deflate decompress failed: {error}"),
-            },
-            error => error,
-        })
 }
 
 fn checked_output_size(size: usize) -> Result<usize> {
@@ -373,29 +321,26 @@ fn copy_bounded(data: &[u8]) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
 
+    /// Rows of `CompressionCodec` in parquet.thrift lines 684-693 of
+    /// apache/parquet-format.
     #[test]
-    fn compression_codec_from_i32_all_known_discriminants() {
-        assert_eq!(
-            CompressionCodec::from_i32(0),
-            Some(CompressionCodec::Uncompressed)
-        );
-        assert_eq!(
-            CompressionCodec::from_i32(1),
-            Some(CompressionCodec::Snappy)
-        );
-        assert_eq!(CompressionCodec::from_i32(2), Some(CompressionCodec::Gzip));
-        assert_eq!(
-            CompressionCodec::from_i32(3),
-            Some(CompressionCodec::Lz4Raw)
-        );
-        assert_eq!(CompressionCodec::from_i32(4), Some(CompressionCodec::Zstd));
-        assert_eq!(CompressionCodec::from_i32(5), Some(CompressionCodec::Lz4));
-        assert_eq!(
-            CompressionCodec::from_i32(6),
-            Some(CompressionCodec::Brotli)
-        );
-        assert_eq!(CompressionCodec::from_i32(7), Some(CompressionCodec::Zlib));
-        assert_eq!(CompressionCodec::from_i32(99), None);
+    fn codec_numbers_match_parquet_thrift() {
+        for (number, codec) in [
+            (0, CompressionCodec::Uncompressed),
+            (1, CompressionCodec::Snappy),
+            (2, CompressionCodec::Gzip),
+            (3, CompressionCodec::Lzo),
+            (4, CompressionCodec::Brotli),
+            (5, CompressionCodec::Lz4),
+            (6, CompressionCodec::Zstd),
+            (7, CompressionCodec::Lz4Raw),
+        ] {
+            assert_eq!(CompressionCodec::from_i32(number), Some(codec));
+            assert_eq!(codec.to_i32(), number);
+        }
+        for number in [-1, 8, 99, i32::MIN, i32::MAX] {
+            assert_eq!(CompressionCodec::from_i32(number), None, "{number}");
+        }
     }
 
     #[test]
@@ -413,15 +358,6 @@ mod tests {
         assert!(matches!(error, Error::ResourceLimit { .. }));
     }
 
-    #[test]
-    fn decompress_brotli_returns_unsupported() {
-        let err = decompress_page_values(&[], CompressionCodec::Brotli, 0).unwrap_err();
-        assert!(
-            matches!(err, Error::UnsupportedFeature { ref feature } if feature.contains("BROTLI")),
-            "expected UnsupportedFeature with BROTLI, got: {err:?}"
-        );
-    }
-
     #[cfg(not(feature = "gzip"))]
     #[test]
     fn decompress_disabled_codec_returns_unsupported() {
@@ -432,65 +368,46 @@ mod tests {
         );
     }
 
+    /// RFC 1952 section 2.3.1: a member starts with ID1 = 0x1f, ID2 = 0x8b, CM = 8.
     #[cfg(feature = "gzip")]
     #[test]
-    fn decompress_gzip_round_trip() {
-        use flate2::read::DeflateEncoder;
-        use std::io::Read;
-
-        let input: Vec<u8> = (0u8..=255).cycle().take(1024).collect();
-        let mut encoder = DeflateEncoder::new(&input[..], flate2::Compression::new(6));
-        let mut compressed = Vec::new();
-        encoder
-            .read_to_end(&mut compressed)
-            .expect("deflate encode must succeed");
-
+    fn compress_gzip_emits_rfc1952_member() {
+        let input: Vec<u8> = (0u8..=255).cycle().take(4096).collect();
+        let compressed =
+            compress_page_values(&input, CompressionCodec::Gzip).expect("compress must succeed");
+        assert_eq!(&compressed[..3], &[0x1F, 0x8B, 0x08]);
         let decompressed = decompress_page_values(&compressed, CompressionCodec::Gzip, input.len())
-            .expect("gzip decompress must succeed");
+            .expect("decompress must succeed");
         assert_eq!(decompressed, input, "gzip round-trip must be lossless");
     }
 
+    /// A bare RFC 1951 stream is not GZIP and is rejected.
     #[cfg(feature = "gzip")]
     #[test]
-    fn decompress_zlib_round_trip() {
+    fn decompress_gzip_rejects_bare_deflate() {
         use flate2::read::DeflateEncoder;
         use std::io::Read;
 
         let input: Vec<u8> = (0u8..=255).cycle().take(1024).collect();
-        let mut encoder = DeflateEncoder::new(&input[..], flate2::Compression::new(6));
-        let mut compressed = Vec::new();
-        encoder
-            .read_to_end(&mut compressed)
+        let mut bare = Vec::new();
+        DeflateEncoder::new(&input[..], flate2::Compression::new(6))
+            .read_to_end(&mut bare)
             .expect("deflate encode must succeed");
-
-        let decompressed = decompress_page_values(&compressed, CompressionCodec::Zlib, input.len())
-            .expect("zlib decompress must succeed");
-        assert_eq!(decompressed, input, "zlib round-trip must be lossless");
+        let err = decompress_page_values(&bare, CompressionCodec::Gzip, input.len()).unwrap_err();
+        assert!(
+            matches!(err, Error::CompressionError { .. }),
+            "bare deflate is not RFC 1952: {err:?}"
+        );
     }
 
-    /// GZIP and ZLIB pages are bare RFC 1951 streams at level 6, so both
-    /// codecs must emit exactly the bytes an independent `flate2` encoder
-    /// produces for the same input and level.
+    /// The page header's size hint is untrusted: it must not raise the output ceiling.
     #[cfg(feature = "gzip")]
     #[test]
-    fn compress_gzip_and_zlib_emit_level_6_raw_deflate() {
-        use flate2::read::DeflateEncoder;
-        use std::io::Read;
-
-        let input: Vec<u8> = (0u8..=255).cycle().take(4096).collect();
-        let mut expected = Vec::new();
-        DeflateEncoder::new(&input[..], flate2::Compression::new(6))
-            .read_to_end(&mut expected)
-            .expect("deflate encode must succeed");
-
-        for codec in [CompressionCodec::Gzip, CompressionCodec::Zlib] {
-            let compressed = compress_page_values(&input, codec).expect("compress must succeed");
-            assert_eq!(
-                compressed, expected,
-                "{codec:?} must emit level-6 raw deflate"
-            );
-        }
-        assert!(expected.len() < input.len());
+    fn decompress_gzip_rejects_hostile_size_hint() {
+        let compressed = compress_page_values(&[0u8; 16], CompressionCodec::Gzip).unwrap();
+        let err =
+            decompress_page_values(&compressed, CompressionCodec::Gzip, usize::MAX).unwrap_err();
+        assert!(matches!(err, Error::ResourceLimit { .. }), "{err:?}");
     }
 
     #[cfg(feature = "gzip")]
@@ -500,7 +417,7 @@ mod tests {
         let err = decompress_page_values(&garbage, CompressionCodec::Gzip, 1024).unwrap_err();
         assert!(
             matches!(err, Error::CompressionError { .. }),
-            "expected CompressionError for malformed deflate, got: {err:?}"
+            "expected CompressionError for malformed gzip, got: {err:?}"
         );
     }
 
@@ -536,17 +453,6 @@ mod tests {
             decompress_page_values(&compressed, CompressionCodec::Lz4Raw, input.len())
                 .expect("lz4_raw decompress must succeed");
         assert_eq!(decompressed, input, "lz4_raw round-trip must be lossless");
-    }
-
-    #[cfg(feature = "lz4")]
-    #[test]
-    fn decompress_lz4_round_trip() {
-        let input: Vec<u8> = (0u8..=255).cycle().take(1024).collect();
-        let compressed = lz4_flex::compress_prepend_size(&input);
-
-        let decompressed = decompress_page_values(&compressed, CompressionCodec::Lz4, input.len())
-            .expect("lz4 decompress must succeed");
-        assert_eq!(decompressed, input, "lz4 round-trip must be lossless");
     }
 
     #[cfg(feature = "snappy")]

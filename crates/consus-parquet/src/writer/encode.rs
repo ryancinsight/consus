@@ -861,7 +861,7 @@ fn build_file_bytes(
                 type_: physical_type_discriminant(leaf.physical_type()),
                 encodings: vec![0], // PLAIN
                 path_in_schema: leaf.path().to_vec(),
-                codec: codec as i32,
+                codec: codec.to_i32(),
                 num_values: total_num_values as i64,
                 total_uncompressed_size,
                 total_compressed_size,

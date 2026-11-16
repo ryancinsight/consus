@@ -427,19 +427,6 @@ fn writer_lz4_raw_roundtrip_i32_three_values() {
     assert_eq!(read_all_i32(&bytes), values);
 }
 
-#[cfg(feature = "lz4")]
-#[test]
-fn writer_lz4_roundtrip_i32_three_values() {
-    use crate::encoding::compression::CompressionCodec;
-    let values = vec![1i32, 2, 3];
-    let dataset = i32_dataset(3);
-    let bytes = ParquetWriter::new()
-        .with_compression(CompressionCodec::Lz4)
-        .write_dataset_bytes(&dataset, &I32Rows(values.clone()))
-        .unwrap();
-    assert_eq!(read_all_i32(&bytes), values);
-}
-
 // ── Optional i32 proptest ────────────────────────────────────────────────────
 
 proptest! {
