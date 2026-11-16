@@ -64,6 +64,50 @@ fn decode_compressed_gzip_i32_round_trip() {
     assert!(matches!(v, ColumnValues::Int32(ref x) if *x == alloc::vec![10, 20, 30]));
 }
 
+/// A page of two GZIP members decodes every value (Compression.md, GZIP
+/// section); a header size one byte off the decoded length is a typed error.
+#[cfg(feature = "gzip")]
+#[test]
+fn decode_compressed_gzip_two_members_and_size_mismatch() {
+    use crate::encoding::compression::compress_page_values;
+    let original: Vec<u8> = alloc::vec![
+        0x0Au8, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x00
+    ];
+    let (head, tail) = original.split_at(8);
+    let mut page = compress_page_values(head, CompressionCodec::Gzip).unwrap();
+    page.extend(compress_page_values(tail, CompressionCodec::Gzip).unwrap());
+
+    let v = decode_compressed_column_values(
+        &page,
+        3,
+        0,
+        ParquetPhysicalType::Int32,
+        None,
+        CompressionCodec::Gzip,
+        original.len(),
+    )
+    .unwrap();
+    assert!(matches!(v, ColumnValues::Int32(ref x) if *x == alloc::vec![10, 20, 30]));
+
+    for declared in [original.len() - 1, original.len() + 1] {
+        let err = decode_compressed_column_values(
+            &page,
+            3,
+            0,
+            ParquetPhysicalType::Int32,
+            None,
+            CompressionCodec::Gzip,
+            declared,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, consus_core::Error::CompressionError { ref message }
+                if *message == format!("gzip page decoded to 12 bytes, declared {declared}")),
+            "{declared}: {err:?}"
+        );
+    }
+}
+
 #[cfg(feature = "gzip")]
 #[test]
 fn decode_compressed_malformed_gzip_returns_compression_error() {

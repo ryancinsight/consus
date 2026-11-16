@@ -19,24 +19,6 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   commands are obsolete. Prepare a new exact-source raster0.3.0 handoff only
   after verification; authentication/publisher registration stay separate.
 
-<a id="consus-parquet-gzip-multimember"></a>
-## CONSUS-PARQUET-GZIP-MULTIMEMBER — Decode every member of a multi-member GZIP page [patch] — todo
-
-- milestone: M-core-formats
-- outcome: `GzipCodec` decodes every gzip member; a Parquet page whose decoded length differs from
-  `uncompressed_page_size` is a typed error.
-- evidence: `GzipFraming` (`flate.rs:62-65`) wraps `flate2::read::GzDecoder`, which returns `Ok(0)`
-  after one member (locked flate2 1.1.11, `src/gz/read.rs:95-108`); a standalone flate2 1.1.11 probe
-  decodes two 13-byte members to 13 bytes, no error (`MultiGzDecoder`: 26). `column.rs:251` compares no length.
-  apache/parquet-format `Compression.md` (GZIP section, lines 61-63): readers should support
-  pages containing multiple GZIP members.
-- acceptance: a `gzip.rs` test decodes `gz(a) ++ gz(b)` to `a ++ b` (derived to return `a`); a page
-  test with a header size one byte off the decoded length returns the typed error.
-- priority: correctness; needs: none; basis: 21769557a13a64530ba5f07cae0227c617c36f93
-- scope: crates/consus-compression/src/codec/{flate,gzip}.rs, crates/consus-parquet/src/encoding/{column,compression}.rs
-- next step: pin the test, use `MultiGzDecoder<&[u8]>` in `GzipFraming` (it also serves Zarr gzip);
-  add the length check once consus PRs 209 and 210 move Parquet GZIP onto `GzipCodec`.
-
 <a id="consus-ladder-failing-exits"></a>
 ## CONSUS-LADDER-FAILING-EXITS — Give each milestone a failing exit check [patch] — todo
 
