@@ -10,15 +10,17 @@
 //! |--------------|-------------|-------------|---------|
 //! | 0 | UNCOMPRESSED | (always) | pass-through |
 //! | 1 | SNAPPY | `snappy` | `snap` crate |
-//! | 2 | GZIP | `gzip` | `flate2::read::DeflateDecoder` (raw deflate) |
+//! | 2 | GZIP | `gzip` | `RawDeflateCodec` (compress), `flate2::read::DeflateDecoder` (decompress) |
 //! | 3 | LZ4_RAW | `lz4` | `lz4_flex::decompress` (raw block) |
 //! | 4 | ZSTD | `zstd` | `zrip::decompress_with_limit` |
 //! | 5 | LZ4 | `lz4` | `lz4_flex::decompress_size_prepended` |
 //! | 6 | BROTLI | (none) | always `UnsupportedFeature` |
-//! | 7 | ZLIB | `gzip` | `flate2::read::DeflateDecoder` (raw deflate) |
+//! | 7 | ZLIB | `gzip` | `RawDeflateCodec` (compress), `flate2::read::DeflateDecoder` (decompress) |
 
 use alloc::{format, string::String, vec::Vec};
 
+#[cfg(feature = "gzip")]
+use consus_compression::{Codec, CompressionLevel, codec::raw_deflate::RawDeflateCodec};
 use consus_core::{Error, ParseBudget, Result};
 
 /// Parquet compression codec, discriminant matches thrift `CompressionCodec`.
@@ -56,8 +58,9 @@ impl CompressionCodec {
 /// Compress page value bytes using the given Parquet compression codec.
 ///
 /// UNCOMPRESSED: returns `data.to_vec()` (pass-through, no error).
-/// GZIP / ZLIB: raw deflate via `flate2::read::DeflateEncoder`.
-///              Level: `flate2::Compression::default()`.
+/// GZIP / ZLIB: raw deflate via
+///              `consus_compression::codec::raw_deflate::RawDeflateCodec`.
+///              Level: `CompressionLevel::default()` (6).
 /// SNAPPY: `snap::raw::Encoder::new().compress_vec(data)`.
 /// ZSTD: `zrip::compress(data, 3)`.
 /// LZ4_RAW: `lz4_flex::compress(data)`.
@@ -73,16 +76,7 @@ pub(crate) fn compress_page_values(data: &[u8], codec: CompressionCodec) -> Resu
         CompressionCodec::Gzip | CompressionCodec::Zlib => {
             #[cfg(feature = "gzip")]
             {
-                use flate2::read::DeflateEncoder;
-                use std::io::Read;
-                let mut encoder = DeflateEncoder::new(data, flate2::Compression::default());
-                let mut output = Vec::with_capacity(data.len());
-                encoder
-                    .read_to_end(&mut output)
-                    .map_err(|e| Error::CompressionError {
-                        message: format!("deflate compress failed: {e}"),
-                    })?;
-                Ok(output)
+                RawDeflateCodec.compress(data, CompressionLevel::default())
             }
             #[cfg(not(feature = "gzip"))]
             {
@@ -472,6 +466,31 @@ mod tests {
         let decompressed = decompress_page_values(&compressed, CompressionCodec::Zlib, input.len())
             .expect("zlib decompress must succeed");
         assert_eq!(decompressed, input, "zlib round-trip must be lossless");
+    }
+
+    /// GZIP and ZLIB pages are bare RFC 1951 streams at level 6, so both
+    /// codecs must emit exactly the bytes an independent `flate2` encoder
+    /// produces for the same input and level.
+    #[cfg(feature = "gzip")]
+    #[test]
+    fn compress_gzip_and_zlib_emit_level_6_raw_deflate() {
+        use flate2::read::DeflateEncoder;
+        use std::io::Read;
+
+        let input: Vec<u8> = (0u8..=255).cycle().take(4096).collect();
+        let mut expected = Vec::new();
+        DeflateEncoder::new(&input[..], flate2::Compression::new(6))
+            .read_to_end(&mut expected)
+            .expect("deflate encode must succeed");
+
+        for codec in [CompressionCodec::Gzip, CompressionCodec::Zlib] {
+            let compressed = compress_page_values(&input, codec).expect("compress must succeed");
+            assert_eq!(
+                compressed, expected,
+                "{codec:?} must emit level-6 raw deflate"
+            );
+        }
+        assert!(expected.len() < input.len());
     }
 
     #[cfg(feature = "gzip")]
