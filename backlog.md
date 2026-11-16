@@ -19,6 +19,62 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   commands are obsolete. Prepare a new exact-source raster0.3.0 handoff only
   after verification; authentication/publisher registration stay separate.
 
+<a id="consus-parquet-gzip-multimember"></a>
+## CONSUS-PARQUET-GZIP-MULTIMEMBER — Decode every member of a multi-member GZIP page [patch] — todo
+
+- milestone: M-core-formats
+- outcome: `GzipCodec` decodes every gzip member; a Parquet page whose decoded length differs from
+  `uncompressed_page_size` is a typed error.
+- evidence: `GzipFraming` (`flate.rs:62-65`) wraps `flate2::read::GzDecoder`, which returns `Ok(0)`
+  after one member (locked flate2 1.1.11, `src/gz/read.rs:95-108`); a standalone flate2 1.1.11 probe
+  decodes two 13-byte members to 13 bytes, no error (`MultiGzDecoder`: 26). `column.rs:251` compares no length.
+  apache/parquet-format `Compression.md` (GZIP section, lines 61-63): readers should support
+  pages containing multiple GZIP members.
+- acceptance: a `gzip.rs` test decodes `gz(a) ++ gz(b)` to `a ++ b` (derived to return `a`); a page
+  test with a header size one byte off the decoded length returns the typed error.
+- priority: correctness; needs: none; basis: 21769557a13a64530ba5f07cae0227c617c36f93
+- scope: crates/consus-compression/src/codec/{flate,gzip}.rs, crates/consus-parquet/src/encoding/{column,compression}.rs
+- next step: pin the test, use `MultiGzDecoder<&[u8]>` in `GzipFraming` (it also serves Zarr gzip);
+  add the length check once consus PRs 209 and 210 move Parquet GZIP onto `GzipCodec`.
+
+<a id="consus-ladder-failing-exits"></a>
+## CONSUS-LADDER-FAILING-EXITS — Give each milestone a failing exit check [patch] — todo
+
+- milestone: M-core-formats
+- outcome: every open block of `backlog/milestones.md` has one failing exit check at the fetched
+  default commit (roadmap rule); no exit names an item ID.
+- evidence: no block has one at `6f850682`; basis adds only #206 and #208. M-1.0's passes (CI run 43776070564 at `6f850682`, job
+  133002546532: 14 passed with and without `PYTHON_GIL=0`); the others are whole-package `cargo test -p`
+  runs that the same run's nextest jobs cover green. Only the standing "no open correctness item"
+  holds the ladder, via blocked `ATLAS-PR530-PROVIDER-COHERENCE` (consus#208 round-2 judge, F1).
+  #208 removed the item-ID exits; at basis only `docs/adr/0008-release-scope-1-0.md:40` names
+  `CONSUS-PARQUET-RAW-DEFLATE` and `CONSUS-PYTHON-FREE-THREADING`.
+- acceptance: each block's exits run at a fetched default commit leave one failing (0 of 3 at `6f850682`),
+  or ADR 0008 records the ladder delivered pending the correctness item.
+- priority: verification; needs: none; basis: 21769557a13a64530ba5f07cae0227c617c36f93
+- scope: backlog/milestones.md, docs/adr/0008-release-scope-1-0.md
+- next step: name what `ATLAS-PR530-PROVIDER-COHERENCE` delivers as an exactly named check, or close
+  the passing blocks; either needs an ADR 0008 revision note and a judge verdict.
+
+<a id="consus-release-job-red"></a>
+## CONSUS-RELEASE-JOB-RED — Pending publish gets a 403 for consus-raster [patch] — blocked
+
+- milestone: M-core-formats
+- outcome: `publish-pending` in `rust-release.yml` publishes `consus-raster` and `consus-zarr` 0.4.1
+  and the default-branch run is green.
+- evidence: six runs read (42973982746, 43497877937, 43523622004, 43685555434, 43770175761,
+  43776070912; 2026-11-11 to 2026-11-15) package both crates, then fail at the `consus-raster`
+  upload: 403 "access token is not valid for crate". Plan and SemVer jobs pass; registry max of both
+  crates is 0.3.0. Derived cause (OIDC-only publishing): no crates.io trusted-publisher entry for
+  `consus-raster` bound to this workflow; unverifiable without owner access. Risk: `gap_audit.md`.
+- acceptance: a `rust-release.yml` run on the default branch succeeds and the registry max of
+  `consus-raster` and `consus-zarr` is 0.4.1; both fail at basis.
+- priority: verification; needs: none; basis: 21769557a13a64530ba5f07cae0227c617c36f93
+- scope: crates.io trusted-publisher settings (registry owner), `.github/workflows/rust-release.yml`
+- blocked: registry owner. Question: add crates.io trusted-publisher entries for `consus-raster` and
+  `consus-zarr` (repository `ryancinsight/consus`, workflow `rust-release.yml`)? Re-open on the
+  answer or when an upload no longer returns 403. No repository change cures it.
+
 <a id="consus-npy-error-variants"></a>
 ## CONSUS-NPY-ERROR-VARIANTS — Type the NPY header rejections [major] — todo
 
