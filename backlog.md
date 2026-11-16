@@ -28,7 +28,8 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - evidence: `GzipFraming` (`flate.rs:62-65`) wraps `flate2::read::GzDecoder`, which returns `Ok(0)`
   after one member (locked flate2 1.1.11, `src/gz/read.rs:95-108`); a probe at basis decodes two
   13-byte members to 13 bytes, no error (`MultiGzDecoder`: 26). `column.rs:251` compares no length.
-  parquet-format `ec90dd4` `Compression.md` lines 61-63: readers should support multiple members.
+  apache/parquet-format `Compression.md` (GZIP section, lines 61-63): readers should support
+  pages containing multiple GZIP members.
 - acceptance: a `gzip.rs` test decodes `gz(a) ++ gz(b)` to `a ++ b` (returns `a` at basis); a page
   test with a header size one byte off the decoded length returns the typed error.
 - priority: correctness; needs: none; basis: 21769557a13a64530ba5f07cae0227c617c36f93
