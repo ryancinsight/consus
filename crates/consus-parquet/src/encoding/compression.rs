@@ -593,6 +593,28 @@ mod tests {
         assert_eq!(decoded, plain);
     }
 
+    /// Members that together decode past the budget are `ResourceLimit` under
+    /// an in-budget declaration. `read_bounded` fails on the read that first
+    /// takes the output past the budget, and one read adds at most its
+    /// 8192-byte chunk.
+    #[cfg(feature = "gzip")]
+    #[test]
+    fn decompress_gzip_members_past_the_budget_are_a_resource_limit() {
+        const MEMBER_LEN: usize = 1 << 20;
+        const READ_CHUNK: u64 = 8192;
+        let budget = ParseBudget::default().max_alloc_bytes;
+        let limit = u64::try_from(budget).unwrap();
+        let member =
+            compress_page_values(&alloc::vec![0u8; MEMBER_LEN], CompressionCodec::Gzip).unwrap();
+        let members = member.repeat(budget / MEMBER_LEN + 1);
+        let err = decompress_page_values(&members, CompressionCodec::Gzip, 12).unwrap_err();
+        assert!(
+            matches!(&err, Error::ResourceLimit { what: "decompressed output", requested, limit: reported }
+                if *reported == limit && (limit + 1..=limit + READ_CHUNK).contains(requested)),
+            "{err:?}"
+        );
+    }
+
     /// A header size that is one byte off the decoded length is a typed
     /// error in both directions, never a truncated or padded page.
     #[cfg(feature = "gzip")]
