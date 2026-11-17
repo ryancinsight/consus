@@ -24,7 +24,7 @@ use consus_core::{Error, Result};
 /// |-----------|----------|----------------|----------|
 /// | deflate   | Deflate  | 1              | deflate  |
 /// | gzip      | Gzip     | —              | gzip     |
-/// | zlib      | Gzip     | —              | zlib     |
+/// | gzip      | Zlib     | —              | zlib     |
 /// | zstd      | Zstd     | 32015          | zstd     |
 /// | lz4       | LZ4      | 32004          | lz4      |
 /// | szip      | Szip     | 4              | szip     |
@@ -64,9 +64,11 @@ impl DefaultCodecRegistry {
         #[cfg(feature = "gzip")]
         {
             use crate::codec::gzip::GzipCodec;
+            use crate::codec::zlib::ZlibCodec;
             static GZIP: GzipCodec = GzipCodec;
+            static ZLIB: ZlibCodec = ZlibCodec;
             codecs.push((CodecId::Name(String::from("gzip")), &GZIP));
-            codecs.push((CodecId::Name(String::from("zlib")), &GZIP));
+            codecs.push((CodecId::Name(String::from("zlib")), &ZLIB));
         }
 
         #[cfg(feature = "zstd")]
@@ -232,6 +234,26 @@ mod tests {
             Some(1),
             "deflate codec must report HDF5 filter ID 1"
         );
+    }
+
+    /// The name `zlib` resolves to the RFC 1950 codec, not the gzip codec.
+    #[cfg(feature = "gzip")]
+    #[test]
+    fn test_default_registry_zlib_is_rfc1950() {
+        let registry = DefaultCodecRegistry::new();
+        let codec = registry
+            .get_by_name("zlib")
+            .expect("zlib codec must be resolvable by name");
+        assert_eq!(codec.name(), "zlib");
+        let input = b"zlib framing".repeat(8);
+        let encoded = codec
+            .compress(&input, CompressionLevel::default())
+            .expect("compress must succeed");
+        assert_eq!(encoded[0], 0x78, "RFC 1950 CMF for a 32 KiB window");
+        let by_id = registry
+            .get(&CodecId::Name(String::from("zlib")))
+            .expect("zlib must resolve by CodecId::Name");
+        assert_eq!(by_id.name(), "zlib");
     }
 
     /// Register a custom identity codec and verify it is retrievable by

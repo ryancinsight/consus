@@ -13,12 +13,9 @@
 
 use alloc::vec::Vec;
 
-use flate2::read::ZlibEncoder;
-use std::io::Read;
-
-use super::flate::{ZlibFraming, flate2_decompress};
+use super::flate::{ZlibFraming, flate2_decompress, zlib_compress};
 use super::traits::{Codec, CompressionLevel};
-use consus_core::{Error, ParseBudget, Result};
+use consus_core::{ParseBudget, Result};
 
 /// Deflate codec using zlib framing (RFC 1950).
 ///
@@ -38,16 +35,7 @@ impl Codec for DeflateCodec {
     }
 
     fn compress(&self, input: &[u8], level: CompressionLevel) -> Result<Vec<u8>> {
-        let clamped = level.0.clamp(0, 9) as u32;
-        let compression = flate2::Compression::new(clamped);
-        let mut encoder = ZlibEncoder::new(input, compression);
-        let mut output = Vec::new();
-        encoder
-            .read_to_end(&mut output)
-            .map_err(|e| Error::CompressionError {
-                message: alloc::format!("deflate (zlib) compress failed: {e}"),
-            })?;
-        Ok(output)
+        zlib_compress(input, level)
     }
 
     fn decompress(&self, input: &[u8], expected_size: usize) -> Result<Vec<u8>> {
@@ -58,6 +46,7 @@ impl Codec for DeflateCodec {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use consus_core::Error;
 
     /// Round-trip invariant: decompress(compress(data)) == data.
     ///

@@ -19,22 +19,6 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   commands are obsolete. Prepare a new exact-source raster0.3.0 handoff only
   after verification; authentication/publisher registration stay separate.
 
-<a id="consus-registry-zlib-framing"></a>
-## CONSUS-REGISTRY-ZLIB-FRAMING — Decode zlib-named chunks as RFC 1950 [patch] — todo
-
-- milestone: M-core-formats
-- outcome: the registry name "zlib" decodes RFC 1950 streams, as numcodecs `Zlib` writes them.
-- evidence (derived, not run): `registry/default.rs:69` and `consus-zarr/src/codec/mod.rs:338` map
-  "zlib" to `GzipCodec`; numcodecs `Zlib` emits RFC 1950 framing (first bytes `78`), which fails
-  the gzip ID1/ID2 check. `docs/book/formats.md:81-83` claims two-way Python interoperability.
-- acceptance: a `consus-zarr` test decodes a zlib stream of known bytes through "zlib" to those bytes.
-- compatibility: `consus-zarr` writes "zlib" chunks through the same entry (`codec/mod.rs:338-342`),
-  so chunks already written under "zlib" are gzip-framed and stop decoding once the name maps to RFC 1950.
-- next step: decide whether those chunks stay readable (gzip fallback on `1f 8b`) or are rewritten,
-  then map "zlib" to `DeflateCodec` with `ZlibFraming` in both scope files.
-- priority: correctness; needs: none; basis: 5a976d2c9698bd92d520850ba2bcea8cc3aa9a0f
-- scope: crates/consus-compression/src/registry/default.rs, crates/consus-zarr/src/codec/mod.rs
-
 <a id="consus-ladder-failing-exits"></a>
 ## CONSUS-LADDER-FAILING-EXITS — Give each milestone a failing exit check [patch] — todo
 

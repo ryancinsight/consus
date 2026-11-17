@@ -23,7 +23,7 @@
 //!
 //! | `.zarray` compressor id | consus-compression codec |
 //! |-------------------------|--------------------------|
-//! | `"zlib"`                | deflate (filter ID 1)    |
+//! | `"zlib"`                | zlib (RFC 1950)          |
 //! | `"gzip"`                | gzip                     |
 //! | `"blosc"`               | blosc (filter ID 32001)  |
 //! | `"lz4"`                 | lz4 (filter ID 32004)    |
