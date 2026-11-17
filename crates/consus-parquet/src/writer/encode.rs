@@ -801,12 +801,17 @@ fn build_file_bytes(
         };
 
         // Encode all leaves for each page range; transpose to [leaf_idx][page_idx].
-        let mut pages_by_column: Vec<Vec<EncodedLeafColumn>> =
-            (0..leaf_count).map(|_| Vec::new()).collect();
+        // The grid is rectangular (`leaf_count` leaves per page), so store it as
+        // one flat buffer at fixed stride `leaf_count` rather than a `Vec` per
+        // column. This removes `leaf_count - 1` heap allocations per row group
+        // and keeps every leaf's pages contiguous in enumeration order.
+        let page_count = page_ranges.len();
+        let mut pages_flat: Vec<EncodedLeafColumn> =
+            Vec::with_capacity(leaf_count.saturating_mul(page_count));
         for &(ps, pe) in &page_ranges {
             let page_cols = encode_leaf_columns(plan, rows, ps, pe)?;
-            for (leaf_idx, enc) in page_cols.into_iter().enumerate() {
-                pages_by_column[leaf_idx].push(enc);
+            for enc in page_cols {
+                pages_flat.push(enc);
             }
         }
 
@@ -825,7 +830,10 @@ fn build_file_bytes(
             let mut total_compressed_size: i64 = 0;
             let mut total_num_values: i32 = 0;
 
-            for enc in &pages_by_column[col_idx] {
+            // Column `col_idx` is the fixed-stride slice at offset `col_idx`.
+            // With `leaf_count == 0` the loop above never runs, so no read here.
+            for page_idx in 0..page_count {
+                let enc = &pages_flat[page_idx * leaf_count + col_idx];
                 let compressed_bytes =
                     crate::encoding::compression::compress_page_values(&enc.payload, codec)?;
                 let plain_size = enc.payload.len() as i32;

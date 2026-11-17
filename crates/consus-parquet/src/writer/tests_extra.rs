@@ -1098,6 +1098,61 @@ fn multi_page_combined_with_multi_row_group() {
     assert_eq!(all, values, "all 12 values must be recovered in order");
 }
 
+/// Pins the exact encoded bytes of a two-column, multi-page file. The writer
+/// transposes encoded leaves into column-chunks; this hash ensures that layout
+/// (page order, leaf order, offsets) is unchanged by internal buffer changes.
+#[test]
+fn multi_page_two_columns_byte_layout_is_stable() {
+    fn fnv1a(bytes: &[u8]) -> u64 {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for &b in bytes {
+            h ^= u64::from(b);
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        h
+    }
+
+    struct PairRows(alloc::vec::Vec<(i32, i64)>);
+    impl RowSource for PairRows {
+        fn row_count(&self) -> usize {
+            self.0.len()
+        }
+        fn row(&self, idx: usize) -> consus_core::Result<RowValue<'_>> {
+            let (x, y) = self.0[idx];
+            Ok(RowValue::new(vec![
+                CellValue::Int32(x),
+                CellValue::Int64(y),
+            ]))
+        }
+    }
+
+    let schema = SchemaDescriptor::new(vec![
+        FieldDescriptor::required(FieldId::new(1), "x", ParquetPhysicalType::Int32),
+        FieldDescriptor::required(FieldId::new(2), "y", ParquetPhysicalType::Int64),
+    ]);
+    let dataset = ParquetDatasetDescriptor::new(
+        schema,
+        vec![
+            RowGroupDescriptor::new(
+                6,
+                vec![
+                    ColumnChunkDescriptor::new(FieldId::new(1), 6, 1).unwrap(),
+                    ColumnChunkDescriptor::new(FieldId::new(2), 6, 1).unwrap(),
+                ],
+            )
+            .unwrap(),
+        ],
+    )
+    .unwrap();
+    let rows = PairRows((1..=6).map(|v| (v, i64::from(v) * 10)).collect());
+
+    let bytes = ParquetWriter::new()
+        .with_page_row_limit(2)
+        .write_dataset_bytes(&dataset, &rows)
+        .unwrap();
+    assert_eq!(fnv1a(&bytes), 12_346_010_487_497_869_100u64);
+}
+
 // ── Multi-page proptest ───────────────────────────────────────────────────────
 
 proptest! {
