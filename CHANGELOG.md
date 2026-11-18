@@ -1,5 +1,25 @@
 # Changelog
 
+## Next breaking release (minimum 0.5.0; not yet versioned)
+
+### Breaking
+
+- [major] Parquet column codec numbers now follow the specification.
+  `CompressionCodec::Zlib` is removed, `Lzo` is added, and discriminants
+  change. Exhaustive downstream matches must be updated. GZIP pages now
+  use RFC 1952 rather than raw DEFLATE. Deprecated LZ4 (5) is unsupported;
+  use LZ4_RAW (7) for new data. Existing Consus files using GZIP, ZSTD,
+  LZ4_RAW, legacy LZ4 or ZLIB require provenance-aware migration;
+  UNCOMPRESSED and SNAPPY files retain their codec interpretation.
+  See [compatibility and migration](docs/parquet-compatibility.md) and ADR0009.
+- [major] GZIP decoding reads all members and rejects trailing non-member
+  bytes, including in Zarr chunks. Parquet readers reject mismatched decoded
+  page lengths and V2 headers smaller than their level sections.
+- Release requires a coordinated version/requirement sweep and published-
+  baseline checks. The current 0.4.1 manifests are not authorization to
+  republish changed source or classify these changes as a patch. Existing
+  provider, registry-owner and deployment holds remain in force.
+
 ## [0.4.1] - Unreleased
 
 ### Fixed
