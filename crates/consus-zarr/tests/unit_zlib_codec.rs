@@ -9,7 +9,7 @@
 
 use consus_core::Error;
 use consus_zarr::Codec;
-use consus_zarr::codec::{CodecPipeline, default_registry};
+use consus_zarr::codec::{CodecPipeline, CompressionRegistryTrait, default_registry};
 
 /// `b"consus zlib framing " * 4`, 80 bytes.
 fn payload() -> Vec<u8> {
@@ -100,4 +100,71 @@ fn malformed_zlib_stream_is_a_compression_error() {
             "got {error:?}"
         );
     }
+}
+
+fn write_compressed_chunk(name: &str, level: Option<u32>) -> Vec<u8> {
+    use consus_zarr::chunk::write_array;
+    use consus_zarr::metadata::ArrayMetadataV2;
+    use consus_zarr::store::{InMemoryStore, Store};
+
+    let input = b"configured compression level ".repeat(1024);
+    let configuration = level
+        .map(|n| format!(", \"level\": {n}"))
+        .unwrap_or_default();
+    let json = format!(
+        r#"{{"zarr_format":2,"shape":[{len}],"chunks":[{len}],
+        "dtype":"|u1","fill_value":0,"order":"C",
+        "compressor":{{"id":"{name}"{configuration}}},"filters":null}}"#,
+        len = input.len()
+    );
+    let metadata = ArrayMetadataV2::parse(&json)
+        .expect("valid v2 metadata")
+        .to_canonical();
+    let mut store = InMemoryStore::new();
+    write_array(&mut store, "array", &metadata, &input).expect("write full Zarr array");
+    let encoded = store.get("array/0").expect("written chunk");
+    let expected = default_registry()
+        .get_by_name(name)
+        .expect("codec")
+        .compress(
+            &input,
+            consus_zarr::codec::CompressionLevel(level.unwrap_or(6) as i32),
+        )
+        .expect("direct codec compression");
+    assert_eq!(
+        encoded, expected,
+        "{name} level {level:?} must reach the encoder"
+    );
+    assert_eq!(
+        CodecPipeline::single(metadata.codecs[0].clone())
+            .decompress(&encoded, default_registry())
+            .expect("read written chunk"),
+        input
+    );
+    encoded
+}
+
+#[test]
+fn zarr_writes_honor_zlib_levels_and_default() {
+    let stored = write_compressed_chunk("zlib", Some(0));
+    let compressed = write_compressed_chunk("zlib", Some(9));
+    assert!(
+        stored.len() > compressed.len() * 10,
+        "level zero must store repetitive input"
+    );
+    assert_eq!(
+        write_compressed_chunk("zlib", None),
+        write_compressed_chunk("zlib", Some(6))
+    );
+}
+
+#[test]
+fn zarr_writes_preserve_gzip_levels_and_default() {
+    let stored = write_compressed_chunk("gzip", Some(0));
+    let compressed = write_compressed_chunk("gzip", Some(9));
+    assert!(stored.len() > compressed.len() * 10);
+    assert_eq!(
+        write_compressed_chunk("gzip", None),
+        write_compressed_chunk("gzip", Some(6))
+    );
 }

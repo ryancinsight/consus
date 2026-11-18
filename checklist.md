@@ -208,3 +208,12 @@
       passes223 checks but misses the executed nominal identity regression.
 - [ ] Complete exact-head hosted/default adoption and the corrected merged
       source/archive handoff. Initial-upload authentication remains separate.
+
+## CONSUS-ZARR-ZLIB-LEVEL
+
+- [x] Reproduce the level-0 failure through parsed v2 metadata and `write_array`;
+      keep the gzip level control passing on the baseline.
+- [x] Read the shared `level` key without widening the public gzip-only accessor.
+- [x] Verify level 0/9 and omitted/6 through real stored chunks; Python zlib/gzip
+      independently decode all four explicit-level outputs to 29,696 bytes.
+- [ ] Complete independent review and final delivery gates; preserve holds.
