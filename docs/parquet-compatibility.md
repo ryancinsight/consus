@@ -60,7 +60,8 @@ binary, qualification of a general converter, or evidence of affected user
 data. The four tracked Parquet fixtures inspected at
 `0ad1040530ba854520d58e721fff0e801beb55fb` are third-party UNCOMPRESSED files
 and conforming PyArrow GZIP/ZSTD fixtures. No actual legacy dataset has been
-established by that inventory. Native Rust gates were not run for this note.
+established by that inventory. These witnesses do not replace native Rust
+validation or the normal release gates.
 
 ## Release requirements
 
