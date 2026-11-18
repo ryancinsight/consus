@@ -337,10 +337,13 @@ impl<R: ReadAt + Sync> Hdf5File<R> {
         }
 
         let mut local_coord = vec![0usize; rank];
+        // Reuse one dataset-coordinate buffer across the traversal instead of
+        // allocating it for every element: an n-element chunk previously did n
+        // heap allocations of `rank` words here, all pure intermediate state.
+        let mut dataset_coord = vec![0usize; rank];
         let mut done = rank == 0;
 
         while !done {
-            let mut dataset_coord = vec![0usize; rank];
             for d in 0..rank {
                 dataset_coord[d] = chunk_coord[d] * chunk_dims[d] + local_coord[d];
             }
