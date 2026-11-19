@@ -1,6 +1,6 @@
 # Consus — Implementation Checklist
 
-## 0.5.0 release candidate
+## 0.5.0 release
 
 - [x] [major] Adopt the accepted Parquet codec correction and align workspace,
   internal and fuzz package versions on 0.5.0.
@@ -12,9 +12,10 @@
   The standalone locked workspace passes 2,791 default-feature and 2,911
   all-feature tests. The async caller fixture verifies the registry source
   boundary against the published HDF5 0.4.0 baseline.
-- [ ] [major] Verify normalized registry packages and the exact hosted
-  release head after the upstream packages are available.
-- [ ] [major] Verify the Raster trusted publisher and publish the exact
+- [x] [major] Verify all 17 registry archives against the crates.io index
+  and their shared source commit `2193675`. The fresh Cargo consumer
+  verifies Parquet compatibility and the published async HDF5 boundary.
+- [x] [major] Verify the Raster trusted publisher and publish the
   0.5.0 cohort. Bootstrap ZIP after Core and Compression, then publish NPY.
 
 ## ATLAS-CONSUS-PARSE-LIMITS-035 — Bound remaining untrusted length/depth sites
