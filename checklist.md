@@ -8,9 +8,12 @@
   packed doubles, named selection, and consecutive compressed elements.
 - [x] [major] Reproduce the published HDF5 0.4.0/Moirai 0.10 reader
   contract and verify the migrated 0.12 caller.
+- [x] [major] Resolve Moirai runtime and async 0.12.0 from crates.io.
+  The standalone locked workspace passes 2,791 default-feature tests.
 - [ ] [major] Verify normalized registry packages and the exact hosted
   release head after the upstream packages are available.
-- [ ] [major] Satisfy the provider and registry holds before publication.
+- [ ] [major] Verify the Raster trusted publisher and publish the exact
+  0.5.0 cohort. Bootstrap ZIP after Core and Compression, then publish NPY.
 
 ## ATLAS-CONSUS-PARSE-LIMITS-035 — Bound remaining untrusted length/depth sites
 
