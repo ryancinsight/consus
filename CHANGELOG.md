@@ -25,8 +25,9 @@
 ### Fixed
 
 - [patch] Honor the configured Zarr `zlib` compression level when writing
-  chunks. Keep default level 6, gzip configuration behavior, and framing
-  unchanged. Existing release and registry holds still apply.
+  chunks. Keep default level 6, valid gzip levels, and framing unchanged.
+  Clamp oversized unsigned gzip/zlib levels to 9 before signed conversion
+  rather than wrapping negative. Existing release and registry holds still apply.
 
 - [patch] Parse scalar NPY header dictionaries by structure. Accept either
   key quote delimiter and arbitrary key order, reject malformed boolean/tuple

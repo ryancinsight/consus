@@ -128,7 +128,9 @@ fn write_compressed_chunk(name: &str, level: Option<u32>) -> Vec<u8> {
         .expect("codec")
         .compress(
             &input,
-            consus_zarr::codec::CompressionLevel(level.unwrap_or(6) as i32),
+            consus_zarr::codec::CompressionLevel(
+                i32::try_from(level.unwrap_or(6).min(9)).expect("bounded level"),
+            ),
         )
         .expect("direct codec compression");
     assert_eq!(
@@ -167,4 +169,35 @@ fn zarr_writes_preserve_gzip_levels_and_default() {
         write_compressed_chunk("gzip", None),
         write_compressed_chunk("gzip", Some(6))
     );
+}
+
+#[test]
+fn oversized_unsigned_levels_clamp_without_wrapping() {
+    for name in ["gzip", "zlib"] {
+        let maximum = write_compressed_chunk(name, Some(9));
+        for level in [10, i32::MAX.unsigned_abs()] {
+            assert_eq!(write_compressed_chunk(name, Some(level)), maximum);
+        }
+    }
+}
+
+#[test]
+fn canonical_unsigned_level_does_not_wrap_negative() {
+    for name in ["gzip", "zlib"] {
+        let pipeline = CodecPipeline::single(Codec {
+            name: name.into(),
+            configuration: vec![("level".into(), u32::MAX.to_string())],
+        });
+        let expected = default_registry()
+            .get_by_name(name)
+            .expect("codec")
+            .compress(&payload(), consus_zarr::codec::CompressionLevel(9))
+            .expect("maximum level");
+        assert_eq!(
+            pipeline
+                .compress(&payload(), default_registry())
+                .expect("compress"),
+            expected
+        );
+    }
 }
