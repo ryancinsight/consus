@@ -1,28 +1,26 @@
 # Consus - Gap Audit
 
-## 0.5.0 candidate and MAT ownership
+## 0.5.0 release and MAT ownership
 
 A packed double MRI fixture failed on the unchanged MAT reader with a
 shape error because the parser assumed the logical width was the storage
 width. ADR 0010 moves selection and decoding to the provider and leaves
-MRI calibration in Kwavers. The local release candidate inherits the
-existing Parquet ADR and registry and provider holds.
+MRI calibration in Kwavers. [Consus #227](https://github.com/ryancinsight/consus/pull/227)
+publishes the MAT reader and Parquet codec correction at `2193675` using
+published Moirai runtime and async 0.12.0. All 17 registry archives match
+their checksums and identify the merged revision. The fresh consumer
+reads standard GZIP and ZSTD Parquet, rejects historical codec fixtures,
+and opens HDF5 through the published async provider.
 
-## Pending publish blocked by a missing crate publisher (2026-11-09)
+## Resolved Raster publisher gap (2026-11-19)
 
-The Crates.io Release workflow publishes with OIDC trusted publishing, but
-crates.io rejects `consus-raster` with "the provided access token is not
-valid for crate consus-raster" (403). The crates ahead of it in the
-dependency order reached the registry at 0.4.1 (consus-core, consus-io,
-consus-compression, consus-onnx); every crate behind it is blocked behind
-that one upload, so the default branch's release run stays red. The
-registry side is a crates.io trusted-publisher entry for `consus-raster`
-and for each other crate the pending 0.4.1 set still carries, which the
-crates.io account owner configures outside this repository.
-
-Re-open check: a pending release reaches the registry without a 403, and
-every published Consus crate carries a trusted publisher for this
-repository's release workflow.
+The previous automated cohort stopped at Raster with HTTP 403. The approved
+trusted publisher now scopes Raster uploads to `rust-release.yml` in the
+`crates-io` environment. The 0.5.0 cohort published Raster successfully.
+The first ZIP upload used Cargo after Core and Compression became
+available, and the NPY gate passed after ZIP was indexed.
+[Cohort workflow](https://github.com/ryancinsight/consus/actions/runs/44612778448)
+and [NPY workflow](https://github.com/ryancinsight/consus/actions/runs/44613901901).
 
 ## ATLAS-CONSUS-TYPES-057 — Generic endian scalar reads (2026-08-15)
 

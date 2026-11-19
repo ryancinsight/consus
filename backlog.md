@@ -2,17 +2,6 @@
 
 Risks that no item fixes are recorded in `gap_audit.md`.
 
-## CONSUS-050 — Coordinate storage release and Atlas adoption [major] — in progress
-
-- Target: the 0.5.0 workspace adopts the accepted Parquet wire correction
-  and the shared Level-5 MAT reader for Kwavers (ADR 0009 and ADR 0010).
-- Acceptance: provider and downstream locks resolve one Consus commit,
-  compatibility gates execute against the published baselines, and each
-  affected consumer verifies value semantics through its normal entry point.
-- Remaining release gates: exact-head review, Moirai 0.12 registry cohorts,
-  ZIP bootstrap and Trusted Publishing configuration. Preserve originals
-  and require provenance for any separately authorized Parquet conversion.
-
 <a id="atlas-pr530-provider-coherence"></a>
 ## ATLAS-PR530-PROVIDER-COHERENCE — Current public provider contract [major] — blocked
 
