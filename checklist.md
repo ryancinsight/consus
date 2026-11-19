@@ -9,7 +9,9 @@
 - [x] [major] Reproduce the published HDF5 0.4.0/Moirai 0.10 reader
   contract and verify the migrated 0.12 caller.
 - [x] [major] Resolve Moirai runtime and async 0.12.0 from crates.io.
-  The standalone locked workspace passes 2,791 default-feature tests.
+  The standalone locked workspace passes 2,791 default-feature and 2,911
+  all-feature tests. The async caller fixture verifies the registry source
+  boundary against the published HDF5 0.4.0 baseline.
 - [ ] [major] Verify normalized registry packages and the exact hosted
   release head after the upstream packages are available.
 - [ ] [major] Verify the Raster trusted publisher and publish the exact
