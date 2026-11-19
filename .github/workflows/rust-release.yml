@@ -60,15 +60,16 @@ jobs:
       dispatch-package: ${{ inputs.package }}
       dispatch-version: ${{ inputs.version }}
 
-  # Version-change publishing (ADR 0068, ATLAS-PUB-010): a merged version
-  # bump, or the daily sweep, publishes the pending set and tags it. The
-  # release and dispatch jobs above skip these events.
+  # Keep automatic publishing unarmed until the approved Consus cohort
+  # passes the provider and registry gates. A main push or daily sweep
+  # selects zero packages before requesting a registry token.
   publish-pending:
     name: Publish pending crate versions
     if: github.event_name == 'push' || github.event_name == 'schedule'
-    uses: ryancinsight/atlas/.github/workflows/crates-publish-pending.yml@50802ef4c975bdb1e668b94a700d8310f0348e9c
+    uses: ryancinsight/atlas/.github/workflows/crates-publish-pending.yml@0227830912a12dbae0ff62b3f16575899fc9087e
     permissions:
       contents: write # creates the release tags.
       id-token: write # OIDC trusted publishing; no stored registry token.
     with:
       rust-toolchain: "1.97.0"
+      cohort-json: '{}'
