@@ -1,4 +1,4 @@
-# ADR 0010 — Select Level-5 variables in the Consus MAT reader
+# ADR 0010: Select Level-5 variables in the Consus MAT reader
 
 Status: Accepted
 
