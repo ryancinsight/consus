@@ -1,6 +1,6 @@
 # Changelog
 
-## Next breaking release (minimum 0.5.0; not yet versioned)
+## [0.5.0] - Unreleased
 
 ### Breaking
 
@@ -15,14 +15,23 @@
 - [major] GZIP decoding reads all members and rejects trailing non-member
   bytes, including in Zarr chunks. Parquet readers reject mismatched decoded
   page lengths and V2 headers smaller than their level sections.
-- Release requires a coordinated version/requirement sweep and published-
-  baseline checks. The current 0.4.1 manifests are not authorization to
-  republish changed source or classify these changes as a patch. Existing
-  provider, registry-owner and deployment holds remain in force.
+- [major] Public HDF5 async bounds use Moirai 0.12. Migrate custom
+  positioned readers from the published HDF5 0.4.0/Moirai 0.10 identity.
+- Provider coherence, normalized package verification, registry ownership
+  and release approvals still gate publication.
 
-## [0.4.1] - Unreleased
+### Added
+
+- [minor] Select a named MATLAB Level-5 variable without decoding the values
+  of unrelated matrices. `MatNumericClass::datatype` exposes the normalized
+  scalar type for the shared Consus decoder.
 
 ### Fixed
+
+- [patch] Decode packed MATLAB Level-5 double payloads using the stored
+  scalar type, preserving the declared class and column-major order.
+  Accept unpadded compressed elements emitted by SciPy and restore the
+  alloc-only MAT build.
 
 - [patch] Honor the configured Zarr `zlib` compression level when writing
   chunks. Keep default level 6, valid gzip levels, and framing unchanged.
@@ -34,9 +43,6 @@
   tokens, and consume the complete dictionary before reading payload values.
   Preserve parenthesized literals, comments and adjacent strings across all
   Python physical line endings. NPZ member reads use the same boundary.
-  Preserve the uniform workspace and
-  internal dependency versions; release remains subject to the existing
-  provider cohort, registry and deployment holds.
 
 ## [0.4.0] - Unreleased
 

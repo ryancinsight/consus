@@ -152,3 +152,157 @@ fn v5_micompressed_requires_compress_feature() {
         other => panic!("expected UnsupportedFeature, got {:?}", other),
     }
 }
+
+#[cfg(feature = "compress")]
+fn traced_case<Input, Output>(
+    arrange: impl FnOnce() -> Input,
+    act: impl FnOnce(Input) -> Output,
+    assert: impl FnOnce(Output),
+) {
+    let subscriber = tracing_subscriber::fmt()
+        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
+        .with_test_writer()
+        .finish();
+    tracing::subscriber::with_default(subscriber, || {
+        let _test = tracing::info_span!("mat_level_five").entered();
+        let input = tracing::info_span!("arrange").in_scope(arrange);
+        let output = tracing::info_span!("act").in_scope(|| act(input));
+        tracing::info_span!("assert").in_scope(|| assert(output));
+    });
+}
+
+#[cfg(feature = "compress")]
+fn compress_matrix(matrix: &[u8]) -> Vec<u8> {
+    use std::io::Write as _;
+
+    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(matrix).expect("compress complete matrix");
+    encoder.finish().expect("flush zlib stream")
+}
+
+#[cfg(feature = "compress")]
+#[test]
+fn v5_compressed_double_stored_as_unsigned_integers_preserves_values() {
+    traced_case(
+        || {
+            let real_data: Vec<u8> = [1u16, 256, u16::MAX, 17]
+                .into_iter()
+                .flat_map(u16::to_le_bytes)
+                .collect();
+            let matrix = matrix_element(matrix_payload(
+                6,
+                0,
+                0,
+                &[2, 1, 2],
+                b"volume",
+                &[element(4, &real_data)],
+            ));
+            v5_file(&[element(15, &compress_matrix(&matrix))])
+        },
+        |file| loadmat_bytes(&file).expect("read packed double matrix"),
+        |mat| {
+            let (name, MatArray::Numeric(array)) = &mat.variables[0] else {
+                panic!("expected a numeric matrix");
+            };
+            assert_eq!(name, "volume");
+            assert_eq!(array.class, MatNumericClass::Double);
+            assert_eq!(array.shape, [2, 1, 2]);
+            assert_eq!(decode_f64s(&array.real_data), [1.0, 256.0, 65_535.0, 17.0]);
+        },
+    );
+}
+
+#[cfg(feature = "compress")]
+#[test]
+fn v5_reads_consecutive_unpadded_compressed_variables() {
+    traced_case(
+        || {
+            let variables: Vec<_> = [("first", -23i16), ("second", 147)]
+                .into_iter()
+                .map(|(name, value)| {
+                    let payload = matrix_payload(
+                        6,
+                        0,
+                        0,
+                        &[1, 1],
+                        name.as_bytes(),
+                        &[element(3, &value.to_le_bytes())],
+                    );
+                    let compressed = compress_matrix(&matrix_element(payload));
+                    let mut outer = element(15, &compressed);
+                    outer.truncate(8 + compressed.len());
+                    outer
+                })
+                .collect();
+            assert!(
+                !variables[0].len().is_multiple_of(8),
+                "test must exercise an unaligned tag"
+            );
+            v5_file(&variables)
+        },
+        |file| {
+            let mat = loadmat_bytes(&file).expect("read both matrices");
+            let second = consus_mat::v5::read_mat_v5_variable(&file, "second")
+                .expect("select second matrix");
+            (mat, second)
+        },
+        |(mat, second)| {
+            assert_eq!(
+                mat.variables
+                    .iter()
+                    .map(|(name, _)| name.as_str())
+                    .collect::<Vec<_>>(),
+                ["first", "second"]
+            );
+            let MatArray::Numeric(first) = &mat.variables[0].1 else {
+                panic!("expected numeric first matrix");
+            };
+            assert_eq!(decode_f64s(&first.real_data), [-23.0]);
+            let Some(MatArray::Numeric(second)) = second else {
+                panic!("expected numeric second matrix");
+            };
+            assert_eq!(second.shape, [1, 1]);
+            assert_eq!(decode_f64s(&second.real_data), [147.0]);
+        },
+    );
+}
+
+#[cfg(feature = "compress")]
+#[test]
+fn v5_named_read_skips_unrelated_unsupported_matrix_values() {
+    use consus_mat::v5::read_mat_v5_variable;
+
+    traced_case(
+        || {
+            // An object is unsupported, but its validated name differs from the query.
+            let preceding = matrix_element(matrix_payload(3, 0, 0, &[1, 1], b"unrelated", &[]));
+            let target = matrix_element(matrix_payload(
+                6,
+                0,
+                0,
+                &[1, 1],
+                b"target",
+                &[element(9, &(-14.5f64).to_le_bytes())],
+            ));
+            v5_file(&[preceding, target])
+        },
+        |file| {
+            let all = loadmat_bytes(&file);
+            let target = read_mat_v5_variable(&file, "target").expect("select target");
+            let absent = read_mat_v5_variable(&file, "absent").expect("search all names");
+            (all, target, absent)
+        },
+        |(all, target, absent)| {
+            assert!(matches!(
+                all,
+                Err(consus_mat::MatError::UnsupportedFeature(_))
+            ));
+            let Some(MatArray::Numeric(value)) = target else {
+                panic!("expected selected numeric array");
+            };
+            assert_eq!(value.shape, [1, 1]);
+            assert_eq!(decode_f64s(&value.real_data), [-14.5]);
+            assert!(absent.is_none());
+        },
+    );
+}

@@ -45,6 +45,13 @@ for (name, value) in &file.variables {
 }
 ```
 
+Use `consus_mat::v5::read_mat_v5_variable` to select a top-level Level-5
+variable by name. It uses the same reader as `loadmat_bytes` and skips values
+of unrelated variables. A dense double array may carry smaller storage types.
+The reader normalizes those payloads to the declared double type while
+retaining storage order. `MatNumericClass::datatype()` describes the
+normalized bytes for `consus_core::decode_to_f64`.
+
 ## Canonical model
 
 Every variable loaded from a `.mat` file is returned as a `MatArray` variant:

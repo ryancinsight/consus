@@ -1,5 +1,17 @@
 # Consus — Implementation Checklist
 
+## 0.5.0 release candidate
+
+- [x] [major] Adopt the accepted Parquet codec correction and align workspace,
+  internal and fuzz package versions on 0.5.0.
+- [x] [minor] Make Consus the Level-5 variable reader for Kwavers. Verify
+  packed doubles, named selection, and consecutive compressed elements.
+- [x] [major] Reproduce the published HDF5 0.4.0/Moirai 0.10 reader
+  contract and verify the migrated 0.12 caller.
+- [ ] [major] Verify normalized registry packages and the exact hosted
+  release head after the upstream packages are available.
+- [ ] [major] Satisfy the provider and registry holds before publication.
+
 ## ATLAS-CONSUS-PARSE-LIMITS-035 — Bound remaining untrusted length/depth sites
 
 - [x] Reconcile the stale brief against the current provider default and keep

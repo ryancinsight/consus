@@ -58,6 +58,22 @@ impl MatNumericClass {
         }
     }
 
+    /// Type of the little-endian scalar bytes in a normalized numeric array.
+    pub const fn datatype(self) -> consus_core::Datatype {
+        use consus_core::{ByteOrder, Datatype};
+        let bits = core::num::NonZeroUsize::new(self.element_size() * 8)
+            .expect("all MATLAB numeric classes have nonzero width");
+        let byte_order = ByteOrder::LittleEndian;
+        match self {
+            Self::Double | Self::Single => Datatype::Float { bits, byte_order },
+            _ => Datatype::Integer {
+                bits,
+                byte_order,
+                signed: matches!(self, Self::Int8 | Self::Int16 | Self::Int32 | Self::Int64),
+            },
+        }
+    }
+
     /// Canonical string name matching MATLAB `class()` output.
     pub const fn as_str(self) -> &'static str {
         match self {

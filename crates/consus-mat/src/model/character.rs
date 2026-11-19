@@ -1,7 +1,7 @@
 //! MATLAB character array model.
 
 #[cfg(feature = "alloc")]
-use alloc::{string::String, vec::Vec};
+use alloc::{string::String, vec, vec::Vec};
 
 #[cfg(feature = "alloc")]
 use crate::error::MatError;

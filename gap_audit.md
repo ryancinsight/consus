@@ -1,5 +1,13 @@
 # Consus - Gap Audit
 
+## 0.5.0 candidate and MAT ownership
+
+A packed double MRI fixture failed on the unchanged MAT reader with a
+shape error because the parser assumed the logical width was the storage
+width. ADR 0010 moves selection and decoding to the provider and leaves
+MRI calibration in Kwavers. The local release candidate inherits the
+existing Parquet ADR and registry and provider holds.
+
 ## Pending publish blocked by a missing crate publisher (2026-11-09)
 
 The Crates.io Release workflow publishes with OIDC trusted publishing, but
