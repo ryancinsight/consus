@@ -30,6 +30,8 @@ consus-core = { workspace = true, features = ["test-util"] }
 consus-hdf5 = { workspace = true, features = ["std"] }
 consus-io = { workspace = true, features = ["std"] }
 tempfile = { workspace = true }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }
 
 [[test]]
 name = "v4_read"

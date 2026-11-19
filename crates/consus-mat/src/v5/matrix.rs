@@ -8,6 +8,7 @@
 use alloc::{string::String, vec, vec::Vec};
 
 use super::element::{decode_i32_vec, normalize_endian};
+use super::numeric::normalize_payload;
 use super::tag::{MiType, read_element_bytes, read_subelement_bytes, read_tag};
 use crate::error::MatError;
 use crate::model::{
@@ -51,7 +52,21 @@ pub fn parse_matrix(
     payload: &[u8],
     big_endian: bool,
 ) -> Result<Option<(String, MatArray)>, MatError> {
-    parse_matrix_depth(payload, big_endian, 0, &consus_core::ParseBudget::DEFAULT)
+    parse_named_matrix(payload, big_endian, None)
+}
+
+pub(super) fn parse_named_matrix(
+    payload: &[u8],
+    big_endian: bool,
+    name: Option<&str>,
+) -> Result<Option<(String, MatArray)>, MatError> {
+    parse_matrix_depth(
+        payload,
+        big_endian,
+        0,
+        &consus_core::ParseBudget::DEFAULT,
+        name,
+    )
 }
 
 /// Depth-bounded recursive miMATRIX parser.
@@ -68,6 +83,7 @@ fn parse_matrix_depth(
     big_endian: bool,
     depth: u16,
     budget: &consus_core::ParseBudget,
+    requested_name: Option<&str>,
 ) -> Result<Option<(String, MatArray)>, MatError> {
     if payload.is_empty() {
         return Ok(None);
@@ -104,6 +120,9 @@ fn parse_matrix_depth(
         .position(|&b| b == 0)
         .unwrap_or(name_bytes.len());
     let name = String::from_utf8_lossy(&name_bytes[..nul_end]).into_owned();
+    if requested_name.is_some_and(|requested| requested != name) {
+        return Ok(None);
+    }
     let numel: usize = if shape.is_empty() {
         1
     } else {
@@ -124,26 +143,13 @@ fn parse_matrix_depth(
                 let data: Vec<bool> = raw.iter().map(|b| *b != 0).collect();
                 MatArray::Logical(MatLogicalArray::new(shape, data)?)
             } else {
-                let esz = nc.element_size();
-                let (_rt, rr): (MiType, Vec<u8>) =
-                    read_subelement_bytes(payload, &mut pos, big_endian)?;
-                let expected_bytes = numel.checked_mul(esz).ok_or_else(|| {
-                    MatError::ShapeError(String::from(
-                        "miMATRIX dimensions exceed the addressable byte count",
-                    ))
-                })?;
-                if rr.len() != expected_bytes {
-                    return Err(MatError::ShapeError(alloc::format!(
-                        "real {} != numel {}*esz {}",
-                        rr.len(),
-                        numel,
-                        esz
-                    )));
-                }
-                let real_data = normalize_endian(rr, esz, big_endian);
+                let (stored, real) = read_subelement_bytes(payload, &mut pos, big_endian)?;
+                let real_data = normalize_payload(real, stored, nc, numel, big_endian, budget)?;
                 let imag_data = if is_complex {
-                    let (_it, ir) = read_subelement_bytes(payload, &mut pos, big_endian)?;
-                    Some(normalize_endian(ir, esz, big_endian))
+                    let (stored, imaginary) = read_subelement_bytes(payload, &mut pos, big_endian)?;
+                    Some(normalize_payload(
+                        imaginary, stored, nc, numel, big_endian, budget,
+                    )?)
                 } else {
                     None
                 };
@@ -239,10 +245,8 @@ fn parse_matrix_depth(
                     )));
                 }
                 let cp = read_element_bytes(payload, &mut pos, &ctag)?;
-                let next_depth = budget
-                    .descend(depth, "mat v5 cell-array nesting")
-                    .map_err(|e| MatError::InvalidFormat(e.to_string()))?;
-                let arr = match parse_matrix_depth(&cp, big_endian, next_depth, budget)? {
+                let next_depth = budget.descend(depth, "mat v5 cell-array nesting")?;
+                let arr = match parse_matrix_depth(&cp, big_endian, next_depth, budget, None)? {
                     Some((_, a)) => a,
                     None => MatArray::Numeric(MatNumericArray {
                         class: MatNumericClass::Double,
@@ -300,10 +304,8 @@ fn parse_matrix_depth(
                         )));
                     }
                     let fp = read_element_bytes(payload, &mut pos, &ftag)?;
-                    let next_depth = budget
-                        .descend(depth, "mat v5 struct-array nesting")
-                        .map_err(|e| MatError::InvalidFormat(e.to_string()))?;
-                    let arr = match parse_matrix_depth(&fp, big_endian, next_depth, budget)? {
+                    let next_depth = budget.descend(depth, "mat v5 struct-array nesting")?;
+                    let arr = match parse_matrix_depth(&fp, big_endian, next_depth, budget, None)? {
                         Some((_, a)) => a,
                         None => MatArray::Numeric(MatNumericArray {
                             class: MatNumericClass::Double,

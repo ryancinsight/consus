@@ -1,5 +1,13 @@
 # Consus - Gap Audit
 
+## 0.5.0 candidate and MAT ownership
+
+A packed double MRI fixture failed on the unchanged MAT reader with a
+shape error because the parser assumed the logical width was the storage
+width. ADR 0010 moves selection and decoding to the provider and leaves
+MRI calibration in Kwavers. The local release candidate inherits the
+existing Parquet ADR and registry and provider holds.
+
 ## Pending publish blocked by a missing crate publisher (2026-11-09)
 
 The Crates.io Release workflow publishes with OIDC trusted publishing, but
@@ -467,3 +475,10 @@ from the normalized clean0.3 raster archive. A strict patch-class diagnostic
 against actual published HDF50.2 still passes223 checks and misses the nominal
 break; the executed E0277 consumer determines the release class. Exact-head
 hosted/default and archive provenance gates remain before the new handoff.
+
+## Zarr configured zlib levels (local repair pending delivery)
+
+Baseline `0ad1040` ignored zlib's `level` by using the gzip-only accessor.
+The local repair reads the common configuration key; real array-write tests
+and independent Python decoding cover 0/9 with gzip controls. Delivery remains
+subject to independent review and existing gates/holds; no release claim.

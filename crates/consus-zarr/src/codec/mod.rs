@@ -338,7 +338,15 @@ impl CodecPipeline {
             // Compression codecs. `zlib` resolves to the RFC 1950 codec, `gzip`
             // to the RFC 1952 codec; the registry owns the framing.
             "gzip" | "zlib" => {
-                let level = codec.gzip_level().unwrap_or(6) as i32;
+                // Both framing codecs carry the same `level` configuration key.
+                // The public gzip-only accessor intentionally excludes zlib.
+                // Clamp before narrowing, matching the encoder range without wrapping.
+                let level = codec
+                    .config_value("level")
+                    .and_then(|value| value.parse::<u32>().ok())
+                    .map(|level| level.min(9))
+                    .and_then(|level| i32::try_from(level).ok())
+                    .unwrap_or(6);
                 registry
                     .get_by_name(&codec.name)
                     .and_then(|c| c.compress(data, CompressionLevel(level)))

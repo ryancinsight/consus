@@ -2,6 +2,17 @@
 
 Risks that no item fixes are recorded in `gap_audit.md`.
 
+## CONSUS-050 — Coordinate storage release and Atlas adoption [major] — in progress
+
+- Target: the 0.5.0 workspace adopts the accepted Parquet wire correction
+  and the shared Level-5 MAT reader for Kwavers (ADR 0009 and ADR 0010).
+- Acceptance: provider and downstream locks resolve one Consus commit,
+  compatibility gates execute against the published baselines, and each
+  affected consumer verifies value semantics through its normal entry point.
+- Remaining release gates: exact-head review, Moirai 0.12 registry cohorts,
+  ZIP bootstrap and Trusted Publishing configuration. Preserve originals
+  and require provenance for any separately authorized Parquet conversion.
+
 <a id="atlas-pr530-provider-coherence"></a>
 ## ATLAS-PR530-PROVIDER-COHERENCE — Current public provider contract [major] — blocked
 
@@ -100,3 +111,19 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - needs: CONSUS-NPY-ERROR-VARIANTS
 - scope: crates/consus-npy/tests
 - next step: after the variants land, replace message matching with variant matching.
+
+<a id="consus-zarr-zlib-level"></a>
+## CONSUS-ZARR-ZLIB-LEVEL — Honor configured write levels [patch] — blocked
+
+- milestone: M-core-formats
+- priority: correctness; needs: none
+- basis: 0ad1040530ba854520d58e721fff0e801beb55fb
+- scope: Zarr codec level selection and real v2 array-write regressions.
+- blocked: installed-hook delivery hold; independent review and normal gates
+  must pass before delivery. Registry/provider release holds are unchanged.
+- evidence: at `0ad1040`, a zlib level-0 write uses level 6; the gzip control
+  passes. The shared compression arm called a gzip-only accessor.
+- acceptance: level 0/9 and default/6 writes match explicitly configured
+  encoders, preserve gzip behavior, and decode independently without data loss.
+- next step: final independent review and applicable delivery gates; existing
+  provider, registry, and installed-hook holds remain. No publication here.

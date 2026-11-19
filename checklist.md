@@ -1,5 +1,22 @@
 # Consus — Implementation Checklist
 
+## 0.5.0 release candidate
+
+- [x] [major] Adopt the accepted Parquet codec correction and align workspace,
+  internal and fuzz package versions on 0.5.0.
+- [x] [minor] Make Consus the Level-5 variable reader for Kwavers. Verify
+  packed doubles, named selection, and consecutive compressed elements.
+- [x] [major] Reproduce the published HDF5 0.4.0/Moirai 0.10 reader
+  contract and verify the migrated 0.12 caller.
+- [x] [major] Resolve Moirai runtime and async 0.12.0 from crates.io.
+  The standalone locked workspace passes 2,791 default-feature and 2,911
+  all-feature tests. The async caller fixture verifies the registry source
+  boundary against the published HDF5 0.4.0 baseline.
+- [ ] [major] Verify normalized registry packages and the exact hosted
+  release head after the upstream packages are available.
+- [ ] [major] Verify the Raster trusted publisher and publish the exact
+  0.5.0 cohort. Bootstrap ZIP after Core and Compression, then publish NPY.
+
 ## ATLAS-CONSUS-PARSE-LIMITS-035 — Bound remaining untrusted length/depth sites
 
 - [x] Reconcile the stale brief against the current provider default and keep
@@ -208,3 +225,12 @@
       passes223 checks but misses the executed nominal identity regression.
 - [ ] Complete exact-head hosted/default adoption and the corrected merged
       source/archive handoff. Initial-upload authentication remains separate.
+
+## CONSUS-ZARR-ZLIB-LEVEL
+
+- [x] Reproduce the level-0 failure through parsed v2 metadata and `write_array`;
+      keep the gzip level control passing on the baseline.
+- [x] Read the shared `level` key without widening the public gzip-only accessor.
+- [x] Verify level 0/9 and omitted/6 through real stored chunks; Python zlib/gzip
+      independently decode all four explicit-level outputs to 29,696 bytes.
+- [ ] Complete independent review and final delivery gates; preserve holds.

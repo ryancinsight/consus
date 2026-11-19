@@ -1,17 +1,48 @@
 # Changelog
 
-## [0.4.1] - Unreleased
+## [0.5.0] - Unreleased
+
+### Breaking
+
+- [major] Parquet column codec numbers now follow the specification.
+  `CompressionCodec::Zlib` is removed, `Lzo` is added, and discriminants
+  change. Exhaustive downstream matches must be updated. GZIP pages now
+  use RFC 1952 rather than raw DEFLATE. Deprecated LZ4 (5) is unsupported;
+  use LZ4_RAW (7) for new data. Existing Consus files using GZIP, ZSTD,
+  LZ4_RAW, legacy LZ4 or ZLIB require provenance-aware migration;
+  UNCOMPRESSED and SNAPPY files retain their codec interpretation.
+  See [compatibility and migration](docs/parquet-compatibility.md) and ADR0009.
+- [major] GZIP decoding reads all members and rejects trailing non-member
+  bytes, including in Zarr chunks. Parquet readers reject mismatched decoded
+  page lengths and V2 headers smaller than their level sections.
+- [major] Public HDF5 async bounds use Moirai 0.12. Migrate custom
+  positioned readers from the published HDF5 0.4.0/Moirai 0.10 identity.
+- Provider coherence, normalized package verification, registry ownership
+  and release approvals still gate publication.
+
+### Added
+
+- [minor] Select a named MATLAB Level-5 variable without decoding the values
+  of unrelated matrices. `MatNumericClass::datatype` exposes the normalized
+  scalar type for the shared Consus decoder.
 
 ### Fixed
+
+- [patch] Decode packed MATLAB Level-5 double payloads using the stored
+  scalar type, preserving the declared class and column-major order.
+  Accept unpadded compressed elements emitted by SciPy and restore the
+  alloc-only MAT build.
+
+- [patch] Honor the configured Zarr `zlib` compression level when writing
+  chunks. Keep default level 6, valid gzip levels, and framing unchanged.
+  Clamp oversized unsigned gzip/zlib levels to 9 before signed conversion
+  rather than wrapping negative. Existing release and registry holds still apply.
 
 - [patch] Parse scalar NPY header dictionaries by structure. Accept either
   key quote delimiter and arbitrary key order, reject malformed boolean/tuple
   tokens, and consume the complete dictionary before reading payload values.
   Preserve parenthesized literals, comments and adjacent strings across all
   Python physical line endings. NPZ member reads use the same boundary.
-  Preserve the uniform workspace and
-  internal dependency versions; release remains subject to the existing
-  provider cohort, registry and deployment holds.
 
 ## [0.4.0] - Unreleased
 
