@@ -22,6 +22,12 @@
 //! | Variable-length | 9 | `map_variable_length` | `VarLen` |
 //! | Array | 10 | `map_array` | `Array` |
 //!
+//! Canonical `Datatype` is a structural projection, not proof of an IEEE
+//! representation: floating field positions, precision and bias are not retained
+//! in `Datatype::Float`. Consumers requiring IEEE storage must use
+//! `Hdf5File::dataset_at_with_ieee_float_encoding` (with `alloc`) on the original
+//! dataset metadata before interpreting scalar bytes.
+//!
 //! ## Invariants
 //!
 //! - Every HDF5 datatype class has exactly one mapping function.
@@ -36,6 +42,10 @@
 //!   class bit fields.
 
 pub mod classes;
+#[cfg(feature = "alloc")]
+mod ieee;
+#[cfg(feature = "alloc")]
+pub use ieee::IeeeFloatEncoding;
 #[cfg(feature = "alloc")]
 pub mod compound;
 

@@ -34,6 +34,8 @@ moirai = { workspace = true, optional = true }
 moirai-async = { workspace = true, optional = true }
 
 [dev-dependencies]
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracing-subscriber = "0.3"
 consus-core = { workspace = true, features = ["test-util"] }
 tempfile = { workspace = true }
 smallvec = { workspace = true }
