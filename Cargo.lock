@@ -74,7 +74,7 @@ checksum = "940b3a0ca603d1eade50a4846a2afffd5ef57a9feac2c0e2ec2e14f9ead76000"
 [[package]]
 name = "apollo-dctdst-core"
 version = "0.17.2"
-source = "git+https://github.com/ryancinsight/apollo#1d2a79ad0b34c8538bb4e1f374b22b3e04479fd3"
+source = "git+https://github.com/ryancinsight/apollo#7a8b226fa352b994405b0ae73239e5e479688d28"
 dependencies = [
  "eunomia",
 ]
@@ -618,8 +618,9 @@ dependencies = [
 
 [[package]]
 name = "eunomia"
-version = "0.12.0"
-source = "git+https://github.com/ryancinsight/eunomia#acb3f3a7fa37ae6e6b345dfa967674cf4dc34b7a"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3555339ae7116eb610fafe44da23aedf0389b58d725d75a959fed659d010f0a7"
 dependencies = [
  "bytemuck",
  "eunomia-derive",
@@ -628,8 +629,9 @@ dependencies = [
 
 [[package]]
 name = "eunomia-derive"
-version = "0.12.0"
-source = "git+https://github.com/ryancinsight/eunomia#acb3f3a7fa37ae6e6b345dfa967674cf4dc34b7a"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e01e52c26273b3cbd8f11b01c6220bb643c576943052fe48daf16ff4a69ca10"
 dependencies = [
  "proc-macro2",
  "quote",
