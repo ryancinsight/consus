@@ -1,5 +1,15 @@
 # Changelog
 
+## [consus-hdf5 0.6.0] - 2026-11-21
+
+### Added
+
+- Opt-in exact IEEE binary16, binary32, and binary64 dataset admission in
+  either byte order. The checked lookup compares the original HDF5 datatype
+  fields before returning ordinary dataset metadata. See [ADR 0011](docs/adr/0011-exact-ieee-dataset-admission.md).
+- This release covers `consus-hdf5`. Its Consus sibling dependencies continue
+  to resolve from their published 0.5 series.
+
 ## [0.5.0] - Unreleased
 
 ### Breaking

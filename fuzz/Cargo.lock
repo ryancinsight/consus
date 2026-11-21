@@ -81,7 +81,7 @@ dependencies = [
 
 [[package]]
 name = "consus-hdf5"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "byteorder",
  "consus-compression",

@@ -1,5 +1,11 @@
 # Consus - Gap Audit
 
+## Exact HDF5 float admission
+
+The projected float width and byte order can conceal a custom exponent bias.
+ADR 0011 adds a separate metadata lookup for this contract.
+The HDF5 0.6.0 release checklist tracks the exact-source and registry gates.
+
 ## 0.5.0 release and MAT ownership
 
 A packed double MRI fixture failed on the unchanged MAT reader with a

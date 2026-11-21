@@ -76,12 +76,12 @@ pub fn read_tag(data: &[u8], pos: &mut usize, big_endian: bool) -> Result<DataTa
     let b = &data[*pos..*pos + 4];
     let (small_nbytes, small_type) = if big_endian {
         (
-            u16::from_be_bytes([b[0], b[1]]) as usize,
+            usize::from(u16::from_be_bytes([b[0], b[1]])),
             u16::from_be_bytes([b[2], b[3]]),
         )
     } else {
         (
-            u16::from_le_bytes([b[2], b[3]]) as usize,
+            usize::from(u16::from_le_bytes([b[2], b[3]])),
             u16::from_le_bytes([b[0], b[1]]),
         )
     };

@@ -19,3 +19,4 @@
 | [0008](0008-release-scope-1-0.md) | Consus release scope for 1.0 | Accepted |
 | [0009](0009-parquet-codec-spec.md) | Parquet codec numbers and GZIP framing follow the specification | Accepted |
 | [0010](0010-mat-v5-variable-selection.md) | Select Level-5 variables in the Consus MAT reader | Accepted |
+| [0011](0011-exact-ieee-dataset-admission.md) | Opt-in exact IEEE dataset admission | Proposed |

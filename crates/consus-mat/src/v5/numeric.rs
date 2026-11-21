@@ -38,13 +38,13 @@ pub(super) fn normalize_payload(
         ByteOrder::LittleEndian
     };
     match stored {
-        MiType::Int8 => expand(&data, count, order, f64::from as fn(i8) -> _),
-        MiType::Uint8 => expand(&data, count, order, f64::from as fn(u8) -> _),
-        MiType::Int16 => expand(&data, count, order, f64::from as fn(i16) -> _),
-        MiType::Uint16 => expand(&data, count, order, f64::from as fn(u16) -> _),
-        MiType::Int32 => expand(&data, count, order, f64::from as fn(i32) -> _),
-        MiType::Uint32 => expand(&data, count, order, f64::from as fn(u32) -> _),
-        MiType::Single => expand(&data, count, order, f64::from as fn(f32) -> _),
+        MiType::Int8 => expand::<i8>(&data, count, order, f64::from),
+        MiType::Uint8 => expand::<u8>(&data, count, order, f64::from),
+        MiType::Int16 => expand::<i16>(&data, count, order, f64::from),
+        MiType::Uint16 => expand::<u16>(&data, count, order, f64::from),
+        MiType::Int32 => expand::<i32>(&data, count, order, f64::from),
+        MiType::Uint32 => expand::<u32>(&data, count, order, f64::from),
+        MiType::Single => expand::<f32>(&data, count, order, f64::from),
         // A double array has binary64 precision. Integer values outside its
         // exactly representable set round to the nearest binary64 value.
         MiType::Int64 => expand(&data, count, order, |value: i64| value as f64),
