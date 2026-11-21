@@ -1,5 +1,13 @@
 # Consus — Implementation Checklist
 
+## consus-hdf5 0.6.0 release [minor]
+
+- [x] Scope the new version to the HDF5 package approved for release.
+- [ ] Pass the provider, Atlas history, hosted ADR and release gates on the
+  exact release revision.
+- [ ] Verify the crates.io archive, checksum and fresh registry-only consumer
+  before applying the Helios adoption patch.
+
 ## 0.5.0 release
 
 - [x] [major] Adopt the accepted Parquet codec correction and align workspace,
