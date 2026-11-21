@@ -60,7 +60,7 @@ jobs:
       dispatch-package: ${{ inputs.package }}
       dispatch-version: ${{ inputs.version }}
 
-  # Publish only the coordinated 0.5.0 cohort. The planner defers NPY
+  # Publish only the explicit crate/version cohort. The planner defers NPY
   # until ZIP's first upload makes that dependency available on crates.io.
   publish-pending:
     name: Publish pending crate versions
@@ -73,7 +73,7 @@ jobs:
       rust-toolchain: "1.97.0"
       cohort-json: >-
         {"consus":"0.5.0","consus-arrow":"0.5.0","consus-compression":"0.5.0",
-        "consus-core":"0.5.0","consus-fits":"0.5.0","consus-hdf5":"0.5.0",
+        "consus-core":"0.5.0","consus-fits":"0.5.0","consus-hdf5":"0.6.0",
         "consus-hdmf":"0.5.0","consus-io":"0.5.0","consus-mat":"0.5.0",
         "consus-netcdf":"0.5.0","consus-npy":"0.5.0","consus-nwb":"0.5.0",
         "consus-onnx":"0.5.0","consus-parquet":"0.5.0","consus-raster":"0.5.0",
