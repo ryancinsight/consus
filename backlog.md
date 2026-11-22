@@ -1,5 +1,11 @@
 # Consus — Backlog
 
+<a id="consus-stable-qualification"></a>
+## CONSUS-STABLE-QUALIFICATION — consus stable-release qualification [patch] — todo
+- priority: verification; milestone: M-interop-contracts; basis: `d1319313201c`.
+- Outcome: Close the HDF5 handoff to Helios using the published reader. Follow the [release scope](docs/adr/0008-release-scope-1-0.md) and [milestone exits](backlog/milestones.md).
+- Acceptance and sequence: [stable-release checklist](checklist.md#stable-release-checklist).
+
 Risks that no item fixes are recorded in `gap_audit.md`.
 
 <a id="consus-hdf5-exact-ieee"></a>
