@@ -1,5 +1,14 @@
 # Consus — Implementation Checklist
 
+## Stable release checklist
+
+Basis `d1319313201c`, representative manifest `consus-hdf5 0.6.0`. Target 1.0.0. [Backlog item](backlog.md#consus-stable-qualification).
+
+- [ ] [patch] Match the indexed consus-hdf5 0.6.0 archive to its source and use a clean registry consumer to read canonical IEEE datasets and reject mismatched type descriptors. Attach the receipt to CONSUS-HDF5-EXACT-IEEE.
+- [ ] [patch] Verify the same positive and negative files through Helios. Exercise the Parquet codec controls and the free-threaded Python interop gate from the milestone ladder.
+- [ ] [major] Complete the format and interop milestones on the same provider graph. Record coverage for each public format and its error behavior before committing to the stable interface.
+- [ ] [patch] Run the [release scope](docs/adr/0008-release-scope-1-0.md) exits and attach reviewed, exact-revision evidence for this member’s [Atlas qualification criteria](https://github.com/ryancinsight/atlas/blob/17b0124a7548ad81e817284afc5cb115c1d1bc78/docs/parity/repositories.json).
+
 ## consus-hdf5 0.6.0 release [minor]
 
 - [x] Scope the new version to the HDF5 package approved for release.
