@@ -1,3 +1,5 @@
+mod ljif;
+
 use super::*;
 use crate::{DecodeErrorKind, DecodeLimits, DecodedImage, PixelFormat};
 use jpeg_encoder::{ColorType, Encoder};

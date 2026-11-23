@@ -41,6 +41,7 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
     let mut orientation = Orientation::Normal;
     let mut saw_exif = false;
     let mut saw_jfif = false;
+    let mut saw_ljif = false;
     let mut adobe_transform = None;
 
     loop {
@@ -59,11 +60,12 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
                 if frame.is_some() || scans != 0 {
                     return Err(malformed());
                 }
-                frame = Some(frame::parse_frame(
-                    segment(bytes, &mut cursor)?,
-                    marker,
-                    limits,
-                )?);
+                let payload = segment(bytes, &mut cursor)?;
+                // The SOF3 parser independently enforces one lossless component.
+                if saw_ljif && marker != 0xc3 {
+                    return Err(unsupported());
+                }
+                frame = Some(frame::parse_frame(payload, marker, limits)?);
             }
             0xc4 => parse_tables(segment(bytes, &mut cursor)?, &mut tables)?,
             0xcc => conditioning.parse(segment(bytes, &mut cursor)?)?,
@@ -115,11 +117,20 @@ pub fn decode(bytes: &[u8], limits: DecodeLimits) -> Result<DecodedImage, Decode
                 scans = scans.checked_add(1).ok_or_else(too_large)?;
             }
             0xe0 => {
-                if saw_jfif {
+                if saw_jfif || saw_ljif {
                     return Err(malformed());
                 }
-                validate_jfif(segment(bytes, &mut cursor)?)?;
-                saw_jfif = true;
+                let payload = segment(bytes, &mut cursor)?;
+                if let Some(ljif) = payload.strip_prefix(b"LJIF") {
+                    if frame.is_some() {
+                        return Err(malformed());
+                    }
+                    validate_ljif(ljif)?;
+                    saw_ljif = true;
+                } else {
+                    validate_jfif(payload)?;
+                    saw_jfif = true;
+                }
             }
             0xe1 => {
                 if saw_exif {
@@ -183,6 +194,21 @@ fn select_color_model(
         },
         _ => Err(unsupported()),
     }
+}
+
+// This LJIF form precedes single-component Huffman lossless frames. Accept
+// the observed version and zero flags/mode without applying a color transform.
+fn validate_ljif(body: &[u8]) -> Result<(), DecodeError> {
+    let [version_hi, version_lo, flags @ .., mode] = body else {
+        return Err(malformed());
+    };
+    if flags.len() != 6 {
+        return Err(malformed());
+    }
+    if u16::from_be_bytes([*version_hi, *version_lo]) != 1 || flags != [0; 6] || *mode != 0 {
+        return Err(unsupported());
+    }
+    Ok(())
 }
 
 fn validate_jfif(payload: &[u8]) -> Result<(), DecodeError> {

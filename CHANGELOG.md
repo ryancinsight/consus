@@ -1,5 +1,13 @@
 # Changelog
 
+## [consus-raster 0.5.1] - Unreleased
+
+### Fixed
+
+- [patch] Accept version 1 grayscale `LJIF` APP0 metadata with zero flags
+  and mode in single-component Huffman lossless JPEG. The marker leaves
+  predictive samples unchanged.
+
 ## [consus-hdf5 0.6.0] - 2026-11-21
 
 ### Added

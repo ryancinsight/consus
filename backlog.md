@@ -1,5 +1,13 @@
 # Consus — Backlog
 
+<a id="consus-raster-ljif"></a>
+## CONSUS-RASTER-LJIF — Read grayscale lossless JPEG with LJIF metadata [patch]
+
+- Target: `consus-raster` 0.5.1.
+- Accept the observed grayscale LJIF header before the frame. Reject malformed
+  lengths, duplicate headers and unsupported modes.
+- [Acceptance and release gates](checklist.md#consus-raster-051-release).
+
 <a id="consus-stable-qualification"></a>
 ## CONSUS-STABLE-QUALIFICATION — consus stable-release qualification [patch] — todo
 - priority: verification; milestone: M-interop-contracts; basis: `d1319313201c`.

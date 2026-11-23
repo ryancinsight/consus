@@ -1,5 +1,15 @@
 # Consus - Gap Audit
 
+## Grayscale lossless JPEG with LJIF metadata
+
+RITK's retained skull CT uses a version 1 `LJIF` APP0 segment with zero
+flags and mode. Raster 0.5.0 rejects it while parsing APP0 as JFIF.
+Raster 0.5.1 admits it for single-component Huffman lossless frames.
+The existing entropy decoder interprets the same scan. Two regressions
+fail on the baseline and pass with the parser change. All 79 Raster
+tests and two doctests pass. Clippy and the published API comparison
+pass. The release checklist tracks the registry gate.
+
 ## Exact HDF5 float admission
 
 The projected float width and byte order can conceal a custom exponent bias.

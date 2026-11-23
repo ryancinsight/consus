@@ -1,5 +1,14 @@
 # Consus — Implementation Checklist
 
+## consus-raster 0.5.1 release
+
+- [x] [patch] Reproduce the published provider's LJIF rejection and verify
+  exact synthetic samples and negative marker cases on the corrected provider.
+- [x] [patch] Run all Raster tests, doctests, strict Clippy and the API
+  comparison with published 0.5.0.
+- [ ] [patch] After release approval, verify registry archive identity and
+  registry-only RITK resolution before updating the downstream lockfile.
+
 ## Stable release checklist
 
 Basis `d1319313201c`, representative manifest `consus-hdf5 0.6.0`. Target 1.0.0. [Backlog item](backlog.md#consus-stable-qualification).
