@@ -1,5 +1,11 @@
 # Consus - Gap Audit
 
+## Incremental release baseline
+
+Reviewed [consus-hdf5 0.6.0](crates/consus-hdf5/Cargo.toml) at [832899c5dbef](https://github.com/ryancinsight/consus/tree/832899c5dbefaddb84cc2e8522c56fe0b110a445). The exact version appears in the [registry](https://crates.io/crates/consus-hdf5/0.6.0).
+
+The next [patch] checkpoint uses [ieee float admission](crates/consus-hdf5/tests/ieee_float_admission.rs). [Target version and acceptance criteria](checklist.md#stable-release-checklist).
+
 ## Exact HDF5 float admission
 
 The projected float width and byte order can conceal a custom exponent bias.

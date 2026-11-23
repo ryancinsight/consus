@@ -2,12 +2,14 @@
 
 ## Stable release checklist
 
-Basis `d1319313201c`, representative manifest `consus-hdf5 0.6.0`. Target 1.0.0. [Backlog item](backlog.md#consus-stable-qualification).
+Basis `832899c5dbef`, representative manifest `consus-hdf5 0.6.0`. Target 1.0.0. [Backlog item](backlog.md#consus-stable-qualification).
 
 - [ ] [patch] Match the indexed consus-hdf5 0.6.0 archive to its source and use a clean registry consumer to read canonical IEEE datasets and reject mismatched type descriptors. Attach the receipt to CONSUS-HDF5-EXACT-IEEE.
 - [ ] [patch] Verify the same positive and negative files through Helios. Exercise the Parquet codec controls and the free-threaded Python interop gate from the milestone ladder.
 - [ ] [major] Complete the format and interop milestones on the same provider graph. Record coverage for each public format and its error behavior before committing to the stable interface.
-- [ ] [patch] Run the [release scope](docs/adr/0008-release-scope-1-0.md) exits and attach reviewed, exact-revision evidence for this member’s [Atlas qualification criteria](https://github.com/ryancinsight/atlas/blob/17b0124a7548ad81e817284afc5cb115c1d1bc78/docs/parity/repositories.json).
+- [ ] [patch] **0.6.1.** Feed the HDF5 reader identical value bytes under canonical and incompatible datatype descriptors. Check exact values on admission and the typed failure on rejection through the public API. [Source and baseline](gap_audit.md#incremental-release-baseline).
+- [ ] [minor] **0.7.0 if interop additions are needed.** Replay the same files through Helios. For the Parquet and Python lanes, qualify each owning package against its own version and record which format, codec and interpreter combination executed.
+- [ ] [major] **1.0.0-beta.1 → 1.0.0-rc.1 → 1.0.0.** Freeze the supported surface at beta. A registry reader and its downstream consumer agree on admitted files, decoded values and failure classification. Repeat the applicable exits on the exact RC before stable promotion. Run the [release scope](docs/adr/0008-release-scope-1-0.md) exits and attach reviewed, exact-revision evidence for this member’s [Atlas qualification criteria](https://github.com/ryancinsight/atlas/blob/17b0124a7548ad81e817284afc5cb115c1d1bc78/docs/parity/repositories.json).
 
 ## consus-hdf5 0.6.0 release [minor]
 
