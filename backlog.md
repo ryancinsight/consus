@@ -2,8 +2,8 @@
 
 <a id="consus-stable-qualification"></a>
 ## CONSUS-STABLE-QUALIFICATION — consus stable-release qualification [patch] — todo
-- priority: verification; milestone: M-interop-contracts; basis: `d1319313201c`.
-- Outcome: Close the HDF5 handoff to Helios using the published reader. Follow the [release scope](docs/adr/0008-release-scope-1-0.md) and [milestone exits](backlog/milestones.md).
+- priority: verification; milestone: M-interop-contracts; basis: `832899c5dbef`.
+- Outcome: Close the HDF5 handoff to Helios using the published reader. Follow the [release scope](docs/adr/0008-release-scope-1-0.md) and [milestone exits](backlog/milestones.md). Planning targets for `consus-hdf5` are 0.6.1, then 0.7.0 if interop additions are needed, then 1.0.0. Verification alone can advance the current version.
 - Acceptance and sequence: [stable-release checklist](checklist.md#stable-release-checklist).
 
 Risks that no item fixes are recorded in `gap_audit.md`.
