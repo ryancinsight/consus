@@ -43,6 +43,7 @@ extern crate alloc;
 
 #[cfg(feature = "alloc")]
 use alloc::{
+    collections::BTreeMap,
     format,
     string::{String, ToString},
     vec,
@@ -52,6 +53,8 @@ use alloc::{
 #[cfg(feature = "alloc")]
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "alloc")]
+use super::codec::config_text;
 #[cfg(feature = "alloc")]
 use super::{
     ArrayMetadata, AttributeValue, ChunkKeyEncoding, Codec, FillValue, GroupMetadata, ZarrVersion,
@@ -197,11 +200,15 @@ pub struct CompressorNamed {
     /// Codec identifier (e.g., `"zlib"`, `"gzip"`, `"blosc"`, `"lz4"`, `"zstd"`).
     pub id: String,
 
-    /// Optional codec configuration (level, blocksize, etc.).
+    /// Optional codec configuration object (level, blocksize, etc.).
     #[serde(default)]
     pub configuration: Option<CodecConfiguration>,
 
-    /// Inline gzip/zlib level used by zarr-python v2 metadata.
+    /// Inline level used by zarr-python v2 metadata. When the
+    /// `configuration` object also declares `level`, the two must agree or
+    /// a write is rejected. `null` is the form `ArrayMetadataV2::to_json`
+    /// writes for no level, so it reads as absent here; in a `configuration`
+    /// object or on a filter entry it is the text "".
     #[serde(default)]
     pub level: Option<i32>,
 }
@@ -216,18 +223,34 @@ pub struct FilterIdConfig {
     /// Optional filter parameters.
     #[serde(default)]
     pub configuration: Option<CodecConfiguration>,
+
+    /// Every other member of the entry (`level`, ...), keyed by name.
+    #[serde(flatten)]
+    pub members: BTreeMap<String, serde_json::Value>,
 }
 
-/// Codec configuration as a list of key-value integer pairs.
+/// A Zarr v2 codec `configuration` object.
 ///
-/// Used by both compressors and filters in Zarr v2.
+/// Used by both compressors and filters. Every member of the JSON object is
+/// carried into the canonical [`Codec`] configuration, so a declared
+/// `{"level": 10}` reaches the codec that validates it instead of being
+/// dropped. Members are listed in order: `elements` pairs, then the other
+/// members sorted by key, then the members declared inline beside `id` (a
+/// string-id compressor's `level`, the members of a numeric-id compressor or
+/// of a filter entry). A value is rendered as
+/// its JSON text, strings unquoted and `null` empty.
 #[cfg(feature = "alloc")]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CodecConfiguration {
-    /// Key-value configuration pairs.
-    /// Each entry is a list `[key, value]` as required by the Zarr spec.
+    /// Key-value configuration pairs held under the `elements` member.
+    /// Each entry is a list `[key, value]`.
     #[serde(default)]
     pub elements: Vec<CodecConfigElement>,
+
+    /// Every other member of the configuration object (`level`, `cname`,
+    /// `clevel`, ...), keyed by name.
+    #[serde(flatten)]
+    pub members: BTreeMap<String, serde_json::Value>,
 }
 
 /// A single key-value pair in a codec configuration.
@@ -251,6 +274,11 @@ pub struct FilterConfig {
     /// Optional filter parameters.
     #[serde(default)]
     pub configuration: Option<CodecConfiguration>,
+
+    /// Every other member of the entry (`level`, `elementsize`, ...), the
+    /// numcodecs form `{"id": "zlib", "level": 1}`, keyed by name.
+    #[serde(flatten)]
+    pub members: BTreeMap<String, serde_json::Value>,
 }
 
 /// A filter identifier: either a string name or an integer HDF5 filter ID.
@@ -345,7 +373,8 @@ impl FilterIdConfig {
     /// Convert an HDF5 filter ID to a canonical codec name.
     fn to_codec(&self) -> Codec {
         let name = hdf5_filter_id_to_name(self.id);
-        let configuration = codec_configuration_pairs(self.configuration.as_ref());
+        let mut configuration = codec_configuration_pairs(self.configuration.as_ref());
+        configuration.extend(member_pairs(&self.members));
         Codec {
             name,
             configuration,
@@ -360,7 +389,8 @@ impl FilterConfig {
             FilterId::Name(s) => s.clone(),
             FilterId::Number(n) => hdf5_filter_id_to_name(*n),
         };
-        let configuration = codec_configuration_pairs(self.configuration.as_ref());
+        let mut configuration = codec_configuration_pairs(self.configuration.as_ref());
+        configuration.extend(member_pairs(&self.members));
         Some(Codec {
             name,
             configuration,
@@ -385,9 +415,19 @@ fn codec_configuration_pairs(configuration: Option<&CodecConfiguration>) -> Vec<
             cfg.elements
                 .iter()
                 .filter_map(CodecConfigElement::to_pair)
+                .chain(member_pairs(&cfg.members))
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// The `(key, text)` pairs of JSON object members, sorted by key.
+fn member_pairs(
+    members: &BTreeMap<String, serde_json::Value>,
+) -> impl Iterator<Item = (String, String)> + '_ {
+    members
+        .iter()
+        .map(|(key, value)| (key.clone(), config_text(value)))
 }
 
 /// Map an HDF5 filter ID to a codec name string.
@@ -719,14 +759,71 @@ mod tests {
             CompressorConfig::Named(n) => {
                 assert_eq!(n.id, "gzip");
                 let cfg = n.configuration.as_ref().expect("gzip config must exist");
-                assert!(
-                    cfg.elements.is_empty()
-                        || cfg.elements
-                            .iter()
-                            .any(|e| matches!(e, CodecConfigElement::Pair(pair) if pair[0] == "level" && pair[1] == "1"))
+                assert!(cfg.elements.is_empty());
+                assert_eq!(
+                    cfg.members.iter().collect::<Vec<_>>(),
+                    [(&String::from("level"), &serde_json::json!(1))]
                 );
             }
             _ => panic!("expected Named compressor"),
+        }
+    }
+
+    #[test]
+    fn members_beside_id_reach_the_codec_configuration() {
+        let json = r#"{
+            "zarr_format": 2, "shape": [8], "chunks": [8], "dtype": "<f8",
+            "fill_value": 0.0, "order": "C",
+            "compressor": {"id": 32015, "level": 1, "configuration": {"level": 9}},
+            "filters": [
+                {"id": "shuffle", "elementsize": 8},
+                {"id": 32008, "configuration": {"elements": [["a", "b"]], "z": 1, "s": "x"},
+                 "level": 2, "clevel": null}
+            ]
+        }"#;
+        let meta = ArrayMetadataV2::parse(json).expect("must parse");
+        let codecs = meta.to_canonical().codecs;
+        let codec = |name: &str, pairs: &[(&str, &str)]| Codec {
+            name: name.into(),
+            configuration: pairs
+                .iter()
+                .map(|(key, value)| ((*key).into(), (*value).into()))
+                .collect(),
+        };
+        assert_eq!(
+            codecs,
+            [
+                codec("zstd", &[("level", "9"), ("level", "1")]),
+                codec("shuffle", &[("elementsize", "8")]),
+                codec(
+                    "filter32008",
+                    &[
+                        ("a", "b"),
+                        ("s", "x"),
+                        ("z", "1"),
+                        ("clevel", ""),
+                        ("level", "2")
+                    ]
+                ),
+            ]
+        );
+        assert_eq!(
+            serde_json::to_string(&meta.compressor).expect("serializes"),
+            r#"{"id":32015,"configuration":{"elements":[],"level":9},"level":1}"#
+        );
+        let reparsed = ArrayMetadataV2::parse(&meta.to_json().expect("serializes"))
+            .expect("serialized metadata parses");
+        assert_eq!(reparsed.to_canonical().codecs, codecs);
+    }
+
+    #[test]
+    fn compressor_serialization_is_unchanged_without_inline_members() {
+        for json in [
+            r#"{"id":"zlib","configuration":null,"level":null}"#,
+            r#"{"id":32015,"configuration":null}"#,
+        ] {
+            let entry: CompressorConfig = serde_json::from_str(json).expect("parses");
+            assert_eq!(serde_json::to_string(&entry).expect("serializes"), json);
         }
     }
 
@@ -758,6 +855,7 @@ mod tests {
         assert_eq!(canon.order, 'C');
         assert_eq!(canon.codecs.len(), 1);
         assert_eq!(canon.codecs[0].name, "gzip");
+        assert_eq!(canon.codecs[0].config_value("level"), Some("1"));
         assert_eq!(canon.chunk_key_encoding.name, "v2");
         assert_eq!(canon.chunk_key_encoding.separator, '.');
     }

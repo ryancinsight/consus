@@ -17,7 +17,7 @@ pub enum ChunkError {
     CompressFailed,
     /// A codec in the array metadata declares a configuration it cannot
     /// honor, such as a `gzip` or `zlib` level that is neither in `0..=9`
-    /// nor `-1`.
+    /// nor `-1`, or that is declared twice with different values.
     ///
     /// `-1` is zlib's `Z_DEFAULT_COMPRESSION` and is accepted as level 6 for
     /// `gzip` and `zlib` in Zarr v2 and v3 metadata alike. For v3 `gzip` that

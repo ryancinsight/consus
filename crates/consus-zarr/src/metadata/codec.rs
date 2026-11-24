@@ -38,6 +38,17 @@ impl DeflateLevel {
     }
 }
 
+/// The configuration text of a JSON value: strings unquoted, `null` empty,
+/// every other value in its JSON form.
+#[cfg(feature = "alloc")]
+pub(crate) fn config_text(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(text) => text.clone(),
+        serde_json::Value::Null => String::new(),
+        other => other.to_string(),
+    }
+}
+
 /// A codec configuration entry.
 ///
 /// Represents a codec in a Zarr v2 or v3 codec chain. Each codec has a
@@ -115,16 +126,7 @@ impl Codec {
                             config
                                 .iter()
                                 .map(|(config_key, config_value)| {
-                                    (
-                                        config_key.clone(),
-                                        match config_value {
-                                            serde_json::Value::String(s) => s.clone(),
-                                            serde_json::Value::Number(n) => n.to_string(),
-                                            serde_json::Value::Bool(b) => b.to_string(),
-                                            serde_json::Value::Null => String::new(),
-                                            _ => config_value.to_string(),
-                                        },
-                                    )
+                                    (config_key.clone(), config_text(config_value))
                                 })
                                 .collect()
                         })
@@ -138,6 +140,34 @@ impl Codec {
         )
     }
 
+    /// The text of this codec's declared `level`, `None` when absent.
+    ///
+    /// # Errors
+    ///
+    /// [`consus_core::Error::InvalidFormat`] when `level` is declared more
+    /// than once with differing text (a Zarr v2 inline `level` beside a
+    /// nested `configuration.level`). Every compression codec reads one
+    /// level, so the declarations must agree.
+    pub(crate) fn declared_level(&self) -> consus_core::Result<Option<&str>> {
+        let mut declared = self
+            .configuration
+            .iter()
+            .filter(|(key, _)| key == "level")
+            .map(|(_, value)| value.as_str());
+        let Some(first) = declared.next() else {
+            return Ok(None);
+        };
+        if let Some(other) = declared.find(|value| *value != first) {
+            return Err(consus_core::Error::InvalidFormat {
+                message: alloc::format!(
+                    "zarr `{}` codec: level is declared as both {first:?} and {other:?}",
+                    self.name
+                ),
+            });
+        }
+        Ok(Some(first))
+    }
+
     /// The validated compression level of a `gzip` or `zlib` codec.
     ///
     /// An absent `level` is [`DeflateLevel::DEFAULT`]. A present value is
@@ -146,9 +176,10 @@ impl Codec {
     /// # Errors
     ///
     /// [`consus_core::Error::InvalidFormat`] when `level` is present and is
-    /// not an integer in `0..=9` or `-1`.
+    /// not an integer in `0..=9` or `-1`, or when [`Self::declared_level`]
+    /// rejects its declarations.
     pub(crate) fn deflate_level(&self) -> consus_core::Result<DeflateLevel> {
-        self.config_value("level")
+        self.declared_level()?
             .map_or(Ok(DeflateLevel::DEFAULT), |declared| {
                 DeflateLevel::parse(&self.name, declared)
             })
@@ -263,11 +294,30 @@ mod tests {
             let level = level_codec("zlib", &[&n.to_string()]).deflate_level();
             assert_eq!(level.expect("level in range").get(), n);
         }
-        let accepted: [(&[&str], i32); 2] = [(&["-1"], 6), (&[], 6)];
+        let accepted: [(&[&str], i32); 3] = [(&["-1"], 6), (&[], 6), (&["3", "3"], 3)];
         for (levels, expected) in accepted {
             let level = level_codec("gzip", levels).deflate_level();
             assert_eq!(level.expect("accepted").get(), expected, "{levels:?}");
         }
+    }
+
+    #[test]
+    fn declared_level_requires_agreeing_declarations() {
+        let agreeing: [(&[&str], Option<&str>); 3] =
+            [(&[], None), (&["4"], Some("4")), (&["4", "4"], Some("4"))];
+        for (levels, expected) in agreeing {
+            let codec = level_codec("zstd", levels);
+            let declared = codec.declared_level().expect("agreeing declarations");
+            assert_eq!(declared, expected);
+        }
+        let error = level_codec("lz4", &["9", "1"])
+            .declared_level()
+            .expect_err("differing declarations");
+        assert!(
+            matches!(&error, consus_core::Error::InvalidFormat { message }
+                if message == "zarr `lz4` codec: level is declared as both \"9\" and \"1\""),
+            "{error:?}"
+        );
     }
 
     #[test]
