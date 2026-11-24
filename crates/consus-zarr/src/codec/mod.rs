@@ -284,7 +284,13 @@ impl CodecPipeline {
     /// Codecs are applied in forward order: the first codec receives
     /// the raw chunk bytes, its output is passed to the second, and so on.
     ///
-    /// Returns an error if any codec in the chain fails.
+    /// # Errors
+    ///
+    /// Returns an error if any codec in the chain fails, including
+    /// [`consus_core::Error::InvalidFormat`] when a `gzip` or `zlib` codec
+    /// declares a `level` outside `0..=9` (`-1` selects the default 6).
+    /// A declared level is never clamped or replaced. Decompression does not
+    /// consult `level`.
     pub fn compress(
         &self,
         data: &[u8],
@@ -340,16 +346,10 @@ impl CodecPipeline {
             "gzip" | "zlib" => {
                 // Both framing codecs carry the same `level` configuration key.
                 // The public gzip-only accessor intentionally excludes zlib.
-                // Clamp before narrowing, matching the encoder range without wrapping.
-                let level = codec
-                    .config_value("level")
-                    .and_then(|value| value.parse::<u32>().ok())
-                    .map(|level| level.min(9))
-                    .and_then(|level| i32::try_from(level).ok())
-                    .unwrap_or(6);
+                let level = codec.deflate_level()?;
                 registry
                     .get_by_name(&codec.name)
-                    .and_then(|c| c.compress(data, CompressionLevel(level)))
+                    .and_then(|c| c.compress(data, CompressionLevel(level.get())))
             }
             "zstd" => {
                 let level = codec.zstd_level().unwrap_or(3);

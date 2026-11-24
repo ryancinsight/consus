@@ -72,7 +72,7 @@ pub fn write_chunk<S: Store>(
         CodecPipeline::new(meta.codecs.clone())
             .with_element_size(dtype_to_element_size(&meta.dtype).unwrap_or(1))
             .compress(data, default_registry())
-            .map_err(|_| ChunkError::CompressFailed)?
+            .map_err(ChunkError::from_compression)?
     } else {
         data.to_vec()
     };
