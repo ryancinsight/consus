@@ -6,7 +6,9 @@ use alloc::{string::String, vec::Vec};
 /// zlib defines levels `0..=9` (`zlib.h`, `deflateInit`: 0 stores, 1 is
 /// fastest, 9 is smallest) and the sentinel `-1` (`Z_DEFAULT_COMPRESSION`),
 /// "currently equivalent to level 6". CPython's `zlib.compress` and
-/// `gzip.compress` accept exactly this set and raise on every other value.
+/// `gzip.compress` accept exactly this set and raise on every other value,
+/// as do numcodecs' `Zlib` (a direct `zlib.compress(buf, level)` call) and
+/// `GZip` encoders (numcodecs 0.16.5, run with levels 10, -2 and -1).
 /// The sentinel resolves to [`Self::DEFAULT`] here, so the stored value is
 /// always a concrete level.
 #[cfg(feature = "alloc")]

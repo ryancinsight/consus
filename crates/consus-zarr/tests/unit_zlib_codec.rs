@@ -264,7 +264,7 @@ fn assert_rejected_level(metadata: &ArrayMetadata, name: &str, declared: &str) {
 }
 
 #[test]
-fn v2_out_of_range_levels_are_rejected_not_clamped() {
+fn v2_level_outside_range_is_rejected() {
     for name in ["gzip", "zlib"] {
         for level in [10, i32::MAX, -2, i32::MIN] {
             assert_rejected_level(&v2_metadata(name, Some(level)), name, &level.to_string());
@@ -273,7 +273,7 @@ fn v2_out_of_range_levels_are_rejected_not_clamped() {
 }
 
 #[test]
-fn v3_out_of_range_levels_are_rejected_not_clamped() {
+fn v3_level_outside_range_is_rejected() {
     for name in ["gzip", "zlib"] {
         for level in ["10", "-2", "1.5", "\"six\""] {
             let declared = level.trim_matches('"');
