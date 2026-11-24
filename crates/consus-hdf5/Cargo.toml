@@ -44,6 +44,11 @@ criterion = { workspace = true }
 moirai-async = { workspace = true }
 
 [[bench]]
+name = "global_heap"
+harness = false
+required-features = ["alloc"]
+
+[[bench]]
 name = "hdf5_read"
 harness = false
 required-features = ["alloc"]
