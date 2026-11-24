@@ -65,11 +65,14 @@ Revisit this decision if:
 
 - a datatype message version from 1 through 5 places the compared float
   fields differently, so one comparison no longer covers all five versions;
-- a reserved or padding bit of a full-width encoding is shown to change the
-  decoded value, so the masked comparison admits a non-IEEE layout;
-- `Datatype::Float` retains bias, field positions and precision, so the
-  ordinary projection no longer compares equal for a custom-bias file and the
-  Context's premise falls;
+- bit 7 of byte 1 or byte 3 of the class bit field, neither of which the
+  comparison reads, is shown to change the decoded value, so the comparison
+  admits a non-IEEE layout;
+- `Datatype::Float` comes to retain every field the comparison checks beyond
+  class, storage size and byte order (mantissa normalization, the VAX order
+  bit, sign location, bit offset, precision, exponent and mantissa locations
+  and sizes, and exponent bias), so equality of the ordinary projection
+  implies the exact comparison and the Context's premise falls;
 - a consumer needs shared datatype messages or versions outside 1 through 5
   admitted, which the method now rejects as `UnsupportedFeature`.
 
@@ -83,7 +86,7 @@ Revisit this decision if:
 - Consumer: Helios b7bda4cd calls the method at
   `crates/helios-domain/src/storage.rs:154` with `Binary64LittleEndian`.
 
-Revision 2026-11-24: Proposed to Accepted; the Decision is what `ieee.rs` and `exact_float.rs` do at b14cbd3 (one comparison, `exact_float.rs:62-66`).
+Revision 2026-11-24: Proposed to Accepted; the Decision is what `ieee.rs` and `exact_float.rs` do at b14cbd3 (one comparison, `exact_float.rs:62-66`); the version sentence is reworded from five checks to one comparison.
 
 ## Source
 
