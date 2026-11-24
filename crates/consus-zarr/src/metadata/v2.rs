@@ -229,8 +229,9 @@ pub struct FilterIdConfig {
 /// carried into the canonical [`Codec`] configuration, so a declared
 /// `{"level": 10}` reaches the codec that validates it instead of being
 /// dropped. Members are listed in order: `elements` pairs, then the other
-/// members sorted by key, then the compressor's inline `level`. A value is
-/// rendered as its JSON text, strings unquoted and `null` empty.
+/// members sorted by key, then the members declared inline beside `id` (a
+/// compressor's `level`, a filter entry's members). A value is rendered as
+/// its JSON text, strings unquoted and `null` empty.
 #[cfg(feature = "alloc")]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CodecConfiguration {
@@ -266,6 +267,11 @@ pub struct FilterConfig {
     /// Optional filter parameters.
     #[serde(default)]
     pub configuration: Option<CodecConfiguration>,
+
+    /// Every other member of the entry (`level`, `elementsize`, ...), the
+    /// numcodecs form `{"id": "zlib", "level": 1}`, keyed by name.
+    #[serde(flatten)]
+    pub members: BTreeMap<String, serde_json::Value>,
 }
 
 /// A filter identifier: either a string name or an integer HDF5 filter ID.
@@ -375,7 +381,8 @@ impl FilterConfig {
             FilterId::Name(s) => s.clone(),
             FilterId::Number(n) => hdf5_filter_id_to_name(*n),
         };
-        let configuration = codec_configuration_pairs(self.configuration.as_ref());
+        let mut configuration = codec_configuration_pairs(self.configuration.as_ref());
+        configuration.extend(member_pairs(&self.members));
         Some(Codec {
             name,
             configuration,
@@ -397,17 +404,22 @@ impl CodecConfigElement {
 fn codec_configuration_pairs(configuration: Option<&CodecConfiguration>) -> Vec<(String, String)> {
     configuration
         .map(|cfg| {
-            let members = cfg
-                .members
-                .iter()
-                .map(|(key, value)| (key.clone(), config_text(value)));
             cfg.elements
                 .iter()
                 .filter_map(CodecConfigElement::to_pair)
-                .chain(members)
+                .chain(member_pairs(&cfg.members))
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// The `(key, text)` pairs of JSON object members, sorted by key.
+fn member_pairs(
+    members: &BTreeMap<String, serde_json::Value>,
+) -> impl Iterator<Item = (String, String)> + '_ {
+    members
+        .iter()
+        .map(|(key, value)| (key.clone(), config_text(value)))
 }
 
 /// Map an HDF5 filter ID to a codec name string.
@@ -769,6 +781,41 @@ mod tests {
                 .collect::<Vec<_>>(),
             expected
         );
+    }
+
+    #[test]
+    fn filter_members_beside_id_reach_the_codec_configuration() {
+        let json = r#"{
+            "zarr_format": 2, "shape": [8], "chunks": [8], "dtype": "<f8",
+            "fill_value": 0.0, "order": "C", "compressor": null,
+            "filters": [
+                {"id": "shuffle", "elementsize": 8},
+                {"id": 32008, "configuration": {"elements": [["a", "b"]], "z": 1},
+                 "level": 2, "clevel": null}
+            ]
+        }"#;
+        let meta = ArrayMetadataV2::parse(json).expect("must parse");
+        let codecs = meta.to_canonical().codecs;
+        let codec = |name: &str, pairs: &[(&str, &str)]| Codec {
+            name: name.into(),
+            configuration: pairs
+                .iter()
+                .map(|(key, value)| ((*key).into(), (*value).into()))
+                .collect(),
+        };
+        assert_eq!(
+            codecs,
+            [
+                codec("shuffle", &[("elementsize", "8")]),
+                codec(
+                    "filter32008",
+                    &[("a", "b"), ("z", "1"), ("clevel", ""), ("level", "2")]
+                ),
+            ]
+        );
+        let reparsed = ArrayMetadataV2::parse(&meta.to_json().expect("serializes"))
+            .expect("serialized metadata parses");
+        assert_eq!(reparsed.to_canonical().codecs, codecs);
     }
 
     #[test]

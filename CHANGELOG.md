@@ -15,7 +15,11 @@
   ignored and zstd wrote at 3). `lz4` and `blosc` ignore the level, and
   `deflate`, present only when another crate enables consus-compression's
   `deflate` feature, now applies it clamped to 0..=9. An inline and a nested
-  `level` that differ are rejected for every codec. The rejection is the new
+  `level` that differ are rejected for every codec. A member declared inline
+  on a Zarr v2 `filters` entry (`{"id":"zlib","level":10}`) is carried the
+  same way (new public `members` field on `FilterConfig`): a gzip/zlib filter
+  level now reaches the encoder and an invalid one is rejected, where it was
+  ignored and written at 6. The rejection is the new
   `ChunkError::InvalidCodecConfiguration` variant, and `ChunkError` is now
   `#[non_exhaustive]`: exhaustive downstream matches must add a wildcard
   arm. Reads never consult `level`. This reverses the 0.5.0 entry below
