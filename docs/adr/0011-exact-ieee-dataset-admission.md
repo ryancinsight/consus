@@ -30,6 +30,23 @@ Reserved bits and padding preferences in a full-width encoding do not alter
 numeric identity. Shared datatype messages and other message versions remain
 unsupported by this opt-in method. This is not a general HDF5 conformance check.
 
+## Rejected alternatives
+
+- Parse the datatype message in each consumer. The check must run on the
+  original metadata before the payload is read or allocated, and the Context
+  assigns it to Consus rather than to a second HDF5 parser in a consumer.
+- Widen `Datatype::Float` or change `dataset_at`. The Decision keeps
+  `dataset_at` behavior and public dataset fields unchanged so the API stays
+  additive, and the ordinary projection remains a structural projection that
+  does not retain field positions, precision or bias.
+- Check numeric values or dispatch per value. The selector describes an
+  on-disk contract; the metadata check reads no scalar payload and does not
+  depend on voxel count.
+- Require byte equality of the whole datatype message. Reserved bits and
+  padding preferences in a full-width encoding do not alter numeric identity,
+  so the comparison masks the byte 1 flags to bits 0, 4, 5 and 6 and leaves
+  byte 3 unread; a regression covers equivalent unused padding preferences.
+
 ## Compatibility and verification
 
 The lookup reads no scalar payload, performs no numeric conversion, and
@@ -42,6 +59,20 @@ Ordinary metadata lookups remain covered separately.
 This is an additive public API. The [provider-first adoption plan](../typed-float-admission-plan.md)
 defines the separate provider release and consumer verification gates.
 
+## Overturning evidence
+
+Revisit this decision if:
+
+- a datatype message version from 1 through 5 places the compared float
+  fields differently, so one comparison no longer covers all five versions;
+- a reserved or padding bit of a full-width encoding is shown to change the
+  decoded value, so the masked comparison admits a non-IEEE layout;
+- `Datatype::Float` retains bias, field positions and precision, so the
+  ordinary projection no longer compares equal for a custom-bias file and the
+  Context's premise falls;
+- a consumer needs shared datatype messages or versions outside 1 through 5
+  admitted, which the method now rejects as `UnsupportedFeature`.
+
 ## Delivery
 
 - Provider: PR 230 (efd03ed) adds `IeeeFloatEncoding`,
@@ -52,11 +83,7 @@ defines the separate provider release and consumer verification gates.
 - Consumer: Helios b7bda4cd calls the method at
   `crates/helios-domain/src/storage.rs:154` with `Binary64LittleEndian`.
 
-Revision 2026-11-24: Proposed to Accepted, because every decision above is
-what `crates/consus-hdf5/src/datatype/ieee.rs` and
-`crates/consus-hdf5/src/file/exact_float.rs` do at b14cbd3, and the
-"checked separately" sentence now matches the single comparison at
-`exact_float.rs:57-66`.
+Revision 2026-11-24: Proposed to Accepted; the Decision is what `ieee.rs` and `exact_float.rs` do at b14cbd3 (one comparison, `exact_float.rs:62-66`).
 
 ## Source
 
