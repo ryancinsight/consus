@@ -110,9 +110,15 @@ fn malformed_zlib_stream_is_a_compression_error() {
 /// (`Z_DEFAULT_COMPRESSION`, "currently equivalent to level 6", `zlib.h`).
 const ZLIB_DEFAULT_LEVEL: i32 = 6;
 
-/// `b"configured compression level "` repeated 1024 times, 29,696 bytes.
+/// 29,696 bytes: `b"configured compression level "` repeated 512 times,
+/// then the same count of `(7 i + 13 (i >> 5)) mod 251`. The structured tail
+/// makes every level the zstd encoder distinguishes (-8, 1, 3, 4) write
+/// different bytes, which a repeated phrase alone does not.
 fn level_input() -> Vec<u8> {
-    b"configured compression level ".repeat(1024)
+    let phrase = b"configured compression level ".repeat(512);
+    let tail = (0..phrase.len())
+        .map(|i| u8::try_from((7 * i + 13 * (i >> 5)) % 251).expect("invariant: residue < 251"));
+    phrase.iter().copied().chain(tail).collect()
 }
 
 /// Where a codec declares its level: Zarr v2 inline beside `id`, Zarr v2
@@ -226,6 +232,12 @@ fn stored_floor(framing: usize) -> usize {
     input + input.div_ceil(STORED_BLOCK_MAX) * STORED_BLOCK_HEADER + framing
 }
 
+/// Level a `zstd` codec writes at when it declares none, and the range its
+/// encoder clamps to (consus-compression `ZstdCodec::compress`: -8..=4).
+const ZSTD_DEFAULT_LEVEL: i32 = 3;
+const ZSTD_MIN_LEVEL: i32 = -8;
+const ZSTD_MAX_LEVEL: i32 = 4;
+
 const ZLIB_FRAMING: usize = 2 + 4;
 const GZIP_FRAMING: usize = 10 + 8;
 
@@ -272,6 +284,23 @@ fn assert_rejected_level(metadata: &ArrayMetadata, name: &str, declared: &str) {
 }
 
 #[test]
+fn zstd_writes_honor_a_nested_or_inline_level_after_its_clamp() {
+    for at in PLACEMENTS {
+        let write = |level, expected| write_compressed_chunk("zstd", level, at, expected);
+        let default = write(None, ZSTD_DEFAULT_LEVEL);
+        let level_one = write(Some("1"), 1);
+        assert_ne!(level_one, default, "zstd level 1 ({at:?}) differs from 3");
+        assert_eq!(level_one, write(Some("0"), 1), "0 selects level 1");
+        let ceiling = write(Some("4"), ZSTD_MAX_LEVEL);
+        assert_ne!(ceiling, default, "zstd level 4 ({at:?}) differs from 3");
+        assert_eq!(ceiling, write(Some("9"), ZSTD_MAX_LEVEL), "9 clamps to 4");
+        let floor = write(Some("-8"), ZSTD_MIN_LEVEL);
+        assert_ne!(floor, default, "zstd level -8 ({at:?}) differs from 3");
+        assert_eq!(floor, write(Some("-9"), ZSTD_MIN_LEVEL), "-9 clamps to -8");
+    }
+}
+
+#[test]
 fn level_outside_range_is_rejected() {
     for name in ["gzip", "zlib"] {
         for at in PLACEMENTS {
@@ -291,7 +320,7 @@ fn level_outside_range_is_rejected() {
 #[test]
 fn v2_conflicting_level_declarations_are_rejected() {
     let len = level_input().len();
-    for name in ["gzip", "zlib"] {
+    for name in ["gzip", "zlib", "zstd", "lz4", "blosc"] {
         let json = format!(
             r#"{{"zarr_format":2,"shape":[{len}],"chunks":[{len}],"dtype":"|u1",
             "fill_value":0,"order":"C","compressor":{{"id":"{name}","level":1,

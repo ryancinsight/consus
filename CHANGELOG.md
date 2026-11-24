@@ -9,9 +9,13 @@
   default-compression sentinel, selects level 6, and an absent level stays 6.
   A level in a Zarr v2 `configuration` object (`{"id":"zlib","configuration":
   {"level":10}}`) is no longer dropped: `CodecConfiguration` carries every
-  member of the object (new public `members` field), so a nested zstd or
-  lz4 `level` is now applied too, and an inline and a nested gzip/zlib
-  `level` that differ are rejected. The rejection is the new
+  member of the object (new public `members` field). A nested `level` now
+  changes the bytes written by `gzip` and `zlib` (validated as above) and
+  by `zstd` (applied after its clamp to -8..=4, 0 meaning 1; it was
+  ignored and zstd wrote at 3). `lz4` and `blosc` ignore the level, and
+  `deflate`, present only when another crate enables consus-compression's
+  `deflate` feature, now applies it clamped to 0..=9. An inline and a nested
+  `level` that differ are rejected for every codec. The rejection is the new
   `ChunkError::InvalidCodecConfiguration` variant, and `ChunkError` is now
   `#[non_exhaustive]`: exhaustive downstream matches must add a wildcard
   arm. Reads never consult `level`. This reverses the 0.5.0 entry below

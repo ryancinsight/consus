@@ -331,6 +331,12 @@ impl CodecPipeline {
         data: &[u8],
         registry: &dyn CompressionRegistryTrait,
     ) -> Result<Vec<u8>> {
+        if !matches!(codec.name.as_str(), "bytes" | "crc32") {
+            // Zarr v2 can declare `level` inline and nested; the codecs below
+            // read the first one, so differing declarations are rejected
+            // before any codec is chosen.
+            codec.declared_level()?;
+        }
         match codec.name.as_str() {
             // Bytes codec: applies endian byte-swapping when the configured
             // endianness differs from the host byte order.
