@@ -87,25 +87,6 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - next step: name what `ATLAS-PR530-PROVIDER-COHERENCE` delivers as an exactly named check, or close
   the passing blocks; either needs an ADR 0008 revision note and a judge verdict.
 
-<a id="consus-release-job-red"></a>
-## CONSUS-RELEASE-JOB-RED — Pending publish gets a 403 for consus-raster [patch] — blocked
-
-- milestone: M-core-formats
-- outcome: `publish-pending` in `rust-release.yml` publishes `consus-raster` and `consus-zarr` 0.4.1
-  and the default-branch run is green.
-- evidence: six runs read (42973982746, 43497877937, 43523622004, 43685555434, 43770175761,
-  43776070912; 2026-11-11 to 2026-11-15) package both crates, then fail at the `consus-raster`
-  upload: 403 "access token is not valid for crate". Plan and SemVer jobs pass; registry max of both
-  crates is 0.3.0. Derived cause (OIDC-only publishing): no crates.io trusted-publisher entry for
-  `consus-raster` bound to this workflow; unverifiable without owner access. Risk: `gap_audit.md`.
-- acceptance: a `rust-release.yml` run on the default branch succeeds and the registry max of
-  `consus-raster` and `consus-zarr` is 0.4.1; both fail at basis.
-- priority: verification; needs: none; basis: 21769557a13a64530ba5f07cae0227c617c36f93
-- scope: crates.io trusted-publisher settings (registry owner), `.github/workflows/rust-release.yml`
-- blocked: registry owner. Question: add crates.io trusted-publisher entries for `consus-raster` and
-  `consus-zarr` (repository `ryancinsight/consus`, workflow `rust-release.yml`)? Re-open on the
-  answer or when an upload no longer returns 403. No repository change cures it.
-
 <a id="consus-book-compression-features"></a>
 ## CONSUS-BOOK-COMPRESSION-FEATURES — Match the codec table to the crate features [patch] — todo
 - outcome: the `formats.md` codec table names, per registered codec, its one gating feature; no document
@@ -175,7 +156,7 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - outcome: the `zlib` and `gzip` chunks `write_array` writes at levels 0 and 9 are committed files that a Rust
   test asserts byte for byte and CI decodes with CPython to the 29,696-byte input.
 - evidence: the gzip/zlib arm of `codec/mod.rs:351-358` reads `level` after `declared_level`; `unit_zlib_codec.rs:272`
-  decodes through Consus only, on `level_input()` (:117: the phrase x 512, then `(7 i + 13 (i >> 5)) mod 251`), not the phrase x 1024 that CPython decoded once by hand.
+  decodes through Consus only, on `level_input()` (:117), not the phrase x 1024 that CPython decoded once by hand.
 - acceptance: `python -m pytest -q scripts/zarr_level_interop.py` passes 4 decodes;
   `git ls-files crates/consus-zarr/tests/data/level_chunks` lists the 4 files; `git grep -n -E
   '[.]compress|compressobj|GzipFile' -- scripts/zarr_level_interop.py` prints nothing;
@@ -183,7 +164,7 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   consus-zarr --all-features written_level_chunks_equal_committed_files` passes and `git grep -c 'fn
   written_level_chunks_equal_committed_files' -- 'crates/consus-zarr/tests/*.rs'` reports 1 (none today).
 - priority: verification; needs: CONSUS-ZLIB-VECTOR-DEDUP; milestone: M-core-formats; basis: 56a417b33afa
-- scope: crates/consus-zarr/tests, scripts/zarr_level_interop.py, .github/workflows/ci.yml
+- scope: crates/consus-zarr/tests, scripts/zarr_level_interop.py (new), .github/workflows/ci.yml
 - next step: assert each `write_array` chunk equals its file in `unit_zlib_codec.rs`.
 
 <a id="consus-npy-error-variants"></a>
@@ -296,29 +277,32 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 ## CONSUS-ZARR-FILTER-ORDER — Apply v2 filters before the compressor [major] — todo
 - outcome: a Zarr v2 array that declares a compressor and filters is encoded filters first (in listed order) and
   then the compressor, and decoded in the reverse order, as the v2 spec requires.
-- evidence: `ArrayMetadataV2::to_canonical` (v2.rs:307-322) pushes the compressor codec and then the filters;
+- evidence: `ArrayMetadataV2::to_canonical` (v2.rs:307-344) pushes the compressor codec and then the filters (:311-324);
   `CodecPipeline::compress` (codec/mod.rs:300) applies `codecs` in order and `decompress` (:320) in reverse, so both
   directions are reversed. Zarr v2 spec, "Filters" (zarr-specs.readthedocs.io/en/latest/v2/v2.0.html), read in review.
-- acceptance: a test builds a v2 array with compressor zstd and filter shuffle and asserts the stored chunk equals
-  `zstd(shuffle(input))` computed with the direct encoders; decoding a numcodecs-written fixture with both returns
-  the input; `cargo nextest run -p consus-zarr` passes.
+- acceptance: `cargo nextest run -p consus-zarr --all-features v2_filters_encode_before_the_compressor` passes (no such
+  test today): with compressor `zstd` and one `zlib` filter, both registered (consus-compression
+  `registry/default.rs:64-80`), the stored chunk equals `zstd(zlib(input))` built with the registry codecs, and a
+  committed numcodecs chunk of the pair decodes to the input; CHANGELOG says how a store Consus wrote before reads.
 - priority: correctness; milestone: M-core-formats; basis: 56a417b33afa
-- scope: crates/consus-zarr/src/metadata/v2.rs, crates/consus-zarr/src/codec/mod.rs, crates/consus-zarr/tests
-- next step: write the failing two-codec chunk test against a zarr-python fixture, then order `to_canonical`.
+- scope: crates/consus-zarr/src/metadata/v2.rs, crates/consus-zarr/src/codec/mod.rs, crates/consus-zarr/tests,
+  data/zarr_python_fixtures, CHANGELOG.md
+- next step: write the failing two-codec chunk test, add the pair to `generate_fixtures.py`, then order `to_canonical`.
 
 <a id="consus-zarr-level-clamps"></a>
 ## CONSUS-ZARR-LEVEL-CLAMPS — Reject unusable levels for zstd, deflate, lz4 and fallthrough codecs [major] — todo
-- outcome: a declared `level` that a codec cannot honor is a typed `InvalidCodecConfiguration`, not a silent clamp or
-  default, for every codec that reads a level.
+- outcome: a `level` a codec cannot honor is a typed `InvalidCodecConfiguration`, not a silent clamp or default.
 - evidence: zstd clamps to -8..=4 and maps 0 to 1 (consus-compression zstd.rs:28-29); deflate clamps to 0..=9
   (flate.rs:140, so -1 stores); `codec/mod.rs:360,366,378` fall back to 3, 0 and 6 when a level does not parse
   (`"abc"` becomes 6); `deflate` is reachable from numeric filter id 1 when its feature is on (v2.rs:436). The `crc32`
   arm comments (codec/mod.rs:344-346 and :398-400) say the codec is rejected; both arms apply CRC-32C.
-- acceptance: each codec's accepted range is a documented constant with a source; an out-of-range or unparsable level
-  is the typed error for zstd, lz4 and `deflate`; the zstd test pins singleton levels (-6, -5, -2); the `crc32`
-  comments state what the arms do; `git grep -n 'unwrap_or(3)' -- crates/consus-zarr/src` prints nothing.
+- acceptance: zstd and `deflate` document their accepted range as a constant with a source and a level outside it is
+  the typed error; an unparsable level is the typed error for every codec (lz4, blosc and szip ignore a parsed one:
+  consus-compression lz4.rs:29, blosc.rs:170, szip.rs:162); the zstd test pins singleton levels (-6, -5, -2); the
+  `crc32` comments state what the arms do; `git grep -n 'unwrap_or(3)' -- crates/consus-zarr/src` prints nothing.
 - priority: correctness; milestone: M-core-formats; basis: 56a417b33afa
-- scope: crates/consus-zarr/src/codec/mod.rs, crates/consus-zarr/src/metadata/codec.rs, crates/consus-zarr/tests
+- scope: crates/consus-zarr/src/codec/mod.rs, crates/consus-zarr/src/metadata/codec.rs, crates/consus-zarr/tests,
+  crates/consus-compression/src/codec
 - next step: look up libzstd's level range, then decide reject versus document for 0 and for values above 4.
 
 <a id="consus-zarr-index-codecs"></a>
@@ -342,22 +326,24 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   (`{"id":"blosc","cname":"lz4"}`); `FilterIdConfig` and `FilterConfig` keep them in `members` (:229, :281). A duplicate
   inline `level` key fails `parse` on a string-id compressor, last-wins elsewhere; inline `"level": null` is absent
   there (`to_json` writes it) and rejected on a filter. Found in review of consus#241.
-- acceptance: one member map serves all placements and `to_json` omits an absent level; a table test asserts one
-  outcome per case and placement and pins `clevel` of a numeric-id compressor in its canonical codecs (a mutant that
-  carries only `level` passes 334 tests); CHANGELOG says `to_json` writes numeric-id members back.
+- acceptance: one member map serves all placements; `to_json` writes an absent level in one decided form (null today,
+  v2.rs:820); a table test asserts one outcome per case and placement and pins a numeric-id `clevel` in its canonical
+  codecs (a mutant carrying only `level` passes 334 tests); CHANGELOG says `to_json` writes numeric-id members back.
 - priority: correctness; milestone: M-core-formats; basis: 56a417b33afa
-- scope: crates/consus-zarr/src/metadata/v2.rs, crates/consus-zarr/src/metadata/codec.rs, crates/consus-zarr/tests
+- scope: crates/consus-zarr/src/metadata/v2.rs, crates/consus-zarr/src/metadata/codec.rs, crates/consus-zarr/tests,
+  CHANGELOG.md
 - next step: decide the written form of an absent level (omit versus null); review it as a persisted-format change.
 
 <a id="consus-zarr-level-text-edges"></a>
 ## CONSUS-ZARR-LEVEL-TEXT-EDGES — Compare declared levels as numbers, not text [patch] — todo
 - outcome: a level declared as `-0` is read as 0, and two declarations that select the same level do not conflict.
 - evidence: `config_text` (metadata/codec.rs:44-50) renders a nested `-0`, which serde_json reads as float -0.0, as
-  `-0.0`, and the level parse rejects it, where CPython reads int 0; `declared_level` (:151-170) compares text, so `6`
-  and `-1`, or `1` and `01`, conflict; a `configuration` given as a JSON array no longer parses. Found in review of
-  consus#236 and #241 by probe, not re-run at 56a417b.
-- acceptance: a table test asserts `-0` is accepted as 0 and `6` beside `-1` as agreeing, and an array `configuration`
-  is a typed parse error with its text asserted.
+  `-0.0`, and the level parse rejects it, where CPython reads int 0; `declared_level` (:151-169) compares text, so `6`
+  and `-1` conflict; a `configuration` given as a JSON array no longer parses. Found in review of consus#236 and #241
+  by probe, not re-run at 56a417b.
+- acceptance: `cargo nextest run -p consus-zarr --all-features declared_levels_compare_as_numbers` passes (no such test
+  today): `-0` is accepted as 0, `6` beside `-1` agree for gzip and zlib, and an array `configuration` is a typed
+  parse error with its text asserted.
 - priority: correctness; milestone: M-core-formats; basis: 56a417b33afa
 - scope: crates/consus-zarr/src/metadata/codec.rs, crates/consus-zarr/tests
 - next step: parse each declaration to a typed level before comparing.
@@ -366,40 +352,49 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 ## CONSUS-ZARR-ERROR-TYPES — Type configuration faults for Python callers [major] — todo
 - outcome: `ChunkError::InvalidCodecConfiguration` carries typed fields and its source, and consus-python raises a
   distinct exception for it instead of `RuntimeError`.
-- evidence: consus-python maps a write error to `PyRuntimeError` (zarr.rs:131, :140); `InvalidCodecConfiguration`
-  holds a `String` (chunk/error.rs:27) and `ChunkError::from_compression` (:60-67) drops the source error and maps any
-  pipeline `InvalidFormat` (including a missing `bytes` `endian`) to the configuration variant.
-- acceptance: a Python test writes a zlib level 10 array and catches the configuration exception by type; a Rust test
-  matches the variant fields; a missing `endian` is not the level variant.
+- evidence: consus-python maps a `write_chunk` error (zarr.rs:131) and a `read_chunk` error (:140) to `PyRuntimeError`;
+  `InvalidCodecConfiguration` holds a `String` (chunk/error.rs:27) and `ChunkError::from_compression` (:60-67) drops
+  the source error and maps any pipeline `InvalidFormat` (including a missing `bytes` `endian`) to the configuration
+  variant.
+- acceptance: `python -m pytest -q scripts/compare_zarr.py -k codec_configuration` passes a test (none today; ci.yml:164
+  and :205 run that file) that opens a zlib level 10 `.zarray` with `from_store` and asserts `write_chunk` raises the
+  binding's configuration exception class (`RuntimeError` today); a Rust unit test in chunk/error.rs matches the
+  variant fields; a missing `endian` is not the level variant.
 - priority: tightening; milestone: M-interop-contracts; basis: 56a417b33afa
-- scope: crates/consus-zarr/src/chunk/error.rs, crates/consus-python/src/zarr.rs, crates/consus-python/tests
+- scope: crates/consus-zarr/src/chunk/error.rs, crates/consus-python/src/zarr.rs, scripts/compare_zarr.py
 - next step: replace the string payload with the codec name, declared text and source.
 
 <a id="consus-zarr-gzip-level-accessor"></a>
-## CONSUS-ZARR-GZIP-LEVEL-ACCESSOR — Remove the public gzip_level accessor [major] — todo
-- outcome: `Codec::gzip_level` and its sibling accessors that swallow parse errors are removed or made `pub(crate)`;
-  the write path has one level reader.
-- evidence: `gzip_level` (metadata/codec.rs:189) is public, swallows parse errors (`parsed_config`, :97) and is called
-  only by tests (codec/mod.rs:544, metadata/codec.rs:278, metadata/v3.rs:772); it disagrees with the validating
-  `deflate_level` (:181): -1 gives None and 10 gives Some(10). `zstd_level` (:198) and `lz4_level` (:221) share it.
-- acceptance: `git grep -n 'pub fn gzip_level' -- crates` prints nothing; tests read levels through the validating
-  reader; `cargo semver-checks` records the break under the declared [major] class.
-- priority: tightening; milestone: M-core-formats; basis: 56a417b33afa
-- scope: crates/consus-zarr/src/metadata/codec.rs, crates/consus-zarr/src/codec/mod.rs
-- next step: replace the three test call sites and narrow the accessor.
+## CONSUS-ZARR-GZIP-LEVEL-ACCESSOR — Remove the level accessors that swallow parse errors [major] — todo
+- outcome: no `Codec` accessor returns `None` for a level that does not parse: `gzip_level` is removed, and `zstd_level`
+  and `lz4_level` are removed or validate; tests and the write path read levels through validating readers only.
+- evidence: the three are public (metadata/codec.rs:189, :198, :221) and read through `parsed_config` (:97), which drops
+  the parse error. `gzip_level` has only test callers (codec/mod.rs:544, metadata/codec.rs:278, metadata/v3.rs:772) and
+  disagrees with the validating `deflate_level` (:181): -1 gives None and 10 gives Some(10). The write path defaults
+  the other two (codec/mod.rs:360, :366) and one test reads `zstd_level` (:553).
+- acceptance: `git grep -n 'pub fn gzip_level' -- crates` prints nothing (one line today); `git grep -n
+  'parsed_config("level")' -- crates/consus-zarr/src` prints nothing (three today); `cargo semver-checks -p consus-zarr`
+  against the published baseline records the changed accessors under the declared [major] class.
+- priority: tightening; needs: CONSUS-ZARR-LEVEL-CLAMPS; milestone: M-interop-contracts; basis: 56a417b33afa
+- scope: crates/consus-zarr/src/metadata/codec.rs, crates/consus-zarr/src/codec/mod.rs,
+  crates/consus-zarr/src/metadata/v3.rs, CHANGELOG.md
+- next step: after the clamps item, switch the four test call sites, remove `gzip_level`, note it under `### Breaking`.
 
 <a id="consus-changelog-zarr-headings"></a>
-## CONSUS-CHANGELOG-ZARR-HEADINGS — Date the published 0.5.0 heading [patch] — todo
-- outcome: `CHANGELOG.md` heads the published consus-zarr 0.5.0 entry with its release date, not `Unreleased`, so the
-  Zarr level entry under `## [Unreleased]` reads as a change after 0.5.0.
-- evidence: `CHANGELOG.md:3` is `## [Unreleased]` and `:45` is `## [0.5.0] - Unreleased`; the crates.io API read at this
-  filing lists consus-zarr 0.5.0 as its newest version (0.5.0, 0.3.0, 0.2.0, 0.1.0), and tag `crate-consus-zarr-v0.5.0`
-  holds the 0.5.0 clamp. The publication date was not read, and the other crates' headings were not checked.
-- acceptance: `git grep -n -F '## [0.5.0] - Unreleased' -- CHANGELOG.md` prints nothing and the 0.5.0 heading carries
-  the date crates.io reports for the upload.
+## CONSUS-CHANGELOG-ZARR-HEADINGS — Date the published CHANGELOG headings [patch] — todo
+- outcome: `CHANGELOG.md` heads the published 0.5.0 and 0.4.0 entries with their release dates, not `Unreleased`, and
+  the 0.5.0 entry no longer says publication is gated, so the Zarr level entry under `## [Unreleased]` reads as a
+  change after 0.5.0.
+- evidence: `CHANGELOG.md:3` is `## [Unreleased]`, `:45` is `## [0.5.0] - Unreleased` and `:63` says approvals "still
+  gate publication"; crates.io (API read at this filing) lists consus-zarr 0.5.0 as its newest version, uploaded
+  2026-11-19, and tag `crate-consus-zarr-v0.5.0` holds the 0.5.0 clamp. `:89` is `## [0.4.0] - Unreleased`;
+  consus-compression 0.4.0 was uploaded 2026-10-20, and the other crates' 0.4.0 dates were not read.
+- acceptance: `git grep -n -E '^## \[0\.[45]\.0\] - Unreleased' -- CHANGELOG.md` prints nothing (two lines today), as
+  does `git grep -n 'still gate publication' -- CHANGELOG.md` (one line today); the 0.5.0 heading reads
+  `## [0.5.0] - 2026-11-19` and the 0.4.0 heading carries the first crates.io upload date of a 0.4.0 crate.
 - priority: verification; milestone: M-core-formats; basis: 56a417b33afa
 - scope: CHANGELOG.md
-- next step: read the 0.5.0 upload date from crates.io and set the heading.
+- next step: read the 0.4.0 upload dates from crates.io, then set both headings and drop the gating sentence.
 
 <a id="consus-zarr-v3-level-text"></a>
 ## CONSUS-ZARR-V3-LEVEL-TEXT — Reject a v3 level that is not a JSON integer [patch] — todo
@@ -411,13 +406,28 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   already reject `null`, `"six"` and `1.5`.
 - acceptance: a v3 table test over gzip, zlib, zstd and lz4 asserts `"5"`, `null`, `"six"` and `1.5` return the typed
   error with the whole message and an empty store; a JSON integer still selects its level.
-- priority: correctness; milestone: M-core-formats; basis: 56a417b33afa
+- priority: correctness; needs: CONSUS-ZARR-LEVEL-CLAMPS; milestone: M-core-formats; basis: 56a417b33afa
 - scope: crates/consus-zarr/src/metadata/v3.rs, crates/consus-zarr/src/metadata/codec.rs, crates/consus-zarr/tests
 - next step: decide whether the check lives in the `config_text` callers or in a typed level reader shared with v2.
 
+<a id="consus-zarr-v2-level-string"></a>
+## CONSUS-ZARR-V2-LEVEL-STRING — Reject a v2 level given as a JSON string [patch] — todo
+- outcome: a Zarr v2 `level` given as a JSON string in a `configuration` object, on a filter entry or on a numeric-id
+  compressor is a typed `InvalidCodecConfiguration`, not text read as an integer.
+- evidence: `member_pairs` (metadata/v2.rs:425-431) renders each member with `config_text`, which unquotes a string
+  (metadata/codec.rs:46), and `DeflateLevel::parse` (:27-38) reads the text with `str::parse::<i32>`, so the filter
+  `{"id":"zlib","level":"05"}` writes level 5, as `"5"` and `"+5"` do (derived, not run). numcodecs and zarr 3.2.1
+  raise `TypeError` for a string level (relayed from the first review of consus#236, not re-run).
+- acceptance: `cargo nextest run -p consus-zarr --all-features v2_string_level_is_rejected` passes (no such test today):
+  for gzip, zlib and zstd in each of the three placements, `"5"`, `"+5"` and `"05"` return the typed error with the
+  whole message and an empty store, and the JSON integer 5 still writes level 5.
+- priority: correctness; needs: CONSUS-ZARR-V3-LEVEL-TEXT; milestone: M-core-formats; basis: 56a417b33afa
+- scope: crates/consus-zarr/src/metadata/v2.rs, crates/consus-zarr/src/metadata/codec.rs, crates/consus-zarr/tests
+- next step: reuse the typed level reader the v3 item settles on for the v2 member maps.
+
 <a id="consus-zarr-alloc-build"></a>
 ## CONSUS-ZARR-ALLOC-BUILD — Build consus-zarr with only the alloc feature [patch] — todo
-- outcome: `cargo check -p consus-zarr --no-default-features --features alloc` compiles, and CI builds that
+- outcome: `cargo check --locked -p consus-zarr --no-default-features --features alloc` compiles, and CI builds that
   configuration.
 - evidence: at an export of 56a417b that command exits 101 with 9 errors: E0432 for `crate::codec::default_registry`
   (chunk/ops/chunk_io.rs:8) and E0599 for `to_string` and `to_owned` without their traits in scope (metadata/codec.rs:48
@@ -428,3 +438,18 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - priority: verification; milestone: M-core-formats; basis: 56a417b33afa
 - scope: crates/consus-zarr/src, crates/consus-zarr/Cargo.toml, .github/workflows/ci.yml
 - next step: import `ToString` and `ToOwned` from `alloc` where missing, and gate `default_registry` on `std`.
+
+<a id="consus-ci-aggregate-check"></a>
+## CONSUS-CI-AGGREGATE-CHECK — Gate merges on one aggregate CI check [patch] — todo
+- outcome: `ci.yml` ends in one `always()` job that needs every other job and fails when one of them fails or is
+  cancelled and on a draft pull request, and the `main` branch protection requires that one context.
+- evidence: `ci.yml` defines ten jobs (semver, lockfile, fmt, check, test, test-free-threaded, msrv, test-mat-features,
+  fuzz-build, fuzz-run), none with `always()`. `gh api repos/ryancinsight/consus/branches/main/protection`, read at this
+  filing, requires seven contexts by job name; `Test Python bindings (free-threaded 3.14t)` is not one, so a red run of
+  that job holds no merge (derived). Found in review of consus#236, #240 and #242.
+- acceptance: `git grep -c 'always()' -- .github/workflows/ci.yml` reports 1 (no match today), on a job whose `needs:`
+  names the other ten job ids and which fails a draft; `on.pull_request.types` includes `ready_for_review` (no `types`
+  today, ci.yml:6-7); `required_status_checks.contexts` of the same API read lists that job (absent today).
+- priority: verification; milestone: M-core-formats; basis: 56a417b33afa
+- scope: .github/workflows/ci.yml, branch protection of `main` (repository setting)
+- next step: add the job, let one pull-request run report it, then require its context in place of the seven names.
