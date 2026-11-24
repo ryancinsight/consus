@@ -6,9 +6,9 @@
 //! uncatchable process. This module implements the bounded read once and
 //! selects the wire framing with a zero-sized [`FlateFraming`](crate::codec::flate::FlateFraming) marker type.
 //!
-//! Every framing keeps at least the shared [`ParseBudget`](consus_core::ParseBudget) byte ceiling, so a
-//! stream that expands past it is rejected with [`Error::ResourceLimit`](consus_core::Error::ResourceLimit)
-//! instead of exhausting memory.
+//! Every framing keeps at least the shared [`ParseBudget`](consus_core::ParseBudget) byte ceiling and
+//! widens it to the caller's declared size, so a stream that expands past both is rejected with
+//! [`Error::ResourceLimit`](consus_core::Error::ResourceLimit) instead of exhausting memory.
 
 use std::io::Read;
 
@@ -32,10 +32,15 @@ pub trait FlateFraming {
 
     /// Output ceiling, in bytes, for one decompression.
     ///
-    /// Every framing keeps at least the shared [`ParseBudget`] ceiling; a
-    /// framing whose callers can declare a larger legitimate size widens the
-    /// ceiling to that declaration so honest data is never rejected.
-    fn ceiling(expected_size: usize, budget: &ParseBudget) -> usize;
+    /// One rule serves every framing: the larger of the declared
+    /// `expected_size` and the shared [`ParseBudget`] byte ceiling. A caller
+    /// that declares a larger legitimate size therefore decodes it, whichever
+    /// framing carries the stream, and a stream that declares less is still
+    /// held to the budget.
+    #[must_use]
+    fn ceiling(expected_size: usize, budget: &ParseBudget) -> usize {
+        expected_size.max(budget.max_alloc_bytes)
+    }
 }
 
 /// zlib framing (RFC 1950), used by the HDF5 deflate filter (ID 1).
@@ -48,10 +53,6 @@ impl FlateFraming for ZlibFraming {
 
     fn decoder(input: &[u8]) -> Self::Decoder<'_> {
         flate2::read::ZlibDecoder::new(input)
-    }
-
-    fn ceiling(_expected_size: usize, budget: &ParseBudget) -> usize {
-        budget.max_alloc_bytes
     }
 }
 
@@ -70,10 +71,6 @@ impl FlateFraming for GzipFraming {
     fn decoder(input: &[u8]) -> Self::Decoder<'_> {
         flate2::read::MultiGzDecoder::new(input)
     }
-
-    fn ceiling(expected_size: usize, budget: &ParseBudget) -> usize {
-        expected_size.max(budget.max_alloc_bytes)
-    }
 }
 
 /// Raw DEFLATE framing (RFC 1951), used by ZIP method 8.
@@ -87,18 +84,14 @@ impl FlateFraming for RawDeflateFraming {
     fn decoder(input: &[u8]) -> Self::Decoder<'_> {
         flate2::read::DeflateDecoder::new(input)
     }
-
-    fn ceiling(expected_size: usize, budget: &ParseBudget) -> usize {
-        expected_size.max(budget.max_alloc_bytes)
-    }
 }
 
 /// Decompress `input` under framing `F`, bounding the output exactly once.
 ///
-/// The declared `expected_size` is a capacity hint only: the stream is capped
-/// at [`FlateFraming::ceiling`] and every growth goes through the budget's
-/// fallible reservation, so a hostile stream is rejected rather than allowed
-/// to exhaust memory.
+/// The declared `expected_size` is a capacity hint that also lifts the cap to
+/// [`FlateFraming::ceiling`]; every growth goes through the budget's fallible
+/// reservation, so a hostile stream is rejected rather than allowed to
+/// exhaust memory.
 ///
 /// # Errors
 ///
@@ -146,4 +139,49 @@ pub fn zlib_compress(input: &[u8], level: CompressionLevel) -> Result<Vec<u8>> {
             message: alloc::format!("{} compress failed: {e}", ZlibFraming::LABEL),
         })?;
     Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A declared size one byte above the default budget gives the same
+    /// ceiling under zlib, gzip and raw DEFLATE framing.
+    ///
+    /// Derivation: the rule is `max(declared, budget)`, so a declaration of
+    /// `budget + 1` yields `budget + 1` for every framing; the capacity hint
+    /// does not enter it.
+    #[test]
+    fn ceiling_above_default_budget_is_one_rule() {
+        let budget = ParseBudget::default();
+        let declared = budget.max_alloc_bytes + 1;
+
+        let zlib = ZlibFraming::ceiling(declared, &budget);
+        let gzip = GzipFraming::ceiling(declared, &budget);
+        let raw = RawDeflateFraming::ceiling(declared, &budget);
+
+        assert_eq!(zlib, declared);
+        assert_eq!(gzip, declared);
+        assert_eq!(raw, declared);
+    }
+
+    /// A declaration at or below the budget keeps the budget ceiling.
+    #[test]
+    fn ceiling_at_or_below_default_budget_is_the_budget() {
+        let budget = ParseBudget::default();
+        for declared in [0, 1, budget.max_alloc_bytes] {
+            assert_eq!(
+                ZlibFraming::ceiling(declared, &budget),
+                budget.max_alloc_bytes
+            );
+            assert_eq!(
+                GzipFraming::ceiling(declared, &budget),
+                budget.max_alloc_bytes
+            );
+            assert_eq!(
+                RawDeflateFraming::ceiling(declared, &budget),
+                budget.max_alloc_bytes
+            );
+        }
+    }
 }

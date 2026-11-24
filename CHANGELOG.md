@@ -32,6 +32,14 @@
   must add a wildcard arm. Reads never consult `level`. This reverses the
   0.5.0 entry below that oversized levels clamp to 9.
 
+### Fixed
+
+- [patch] `DeflateCodec` and `ZlibCodec` decode a stream whose declared
+  `expected_size` exceeds 64 MiB, as `GzipCodec` and `RawDeflateCodec`
+  already did. The zlib framing held the output to 64 MiB whatever size
+  the caller declared and returned `ResourceLimit`; all four codecs now
+  allow the larger of the declared size and 64 MiB.
+
 ## [consus-hdf5 0.6.0] - 2026-11-21
 
 ### Added
