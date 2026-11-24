@@ -38,6 +38,17 @@ impl DeflateLevel {
     }
 }
 
+/// The configuration text of a JSON value: strings unquoted, `null` empty,
+/// every other value in its JSON form.
+#[cfg(feature = "alloc")]
+pub(crate) fn config_text(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(text) => text.clone(),
+        serde_json::Value::Null => String::new(),
+        other => other.to_string(),
+    }
+}
+
 /// A codec configuration entry.
 ///
 /// Represents a codec in a Zarr v2 or v3 codec chain. Each codec has a
@@ -115,16 +126,7 @@ impl Codec {
                             config
                                 .iter()
                                 .map(|(config_key, config_value)| {
-                                    (
-                                        config_key.clone(),
-                                        match config_value {
-                                            serde_json::Value::String(s) => s.clone(),
-                                            serde_json::Value::Number(n) => n.to_string(),
-                                            serde_json::Value::Bool(b) => b.to_string(),
-                                            serde_json::Value::Null => String::new(),
-                                            _ => config_value.to_string(),
-                                        },
-                                    )
+                                    (config_key.clone(), config_text(config_value))
                                 })
                                 .collect()
                         })
@@ -146,12 +148,27 @@ impl Codec {
     /// # Errors
     ///
     /// [`consus_core::Error::InvalidFormat`] when `level` is present and is
-    /// not an integer in `0..=9` or `-1`.
+    /// not an integer in `0..=9` or `-1`, or when it is declared more than
+    /// once with differing text (a Zarr v2 inline `level` beside a nested
+    /// `configuration.level`).
     pub(crate) fn deflate_level(&self) -> consus_core::Result<DeflateLevel> {
-        self.config_value("level")
-            .map_or(Ok(DeflateLevel::DEFAULT), |declared| {
-                DeflateLevel::parse(&self.name, declared)
-            })
+        let mut declared = self
+            .configuration
+            .iter()
+            .filter(|(key, _)| key == "level")
+            .map(|(_, value)| value.as_str());
+        let Some(first) = declared.next() else {
+            return Ok(DeflateLevel::DEFAULT);
+        };
+        if let Some(other) = declared.find(|value| *value != first) {
+            return Err(consus_core::Error::InvalidFormat {
+                message: alloc::format!(
+                    "zarr `{}` codec: level is declared as both {first:?} and {other:?}",
+                    self.name
+                ),
+            });
+        }
+        DeflateLevel::parse(&self.name, first)
     }
 
     /// Returns the gzip compression level if this is a gzip codec.
@@ -263,7 +280,7 @@ mod tests {
             let level = level_codec("zlib", &[&n.to_string()]).deflate_level();
             assert_eq!(level.expect("level in range").get(), n);
         }
-        let accepted: [(&[&str], i32); 2] = [(&["-1"], 6), (&[], 6)];
+        let accepted: [(&[&str], i32); 3] = [(&["-1"], 6), (&[], 6), (&["3", "3"], 3)];
         for (levels, expected) in accepted {
             let level = level_codec("gzip", levels).deflate_level();
             assert_eq!(level.expect("accepted").get(), expected, "{levels:?}");

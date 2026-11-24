@@ -7,10 +7,15 @@
 - [major] Zarr `gzip` and `zlib` writes reject a declared `level` outside
   `0..=9` instead of clamping it to 9 or replacing it with 6. `-1`, zlib's
   default-compression sentinel, selects level 6, and an absent level stays 6.
-  The rejection is the new `ChunkError::InvalidCodecConfiguration` variant,
-  and `ChunkError` is now `#[non_exhaustive]`: exhaustive downstream matches
-  must add a wildcard arm. Reads never consult `level`. This reverses the
-  0.5.0 entry below that oversized levels clamp to 9.
+  A level in a Zarr v2 `configuration` object (`{"id":"zlib","configuration":
+  {"level":10}}`) is no longer dropped: `CodecConfiguration` carries every
+  member of the object (new public `members` field), so a nested zstd or
+  lz4 `level` is now applied too, and an inline and a nested gzip/zlib
+  `level` that differ are rejected. The rejection is the new
+  `ChunkError::InvalidCodecConfiguration` variant, and `ChunkError` is now
+  `#[non_exhaustive]`: exhaustive downstream matches must add a wildcard
+  arm. Reads never consult `level`. This reverses the 0.5.0 entry below
+  that oversized levels clamp to 9.
 
 ## [consus-hdf5 0.6.0] - 2026-11-21
 

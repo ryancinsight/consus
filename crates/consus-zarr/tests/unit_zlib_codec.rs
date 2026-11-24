@@ -115,15 +115,16 @@ fn level_input() -> Vec<u8> {
     b"configured compression level ".repeat(1024)
 }
 
-/// Where a codec declares its level: Zarr v2 inline beside `id`, or Zarr v3
-/// `configuration`.
+/// Where a codec declares its level: Zarr v2 inline beside `id`, Zarr v2
+/// inside the compressor's `configuration` object, or Zarr v3 `configuration`.
 #[derive(Clone, Copy, Debug)]
 enum LevelAt {
     Inline,
+    Nested,
     V3,
 }
 
-const PLACEMENTS: [LevelAt; 2] = [LevelAt::Inline, LevelAt::V3];
+const PLACEMENTS: [LevelAt; 3] = [LevelAt::Inline, LevelAt::Nested, LevelAt::V3];
 
 /// A one-chunk `uint8` Zarr v3 array whose codec chain is the JSON `codecs` list body.
 fn v3_metadata(codecs: &str) -> ArrayMetadata {
@@ -147,7 +148,9 @@ fn metadata(name: &str, level: Option<&str>, at: LevelAt) -> ArrayMetadata {
     let declaration = level
         .map(|n| match at {
             LevelAt::Inline => format!(r#", "level": {n}"#),
-            LevelAt::V3 => format!(r#", "configuration": {{"level": {n}}}"#),
+            LevelAt::Nested | LevelAt::V3 => {
+                format!(r#", "configuration": {{"level": {n}}}"#)
+            }
         })
         .unwrap_or_default();
     if let LevelAt::V3 = at {
@@ -277,7 +280,7 @@ fn level_outside_range_is_rejected() {
                 assert_rejected_level(&metadata(name, Some(&text), at), name, &text);
             }
         }
-        for at in [LevelAt::V3] {
+        for at in [LevelAt::Nested, LevelAt::V3] {
             for (json, declared) in [("1.5", "1.5"), ("\"six\"", "six")] {
                 assert_rejected_level(&metadata(name, Some(json), at), name, declared);
             }
@@ -286,9 +289,32 @@ fn level_outside_range_is_rejected() {
 }
 
 #[test]
+fn v2_conflicting_level_declarations_are_rejected() {
+    let len = level_input().len();
+    for name in ["gzip", "zlib"] {
+        let json = format!(
+            r#"{{"zarr_format":2,"shape":[{len}],"chunks":[{len}],"dtype":"|u1",
+            "fill_value":0,"order":"C","compressor":{{"id":"{name}","level":1,
+            "configuration":{{"level":9}}}},"filters":null}}"#
+        );
+        let metadata = ArrayMetadataV2::parse(&json)
+            .expect("valid v2 metadata")
+            .to_canonical();
+        let (store, result) = write_level_input(&metadata);
+        assert_eq!(
+            result.expect_err("conflicting levels must be rejected"),
+            ChunkError::InvalidCodecConfiguration(format!(
+                "zarr `{name}` codec: level is declared as both \"9\" and \"1\""
+            ))
+        );
+        assert!(store.list("array/").expect("list array keys").is_empty());
+    }
+}
+
+#[test]
 fn decoding_does_not_consult_the_declared_level() {
     let written = write_compressed_chunk("zlib", Some("9"), LevelAt::Inline, 9);
-    for at in [LevelAt::Inline] {
+    for at in [LevelAt::Inline, LevelAt::Nested] {
         for declared in ["10", "-2", "2147483647"] {
             let metadata = metadata("zlib", Some(declared), at);
             let mut store = InMemoryStore::new();
