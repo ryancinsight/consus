@@ -1,6 +1,6 @@
 # ADR 0011: Opt-in exact IEEE dataset admission
 
-Status: Proposed
+Status: Accepted
 
 ## Context
 
@@ -24,7 +24,8 @@ with the writer's canonical IEEE representation, then return the same ordinary
 dataset metadata. Compare float class, order (including the VAX order bit),
 sign location, mantissa normalization, storage size, significant-bit offset
 and precision, exponent and mantissa locations and widths, and exponent bias.
-Datatype message versions 1 through 5 are admitted and checked separately.
+Datatype message versions 1 through 5 are admitted; they share the float
+fields above, so one comparison covers all five.
 Reserved bits and padding preferences in a full-width encoding do not alter
 numeric identity. Shared datatype messages and other message versions remain
 unsupported by this opt-in method. This is not a general HDF5 conformance check.
@@ -38,8 +39,24 @@ all six width/order combinations across the five admitted message versions,
 noncanonical numeric encodings, and equivalent unused padding preferences.
 Ordinary metadata lookups remain covered separately.
 
-This is an additive public API proposal. The [provider-first adoption plan](../typed-float-admission-plan.md)
+This is an additive public API. The [provider-first adoption plan](../typed-float-admission-plan.md)
 defines the separate provider release and consumer verification gates.
+
+## Delivery
+
+- Provider: PR 230 (efd03ed) adds `IeeeFloatEncoding`,
+  `dataset_at_with_ieee_float_encoding` and `tests/ieee_float_admission.rs`.
+- Release: `consus-hdf5` 0.6.0 is tag `crate-consus-hdf5-v0.6.0`, revision
+  b14cbd3. PR 235 matched the registry archive to that source and exercised
+  the API from a registry-only consumer.
+- Consumer: Helios b7bda4cd calls the method at
+  `crates/helios-domain/src/storage.rs:154` with `Binary64LittleEndian`.
+
+Revision 2026-11-24: Proposed to Accepted, because every decision above is
+what `crates/consus-hdf5/src/datatype/ieee.rs` and
+`crates/consus-hdf5/src/file/exact_float.rs` do at b14cbd3, and the
+"checked separately" sentence now matches the single comparison at
+`exact_float.rs:57-66`.
 
 ## Source
 
