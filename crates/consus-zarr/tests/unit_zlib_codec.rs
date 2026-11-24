@@ -105,8 +105,9 @@ fn malformed_zlib_stream_is_a_compression_error() {
     }
 }
 
-/// zlib's `Z_DEFAULT_COMPRESSION` resolves to level 6 (`zlib.h`), and numcodecs
-/// `Zlib` and `GZip` default to the same call.
+/// Level written when a `gzip` or `zlib` codec declares none: this crate's
+/// policy (CHANGELOG, Unreleased). It is also what zlib's `-1` resolves to
+/// (`Z_DEFAULT_COMPRESSION`, "currently equivalent to level 6", `zlib.h`).
 const ZLIB_DEFAULT_LEVEL: i32 = 6;
 
 /// `b"configured compression level "` repeated 1024 times, 29,696 bytes.
@@ -114,35 +115,55 @@ fn level_input() -> Vec<u8> {
     b"configured compression level ".repeat(1024)
 }
 
-fn v2_metadata(name: &str, level: Option<i32>) -> ArrayMetadata {
-    let len = level_input().len();
-    let configuration = level
-        .map(|n| format!(", \"level\": {n}"))
-        .unwrap_or_default();
-    let json = format!(
-        r#"{{"zarr_format":2,"shape":[{len}],"chunks":[{len}],
-        "dtype":"|u1","fill_value":0,"order":"C",
-        "compressor":{{"id":"{name}"{configuration}}},"filters":null}}"#
-    );
-    ArrayMetadataV2::parse(&json)
-        .expect("valid v2 metadata")
-        .to_canonical()
+/// Where a codec declares its level: Zarr v2 inline beside `id`, or Zarr v3
+/// `configuration`.
+#[derive(Clone, Copy, Debug)]
+enum LevelAt {
+    Inline,
+    V3,
 }
 
-fn v3_metadata(name: &str, level: &str) -> ArrayMetadata {
+const PLACEMENTS: [LevelAt; 2] = [LevelAt::Inline, LevelAt::V3];
+
+/// A one-chunk `uint8` Zarr v3 array whose codec chain is the JSON `codecs` list body.
+fn v3_metadata(codecs: &str) -> ArrayMetadata {
     let len = level_input().len();
     let json = format!(
         r#"{{"zarr_format":3,"node_type":"array","shape":[{len}],"data_type":"uint8",
         "chunk_grid":{{"name":"regular","configuration":{{"chunk_shape":[{len}]}}}},
         "chunk_key_encoding":{{"name":"default","configuration":{{"separator":"/"}}}},
-        "codecs":[{{"name":"bytes","configuration":{{"endian":"little"}}}},
-                  {{"name":"{name}","configuration":{{"level":{level}}}}}],
-        "fill_value":0}}"#
+        "codecs":[{codecs}],"fill_value":0}}"#
     );
     ZarrJson::parse(&json)
         .expect("valid v3 metadata")
         .to_array_canonical()
         .expect("array node")
+}
+
+/// A one-chunk `uint8` array whose `name` codec declares `level` (JSON text)
+/// at `at`, or declares none.
+fn metadata(name: &str, level: Option<&str>, at: LevelAt) -> ArrayMetadata {
+    let len = level_input().len();
+    let declaration = level
+        .map(|n| match at {
+            LevelAt::Inline => format!(r#", "level": {n}"#),
+            LevelAt::V3 => format!(r#", "configuration": {{"level": {n}}}"#),
+        })
+        .unwrap_or_default();
+    if let LevelAt::V3 = at {
+        let codec = format!(r#"{{"name":"{name}"{declaration}}}"#);
+        return v3_metadata(&format!(
+            r#"{{"name":"bytes","configuration":{{"endian":"little"}}}},{codec}"#
+        ));
+    }
+    let json = format!(
+        r#"{{"zarr_format":2,"shape":[{len}],"chunks":[{len}],
+        "dtype":"|u1","fill_value":0,"order":"C",
+        "compressor":{{"id":"{name}"{declaration}}},"filters":null}}"#
+    );
+    ArrayMetadataV2::parse(&json)
+        .expect("valid v2 metadata")
+        .to_canonical()
 }
 
 fn write_level_input(metadata: &ArrayMetadata) -> (InMemoryStore, Result<(), ChunkError>) {
@@ -151,8 +172,7 @@ fn write_level_input(metadata: &ArrayMetadata) -> (InMemoryStore, Result<(), Chu
     (store, result)
 }
 
-/// The single chunk object a write left under the array key, whatever the
-/// metadata version's chunk key encoding.
+/// The single chunk object a write left under the array key.
 fn stored_chunk(store: &InMemoryStore) -> Vec<u8> {
     let keys = store.list("array/").expect("list array keys");
     assert_eq!(keys.len(), 1, "one chunk object: {keys:?}");
@@ -161,8 +181,13 @@ fn stored_chunk(store: &InMemoryStore) -> Vec<u8> {
 
 /// Writes `level_input` through the Zarr array path, checks the stored chunk
 /// against the direct encoder at `expected_level`, and decodes it.
-fn write_compressed_chunk(name: &str, level: Option<i32>, expected_level: i32) -> Vec<u8> {
-    let metadata = v2_metadata(name, level);
+fn write_compressed_chunk(
+    name: &str,
+    level: Option<&str>,
+    at: LevelAt,
+    expected_level: i32,
+) -> Vec<u8> {
+    let metadata = metadata(name, level, at);
     let (store, result) = write_level_input(&metadata);
     result.expect("write full Zarr array");
     let encoded = stored_chunk(&store);
@@ -176,10 +201,10 @@ fn write_compressed_chunk(name: &str, level: Option<i32>, expected_level: i32) -
         .expect("direct codec compression");
     assert_eq!(
         encoded, expected,
-        "{name} level {level:?} must reach the encoder as {expected_level}"
+        "{name} level {level:?} ({at:?}) must reach the encoder as {expected_level}"
     );
     assert_eq!(
-        CodecPipeline::single(metadata.codecs[0].clone())
+        CodecPipeline::new(metadata.codecs.clone())
             .decompress(&encoded, default_registry())
             .expect("read written chunk"),
         level_input()
@@ -187,11 +212,10 @@ fn write_compressed_chunk(name: &str, level: Option<i32>, expected_level: i32) -
     encoded
 }
 
-/// Smallest stream a conformant encoder emits at level 0 for `level_input`:
-/// one stored block per 65,535 input bytes, each with a 5-byte header
-/// (RFC 1951 section 3.2.4), plus the container framing: zlib is a 2-byte
-/// header and 4-byte Adler-32 (RFC 1950 section 2.2), gzip a 10-byte header
-/// and 8-byte CRC-32 and length (RFC 1952 section 2.3).
+/// Smallest level-0 stream for `level_input`: one stored block per 65,535
+/// input bytes with a 5-byte header (RFC 1951 section 3.2.4), plus framing:
+/// zlib 2-byte header and 4-byte Adler-32 (RFC 1950 section 2.2), gzip
+/// 10-byte header and 8-byte CRC-32 and length (RFC 1952 section 2.3).
 fn stored_floor(framing: usize) -> usize {
     const STORED_BLOCK_MAX: usize = 65_535;
     const STORED_BLOCK_HEADER: usize = 5;
@@ -203,58 +227,39 @@ const ZLIB_FRAMING: usize = 2 + 4;
 const GZIP_FRAMING: usize = 10 + 8;
 
 #[test]
-fn zarr_writes_honor_zlib_levels_and_default() {
-    let stored = write_compressed_chunk("zlib", Some(0), 0);
-    let compressed = write_compressed_chunk("zlib", Some(9), 9);
-    assert!(stored.len() >= stored_floor(ZLIB_FRAMING), "level 0 stores");
-    assert!(
-        compressed.len() < level_input().len(),
-        "level 9 shrinks repetitive input"
-    );
-    let default = write_compressed_chunk("zlib", None, ZLIB_DEFAULT_LEVEL);
-    assert_eq!(
-        default,
-        write_compressed_chunk("zlib", Some(ZLIB_DEFAULT_LEVEL), ZLIB_DEFAULT_LEVEL)
-    );
-    assert_eq!(
-        default,
-        write_compressed_chunk("zlib", Some(-1), ZLIB_DEFAULT_LEVEL),
-        "-1 is Z_DEFAULT_COMPRESSION"
-    );
-}
-
-#[test]
-fn zarr_writes_preserve_gzip_levels_and_default() {
-    let stored = write_compressed_chunk("gzip", Some(0), 0);
-    let compressed = write_compressed_chunk("gzip", Some(9), 9);
-    assert!(stored.len() >= stored_floor(GZIP_FRAMING), "level 0 stores");
-    assert!(
-        compressed.len() < level_input().len(),
-        "level 9 shrinks repetitive input"
-    );
-    let default = write_compressed_chunk("gzip", None, ZLIB_DEFAULT_LEVEL);
-    assert_eq!(
-        default,
-        write_compressed_chunk("gzip", Some(ZLIB_DEFAULT_LEVEL), ZLIB_DEFAULT_LEVEL)
-    );
-    assert_eq!(
-        default,
-        write_compressed_chunk("gzip", Some(-1), ZLIB_DEFAULT_LEVEL),
-        "-1 is Z_DEFAULT_COMPRESSION"
-    );
+fn zarr_writes_honor_levels_and_default() {
+    for (name, framing) in [("zlib", ZLIB_FRAMING), ("gzip", GZIP_FRAMING)] {
+        for at in PLACEMENTS {
+            let write = |level, expected| write_compressed_chunk(name, level, at, expected);
+            let stored = write(Some("0"), 0);
+            let compressed = write(Some("9"), 9);
+            let default = write(None, ZLIB_DEFAULT_LEVEL);
+            assert!(
+                stored.len() >= stored_floor(framing),
+                "{name} {at:?} stores"
+            );
+            assert!(
+                compressed.len() < level_input().len(),
+                "{name} {at:?} shrinks"
+            );
+            assert_ne!(write(Some("1"), 1), default, "{name} {at:?} level 1");
+            assert_eq!(default, write(Some("6"), ZLIB_DEFAULT_LEVEL));
+            assert_eq!(
+                default,
+                write(Some("-1"), ZLIB_DEFAULT_LEVEL),
+                "-1 is Z_DEFAULT_COMPRESSION"
+            );
+        }
+    }
 }
 
 fn assert_rejected_level(metadata: &ArrayMetadata, name: &str, declared: &str) {
     let (store, result) = write_level_input(metadata);
-    let error = result.expect_err("out-of-range level must be rejected");
-    assert!(
-        matches!(
-            &error,
-            ChunkError::InvalidCodecConfiguration(message)
-                if message.contains(&format!("{declared:?}"))
-                    && message.contains(&format!("`{name}`"))
-        ),
-        "{name} level {declared}: {error:?}"
+    assert_eq!(
+        result.expect_err("out-of-range level must be rejected"),
+        ChunkError::InvalidCodecConfiguration(format!(
+            "zarr `{name}` codec: level {declared:?} is not an integer in 0..=9 or the zlib default -1"
+        ))
     );
     assert_eq!(
         store.list("array/").expect("list array keys"),
@@ -264,46 +269,43 @@ fn assert_rejected_level(metadata: &ArrayMetadata, name: &str, declared: &str) {
 }
 
 #[test]
-fn v2_level_outside_range_is_rejected() {
+fn level_outside_range_is_rejected() {
     for name in ["gzip", "zlib"] {
-        for level in [10, i32::MAX, -2, i32::MIN] {
-            assert_rejected_level(&v2_metadata(name, Some(level)), name, &level.to_string());
+        for at in PLACEMENTS {
+            for level in [10, i32::MAX, -2, i32::MIN] {
+                let text = level.to_string();
+                assert_rejected_level(&metadata(name, Some(&text), at), name, &text);
+            }
         }
-    }
-}
-
-#[test]
-fn v3_level_outside_range_is_rejected() {
-    for name in ["gzip", "zlib"] {
-        for level in ["10", "-2", "1.5", "\"six\""] {
-            let declared = level.trim_matches('"');
-            assert_rejected_level(&v3_metadata(name, level), name, declared);
+        for at in [LevelAt::V3] {
+            for (json, declared) in [("1.5", "1.5"), ("\"six\"", "six")] {
+                assert_rejected_level(&metadata(name, Some(json), at), name, declared);
+            }
         }
-    }
-}
-
-#[test]
-fn v3_levels_in_range_reach_the_encoder() {
-    for (name, framing) in [("gzip", GZIP_FRAMING), ("zlib", ZLIB_FRAMING)] {
-        let written = |level: &str| {
-            let (store, result) = write_level_input(&v3_metadata(name, level));
-            result.expect("in-range level");
-            stored_chunk(&store)
-        };
-        assert!(written("0").len() >= stored_floor(framing));
-        assert!(written("9").len() < level_input().len());
     }
 }
 
 #[test]
 fn decoding_does_not_consult_the_declared_level() {
-    let written = write_compressed_chunk("zlib", Some(9), 9);
-    for declared in [10, -2, i32::MAX] {
-        let metadata = v2_metadata("zlib", Some(declared));
-        let mut store = InMemoryStore::new();
-        store.set("array/0", &written).expect("store chunk");
-        let read = read_array(&store, "array", &Selection::full(1), &metadata)
-            .expect("a stored level never blocks a read");
-        assert_eq!(read, level_input(), "declared level {declared}");
+    let written = write_compressed_chunk("zlib", Some("9"), LevelAt::Inline, 9);
+    for at in [LevelAt::Inline] {
+        for declared in ["10", "-2", "2147483647"] {
+            let metadata = metadata("zlib", Some(declared), at);
+            let mut store = InMemoryStore::new();
+            store.set("array/0", &written).expect("store chunk");
+            let read = read_array(&store, "array", &Selection::full(1), &metadata)
+                .expect("a stored level never blocks a read");
+            assert_eq!(read, level_input(), "declared level {declared} ({at:?})");
+        }
     }
+}
+
+#[test]
+fn sharded_write_rejects_inner_codec_level_outside_range() {
+    let inner = r#"[{"name":"bytes","configuration":{"endian":"little"}},
+                    {"name":"gzip","configuration":{"level":10}}]"#;
+    let sharding = format!(
+        r#"{{"name":"sharding_indexed","configuration":{{"chunk_shape":[2],"codecs":{inner},"index_codecs":[]}}}}"#
+    );
+    assert_rejected_level(&v3_metadata(&sharding), "gzip", "10");
 }

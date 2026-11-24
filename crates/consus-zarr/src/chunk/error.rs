@@ -16,7 +16,12 @@ pub enum ChunkError {
     /// Compression of chunk data failed.
     CompressFailed,
     /// A codec in the array metadata declares a configuration it cannot
-    /// honor, such as a `gzip` or `zlib` level outside `0..=9`.
+    /// honor, such as a `gzip` or `zlib` level that is neither in `0..=9`
+    /// nor `-1`.
+    ///
+    /// `-1` is zlib's `Z_DEFAULT_COMPRESSION` and is accepted as level 6 for
+    /// `gzip` and `zlib` in Zarr v2 and v3 metadata alike. For v3 `gzip` that
+    /// is a deliberate leniency: zarr-python 3.2.1 rejects `-1` there.
     ///
     /// Carries the codec's own description of the rejected value.
     InvalidCodecConfiguration(String),

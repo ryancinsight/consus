@@ -3,14 +3,12 @@ use alloc::{string::String, vec::Vec};
 
 /// A compression level for the deflate-family `gzip` and `zlib` codecs.
 ///
-/// zlib defines levels `0..=9` (`zlib.h`, `deflateInit`: 0 stores, 1 is
-/// fastest, 9 is smallest) and the sentinel `-1` (`Z_DEFAULT_COMPRESSION`),
-/// "currently equivalent to level 6". CPython's `zlib.compress` and
-/// `gzip.compress` accept exactly this set and raise on every other value,
-/// as do numcodecs' `Zlib` (a direct `zlib.compress(buf, level)` call) and
-/// `GZip` encoders (numcodecs 0.16.5, run with levels 10, -2 and -1).
-/// The sentinel resolves to [`Self::DEFAULT`] here, so the stored value is
-/// always a concrete level.
+/// zlib defines levels `0..=9` and the sentinel `-1`
+/// (`Z_DEFAULT_COMPRESSION`, "currently equivalent to level 6", `zlib.h`).
+/// CPython's `zlib.compress` and `gzip.compress` and numcodecs' `Zlib` and
+/// `GZip` (0.16.5, run with 10, -2 and -1) accept exactly this set. The
+/// sentinel resolves to [`Self::DEFAULT`], so the stored value is always a
+/// concrete level.
 #[cfg(feature = "alloc")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DeflateLevel(u8);
@@ -34,7 +32,7 @@ impl DeflateLevel {
         });
         level.ok_or_else(|| consus_core::Error::InvalidFormat {
             message: alloc::format!(
-                "zarr `{codec_name}` codec: level {declared:?} is not an integer                  in 0..=9 or the zlib default -1"
+                "zarr `{codec_name}` codec: level {declared:?} is not an integer in 0..=9 or the zlib default -1"
             ),
         })
     }
@@ -249,42 +247,32 @@ mod tests {
         assert_eq!(gzip.gzip_level(), Some(6));
     }
 
-    fn level_codec(name: &str, level: Option<&str>) -> Codec {
+    fn level_codec(name: &str, levels: &[&str]) -> Codec {
         Codec {
-            name: alloc::string::String::from(name),
-            configuration: level
-                .map(|text| {
-                    alloc::vec![(
-                        alloc::string::String::from("level"),
-                        alloc::string::String::from(text)
-                    )]
-                })
-                .unwrap_or_default(),
+            name: name.into(),
+            configuration: levels
+                .iter()
+                .map(|text| ("level".into(), (*text).into()))
+                .collect(),
         }
     }
 
     #[test]
     fn deflate_level_accepts_zero_to_nine_and_default_sentinel() {
         for n in 0..=9_i32 {
-            let level = level_codec("zlib", Some(&n.to_string()))
-                .deflate_level()
-                .expect("level in range");
-            assert_eq!(level.get(), n);
+            let level = level_codec("zlib", &[&n.to_string()]).deflate_level();
+            assert_eq!(level.expect("level in range").get(), n);
         }
-        let sentinel = level_codec("gzip", Some("-1"))
-            .deflate_level()
-            .expect("zlib default sentinel");
-        assert_eq!(sentinel, DeflateLevel::DEFAULT);
-        assert_eq!(sentinel.get(), 6);
-        assert_eq!(
-            level_codec("zlib", None).deflate_level().expect("absent"),
-            DeflateLevel::DEFAULT
-        );
+        let accepted: [(&[&str], i32); 2] = [(&["-1"], 6), (&[], 6)];
+        for (levels, expected) in accepted {
+            let level = level_codec("gzip", levels).deflate_level();
+            assert_eq!(level.expect("accepted").get(), expected, "{levels:?}");
+        }
     }
 
     #[test]
     fn deflate_level_rejects_every_other_declaration() {
-        for declared in [
+        let rejected = [
             "10",
             "-2",
             "2147483647",
@@ -295,17 +283,16 @@ mod tests {
             "",
             "true",
             "six",
-        ] {
-            let error = level_codec("zlib", Some(declared))
+        ];
+        for declared in rejected {
+            let error = level_codec("zlib", &[declared])
                 .deflate_level()
                 .expect_err("out-of-range or non-integer level");
+            let message = alloc::format!(
+                "zarr `zlib` codec: level {declared:?} is not an integer in 0..=9 or the zlib default -1"
+            );
             assert!(
-                matches!(
-                    &error,
-                    consus_core::Error::InvalidFormat { message }
-                        if message.contains(&alloc::format!("{declared:?}"))
-                            && message.contains("`zlib`")
-                ),
+                matches!(&error, consus_core::Error::InvalidFormat { message: m } if *m == message),
                 "level {declared:?}: {error:?}"
             );
         }
