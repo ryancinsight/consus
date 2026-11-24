@@ -182,7 +182,7 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   `git grep -c zarr_level_interop -- .github/workflows/ci.yml` reports a match; `cargo nextest run -p
   consus-zarr --all-features written_level_chunks_equal_committed_files` passes and `git grep -c 'fn
   written_level_chunks_equal_committed_files' -- 'crates/consus-zarr/tests/*.rs'` reports 1 (none today).
-- priority: verification; milestone: M-core-formats; basis: 216bde10c66f0f85b7d084aef8b1f19296fb1ae2
+- priority: verification; needs: CONSUS-ZLIB-VECTOR-DEDUP; milestone: M-core-formats; basis: 216bde10c66f0f85b7d084aef8b1f19296fb1ae2
 - scope: crates/consus-zarr/tests, scripts/zarr_level_interop.py, .github/workflows/ci.yml
 - next step: assert each `write_array` chunk equals its file in `unit_zlib_codec.rs`.
 
@@ -242,12 +242,12 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - acceptance: `ls crates/consus-zarr/tests/*.rs | wc -l` prints 0 (8 today);
   `cargo nextest list -p consus-zarr --all-features` before and after hold the same tests once
   `consus-zarr::<binary> <test>` is read as `consus-zarr::zarr <binary>::<test>`; `git ls-files
-  crates/consus-zarr/tests/zarr/property_zarr.proptest-regressions` lists the replay file (none today).
+  crates/consus-zarr/tests/proptest-regressions/property_zarr.txt` lists the replay file (none today).
 - priority: tightening; milestone: M-core-formats; basis: 216bde10c66f0f85b7d084aef8b1f19296fb1ae2
 - needs: CONSUS-ZARR-EDGE-CHUNK-PADDING, CONSUS-ZLIB-VECTOR-DEDUP, CONSUS-ZARR-LEVEL-INTEROP
 - scope: crates/consus-zarr/tests
-- next step: `git mv` the files under `tests/zarr/` with the regression file, and add `main.rs` with one `mod`
-  per file.
+- next step: `git mv` the files under `tests/zarr/`, the regression file to
+  `tests/proptest-regressions/property_zarr.txt`, and add `main.rs` with one `mod` per file.
 
 <a id="consus-flate-surface"></a>
 ## CONSUS-FLATE-SURFACE — Narrow the unused flate items [major] — todo
