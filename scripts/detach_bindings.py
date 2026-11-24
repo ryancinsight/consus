@@ -8,8 +8,13 @@ releases the GIL. "The helper ran" therefore witnesses that the call detached,
 and a call that holds the GIL never produces the witness, whatever the
 scheduler does. Sound under three conditions:
 
-* The deadline is far below the interval, so a forced handoff cannot occur
-  inside the loop (`DEADLINE_SECONDS` < `SWITCH_INTERVAL_SECONDS`).
+* The deadline plus the longest single call is below the interval
+  (`DEADLINE_SECONDS + CALL_SECONDS < SWITCH_INTERVAL_SECONDS`). A call that
+  holds the GIL never signals it, so the helper's one timed wait for the GIL
+  starts at `go.set()` and is not cut short; it can request a drop only after
+  the full interval passes without a switch. The loop checks the deadline
+  between calls, so it ends at most one call after the deadline, and the
+  verdict is read then, before the join.
 * Nothing in the loop body releases the GIL except the probed call. The list
   truth test, `time.monotonic()` and the comparison are C calls that never
   allow other threads to run; `thread.start()` and `go.set()` precede the loop
@@ -39,19 +44,47 @@ N = 2_000_000
 SWITCH_INTERVAL_SECONDS = 1000.0
 GZIP_CHUNKED = ("chunked", [N // 8], "gzip")
 
-# Bound on the hosted `test` job in .github/workflows/ci.yml: timeout-minutes
-# 30. The job's other work (build, nextest, wheel build) took about 225 s on
-# macOS in runs 45268922903 and 45326622304; four times that, 900 s, is
-# reserved for it, leaving 900 s for the nine bindings. Each binding gets
-# 900 s / 9 = 100 s, split into a loop deadline and a helper join bound of
-# 50 s each, so nine failing bindings still end the job inside its bound.
+# Time budget against the hosted `Test` job in .github/workflows/ci.yml
+# (`timeout-minutes: 30`). Durations are job startedAt to completedAt.
+# Reserve: the slowest `Test` job measured, Windows 450 s (job 138273720187
+# of run 45343892223; the same runner took 384 s and 440 s in jobs
+# 138023200694 and 138217660816). That job's duration already includes this
+# file's passing run, so the reserve stands for all the job's other work. No
+# margin factor is applied, so the bound holds only while that work stays at
+# or below the measured figure.
+# Call bound: the whole pytest invocation over eight scripts took 3.35 s in
+# that job (`61 passed, 1 skipped in 3.35s`), which bounds any single call.
+# Probes: the nine bindings plus the accepting stand-in run up to the full
+# deadline and join bound when they fail; the rejecting stand-in runs its
+# short deadline and join bound. The deadline is checked only between calls,
+# so each probe overshoots by up to one call. The per-probe bound is the time
+# left after the reserve, the rejecting stand-in and every overshoot, divided
+# by the probe count and rounded down to whole seconds, split evenly into a
+# loop deadline and a helper join bound.
 JOB_TIMEOUT_SECONDS = 30 * 60
-RESERVED_SECONDS = 900.0
+SLOWEST_TEST_JOB_SECONDS = 450.0
+CALL_SECONDS = 3.35
 BINDING_COUNT = 9
-PER_BINDING_SECONDS = (JOB_TIMEOUT_SECONDS - RESERVED_SECONDS) / BINDING_COUNT
-DEADLINE_SECONDS = PER_BINDING_SECONDS / 2
-JOIN_SECONDS = PER_BINDING_SECONDS / 2
-assert DEADLINE_SECONDS + JOIN_SECONDS < SWITCH_INTERVAL_SECONDS
+FULL_PROBES = BINDING_COUNT + 1
+# The rejecting stand-in never produces the witness, so it always runs its
+# whole deadline; any positive value is sound and one second keeps it short.
+REJECT_DEADLINE_SECONDS = 1.0
+PROBE_BOUND_SECONDS = (
+    JOB_TIMEOUT_SECONDS
+    - SLOWEST_TEST_JOB_SECONDS
+    - 2 * REJECT_DEADLINE_SECONDS
+    - (FULL_PROBES + 1) * CALL_SECONDS
+) // FULL_PROBES
+DEADLINE_SECONDS = PROBE_BOUND_SECONDS / 2
+JOIN_SECONDS = PROBE_BOUND_SECONDS / 2
+WORST_CASE_JOB_SECONDS = (
+    SLOWEST_TEST_JOB_SECONDS
+    + FULL_PROBES * (DEADLINE_SECONDS + CALL_SECONDS + JOIN_SECONDS)
+    + 2 * REJECT_DEADLINE_SECONDS
+    + CALL_SECONDS
+)
+assert WORST_CASE_JOB_SECONDS <= JOB_TIMEOUT_SECONDS
+assert DEADLINE_SECONDS + CALL_SECONDS < SWITCH_INTERVAL_SECONDS
 
 requires_gil = pytest.mark.skipif(
     not getattr(sys, "_is_gil_enabled", lambda: True)(),
@@ -81,18 +114,21 @@ def releases_interpreter(call, deadline=DEADLINE_SECONDS, join=JOIN_SECONDS):
     released = False
     previous = sys.getswitchinterval()
     sys.setswitchinterval(SWITCH_INTERVAL_SECONDS)
-    thread = threading.Thread(target=helper)
     try:
-        thread.start()
-        go.set()
-        end = time.monotonic() + deadline
-        while not ran and time.monotonic() < end:
-            call()
-            calls_made += 1
-        released = bool(ran)
+        thread = threading.Thread(target=helper)
+        try:
+            thread.start()
+            go.set()
+            end = time.monotonic() + deadline
+            while not ran and time.monotonic() < end:
+                call()
+                calls_made += 1
+            released = bool(ran)
+        finally:
+            go.set()
+            if thread.ident is not None:
+                thread.join(join)
     finally:
-        go.set()
-        thread.join(join)
         sys.setswitchinterval(previous)
     assert not thread.is_alive(), f"helper thread outlived its {join} s join bound"
     return Probe(released, calls_made)
@@ -135,8 +171,10 @@ def calls():
 
 @requires_gil
 def test_compute_releases_the_interpreter():
+    bindings = calls()
+    assert len(bindings) == BINDING_COUNT, "the time budget counts BINDING_COUNT probes"
     attached = []
-    for name, call in calls().items():
+    for name, call in bindings.items():
         probe = releases_interpreter(call)
         if not probe.released:
             attached.append(
@@ -171,7 +209,30 @@ def test_probe_rejects_a_call_that_holds_the_interpreter():
             total += value
         return total
 
-    deadline = 1.0
-    probe = releases_interpreter(count, deadline=deadline, join=deadline)
+    probe = releases_interpreter(
+        count, deadline=REJECT_DEADLINE_SECONDS, join=REJECT_DEADLINE_SECONDS
+    )
     assert not probe.released
     assert probe.calls >= 1
+
+
+class StartFailure(Exception):
+    pass
+
+
+def test_probe_restores_the_switch_interval_when_the_helper_cannot_start(monkeypatch):
+    def refuse(self):
+        raise StartFailure
+
+    monkeypatch.setattr(threading.Thread, "start", refuse)
+    previous = sys.getswitchinterval()
+    # Exact in the whole microseconds the interpreter stores.
+    expected = 0.0625
+    sys.setswitchinterval(expected)
+    try:
+        with pytest.raises(StartFailure):
+            releases_interpreter(lambda: None)
+        restored = sys.getswitchinterval()
+    finally:
+        sys.setswitchinterval(previous)
+    assert restored == expected
