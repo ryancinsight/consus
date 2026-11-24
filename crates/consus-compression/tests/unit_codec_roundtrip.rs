@@ -652,10 +652,11 @@ fn all_enabled_codecs_roundtrip_same_input() {
 mod above_default_budget {
     use super::*;
     use consus_compression::codec::deflate::DeflateCodec;
+    use consus_compression::codec::flate::MAX_DEFLATE_EXPANSION;
     use consus_compression::codec::gzip::GzipCodec;
     use consus_compression::codec::raw_deflate::RawDeflateCodec;
     use consus_compression::codec::zlib::ZlibCodec;
-    use consus_core::ParseBudget;
+    use consus_core::{Error, ParseBudget};
 
     fn assert_decodes_declared_size<C: Codec>(codec: &C, input: &[u8]) {
         let compressed = codec
@@ -681,5 +682,79 @@ mod above_default_budget {
         assert_decodes_declared_size(&ZlibCodec, &input);
         assert_decodes_declared_size(&GzipCodec, &input);
         assert_decodes_declared_size(&RawDeflateCodec, &input);
+    }
+
+    /// Compress `len` zero bytes at the strongest level: the most
+    /// compressible input a stream of that length can carry.
+    fn compressed_zeros<C: Codec>(codec: &C, len: usize) -> Vec<u8> {
+        codec
+            .compress(&vec![0u8; len], CompressionLevel(9))
+            .expect("level-9 compress must succeed")
+    }
+
+    fn assert_within_expansion_bound<C: Codec>(codec: &C, len: usize) {
+        let compressed = compressed_zeros(codec, len);
+        let producible = compressed.len() * MAX_DEFLATE_EXPANSION;
+        assert!(
+            len <= producible,
+            "{}: {len} bytes came from {} compressed bytes, above the bound {producible}",
+            codec.name(),
+            compressed.len()
+        );
+    }
+
+    #[test]
+    fn all_zero_input_stays_within_the_expansion_bound() {
+        let len = ParseBudget::default().max_alloc_bytes + 1;
+
+        assert_within_expansion_bound(&DeflateCodec, len);
+        assert_within_expansion_bound(&ZlibCodec, len);
+        assert_within_expansion_bound(&GzipCodec, len);
+        assert_within_expansion_bound(&RawDeflateCodec, len);
+    }
+
+    fn assert_rejects_unproducible_declaration<C: Codec>(codec: &C) {
+        let compressed = compressed_zeros(codec, 4096);
+        let producible = compressed.len() * MAX_DEFLATE_EXPANSION;
+        let error = codec
+            .decompress(&compressed, producible + 1)
+            .expect_err("a declaration no stream of this length can meet must be rejected");
+        match error {
+            Error::ResourceLimit {
+                requested, limit, ..
+            } => {
+                assert_eq!(
+                    requested,
+                    u64::try_from(producible + 1).unwrap(),
+                    "{}",
+                    codec.name()
+                );
+                assert_eq!(
+                    limit,
+                    u64::try_from(producible).unwrap(),
+                    "{}",
+                    codec.name()
+                );
+            }
+            other => panic!("{}: expected ResourceLimit, got {other:?}", codec.name()),
+        }
+
+        let decoded = codec
+            .decompress(&compressed, producible)
+            .expect("the largest producible declaration must decode");
+        assert_eq!(decoded.len(), 4096, "{}: length", codec.name());
+        assert!(
+            decoded.iter().all(|byte| *byte == 0),
+            "{}: content",
+            codec.name()
+        );
+    }
+
+    #[test]
+    fn unproducible_declaration_is_rejected_before_reservation() {
+        assert_rejects_unproducible_declaration(&DeflateCodec);
+        assert_rejects_unproducible_declaration(&ZlibCodec);
+        assert_rejects_unproducible_declaration(&GzipCodec);
+        assert_rejects_unproducible_declaration(&RawDeflateCodec);
     }
 }

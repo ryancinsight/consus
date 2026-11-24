@@ -39,6 +39,12 @@
   already did. The zlib framing held the output to 64 MiB whatever size
   the caller declared and returned `ResourceLimit`; all four codecs now
   allow the larger of the declared size and 64 MiB.
+- [patch] The four flate codecs reject a declared `expected_size` above
+  1032 times the compressed length with `ResourceLimit` before reserving
+  anything: DEFLATE cannot expand further (new public
+  `codec::flate::MAX_DEFLATE_EXPANSION`), so no stream of that length can
+  meet the declaration. A declared size taken from an untrusted header
+  therefore reserves at most 1032 bytes per byte present in the file.
 
 ## [consus-hdf5 0.6.0] - 2026-11-21
 

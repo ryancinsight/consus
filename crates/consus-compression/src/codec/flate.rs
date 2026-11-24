@@ -86,24 +86,46 @@ impl FlateFraming for RawDeflateFraming {
     }
 }
 
+/// Largest number of output bytes one input byte of DEFLATE can produce.
+///
+/// Derivation: the longest match copies 258 bytes (RFC 1951 section 3.2.5,
+/// cited from memory) and costs at least one bit of length code plus one bit
+/// of distance code, so two bits yield at most 258 bytes and eight bits at
+/// most `4 * 258 = 1032`. Framing bytes and block headers produce no output,
+/// so the bound holds for a whole zlib, gzip or raw stream. The
+/// `all_zero_input_stays_within_the_expansion_bound` test measures the most
+/// compressible input against it.
+pub const MAX_DEFLATE_EXPANSION: usize = 1032;
+
 /// Decompress `input` under framing `F`, bounding the output exactly once.
 ///
-/// The declared `expected_size` is the initial reservation and, when it
-/// exceeds the budget, the ceiling ([`FlateFraming::ceiling`]), so a caller
-/// that takes the declaration from untrusted input bounds it first. A stream
-/// that expands past the ceiling is rejected, and every growth goes through
-/// the budget's fallible reservation.
+/// A declared `expected_size` is honoured at any size the compressed bytes
+/// can produce: it is the initial reservation and, when it exceeds the
+/// budget, the ceiling ([`FlateFraming::ceiling`]). A declaration above
+/// `input.len() * MAX_DEFLATE_EXPANSION` cannot be met by any stream of this
+/// length, so it is rejected before anything is reserved; an untrusted
+/// declaration therefore reserves at most 1032 bytes per byte actually
+/// present. A stream that expands past the ceiling is rejected, and every
+/// growth goes through the budget's fallible reservation.
 ///
 /// # Errors
 ///
 /// Returns [`Error::CompressionError`] when the stream is malformed and
-/// [`Error::ResourceLimit`] when the decompressed output would exceed the
-/// ceiling.
+/// [`Error::ResourceLimit`] when the declaration exceeds what `input` can
+/// produce or the decompressed output would exceed the ceiling.
 pub fn flate2_decompress<F: FlateFraming>(
     input: &[u8],
     expected_size: usize,
     budget: &ParseBudget,
 ) -> Result<Vec<u8>> {
+    let producible = input.len().saturating_mul(MAX_DEFLATE_EXPANSION);
+    if expected_size > producible {
+        return Err(Error::ResourceLimit {
+            what: "decompressed output",
+            requested: u64::try_from(expected_size).map_err(|_| Error::Overflow)?,
+            limit: u64::try_from(producible).map_err(|_| Error::Overflow)?,
+        });
+    }
     let mut decoder = F::decoder(input);
     let bounded = ParseBudget::new(
         F::ceiling(expected_size, budget),
