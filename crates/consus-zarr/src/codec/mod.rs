@@ -332,9 +332,8 @@ impl CodecPipeline {
         registry: &dyn CompressionRegistryTrait,
     ) -> Result<Vec<u8>> {
         if !matches!(codec.name.as_str(), "bytes" | "crc32") {
-            // Zarr v2 can declare `level` inline and nested; the codecs below
-            // read the first one, so differing declarations are rejected
-            // before any codec is chosen.
+            // Zarr v2 can declare `level` inline and nested; the codecs read
+            // the first, so differing declarations are rejected up front.
             codec.declared_level()?;
         }
         match codec.name.as_str() {

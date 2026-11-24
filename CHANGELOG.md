@@ -14,12 +14,19 @@
   by `zstd` (applied after its clamp to -8..=4, 0 meaning 1; it was
   ignored and zstd wrote at 3). `lz4` and `blosc` ignore the level, and
   `deflate`, present only when another crate enables consus-compression's
-  `deflate` feature, now applies it clamped to 0..=9. An inline and a nested
-  `level` that differ are rejected for every codec. A member declared inline
-  on a Zarr v2 `filters` entry (`{"id":"zlib","level":10}`) is carried the
-  same way (new public `members` field on `FilterConfig`): a gzip/zlib filter
-  level now reaches the encoder and an invalid one is rejected, where it was
-  ignored and written at 6. The rejection is the new
+  `deflate` feature, now applies it clamped to 0..=9. A `level` declared both
+  inline beside `id` and in `configuration`, with different text, is rejected
+  for every codec except `bytes` and `crc32`, on a compressor or a `filters`
+  entry whose `id` is a name or an HDF5 filter number. Members declared
+  inline beside `id` on a `filters` entry (`{"id":"zlib","level":10}`) or a
+  numeric-id compressor (`{"id":32015,"level":1}`) are carried the same way
+  (new public `members` field on `FilterConfig` and `FilterIdConfig`): a
+  gzip/zlib filter level now reaches the encoder and an invalid one is
+  rejected, where it was written at 6, and a numeric-id compressor's level
+  applies, where zstd wrote at 3. A `null` level is rejected for gzip and zlib
+  in a `configuration` object, on a filter entry and in Zarr v3; only an
+  inline `null` on a string-id compressor reads as absent, since `to_json`
+  writes it for no level. The rejection is the new
   `ChunkError::InvalidCodecConfiguration` variant, and `ChunkError` is now
   `#[non_exhaustive]`: exhaustive downstream matches must add a wildcard
   arm. Reads never consult `level`. This reverses the 0.5.0 entry below
