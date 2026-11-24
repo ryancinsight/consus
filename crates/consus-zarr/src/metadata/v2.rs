@@ -207,8 +207,8 @@ pub struct CompressorNamed {
     /// Inline level used by zarr-python v2 metadata. When the
     /// `configuration` object also declares `level`, the two must agree or
     /// a write is rejected. `null` is the form `ArrayMetadataV2::to_json`
-    /// writes for no level, so it reads as absent here, unlike a `null`
-    /// level in a `configuration` object or on a filter entry.
+    /// writes for no level, so it reads as absent here; in a `configuration`
+    /// object or on a filter entry it is the text "".
     #[serde(default)]
     pub level: Option<i32>,
 }
@@ -817,10 +817,14 @@ mod tests {
     }
 
     #[test]
-    fn a_compressor_without_level_serializes_it_as_null() {
-        let named: CompressorNamed = serde_json::from_str(r#"{"id":"zlib"}"#).expect("parses");
-        let json = serde_json::to_string(&named).expect("serializes");
-        assert_eq!(json, r#"{"id":"zlib","configuration":null,"level":null}"#);
+    fn compressor_serialization_is_unchanged_without_inline_members() {
+        for json in [
+            r#"{"id":"zlib","configuration":null,"level":null}"#,
+            r#"{"id":32015,"configuration":null}"#,
+        ] {
+            let entry: CompressorConfig = serde_json::from_str(json).expect("parses");
+            assert_eq!(serde_json::to_string(&entry).expect("serializes"), json);
+        }
     }
 
     #[test]

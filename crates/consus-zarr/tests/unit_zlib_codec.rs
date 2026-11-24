@@ -124,8 +124,7 @@ fn level_input() -> Vec<u8> {
 /// Where a codec declares its level: Zarr v2 inline beside `id`, Zarr v2
 /// inside the compressor's `configuration` object, Zarr v2 inline on a
 /// `filters` entry (the compressor is then `null`), Zarr v3 `configuration`,
-/// or Zarr v2 inline beside a numeric HDF5 filter id (`zstd` only, so not in
-/// `PLACEMENTS`, which `gzip` and `zlib` share).
+/// or Zarr v2 inline beside a numeric HDF5 filter id (`zstd` only).
 #[derive(Clone, Copy, Debug)]
 enum LevelAt {
     Inline,
@@ -157,8 +156,7 @@ fn v3_metadata(codecs: &str) -> ArrayMetadata {
         .expect("array node")
 }
 
-/// A one-chunk `uint8` Zarr v2 array with the given `compressor` and `filters`
-/// JSON.
+/// A one-chunk `uint8` Zarr v2 array with the given `compressor` and `filters` JSON.
 fn v2_metadata(compressor: &str, filters: &str) -> ArrayMetadata {
     let len = level_input().len();
     let json = format!(
