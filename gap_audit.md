@@ -10,7 +10,8 @@ The next [patch] checkpoint uses [ieee float admission](crates/consus-hdf5/tests
 
 The projected float width and byte order can conceal a custom exponent bias.
 ADR 0011 adds a separate metadata lookup for this contract.
-The HDF5 0.6.0 release checklist tracks the exact-source and registry gates.
+The published 0.6.0 archive and registry consumer gate passed; the Atlas history and
+hosted ADR release gates remain in the HDF5 0.6.0 release checklist.
 
 ## 0.5.0 release and MAT ownership
 
