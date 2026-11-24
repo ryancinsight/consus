@@ -115,18 +115,98 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - scope: crates/consus-npy/tests
 - next step: after the variants land, replace message matching with variant matching.
 
-<a id="consus-zarr-zlib-level"></a>
-## CONSUS-ZARR-ZLIB-LEVEL — Honor configured write levels [patch] — blocked
+<a id="consus-zarr-edge-chunk-padding"></a>
+## CONSUS-ZARR-EDGE-CHUNK-PADDING — Write edge chunks at the full chunk shape [patch] — todo
 
 - milestone: M-core-formats
-- priority: correctness; needs: none
-- basis: 0ad1040530ba854520d58e721fff0e801beb55fb
-- scope: Zarr codec level selection and real v2 array-write regressions.
-- blocked: installed-hook delivery hold; independent review and normal gates
-  must pass before delivery. Registry/provider release holds are unchanged.
-- evidence: at `0ad1040`, a zlib level-0 write uses level 6; the gzip control
-  passes. The shared compression arm called a gzip-only accessor.
-- acceptance: level 0/9 and default/6 writes match explicitly configured
-  encoders, preserve gzip behavior, and decode independently without data loss.
-- next step: final independent review and applicable delivery gates; existing
-  provider, registry, and installed-hook holds remain. No publication here.
+- outcome: `write_array` stores every chunk, edge chunks included, at the full `chunks` shape padded
+  with the fill value, as `write_array_selection` does and zarr-python does (`chunk/ops/coords.rs:93-95`).
+- evidence: at `31ee569f`, `write_array` sizes each buffer by the clipped extent
+  (`crates/consus-zarr/src/chunk/ops/arrays.rs:374-389`) while `write_array_selection` pads
+  (`arrays.rs:290-294`). The consus#219 judge reported zarr-python failing on such a store ("cannot
+  reshape array of size 8 into shape (4,4)"); recovered from the verdict, not re-run here.
+- acceptance: `write_array` of shape `[5, 5]`, chunks `[4, 4]`, dtype `|u1` stores the last chunk as 16
+  bytes, 15 of them fill value (1 byte today), and `read_array` returns the input.
+- priority: correctness; needs: none; basis: 31ee569f6019c932e4fe074b165a0d6f1447682d
+- scope: crates/consus-zarr/src/chunk/ops/arrays.rs, crates/consus-zarr/tests, docs/book/formats.md
+- next step: pad in `write_array` to the full chunk shape, as `write_array_selection` does.
+
+<a id="consus-zlib-decode-ceiling"></a>
+## CONSUS-ZLIB-DECODE-CEILING — One rule for a declared size above 64 MiB [patch] — todo
+
+- milestone: M-interop-contracts
+- outcome: the zlib, gzip and raw-DEFLATE codecs apply one stated rule to a declared `expected_size`
+  above 64 MiB, and `codec/traits.rs` documents it next to its claim that `decompress` inverts `compress`.
+- evidence: at `31ee569f`, `ZlibFraming::ceiling` ignores `expected_size`
+  (`crates/consus-compression/src/codec/flate.rs:53-55`; `deflate.rs:94-103` pins rejecting `usize::MAX`)
+  while gzip and raw DEFLATE take `expected_size.max(64 MiB)` (`flate.rs:74-76`, `91-93`); `traits.rs:34`
+  claims exact inversion, and the Zarr pipeline passes 0 (`crates/consus-zarr/src/codec/mod.rs:401`).
+- acceptance: one test runs the three codecs on a 64 MiB + 1 byte input declared at its length and asserts
+  the documented outcome (zlib and gzip differ today); `git grep -n "64 MiB" crates/consus-compression/src/codec/traits.rs` matches.
+- priority: correctness; needs: none; basis: 31ee569f6019c932e4fe074b165a0d6f1447682d
+- scope: crates/consus-compression/src/codec, crates/consus-compression/tests
+- next step: judgment call: widen, or hold 64 MiB for untrusted declarations and document it (`budget.rs:262-269`).
+
+<a id="consus-book-compression-features"></a>
+## CONSUS-BOOK-COMPRESSION-FEATURES — Match the codec table to the crate features [patch] — todo
+
+- milestone: M-interop-contracts
+- outcome: the codec tables name the `consus-compression` features that exist and the codecs they
+  enable, and no document claims a BZip2 codec.
+- evidence: at `31ee569f`, `docs/book/formats.md:51` maps zlib and gzip to `deflate`, but the gzip and
+  zlib codecs sit behind `gzip` (`crates/consus-compression/src/codec/mod.rs:18-22`) and `deflate`
+  enables the HDF5 zlib and raw-DEFLATE codecs only; `formats.md:55` lists a `bzip2` feature that
+  `crates/consus-compression/Cargo.toml` lacks, and `docs/book/stack_position.md:11` lists BZip2.
+- acceptance: `git grep -n -i bzip2 -- docs README.md 'crates/*/README.md'` prints nothing (two lines today)
+  and the `formats.md` DEFLATE row names `deflate` and `gzip` as separate features.
+- priority: verification; needs: none; basis: 31ee569f6019c932e4fe074b165a0d6f1447682d
+- scope: docs/book/formats.md, docs/book/stack_position.md
+- next step: rewrite the table rows from the `[features]` table of `crates/consus-compression/Cargo.toml`.
+
+<a id="consus-flate-surface"></a>
+## CONSUS-FLATE-SURFACE — Narrow the unused flate items [major] — todo
+
+- milestone: M-interop-contracts
+- outcome: `zlib_compress`, `ZlibFraming` and `GzipFraming` are `pub(crate)`; the public surface of
+  `codec::flate` is what `consus-zip` consumes.
+- evidence: at `31ee569f`, `crates/consus-compression/src/codec/flate.rs:42,63,139` are `pub`; only
+  sibling codec modules use them, and `consus-zip` uses `RawDeflateFraming` and `flate2_decompress`
+  (`crates/consus-zip/src/read.rs:21`). No other stack member's tracked `*.rs` names them.
+- acceptance: `cargo semver-checks -p consus-compression` against the 0.5.0 baseline reports exactly the
+  three removals under the declared [major] class, and `cargo check --workspace --locked --all-features`
+  passes.
+- priority: tightening; needs: CONSUS-ZLIB-DECODE-CEILING; basis: 31ee569f6019c932e4fe074b165a0d6f1447682d
+- scope: crates/consus-compression/src/codec/flate.rs, CHANGELOG.md
+- next step: narrow the three items after the ceiling change lands; note the removal under `### Breaking`.
+
+<a id="consus-zarr-test-harness"></a>
+## CONSUS-ZARR-TEST-HARNESS — Fold the Zarr integration tests into one harness [patch] — todo
+
+- milestone: M-core-formats
+- outcome: the eight `consus-zarr` integration binaries become modules of one harness
+  (`tests/zarr/main.rs`), and one copy of the CPython zlib reference bytes remains.
+- evidence: at `31ee569f`, `crates/consus-zarr/tests` holds eight `*.rs` binaries; the CPython zlib and
+  gzip vectors appear in `crates/consus-zarr/tests/unit_zlib_codec.rs:20-31` and again in
+  `crates/consus-compression/src/codec/zlib.rs:99-110`.
+- acceptance: `ls crates/consus-zarr/tests/*.rs | wc -l` prints 0 or 1 (8 today); `cargo nextest list -p
+  consus-zarr` names the same tests before and after; `git grep -l "0x78, 0x9c, 0x4b, 0xce" -- crates`
+  lists one file (two today), and the pipeline test still decodes the CPython bytes.
+- priority: tightening; needs: CONSUS-ZARR-EDGE-CHUNK-PADDING; basis: 31ee569f6019c932e4fe074b165a0d6f1447682d
+- scope: crates/consus-zarr/tests, crates/consus-compression/src/codec/zlib.rs
+- next step: move the files under `tests/zarr/`; keep the vectors where the codec is tested.
+
+<a id="consus-parquet-payload-count"></a>
+## CONSUS-PARQUET-PAYLOAD-COUNT — Carry the checked value count in the page payload [major] — todo
+
+- milestone: M-interop-contracts
+- outcome: `PagePayload::num_values` is the `usize` the splitters already validated, so the reader
+  converts no count.
+- evidence: at `31ee569f`, `split_data_page_v1` and `split_data_page_v2` reject negative counts
+  (`crates/consus-parquet/src/wire/payload.rs:160,209`), yet `reader/page.rs:281,374` cast the `i32` with
+  `as usize` and `page.rs:439-441` holds an error branch no input reaches (both V2 call sites split first,
+  `page.rs:301,393`).
+- acceptance: `git grep -n -E "payload.num_values as usize|DataPageV2 num_values must be" -- crates/consus-parquet/src`
+  prints nothing (three lines today), and a V2 test pins the negative-count rejection in `split_data_page_v2`.
+- priority: tightening; needs: none; basis: 31ee569f6019c932e4fe074b165a0d6f1447682d
+- scope: crates/consus-parquet/src/wire/payload.rs, crates/consus-parquet/src/reader/page.rs
+- next step: store `count` in the payload; the type change is public, so record it under `### Breaking`.

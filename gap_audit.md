@@ -485,10 +485,3 @@ from the normalized clean0.3 raster archive. A strict patch-class diagnostic
 against actual published HDF50.2 still passes223 checks and misses the nominal
 break; the executed E0277 consumer determines the release class. Exact-head
 hosted/default and archive provenance gates remain before the new handoff.
-
-## Zarr configured zlib levels (local repair pending delivery)
-
-Baseline `0ad1040` ignored zlib's `level` by using the gzip-only accessor.
-The local repair reads the common configuration key; real array-write tests
-and independent Python decoding cover 0/9 with gzip controls. Delivery remains
-subject to independent review and existing gates/holds; no release claim.
