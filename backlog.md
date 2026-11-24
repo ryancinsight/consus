@@ -125,8 +125,8 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   (`crates/consus-zarr/src/chunk/ops/arrays.rs:374-389`) while `write_array_selection` pads
   (`arrays.rs:290-294`). The consus#219 judge reported zarr-python failing on such a store ("cannot
   reshape array of size 8 into shape (4,4)"); recovered from the verdict, not re-run here.
-- acceptance: `write_array` of shape `[5, 5]`, chunks `[4, 4]`, dtype `|u1` stores the last chunk as 16
-  bytes, 15 of them fill value (1 byte today), and `read_array` returns the input.
+- acceptance: `write_array` of shape `[5, 5]`, chunks `[4, 4]`, dtype `|u1`, `fill_value` 7: chunks (0,1), (1,0)
+  and (1,1) are each 16 bytes (4, 4 and 1 today), each in-bounds cell equals its input cell, every padded cell is 7.
 - priority: correctness; needs: none; basis: 31ee569f6019c932e4fe074b165a0d6f1447682d
 - scope: crates/consus-zarr/src/chunk/ops/arrays.rs, crates/consus-zarr/tests, docs/book/formats.md
 - next step: pad in `write_array` to the full chunk shape, as `write_array_selection` does.
@@ -134,34 +134,65 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 <a id="consus-zlib-decode-ceiling"></a>
 ## CONSUS-ZLIB-DECODE-CEILING — One rule for a declared size above 64 MiB [patch] — todo
 
-- milestone: M-interop-contracts
-- outcome: the zlib, gzip and raw-DEFLATE codecs apply one stated rule to a declared `expected_size`
-  above 64 MiB, and `codec/traits.rs` documents it next to its claim that `decompress` inverts `compress`.
-- evidence: at `31ee569f`, `ZlibFraming::ceiling` ignores `expected_size`
-  (`crates/consus-compression/src/codec/flate.rs:53-55`; `deflate.rs:94-103` pins rejecting `usize::MAX`)
-  while gzip and raw DEFLATE take `expected_size.max(64 MiB)` (`flate.rs:74-76`, `91-93`); `traits.rs:34`
-  claims exact inversion, and the Zarr pipeline passes 0 (`crates/consus-zarr/src/codec/mod.rs:401`).
-- acceptance: one test runs the three codecs on a 64 MiB + 1 byte input declared at its length and asserts
-  the documented outcome (zlib and gzip differ today); `git grep -n "64 MiB" crates/consus-compression/src/codec/traits.rs` matches.
+- milestone: M-core-formats
+- outcome: zlib, gzip and raw-DEFLATE decoding give one result for a declared `expected_size` above 64 MiB, and
+  `codec/traits.rs` qualifies its claim that `decompress` inverts `compress` exactly.
+- evidence: at `31ee569f`, `ZlibFraming::ceiling` ignores `expected_size` (`crates/consus-compression/src/codec/flate.rs:53-55`),
+  gzip and raw DEFLATE take `expected_size.max(64 MiB)` (`flate.rs:74-76`, `91-93`): a 64 MiB + 1 declaration is
+  rejected by zlib only (derived from `budget.rs:98-105`, `262-269`; not run). `deflate.rs:75-85` and `gzip.rs:251-261`
+  pin only the `usize::MAX` rejection; `traits.rs:5,34` claim exact inversion.
+- acceptance: one test gives a small valid stream and `expected_size` 64 MiB + 1 to `ZlibCodec`, `GzipCodec` and `RawDeflateCodec`: all return the input or all `ResourceLimit` (they differ today);
+  `git grep -n "can invert exactly" crates/consus-compression/src/codec/traits.rs` prints nothing (two lines today).
 - priority: correctness; needs: none; basis: 31ee569f6019c932e4fe074b165a0d6f1447682d
 - scope: crates/consus-compression/src/codec, crates/consus-compression/tests
-- next step: judgment call: widen, or hold 64 MiB for untrusted declarations and document it (`budget.rs:262-269`).
+- next step: judgment call: widen the zlib ceiling to the declaration, or hold 64 MiB for all three and document it.
 
 <a id="consus-book-compression-features"></a>
 ## CONSUS-BOOK-COMPRESSION-FEATURES — Match the codec table to the crate features [patch] — todo
 
-- milestone: M-interop-contracts
-- outcome: the codec tables name the `consus-compression` features that exist and the codecs they
-  enable, and no document claims a BZip2 codec.
-- evidence: at `31ee569f`, `docs/book/formats.md:51` maps zlib and gzip to `deflate`, but the gzip and
-  zlib codecs sit behind `gzip` (`crates/consus-compression/src/codec/mod.rs:18-22`) and `deflate`
-  enables the HDF5 zlib and raw-DEFLATE codecs only; `formats.md:55` lists a `bzip2` feature that
-  `crates/consus-compression/Cargo.toml` lacks, and `docs/book/stack_position.md:11` lists BZip2.
-- acceptance: `git grep -n -i bzip2 -- docs README.md 'crates/*/README.md'` prints nothing (two lines today)
-  and the `formats.md` DEFLATE row names `deflate` and `gzip` as separate features.
+- milestone: M-core-formats
+- outcome: the `formats.md` codec table names, per registered codec, the one feature that gates it; no document claims BZip2.
+- evidence: at `31ee569f`, `docs/book/formats.md:51` reads `DEFLATE (zlib/gzip) | deflate (default)`;
+  `registry/default.rs:56-101` gates DEFLATE (name `deflate`, zlib framing) on `deflate`, gzip and zlib on `gzip`
+  (and `std`, `codec/mod.rs:18-22`), Zstandard, LZ4, SZIP, Blosc on `zstd`, `lz4`, `szip`, `blosc`. `formats.md:55`
+  lists a `bzip2` feature `Cargo.toml` lacks; `docs/book/stack_position.md:11` lists BZip2.
+- acceptance: `grep -cE '^\| (gzip|zlib) \| .gzip.' docs/book/formats.md` prints 2 and
+  `grep -cE '^\| DEFLATE [^|]*\| .deflate. \|$' docs/book/formats.md` prints 1 (0 and 0 today); and
+  `git grep -n -i bzip2 -- docs README.md 'crates/*/README.md'` prints nothing (two lines today).
 - priority: verification; needs: none; basis: 31ee569f6019c932e4fe074b165a0d6f1447682d
 - scope: docs/book/formats.md, docs/book/stack_position.md
-- next step: rewrite the table rows from the `[features]` table of `crates/consus-compression/Cargo.toml`.
+- next step: rewrite the table rows from `registry/default.rs` and the `[features]` table of `crates/consus-compression/Cargo.toml`.
+
+<a id="consus-zlib-doc-drift"></a>
+## CONSUS-ZLIB-DOC-DRIFT — Correct three statements about the zlib codec [patch] — todo
+
+- milestone: M-core-formats
+- outcome: the book, a test comment and the error labels say what the zlib, gzip and raw-DEFLATE codecs do.
+- evidence: at `31ee569f`, `docs/book/formats.md:100` says a gzip-framed store "is rewritten to be readable by
+  numcodecs", yet no code in `crates/consus-zarr/src` rewrites a store; `codec/zlib.rs:163-164` says level 6 output "is the
+  CPython bytes" while its test (`zlib.rs:165-171`) compares two header bytes; `ZlibFraming::LABEL` is `deflate (zlib)`
+  and `RawDeflateFraming::LABEL` is `deflate` (`flate.rs:45,83`), though the codec named `deflate` is the zlib-framed one.
+- acceptance: `git grep -n -E "is rewritten to be readable|Level 6 output is the CPython bytes" -- docs crates` prints
+  nothing (two lines today); a test asserts the malformed-stream error messages of `ZlibCodec` and `RawDeflateCodec`
+  start with `zlib` and `raw-deflate` (`deflate (zlib)` and `deflate` today).
+- priority: verification; needs: none; basis: 31ee569f6019c932e4fe074b165a0d6f1447682d
+- scope: docs/book/formats.md, crates/consus-compression/src/codec
+- next step: rewrite the sentence and the comment; set the three labels to `zlib`, `gzip` and `raw-deflate`.
+
+<a id="consus-zarr-level-review"></a>
+## CONSUS-ZARR-LEVEL-REVIEW — Review the Zarr level fix and commit its independent decode [patch] — todo
+
+- milestone: M-core-formats
+- outcome: commits 48cdb05 and c4d053f (Zarr `zlib` and `gzip` levels) get an independent review, and the manual
+  CPython decode of their output becomes a committed check.
+- evidence: at `31ee569f`, `consus-zarr/src/codec/mod.rs:340-353` reads `level` for both codecs and
+  `tests/unit_zlib_codec.rs:105-161` compares stored chunks with the direct encoder at levels 0 and 9; both decode only
+  through Consus. The CPython decode of the four explicit-level chunks to 29,696 bytes was a ticked manual line.
+- acceptance: `python -m pytest -q scripts/zarr_level_interop.py` passes a test that decodes the `zlib` and `gzip` chunks at
+  levels 0 and 9 with CPython to the 29,696-byte input (the file does not exist today).
+- priority: verification; needs: none; basis: 31ee569f6019c932e4fe074b165a0d6f1447682d
+- scope: crates/consus-zarr/tests, scripts
+- next step: review the two commits against the level oracle; have the Rust test write the chunks and `scripts/` decode them.
 
 <a id="consus-flate-surface"></a>
 ## CONSUS-FLATE-SURFACE — Narrow the unused flate items [major] — todo
@@ -183,17 +214,17 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 ## CONSUS-ZARR-TEST-HARNESS — Fold the Zarr integration tests into one harness [patch] — todo
 
 - milestone: M-core-formats
-- outcome: the eight `consus-zarr` integration binaries become modules of one harness
-  (`tests/zarr/main.rs`), and one copy of the CPython zlib reference bytes remains.
-- evidence: at `31ee569f`, `crates/consus-zarr/tests` holds eight `*.rs` binaries; the CPython zlib and
-  gzip vectors appear in `crates/consus-zarr/tests/unit_zlib_codec.rs:20-31` and again in
-  `crates/consus-compression/src/codec/zlib.rs:99-110`.
-- acceptance: `ls crates/consus-zarr/tests/*.rs | wc -l` prints 0 or 1 (8 today); `cargo nextest list -p
-  consus-zarr` names the same tests before and after; `git grep -l "0x78, 0x9c, 0x4b, 0xce" -- crates`
-  lists one file (two today), and the pipeline test still decodes the CPython bytes.
+- outcome: the eight `consus-zarr` integration binaries become modules of one harness (`tests/zarr/main.rs`); the
+  CPython zlib and gzip vectors stay only in `consus-compression/src/codec/zlib.rs`, with their tests.
+- evidence: at `31ee569f`, `crates/consus-zarr/tests` has eight `*.rs` binaries; vectors sit in `unit_zlib_codec.rs:20-31`
+  and `zlib.rs:99-110`. A zarr test cannot reach a `#[cfg(test)]` constant, so it asserts against the public encoder
+  (`default_registry().get_by_name("zlib")`) instead of a second literal.
+- acceptance: `ls crates/consus-zarr/tests/*.rs | wc -l` prints 0 or 1 (8 today); `git grep -n -E "CPYTHON_|0x78, ?0x9c|[\]x9c" -- crates/consus-zarr`
+  prints nothing (8 lines today); `cargo nextest list -p consus-compression` still lists `decodes_cpython_zlib_stream`;
+  `cargo nextest list -p consus-zarr` is unchanged after rewriting `consus-zarr::zarr <binary>::<test>` to `consus-zarr::<binary> <test>`.
 - priority: tightening; needs: CONSUS-ZARR-EDGE-CHUNK-PADDING; basis: 31ee569f6019c932e4fe074b165a0d6f1447682d
-- scope: crates/consus-zarr/tests, crates/consus-compression/src/codec/zlib.rs
-- next step: move the files under `tests/zarr/`; keep the vectors where the codec is tested.
+- scope: crates/consus-zarr/tests
+- next step: move the files under `tests/zarr/`; the two tests that decoded the literals may rename, listed in the body.
 
 <a id="consus-parquet-payload-count"></a>
 ## CONSUS-PARQUET-PAYLOAD-COUNT — Carry the checked value count in the page payload [major] — todo
@@ -205,8 +236,8 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   (`crates/consus-parquet/src/wire/payload.rs:160,209`), yet `reader/page.rs:281,374` cast the `i32` with
   `as usize` and `page.rs:439-441` holds an error branch no input reaches (both V2 call sites split first,
   `page.rs:301,393`).
-- acceptance: `git grep -n -E "payload.num_values as usize|DataPageV2 num_values must be" -- crates/consus-parquet/src`
-  prints nothing (three lines today), and a V2 test pins the negative-count rejection in `split_data_page_v2`.
+- acceptance: a `consus-parquet` test with `let _: usize = payload.num_values;` on a `split_data_page_v2` result compiles (E0308 today);
+  `git grep -n -E "payload.num_values as usize|DataPageV2 num_values must be" -- crates/consus-parquet/src` prints nothing (three lines today).
 - priority: tightening; needs: none; basis: 31ee569f6019c932e4fe074b165a0d6f1447682d
 - scope: crates/consus-parquet/src/wire/payload.rs, crates/consus-parquet/src/reader/page.rs
 - next step: store `count` in the payload; the type change is public, so record it under `### Breaking`.
