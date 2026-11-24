@@ -186,22 +186,6 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - scope: crates/consus-zarr/tests, scripts/zarr_level_interop.py, .github/workflows/ci.yml
 - next step: assert each `write_array` chunk equals its file in `unit_zlib_codec.rs`.
 
-<a id="consus-adr-0011-accepted"></a>
-## CONSUS-ADR-0011-ACCEPTED — Mark the published exact-IEEE ADR Accepted [patch] — todo
-- outcome: ADR 0011 reads Accepted as built at the published `consus-hdf5` 0.6.0 revision, b14cbd3.
-- evidence: `docs/adr/0011-exact-ieee-dataset-admission.md` is `Status: Proposed` at tag
-  `crate-consus-hdf5-v0.6.0` and on the default branch, and calls itself an "additive public API proposal";
-  Helios (b7bda4cd62296a3b11869f03405cab7e6d62dffa) calls `dataset_at_with_ieee_float_encoding` at
-  `crates/helios-domain/src/storage.rs:154`.
-- acceptance: `grep -c '^Status: Accepted$' docs/adr/0011-*.md` prints 1, `grep -c b14cbd3 docs/adr/0011-*.md`
-  prints 1 or more and `grep -c 'API proposal' docs/adr/0011-*.md` prints 0 (0, 0 and 1 today);
-  `grep -c '^| .0011.*| Accepted |$' docs/adr/README.md` prints 1 (0 today); `python3
-  _atlas/scripts/adr-index.py check --directory docs/adr --strict` exits 0 from the repository root with Atlas
-  checked out at `_atlas`.
-- priority: verification; milestone: M-interop-contracts; basis: 216bde10c66f0f85b7d084aef8b1f19296fb1ae2
-- scope: docs/adr/0011-exact-ieee-dataset-admission.md, docs/adr/README.md
-- next step: set the status, add a dated note citing b14cbd3, reword the proposal line, regenerate the index.
-
 <a id="consus-npy-error-variants"></a>
 ## CONSUS-NPY-ERROR-VARIANTS — Type the NPY header rejections [major] — todo
 
