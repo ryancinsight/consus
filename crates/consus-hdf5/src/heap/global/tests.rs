@@ -6,7 +6,6 @@ use consus_io::MemCursor;
 use super::*;
 use crate::address::ParseContext;
 
-
 fn ctx8() -> ParseContext {
     ParseContext::new(8, 8)
 }
@@ -172,8 +171,8 @@ fn parse_empty_collection() {
     buf[0..4].copy_from_slice(&GLOBAL_HEAP_SIGNATURE);
     buf[4] = 1;
     let bytes = u64::try_from(collection_size)
-                .expect("invariant: collection size fits u64")
-                .to_le_bytes();
+        .expect("invariant: collection size fits u64")
+        .to_le_bytes();
     buf[8..16].copy_from_slice(&bytes);
     // body is all zeros → index 0 at first object → immediate stop
 
@@ -205,7 +204,7 @@ fn parse_at_offset() {
     let collection_buf = build_collection_one_object(&ctx, obj_data);
     let offset = 128u64;
     let offset_usize = usize::try_from(offset).expect("invariant: offset fits usize");
-            let mut file_buf = vec![0u8; offset_usize + collection_buf.len()];
+    let mut file_buf = vec![0u8; offset_usize + collection_buf.len()];
     file_buf[offset_usize..].copy_from_slice(&collection_buf);
 
     let cursor = MemCursor::from_bytes(file_buf);
@@ -230,10 +229,10 @@ fn resolve_vl_single_ref_8byte() {
     let mut raw_data = vec![0u8; ref_size];
     // sequence_length = 5 (number of elements)
     raw_data[0..4].copy_from_slice(
-                &u32::try_from(payload.len())
-                    .expect("invariant: payload length fits u32")
-                    .to_le_bytes(),
-            );
+        &u32::try_from(payload.len())
+            .expect("invariant: payload length fits u32")
+            .to_le_bytes(),
+    );
     // heap_collection_address = 0 (collection is at file offset 0)
     raw_data[4..12].copy_from_slice(&0u64.to_le_bytes());
     // object_index = 1 (1-based)
@@ -258,10 +257,10 @@ fn resolve_vl_single_ref_4byte() {
     assert_eq!(ref_size, 12);
     let mut raw_data = vec![0u8; ref_size];
     raw_data[0..4].copy_from_slice(
-                &u32::try_from(payload.len())
-                    .expect("invariant: payload length fits u32")
-                    .to_le_bytes(),
-            );
+        &u32::try_from(payload.len())
+            .expect("invariant: payload length fits u32")
+            .to_le_bytes(),
+    );
     raw_data[4..8].copy_from_slice(&0u32.to_le_bytes()); // 4-byte addr = 0
     raw_data[8..12].copy_from_slice(&1u32.to_le_bytes());
 
@@ -352,10 +351,10 @@ fn resolve_vl_multiple_refs_mixed() {
 
     // Ref 0: valid - points to collection at offset 0, object 1
     raw_data[0..4].copy_from_slice(
-                &u32::try_from(payload.len())
-                    .expect("invariant: payload length fits u32")
-                    .to_le_bytes(),
-            );
+        &u32::try_from(payload.len())
+            .expect("invariant: payload length fits u32")
+            .to_le_bytes(),
+    );
     raw_data[4..12].copy_from_slice(&0u64.to_le_bytes());
     raw_data[12..16].copy_from_slice(&1u32.to_le_bytes());
 
@@ -379,4 +378,161 @@ fn resolve_vl_empty_raw_data() {
     let cursor = MemCursor::from_bytes(vec![]);
     let result = resolve_vl_references(&cursor, &[], &ctx).unwrap();
     assert!(result.is_empty());
+}
+
+use core::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::BTreeMap;
+use std::sync::Mutex;
+
+fn build_reference(ctx: &ParseContext, address: u64, object_index: u32) -> Vec<u8> {
+    let reference_size = 4 + ctx.offset_bytes() + 4;
+    let mut reference = vec![0_u8; reference_size];
+    reference[0..4].copy_from_slice(&1_u32.to_le_bytes());
+    match ctx.offset_bytes() {
+        4 => reference[4..8].copy_from_slice(
+            &u32::try_from(address)
+                .expect("invariant: address fits u32")
+                .to_le_bytes(),
+        ),
+        8 => reference[4..12].copy_from_slice(&address.to_le_bytes()),
+        _ => panic!("unsupported test offset size"),
+    }
+    let object_index_offset = 4 + ctx.offset_bytes();
+    reference[object_index_offset..object_index_offset + 4]
+        .copy_from_slice(&object_index.to_le_bytes());
+    reference
+}
+
+struct CountingReader {
+    inner: MemCursor,
+    reads: AtomicUsize,
+    collection_reads: Mutex<BTreeMap<u64, usize>>,
+}
+
+impl CountingReader {
+    fn new(bytes: Vec<u8>, collection_addresses: &[u64]) -> Self {
+        let collection_reads = collection_addresses
+            .iter()
+            .map(|address| (*address, 0))
+            .collect();
+        Self {
+            inner: MemCursor::from_bytes(bytes),
+            reads: AtomicUsize::new(0),
+            collection_reads: Mutex::new(collection_reads),
+        }
+    }
+
+    fn read_count(&self) -> usize {
+        self.reads.load(Ordering::Relaxed)
+    }
+
+    fn collection_read_count(&self, address: u64) -> usize {
+        self.collection_reads
+            .lock()
+            .expect("invariant: collection read counter is not poisoned")
+            .get(&address)
+            .copied()
+            .unwrap_or(0)
+    }
+}
+
+impl consus_io::ReadAt for CountingReader {
+    fn read_at(&self, position: u64, buffer: &mut [u8]) -> consus_core::Result<()> {
+        self.reads.fetch_add(1, Ordering::Relaxed);
+        if let Some(count) = self
+            .collection_reads
+            .lock()
+            .expect("invariant: collection read counter is not poisoned")
+            .get_mut(&position)
+        {
+            *count += 1;
+        }
+        self.inner.read_at(position, buffer)
+    }
+}
+
+#[test]
+fn repeated_references_read_one_collection_once() {
+    let ctx = ctx8();
+    let payload = b"repeated";
+    let collection = build_collection_one_object(&ctx, payload);
+    let reference = build_reference(&ctx, 0, 1);
+    let raw_data = reference.repeat(32);
+    let reader = CountingReader::new(collection, &[0]);
+
+    let values = resolve_vl_references(&reader, &raw_data, &ctx).expect("references must resolve");
+
+    assert_eq!(values.len(), 32);
+    assert!(values.iter().all(|value| value.as_slice() == payload));
+    assert_eq!(reader.collection_read_count(0), 1);
+    assert_eq!(reader.read_count(), 2);
+}
+
+#[test]
+fn distinct_collections_are_each_read_once() {
+    let ctx = ctx8();
+    let first_payload = b"first";
+    let second_payload = b"second";
+    let first = build_collection_one_object(&ctx, first_payload);
+    let second_address = u64::try_from(first.len()).expect("invariant: address fits u64");
+    let second = build_collection_one_object(&ctx, second_payload);
+    let mut file = first;
+    file.extend_from_slice(&second);
+
+    let mut raw_data = build_reference(&ctx, 0, 1);
+    raw_data.extend_from_slice(&build_reference(&ctx, second_address, 1));
+    let reader = CountingReader::new(file, &[0, second_address]);
+
+    let values = resolve_vl_references(&reader, &raw_data, &ctx).expect("references must resolve");
+
+    assert_eq!(
+        values,
+        vec![first_payload.to_vec(), second_payload.to_vec()]
+    );
+    assert_eq!(reader.collection_read_count(0), 1);
+    assert_eq!(reader.collection_read_count(second_address), 1);
+    assert_eq!(reader.read_count(), 4);
+}
+
+#[test]
+fn first_failing_element_reports_its_error() {
+    let ctx = ctx8();
+    let first = build_collection_one_object(&ctx, b"first");
+    let second_address = u64::try_from(first.len()).expect("invariant: address fits u64");
+    let second = build_collection_one_object(&ctx, b"second");
+    let mut file = first;
+    file.extend_from_slice(&second);
+
+    // The first element references the higher-addressed collection and the
+    // second element references the lower-addressed one. The reported error
+    // follows element order, not collection address order.
+    let mut raw_data = build_reference(&ctx, second_address, 7);
+    raw_data.extend_from_slice(&build_reference(&ctx, 0, 9));
+
+    let error = resolve_vl_references(&MemCursor::from_bytes(file), &raw_data, &ctx)
+        .expect_err("missing heap objects must fail");
+
+    match error {
+        Error::InvalidFormat { message } => {
+            assert!(
+                message.contains("VL object index 7"),
+                "message was: {message}"
+            );
+            assert!(message.contains("element 0"), "message was: {message}");
+        }
+        other => panic!("expected invalid format error, got: {other:?}"),
+    }
+}
+
+#[test]
+fn object_index_above_u16_is_rejected() {
+    let ctx = ctx8();
+    let reference = build_reference(&ctx, 0, u32::MAX);
+    let error = resolve_vl_references(&MemCursor::from_bytes(Vec::new()), &reference, &ctx)
+        .expect_err("oversized object index must fail");
+
+    match error {
+        Error::InvalidFormat { message } => assert!(message.contains("u16::MAX")),
+        other => panic!("expected InvalidFormat, got: {other:?}"),
+    }
 }

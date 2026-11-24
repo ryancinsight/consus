@@ -121,10 +121,8 @@ impl GlobalHeapCollection {
                 break;
             }
 
-            let reference_count = u32::from(u16::from_le_bytes([
-                body[cursor + 2],
-                body[cursor + 3],
-            ]));
+            let reference_count =
+                u32::from(u16::from_le_bytes([body[cursor + 2], body[cursor + 3]]));
             // bytes [cursor+4..cursor+8] are reserved
 
             let object_size = ctx.budget.checked_bytes(

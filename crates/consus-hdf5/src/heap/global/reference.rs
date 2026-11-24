@@ -1,3 +1,5 @@
+//! Variable-length reference resolution.
+
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
@@ -6,11 +8,16 @@ use consus_io::ReadAt;
 
 use crate::address::ParseContext;
 
+#[cfg(feature = "alloc")]
 use super::collection::GlobalHeapCollection;
 
-// ---------------------------------------------------------------------------
-// VL Reference Resolution
-// ---------------------------------------------------------------------------
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, Copy)]
+struct PendingReference {
+    address: u64,
+    output: usize,
+    object: u16,
+}
 
 /// Resolve variable-length data references from raw dataset bytes.
 ///
@@ -19,20 +26,9 @@ use super::collection::GlobalHeapCollection;
 /// - `offset_size` bytes: file address of the GCOL collection
 /// - 4-byte object index (u32 LE, 1-based)
 ///
-/// ## Algorithm
-///
-/// 1. Compute `ref_size = 4 + ctx.offset_bytes() + 4`.
-/// 2. Validate `raw_data.len() % ref_size == 0`.
-/// 3. For each `ref_size`-byte chunk in `raw_data`:
-///    a. Read `sequence_length` (u32 LE, bytes `0..4`).
-///    b. Read `heap_collection_address` via `ctx.read_offset(&chunk[4..])`.
-///    c. Read `object_index` (u32 LE, bytes `4+offset_bytes..4+offset_bytes+4`).
-///    d. If `heap_collection_address` equals the offset-size-specific undefined
-///       sentinel or `sequence_length == 0`, push an empty `Vec<u8>`.
-///    e. Otherwise call [`GlobalHeapCollection::parse`], then `get_data`, and
-///       clone the returned slice.
-///       Returns [`Error::InvalidFormat`] if the object index is absent.
-/// 4. Return `Vec<Vec<u8>>` - one entry per VL element.
+/// The resolver groups references by collection address, parses each global
+/// heap collection once, and copies each referenced object into the returned
+/// value at its original element position.
 ///
 /// ## Undefined Address Sentinel
 ///
@@ -57,79 +53,138 @@ use super::collection::GlobalHeapCollection;
 pub fn resolve_vl_references<R: ReadAt>(
     source: &R,
     raw_data: &[u8],
-    ctx: &ParseContext,
+    context: &ParseContext,
 ) -> Result<Vec<Vec<u8>>> {
-    let offset_bytes = ctx.offset_bytes();
-    let ref_size = 4 + offset_bytes + 4;
+    let offset_bytes = context.offset_bytes();
+    let reference_size = 4 + offset_bytes + 4;
 
-    if !raw_data.len().is_multiple_of(ref_size) {
+    if !raw_data.len().is_multiple_of(reference_size) {
         return Err(Error::InvalidFormat {
             message: alloc::format!(
                 "VL raw data length {} is not a multiple of ref_size {} (offset_size={})",
                 raw_data.len(),
-                ref_size,
+                reference_size,
                 offset_bytes,
             ),
         });
     }
 
-    // Offset-size-specific undefined address: all `offset_bytes` bits set.
-    // For 4-byte offsets: 0xFFFF_FFFF; for 8-byte offsets: u64::MAX.
-    // The guard `offset_bytes == 8` prevents the `1u64 << 64` overflow.
-    let undef_addr: u64 = if offset_bytes == 8 {
-        u64::MAX
-    } else {
-        // offset_bytes in {2, 4} => shift in {16, 32} => no overflow.
-        (1u64 << (offset_bytes * 8)).wrapping_sub(1)
-    };
-
-    let n = raw_data.len() / ref_size;
-    let mut result = ctx.budget.vec_with_capacity::<Vec<u8>>(
-        u64::try_from(n).map_err(|_| Error::Overflow)?,
+    let element_count = raw_data.len() / reference_size;
+    let mut values = context.budget.vec_with_capacity::<Vec<u8>>(
+        u64::try_from(element_count).map_err(|_| Error::Overflow)?,
         "variable-length reference count",
     )?;
+    let mut pending = context.budget.vec_with_capacity::<PendingReference>(
+        u64::try_from(element_count).map_err(|_| Error::Overflow)?,
+        "variable-length reference metadata",
+    )?;
 
-    for (i, chunk) in raw_data.chunks_exact(ref_size).enumerate() {
+    for (output_index, chunk) in raw_data.chunks_exact(reference_size).enumerate() {
+        values.push(Vec::new());
+
         let sequence_length = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-        let heap_collection_address = ctx.read_offset(&chunk[4..]);
-        let idx_base = 4 + offset_bytes;
+        let collection_address = context.read_offset(&chunk[4..]);
+        let object_index_offset = 4 + offset_bytes;
         let object_index = u32::from_le_bytes([
-            chunk[idx_base],
-            chunk[idx_base + 1],
-            chunk[idx_base + 2],
-            chunk[idx_base + 3],
+            chunk[object_index_offset],
+            chunk[object_index_offset + 1],
+            chunk[object_index_offset + 2],
+            chunk[object_index_offset + 3],
         ]);
 
-        if heap_collection_address == undef_addr || sequence_length == 0 {
-            result.push(Vec::new());
+        if collection_address == undefined_address(offset_bytes) || sequence_length == 0 {
             continue;
         }
 
-        // object_index is stored as u32 in the VL reference but the GCOL
-        // indexes objects with a u16 field; a value > u16::MAX indicates
-        // file corruption.
-        let obj_idx = u16::try_from(object_index).map_err(|_| Error::InvalidFormat {
+        let object_index = u16::try_from(object_index).map_err(|_| Error::InvalidFormat {
             message: alloc::format!(
                 "VL object index {} exceeds u16::MAX at element {} (heap addr {})",
                 object_index,
-                i,
-                heap_collection_address,
+                output_index,
+                collection_address,
             ),
         })?;
 
-        let coll = GlobalHeapCollection::parse(source, heap_collection_address, ctx)?;
-
-        let data = coll.get_data(obj_idx).ok_or_else(|| Error::InvalidFormat {
-            message: alloc::format!(
-                "VL object index {} not found in heap collection at address {} (element {})",
-                obj_idx,
-                heap_collection_address,
-                i,
-            ),
-        })?;
-
-        result.push(Vec::from(data));
+        pending.push(PendingReference {
+            address: collection_address,
+            output: output_index,
+            object: object_index,
+        });
     }
 
-    Ok(result)
+    pending.sort_by_key(|reference| reference.address);
+
+    let mut failure: Option<(usize, Error)> = None;
+    let mut pending_offset = 0_usize;
+    while pending_offset < pending.len() {
+        let collection_address = pending.get(pending_offset).ok_or(Error::Overflow)?.address;
+        let mut group_end = pending_offset.checked_add(1).ok_or(Error::Overflow)?;
+        while pending
+            .get(group_end)
+            .is_some_and(|reference| reference.address == collection_address)
+        {
+            group_end = group_end.checked_add(1).ok_or(Error::Overflow)?;
+        }
+
+        let references = pending
+            .get(pending_offset..group_end)
+            .ok_or(Error::Overflow)?;
+        match GlobalHeapCollection::parse(source, collection_address, context) {
+            Ok(collection) => {
+                for reference in references {
+                    match collection.get_data(reference.object) {
+                        Some(data) => {
+                            let output = values.get_mut(reference.output).ok_or(Error::Overflow)?;
+                            *output = Vec::from(data);
+                        }
+                        None => {
+                            let error = Error::InvalidFormat {
+                                message: alloc::format!(
+                                    "VL object index {} not found in heap collection at address {} (element {})",
+                                    reference.object,
+                                    collection_address,
+                                    reference.output,
+                                ),
+                            };
+                            record_failure(&mut failure, reference.output, error);
+                        }
+                    }
+                }
+            }
+            Err(error) => {
+                let first_output = references
+                    .iter()
+                    .map(|reference| reference.output)
+                    .min()
+                    .ok_or(Error::Overflow)?;
+                record_failure(&mut failure, first_output, error);
+            }
+        }
+        pending_offset = group_end;
+    }
+
+    if let Some((_, error)) = failure {
+        return Err(error);
+    }
+
+    Ok(values)
+}
+
+/// Keep the failure belonging to the earliest element, matching element-order
+/// resolution: the first invalid reference reports its own error.
+#[cfg(feature = "alloc")]
+fn record_failure(failure: &mut Option<(usize, Error)>, output: usize, error: Error) {
+    match failure {
+        Some((earliest, _)) if *earliest <= output => {}
+        _ => *failure = Some((output, error)),
+    }
+}
+
+#[cfg(feature = "alloc")]
+const fn undefined_address(offset_bytes: usize) -> u64 {
+    if offset_bytes == 8 {
+        u64::MAX
+    } else {
+        (1_u64 << (offset_bytes * 8)).wrapping_sub(1)
+    }
 }

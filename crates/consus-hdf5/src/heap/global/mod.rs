@@ -41,8 +41,8 @@ mod reference;
 mod tests;
 
 pub use collection::GLOBAL_HEAP_SIGNATURE;
-pub use collection::GlobalHeapObject;
 #[cfg(feature = "alloc")]
 pub use collection::GlobalHeapCollection;
+pub use collection::GlobalHeapObject;
 #[cfg(feature = "alloc")]
 pub use reference::resolve_vl_references;
