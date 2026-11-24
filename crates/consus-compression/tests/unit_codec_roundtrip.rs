@@ -663,7 +663,12 @@ mod above_default_budget {
             .expect("level-1 compress must succeed");
         let decoded = codec
             .decompress(&compressed, input.len())
-            .expect("a declared size above the default budget must decode");
+            .unwrap_or_else(|error| {
+                panic!(
+                    "{}: a declared size above the default budget must decode: {error:?}",
+                    codec.name()
+                )
+            });
         assert_eq!(decoded.len(), input.len(), "{}: length", codec.name());
         assert!(decoded == input, "{}: content", codec.name());
     }

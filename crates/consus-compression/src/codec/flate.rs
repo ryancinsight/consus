@@ -88,10 +88,11 @@ impl FlateFraming for RawDeflateFraming {
 
 /// Decompress `input` under framing `F`, bounding the output exactly once.
 ///
-/// The declared `expected_size` is a capacity hint that also lifts the cap to
-/// [`FlateFraming::ceiling`]; every growth goes through the budget's fallible
-/// reservation, so a hostile stream is rejected rather than allowed to
-/// exhaust memory.
+/// The declared `expected_size` is the initial reservation and, when it
+/// exceeds the budget, the ceiling ([`FlateFraming::ceiling`]), so a caller
+/// that takes the declaration from untrusted input bounds it first. A stream
+/// that expands past the ceiling is rejected, and every growth goes through
+/// the budget's fallible reservation.
 ///
 /// # Errors
 ///
