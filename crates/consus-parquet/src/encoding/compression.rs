@@ -218,8 +218,8 @@ pub(crate) const ZSTD_OVERLENGTH: usize = 64;
 ///
 /// Allocation: UNCOMPRESSED reserves the payload length, SNAPPY the length
 /// its stream states, LZ4_RAW the declared size, each at most the bound.
-/// GZIP reserves the declared size, then doubles its buffer with the
-/// capacity capped at the bound. ZSTD reserves the declared size plus
+/// GZIP initially reserves the smaller of the declaration and the maximum
+/// output producible from the compressed bytes, then grows within the bound. ZSTD reserves the declared size plus
 /// `ZSTD_OVERLENGTH` (64) bytes, which must also be within the bound, and decodes
 /// with the declaration as its output limit. `zrip-decode` 0.8.13 then never
 /// grows that buffer: its only reservations are `lib.rs:279`,
@@ -281,7 +281,12 @@ fn decode_page_bytes(
         CompressionCodec::Gzip => {
             #[cfg(feature = "gzip")]
             {
-                GzipCodec.decompress(data, uncompressed_size)
+                // The page declaration is checked against the decoded length below.
+                // Pass only a feasible reservation hint to the shared decoder.
+                let producible = data
+                    .len()
+                    .saturating_mul(consus_compression::codec::flate::MAX_DEFLATE_EXPANSION);
+                GzipCodec.decompress(data, uncompressed_size.min(producible))
             }
             #[cfg(not(feature = "gzip"))]
             {
