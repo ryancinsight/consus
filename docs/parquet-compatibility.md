@@ -67,7 +67,6 @@ validation or the normal release gates.
 
 Classify against the published baseline, advance the breaking release to at
 least 0.5.0, and update affected downstream requirements together. A uniform
-workspace bump also affects consumers of other Consus crates: for example,
-Kwavers currently declares Consus core/io/hdf5/compression/npy `^0.4.0`.
-Preserve all existing provider-coherence and registry-owner holds. Neither
+workspace bump also affects consumers of other Consus crates, so their
+requirements move in the same unit. Preserve all existing provider-coherence and registry-owner holds. Neither
 this note nor a successful synthetic conversion establishes release readiness.
