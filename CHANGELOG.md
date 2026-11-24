@@ -4,6 +4,12 @@
 
 ### Breaking
 
+- [major] Zarr v2 writes apply filters in their declared order before the compressor.
+  Reads decompress first and undo the filters in reverse. The `shuffle` filter
+  now honors its `elementsize`. For stores written by an older Consus with both
+  filters and a compressor, read the data with the original version and rewrite
+  it with this version. The metadata does not distinguish the two byte layouts.
+
 - [major] Zarr `gzip` and `zlib` writes reject a declared `level` outside
   `0..=9` instead of clamping it to 9 or replacing it with 6. `-1`, zlib's
   default-compression sentinel, selects level 6, and an absent level stays 6.
