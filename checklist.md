@@ -4,7 +4,7 @@
 
 Basis `832899c5dbef`, representative manifest `consus-hdf5 0.6.0`. Target 1.0.0. [Backlog item](backlog.md#consus-stable-qualification).
 
-- [ ] [patch] Match the indexed consus-hdf5 0.6.0 archive to its source and use a clean registry consumer to read canonical IEEE datasets and reject mismatched type descriptors. Attach the receipt to CONSUS-HDF5-EXACT-IEEE.
+- [x] [patch] Match the indexed consus-hdf5 0.6.0 archive to its source and use a clean registry consumer to read canonical IEEE datasets and reject mismatched type descriptors. Attach the receipt to CONSUS-HDF5-EXACT-IEEE.
 - [ ] [patch] Verify the same positive and negative files through Helios. Exercise the Parquet codec controls and the free-threaded Python interop gate from the milestone ladder.
 - [ ] [major] Complete the format and interop milestones on the same provider graph. Record coverage for each public format and its error behavior before committing to the stable interface.
 - [ ] [patch] **0.6.1.** Feed the HDF5 reader identical value bytes under canonical and incompatible datatype descriptors. Check exact values on admission and the typed failure on rejection through the public API. [Source and baseline](gap_audit.md#incremental-release-baseline).
@@ -16,7 +16,7 @@ Basis `832899c5dbef`, representative manifest `consus-hdf5 0.6.0`. Target 1.0.0.
 - [x] Scope the new version to the HDF5 package approved for release.
 - [ ] Pass the provider, Atlas history, hosted ADR and release gates on the
   exact release revision.
-- [ ] Verify the crates.io archive, checksum and fresh registry-only consumer
+- [x] Verify the crates.io archive, checksum and fresh registry-only consumer
   before applying the Helios adoption patch.
 
 ## 0.5.0 release

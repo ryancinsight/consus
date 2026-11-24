@@ -8,14 +8,6 @@
 
 Risks that no item fixes are recorded in `gap_audit.md`.
 
-<a id="consus-hdf5-exact-ieee"></a>
-## CONSUS-HDF5-EXACT-IEEE — Publish exact dataset admission [minor] — todo
-
-- milestone: M-interop-contracts
-- priority: correctness
-- scope: `consus-hdf5` 0.6.0 only. Verify the published representation API and
-  archive identity before the Helios cutover.
-
 <a id="atlas-pr530-provider-coherence"></a>
 ## ATLAS-PR530-PROVIDER-COHERENCE — Current public provider contract [major] — blocked
 
