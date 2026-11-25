@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [consus / consus-zarr 0.6.0]
+
 ### Breaking
 
 - [major] Zarr v2 writes apply filters in their declared order before the compressor.
@@ -37,6 +39,9 @@
   and `ChunkError` is now `#[non_exhaustive]`: exhaustive downstream matches
   must add a wildcard arm. Reads never consult `level`. This reverses the
   0.5.0 entry below that oversized levels clamp to 9.
+
+- The umbrella crate's opt-in `zarr` feature now re-exports `consus-zarr`
+  0.6, including the non-exhaustive `ChunkError` contract.
 
 ## [consus-hdf5 0.6.1]
 

@@ -280,7 +280,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "consus"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "consus-arrow",
  "consus-compression",
@@ -483,7 +483,7 @@ dependencies = [
 
 [[package]]
 name = "consus-zarr"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "consus-compression",
  "consus-core",
