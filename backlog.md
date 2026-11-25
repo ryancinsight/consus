@@ -273,22 +273,6 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - scope: crates/consus-npy/tests
 - next step: after the variants land, replace message matching with variant matching.
 
-<a id="consus-zarr-filter-order"></a>
-## CONSUS-ZARR-FILTER-ORDER — Apply v2 filters before the compressor [major] — todo
-- outcome: a Zarr v2 array that declares a compressor and filters is encoded filters first (in listed order) and
-  then the compressor, and decoded in the reverse order, as the v2 spec requires.
-- evidence: `ArrayMetadataV2::to_canonical` (v2.rs:307-344) pushes the compressor codec and then the filters (:311-324);
-  `CodecPipeline::compress` (codec/mod.rs:300) applies `codecs` in order and `decompress` (:320) in reverse, so both
-  directions are reversed. Zarr v2 spec, "Filters" (zarr-specs.readthedocs.io/en/latest/v2/v2.0.html), read in review.
-- acceptance: `cargo nextest run -p consus-zarr --all-features v2_filters_encode_before_the_compressor` passes (no such
-  test today): with compressor `zstd` and one `zlib` filter, both registered (consus-compression
-  `registry/default.rs:64-80`), the stored chunk equals `zstd(zlib(input))` built with the registry codecs, and a
-  committed numcodecs chunk of the pair decodes to the input; CHANGELOG says how a store Consus wrote before reads.
-- priority: correctness; milestone: M-core-formats; basis: 56a417b33afa
-- scope: crates/consus-zarr/src/metadata/v2.rs, crates/consus-zarr/src/codec/mod.rs, crates/consus-zarr/tests,
-  data/zarr_python_fixtures, CHANGELOG.md
-- next step: write the failing two-codec chunk test, add the pair to `generate_fixtures.py`, then order `to_canonical`.
-
 <a id="consus-zarr-level-clamps"></a>
 ## CONSUS-ZARR-LEVEL-CLAMPS — Reject unusable levels for zstd, deflate, lz4 and fallthrough codecs [major] — todo
 - outcome: a `level` a codec cannot honor is a typed `InvalidCodecConfiguration`, not a silent clamp or default.
