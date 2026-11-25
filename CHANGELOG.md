@@ -38,6 +38,13 @@
   must add a wildcard arm. Reads never consult `level`. This reverses the
   0.5.0 entry below that oversized levels clamp to 9.
 
+## [consus-hdf5 0.6.1]
+
+### Fixed
+
+- Batch variable-length HDF5 references that share a global heap collection
+  without changing result order or which invalid reference is reported first.
+
 ## [consus-hdf5 0.6.0] - 2026-11-21
 
 ### Added

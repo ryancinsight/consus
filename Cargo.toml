@@ -41,7 +41,7 @@ consus-mat = { path = "crates/consus-mat", version = "0.5.0", default-features =
 consus-nwb = { path = "crates/consus-nwb", version = "0.5.0", default-features = false }
 consus-hdmf = { path = "crates/consus-hdmf", version = "0.5.0", default-features = false }
 consus-core = { path = "crates/consus-core", version = "0.5.0", default-features = false }
-consus-hdf5 = { path = "crates/consus-hdf5", version = "0.6.0", default-features = false }
+consus-hdf5 = { path = "crates/consus-hdf5", version = "0.6.1", default-features = false }
 consus-fits = { path = "crates/consus-fits", version = "0.5.0", default-features = false }
 consus-zarr = { path = "crates/consus-zarr", version = "0.5.0", default-features = false }
 consus-netcdf = { path = "crates/consus-netcdf", version = "0.5.0", default-features = false }
