@@ -79,6 +79,7 @@ pub fn resolve_vl_references<R: ReadAt>(
         "variable-length reference metadata",
     )?;
 
+    let mut failure: Option<(usize, Error)> = None;
     for (output_index, chunk) in raw_data.chunks_exact(reference_size).enumerate() {
         values.push(Vec::new());
 
@@ -96,14 +97,23 @@ pub fn resolve_vl_references<R: ReadAt>(
             continue;
         }
 
-        let object_index = u16::try_from(object_index).map_err(|_| Error::InvalidFormat {
-            message: alloc::format!(
-                "VL object index {} exceeds u16::MAX at element {} (heap addr {})",
-                object_index,
+        let Ok(object_index) = u16::try_from(object_index) else {
+            // Earlier references may still fail during collection lookup.
+            // Keep this error as an upper bound on the failing element and
+            // avoid collecting references that cannot change the result.
+            failure = Some((
                 output_index,
-                collection_address,
-            ),
-        })?;
+                Error::InvalidFormat {
+                    message: alloc::format!(
+                        "VL object index {} exceeds u16::MAX at element {} (heap addr {})",
+                        object_index,
+                        output_index,
+                        collection_address,
+                    ),
+                },
+            ));
+            break;
+        };
 
         pending.push(PendingReference {
             address: collection_address,
@@ -114,7 +124,6 @@ pub fn resolve_vl_references<R: ReadAt>(
 
     pending.sort_by_key(|reference| reference.address);
 
-    let mut failure: Option<(usize, Error)> = None;
     let mut pending_offset = 0_usize;
     while pending_offset < pending.len() {
         let collection_address = pending.get(pending_offset).ok_or(Error::Overflow)?.address;

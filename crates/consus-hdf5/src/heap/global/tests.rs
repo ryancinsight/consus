@@ -536,3 +536,43 @@ fn object_index_above_u16_is_rejected() {
         other => panic!("expected InvalidFormat, got: {other:?}"),
     }
 }
+
+#[test]
+fn mixed_object_errors_follow_element_order() {
+    let ctx = ctx8();
+    let payload = build_collection_one_object(&ctx, b"present");
+    let missing = build_reference(&ctx, 0, 7);
+    let oversized = build_reference(&ctx, 0, u32::MAX);
+
+    let mut raw_data = missing.clone();
+    raw_data.extend_from_slice(&oversized);
+    let reader = CountingReader::new(payload.clone(), &[0]);
+    let error = resolve_vl_references(&reader, &raw_data, &ctx)
+        .expect_err("the earlier missing heap object must fail");
+    match error {
+        Error::InvalidFormat { message } => {
+            assert!(
+                message.contains("VL object index 7 not found") && message.contains("element 0"),
+                "message was: {message}"
+            );
+        }
+        other => panic!("expected invalid format error, got: {other:?}"),
+    }
+    assert_eq!(reader.collection_read_count(0), 1);
+
+    let mut raw_data = oversized;
+    raw_data.extend_from_slice(&missing);
+    let reader = CountingReader::new(payload, &[0]);
+    let error = resolve_vl_references(&reader, &raw_data, &ctx)
+        .expect_err("the earlier oversized object index must fail");
+    match error {
+        Error::InvalidFormat { message } => {
+            assert!(
+                message.contains("exceeds u16::MAX") && message.contains("element 0"),
+                "message was: {message}"
+            );
+        }
+        other => panic!("expected invalid format error, got: {other:?}"),
+    }
+    assert_eq!(reader.read_count(), 0);
+}
