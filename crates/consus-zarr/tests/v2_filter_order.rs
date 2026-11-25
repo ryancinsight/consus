@@ -49,6 +49,35 @@ fn writes_filters_in_list_order_then_compresses() {
 }
 
 #[test]
+fn v2_filters_encode_before_the_compressor() {
+    // numcodecs 0.16.5: Zstd(level=3).encode(Zlib(level=1).encode(b"aAbBcCdDeEfFgGhH" * 32))
+    let numcodecs_chunk = [
+        0x28, 0xb5, 0x2f, 0xfd, 0x20, 0x1e, 0xf1, 0x00, 0x00, 0x78, 0x01, 0x4b, 0x74, 0x4c, 0x72,
+        0x4a, 0x76, 0x4e, 0x71, 0x49, 0x75, 0x4d, 0x73, 0x4b, 0x77, 0xcf, 0xf0, 0x48, 0x1c, 0xe5,
+        0x8f, 0xa8, 0xf0, 0x00, 0x00, 0x5b, 0x67, 0xa9, 0x01,
+    ];
+    let input = INPUT.repeat(32);
+    let meta = metadata(
+        input.len(),
+        r#"[{"id":"zlib","level":1}]"#,
+        r#"{"id":"zstd","level":3}"#,
+    );
+    let mut store = InMemoryStore::new();
+    write_array(&mut store, "", &meta, &input).expect("write zlib-filtered chunk");
+    assert_eq!(
+        store.get("0").expect("stored chunk"),
+        compress("zstd", 3, &compress("zlib", 1, &input))
+    );
+    store
+        .set("0", &numcodecs_chunk)
+        .expect("seed external chunk");
+    assert_eq!(
+        read_array(&store, "", &Selection::full(1), &meta).expect("read numcodecs chunk"),
+        input
+    );
+}
+
+#[test]
 fn reads_numcodecs_shuffle_zstd_chunk() {
     // numcodecs 0.16.5: Zstd(level=3).encode(Shuffle(2).encode(b"aAbBcCdDeEfFgGhH" * 32))
     let chunk = [
