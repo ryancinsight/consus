@@ -359,7 +359,7 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - acceptance: `git grep -n 'pub fn gzip_level' -- crates` prints nothing (one line today); `git grep -n
   'parsed_config("level")' -- crates/consus-zarr/src` prints nothing (three today); `cargo semver-checks -p consus-zarr`
   against the published baseline records the changed accessors under the declared [major] class.
-- priority: tightening; needs: CONSUS-ZARR-LEVEL-CLAMPS; milestone: M-interop-contracts; basis: 56a417b33afa
+- priority: tightening; needs: CONSUS-ZARR-LEVEL-CLAMPS; milestone: M-1.0; basis: 56a417b33afa
 - scope: crates/consus-zarr/src/metadata/codec.rs, crates/consus-zarr/src/codec/mod.rs,
   crates/consus-zarr/src/metadata/v3.rs, CHANGELOG.md
 - next step: after the clamps item, switch the four test call sites, remove `gzip_level`, note it under `### Breaking`.
@@ -403,8 +403,9 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   `{"id":"zlib","level":"05"}` writes level 5, as `"5"` and `"+5"` do (derived, not run). numcodecs and zarr 3.2.1
   raise `TypeError` for a string level (relayed from the first review of consus#236, not re-run).
 - acceptance: `cargo nextest run -p consus-zarr --all-features v2_string_level_is_rejected` passes (no such test today):
-  for gzip, zlib and zstd in each of the three placements, `"5"`, `"+5"` and `"05"` return the typed error with the
-  whole message and an empty store, and the JSON integer 5 still writes level 5.
+  for gzip, zlib and zstd in a `configuration` object and on a filter entry, and for zstd (id 32015) on a numeric-id
+  compressor, `"5"`, `"+5"` and `"05"` return the typed error with the whole message and an empty store, and the
+  JSON integer 5 still writes level 5. `hdf5_filter_id_to_name` (v2.rs:433-447) maps no id to gzip or zlib.
 - priority: correctness; needs: CONSUS-ZARR-V3-LEVEL-TEXT; milestone: M-core-formats; basis: 56a417b33afa
 - scope: crates/consus-zarr/src/metadata/v2.rs, crates/consus-zarr/src/metadata/codec.rs, crates/consus-zarr/tests
 - next step: reuse the typed level reader the v3 item settles on for the v2 member maps.
@@ -437,3 +438,18 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - priority: verification; milestone: M-core-formats; basis: 56a417b33afa
 - scope: .github/workflows/ci.yml, branch protection of `main` (repository setting)
 - next step: add the job, let one pull-request run report it, then require its context in place of the seven names.
+
+<a id="consus-ladder-release-versions"></a>
+## CONSUS-LADDER-RELEASE-VERSIONS — Align the ladder's planned versions with released crates [patch] — todo
+- outcome: the ladder's planned versions agree with the per-crate versions already released (consus-hdf5 0.6.0 and
+  0.6.1, consus-zarr and consus 0.6.0), and the [major] items CONSUS-ZARR-ERROR-TYPES, CONSUS-ZARR-LEVEL-CLAMPS and
+  CONSUS-ZARR-V2-ENTRY-PARITY sit in milestones that admit them.
+- evidence: backlog/milestones.md plans M-core-formats at 0.5.0, M-interop-contracts at 0.6.0 and M-1.0 at 1.0.0; ADR
+  0008 (:9, :18-22) repeats them beside "workspace 0.4.0". crates.io (generic client, read at this filing) lists
+  consus-zarr and consus 0.6.0, consus-hdf5 0.6.0 and 0.6.1, with tags `crate-consus-zarr-v0.6.0` and
+  `crate-consus-hdf5-v0.6.1`. ERROR-TYPES sits on M-interop-contracts, CLAMPS and ENTRY-PARITY on M-core-formats.
+- acceptance: `git grep -n -E '[*][*]M-[a-z0-9.-]+[*][*] [(]0[.][56][.]0[)]' -- backlog/milestones.md` prints nothing
+  (two lines today) and `git grep -n 'workspace 0.4.0' -- docs/adr/0008-release-scope-1-0.md` prints nothing (one).
+- priority: verification; needs: none; milestone: M-core-formats; basis: 673e774cd89064060c515df8bfe7d732d232128e
+- scope: backlog/milestones.md, docs/adr/0008-release-scope-1-0.md, backlog.md
+- next step: move the open blocks past 0.6.0 under an ADR 0008 revision note, then retarget the three items.
