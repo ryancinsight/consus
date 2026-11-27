@@ -51,6 +51,8 @@ use alloc::{
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "alloc")]
+use super::codec::config_text;
+#[cfg(feature = "alloc")]
 use super::{ArrayMetadata, ChunkKeyEncoding, Codec, FillValue, GroupMetadata, ZarrVersion};
 
 // ---------------------------------------------------------------------------
@@ -416,18 +418,7 @@ impl CodecSpec {
             .as_ref()
             .map(|cfg| {
                 cfg.iter()
-                    .filter_map(|(k, v)| {
-                        Some((
-                            k.clone(),
-                            match v {
-                                serde_json::Value::String(s) => s.clone(),
-                                serde_json::Value::Number(n) => n.to_string(),
-                                serde_json::Value::Bool(b) => b.to_string(),
-                                serde_json::Value::Null => String::new(),
-                                _ => v.to_string(),
-                            },
-                        ))
-                    })
+                    .map(|(k, v)| (k.clone(), config_text(v)))
                     .collect()
             })
             .unwrap_or_default();

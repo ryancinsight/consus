@@ -26,6 +26,8 @@
 //! - `consus_compression`: `Lookup3` (Jenkins) checksum for v2 metadata integrity.
 
 #[cfg(feature = "alloc")]
+mod attribute_payloads;
+#[cfg(feature = "alloc")]
 mod attributes;
 mod builder;
 mod builder_specs;

@@ -1,20 +1,17 @@
 # Consus - Gap Audit
 
-## Grayscale lossless JPEG with LJIF metadata
+## Incremental release baseline
 
-RITK's retained skull CT uses a version 1 `LJIF` APP0 segment with zero
-flags and mode. Raster 0.5.0 rejects it while parsing APP0 as JFIF.
-Raster 0.5.1 admits it for single-component Huffman lossless frames.
-The existing entropy decoder interprets the same scan. Two regressions
-fail on the baseline and pass with the parser change. All 79 Raster
-tests and two doctests pass. Clippy and the published API comparison
-pass. The release checklist tracks the registry gate.
+Reviewed [consus-hdf5 0.6.0](crates/consus-hdf5/Cargo.toml) at [832899c5dbef](https://github.com/ryancinsight/consus/tree/832899c5dbefaddb84cc2e8522c56fe0b110a445). The exact version appears in the [registry](https://crates.io/crates/consus-hdf5/0.6.0).
+
+The next [patch] checkpoint uses [ieee float admission](crates/consus-hdf5/tests/ieee_float_admission.rs). [Target version and acceptance criteria](checklist.md#stable-release-checklist).
 
 ## Exact HDF5 float admission
 
 The projected float width and byte order can conceal a custom exponent bias.
 ADR 0011 adds a separate metadata lookup for this contract.
-The HDF5 0.6.0 release checklist tracks the exact-source and registry gates.
+The published 0.6.0 archive and registry consumer gate passed; the Atlas history and
+hosted ADR release gates remain in the HDF5 0.6.0 release checklist.
 
 ## 0.5.0 release and MAT ownership
 
@@ -489,10 +486,3 @@ from the normalized clean0.3 raster archive. A strict patch-class diagnostic
 against actual published HDF50.2 still passes223 checks and misses the nominal
 break; the executed E0277 consumer determines the release class. Exact-head
 hosted/default and archive provenance gates remain before the new handoff.
-
-## Zarr configured zlib levels (local repair pending delivery)
-
-Baseline `0ad1040` ignored zlib's `level` by using the gzip-only accessor.
-The local repair reads the common configuration key; real array-write tests
-and independent Python decoding cover 0/9 with gzip controls. Delivery remains
-subject to independent review and existing gates/holds; no release claim.

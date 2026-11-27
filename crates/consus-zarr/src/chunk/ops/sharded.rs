@@ -288,7 +288,7 @@ pub(crate) fn write_array_sharded<S: Store>(
                 crate::codec::CodecPipeline::new(shard_cfg.inner_codecs.clone())
                     .with_element_size(element_size)
                     .compress(&chunk_data, crate::codec::default_registry())
-                    .map_err(|_| ChunkError::CompressFailed)?
+                    .map_err(ChunkError::from_compression)?
             };
             let linear = inner_linear_index(&inner_coords, &inner_per_dim);
             inner_chunks.insert(linear, compressed);

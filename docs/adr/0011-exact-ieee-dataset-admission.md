@@ -1,6 +1,6 @@
 # ADR 0011: Opt-in exact IEEE dataset admission
 
-Status: Proposed
+Status: Accepted
 
 ## Context
 
@@ -24,10 +24,28 @@ with the writer's canonical IEEE representation, then return the same ordinary
 dataset metadata. Compare float class, order (including the VAX order bit),
 sign location, mantissa normalization, storage size, significant-bit offset
 and precision, exponent and mantissa locations and widths, and exponent bias.
-Datatype message versions 1 through 5 are admitted and checked separately.
+Datatype message versions 1 through 5 are admitted; they share the float
+fields above, so one comparison covers all five.
 Reserved bits and padding preferences in a full-width encoding do not alter
 numeric identity. Shared datatype messages and other message versions remain
 unsupported by this opt-in method. This is not a general HDF5 conformance check.
+
+## Rejected alternatives
+
+- Parse the datatype message in each consumer. The check must run on the
+  original metadata before the payload is read or allocated, and the Context
+  assigns it to Consus rather than to a second HDF5 parser in a consumer.
+- Widen `Datatype::Float` or change `dataset_at`. The Decision keeps
+  `dataset_at` behavior and public dataset fields unchanged so the API stays
+  additive, and the ordinary projection remains a structural projection that
+  does not retain field positions, precision or bias.
+- Check numeric values or dispatch per value. The selector describes an
+  on-disk contract; the metadata check reads no scalar payload and does not
+  depend on voxel count.
+- Require byte equality of the whole datatype message. Reserved bits and
+  padding preferences in a full-width encoding do not alter numeric identity,
+  so the comparison masks the byte 1 flags to bits 0, 4, 5 and 6 and leaves
+  byte 3 unread; a regression covers equivalent unused padding preferences.
 
 ## Compatibility and verification
 
@@ -38,8 +56,37 @@ all six width/order combinations across the five admitted message versions,
 noncanonical numeric encodings, and equivalent unused padding preferences.
 Ordinary metadata lookups remain covered separately.
 
-This is an additive public API proposal. The [provider-first adoption plan](../typed-float-admission-plan.md)
+This is an additive public API. The [provider-first adoption plan](../typed-float-admission-plan.md)
 defines the separate provider release and consumer verification gates.
+
+## Overturning evidence
+
+Revisit this decision if:
+
+- a datatype message version from 1 through 5 places the compared float
+  fields differently, so one comparison no longer covers all five versions;
+- bit 7 of byte 1 or byte 3 of the class bit field, neither of which the
+  comparison reads, is shown to change the decoded value, so the comparison
+  admits a non-IEEE layout;
+- `Datatype::Float` comes to retain every field the comparison checks beyond
+  class, storage size and byte order (mantissa normalization, the VAX order
+  bit, sign location, bit offset, precision, exponent and mantissa locations
+  and sizes, and exponent bias), so equality of the ordinary projection
+  implies the exact comparison and the Context's premise falls;
+- a consumer needs shared datatype messages or versions outside 1 through 5
+  admitted, which the method now rejects as `UnsupportedFeature`.
+
+## Delivery
+
+- Provider: PR 230 (efd03ed) adds `IeeeFloatEncoding`,
+  `dataset_at_with_ieee_float_encoding` and `tests/ieee_float_admission.rs`.
+- Release: `consus-hdf5` 0.6.0 is tag `crate-consus-hdf5-v0.6.0`, revision
+  b14cbd3. PR 235 matched the registry archive to that source and exercised
+  the API from a registry-only consumer.
+- Consumer: Helios b7bda4cd calls the method at
+  `crates/helios-domain/src/storage.rs:154` with `Binary64LittleEndian`.
+
+Revision 2026-11-24: Proposed to Accepted; the Decision is what `ieee.rs` and `exact_float.rs` do at b14cbd3 (one comparison, `exact_float.rs:62-66`); the version sentence is reworded from five checks to one comparison.
 
 ## Source
 

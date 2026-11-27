@@ -20,6 +20,7 @@
 //! | "crc32" | Both | CRC-32C (Castagnoli) checksum: appended on write, verified and stripped on read |
 //! | "gzip" | Both | Gzip compression (RFC 1952) |
 //! | "zlib" | Both | Zlib compression (RFC 1950), the Zarr v2 `zlib` compressor; a chunk that begins with the gzip magic `1f 8b` decodes as gzip |
+//! | "shuffle" | Both | Byte shuffle using the configured element width |
 //! | "zstd" | Both | Zstandard compression |
 //! | "lz4" | Both | LZ4 block compression |
 //! | "blosc" | Both | Blosc meta-compressor |
@@ -42,7 +43,7 @@ use alloc::vec::Vec;
 use consus_core::Result;
 
 #[cfg(feature = "alloc")]
-use consus_compression::checksum::Crc32c;
+use consus_compression::{Filter, FilterDirection, ShuffleFilter, checksum::Crc32c};
 
 #[cfg(feature = "alloc")]
 use crate::metadata::Codec;
@@ -118,6 +119,21 @@ fn byte_swap_elements(data: &[u8], element_size: usize) -> Result<Vec<u8>> {
         element.reverse();
     }
     Ok(out)
+}
+
+/// numcodecs Shuffle defaults to four-byte elements and treats widths <= 1 as identity.
+#[cfg(feature = "alloc")]
+fn apply_shuffle(codec: &Codec, direction: FilterDirection, data: &[u8]) -> Result<Vec<u8>> {
+    let declared = codec.config_value("elementsize").unwrap_or("4");
+    let width = declared
+        .parse::<isize>()
+        .map_err(|_| consus_core::Error::InvalidFormat {
+            message: alloc::format!("zarr shuffle: invalid elementsize {declared:?}"),
+        })?;
+    if width <= 1 {
+        return Ok(data.to_vec());
+    }
+    ShuffleFilter::new(width.unsigned_abs()).apply(direction, data)
 }
 
 // ---------------------------------------------------------------------------
@@ -284,7 +300,13 @@ impl CodecPipeline {
     /// Codecs are applied in forward order: the first codec receives
     /// the raw chunk bytes, its output is passed to the second, and so on.
     ///
-    /// Returns an error if any codec in the chain fails.
+    /// # Errors
+    ///
+    /// Returns an error if any codec in the chain fails, including
+    /// [`consus_core::Error::InvalidFormat`] when a `gzip` or `zlib` codec
+    /// declares a `level` outside `0..=9` (`-1` selects the default 6).
+    /// A declared level is never clamped or replaced. Decompression does not
+    /// consult `level`.
     pub fn compress(
         &self,
         data: &[u8],
@@ -325,10 +347,16 @@ impl CodecPipeline {
         data: &[u8],
         registry: &dyn CompressionRegistryTrait,
     ) -> Result<Vec<u8>> {
+        if !matches!(codec.name.as_str(), "bytes" | "crc32") {
+            // Zarr v2 can declare `level` inline and nested; the codecs read
+            // the first, so differing declarations are rejected up front.
+            codec.declared_level()?;
+        }
         match codec.name.as_str() {
             // Bytes codec: applies endian byte-swapping when the configured
             // endianness differs from the host byte order.
             "bytes" => self.apply_bytes_codec(codec, data),
+            "shuffle" => apply_shuffle(codec, FilterDirection::Forward, data),
 
             // CRC32 checksum: not yet implemented as a full codec.
             // Returning pass-through is incorrect (silent corruption), so we
@@ -340,16 +368,10 @@ impl CodecPipeline {
             "gzip" | "zlib" => {
                 // Both framing codecs carry the same `level` configuration key.
                 // The public gzip-only accessor intentionally excludes zlib.
-                // Clamp before narrowing, matching the encoder range without wrapping.
-                let level = codec
-                    .config_value("level")
-                    .and_then(|value| value.parse::<u32>().ok())
-                    .map(|level| level.min(9))
-                    .and_then(|level| i32::try_from(level).ok())
-                    .unwrap_or(6);
+                let level = codec.deflate_level()?;
                 registry
                     .get_by_name(&codec.name)
-                    .and_then(|c| c.compress(data, CompressionLevel(level)))
+                    .and_then(|c| c.compress(data, CompressionLevel(level.get())))
             }
             "zstd" => {
                 let level = codec.zstd_level().unwrap_or(3);
@@ -388,6 +410,7 @@ impl CodecPipeline {
         match codec.name.as_str() {
             // Bytes codec: reverse the byte-swap applied on compress (symmetric).
             "bytes" => self.apply_bytes_codec(codec, data),
+            "shuffle" => apply_shuffle(codec, FilterDirection::Reverse, data),
 
             // CRC32 checksum: not yet implemented.
             // Pass-through in either direction is incorrect (strips 4 bytes of

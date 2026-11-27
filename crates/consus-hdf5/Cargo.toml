@@ -1,6 +1,6 @@
 [package]
 name = "consus-hdf5"
-version = "0.6.0"
+version = "0.6.1"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -42,6 +42,11 @@ smallvec = { workspace = true }
 proptest = { workspace = true }
 criterion = { workspace = true }
 moirai-async = { workspace = true }
+
+[[bench]]
+name = "global_heap"
+harness = false
+required-features = ["alloc"]
 
 [[bench]]
 name = "hdf5_read"

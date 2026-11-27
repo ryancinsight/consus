@@ -1,29 +1,22 @@
 # Consus — Implementation Checklist
 
-## consus-raster 0.5.1 release
-
-- [x] [patch] Reproduce the published provider's LJIF rejection and verify
-  exact synthetic samples and negative marker cases on the corrected provider.
-- [x] [patch] Run all Raster tests, doctests, strict Clippy and the API
-  comparison with published 0.5.0.
-- [ ] [patch] After release approval, verify registry archive identity and
-  registry-only RITK resolution before updating the downstream lockfile.
-
 ## Stable release checklist
 
-Basis `d1319313201c`, representative manifest `consus-hdf5 0.6.0`. Target 1.0.0. [Backlog item](backlog.md#consus-stable-qualification).
+Basis `832899c5dbef`, representative manifest `consus-hdf5 0.6.0`. Target 1.0.0. [Backlog item](backlog.md#consus-stable-qualification).
 
-- [ ] [patch] Match the indexed consus-hdf5 0.6.0 archive to its source and use a clean registry consumer to read canonical IEEE datasets and reject mismatched type descriptors. Attach the receipt to CONSUS-HDF5-EXACT-IEEE.
+- [x] [patch] Match the indexed consus-hdf5 0.6.0 archive to its source and use a clean registry consumer to read canonical IEEE datasets and reject mismatched type descriptors. Attach the receipt to CONSUS-HDF5-EXACT-IEEE.
 - [ ] [patch] Verify the same positive and negative files through Helios. Exercise the Parquet codec controls and the free-threaded Python interop gate from the milestone ladder.
 - [ ] [major] Complete the format and interop milestones on the same provider graph. Record coverage for each public format and its error behavior before committing to the stable interface.
-- [ ] [patch] Run the [release scope](docs/adr/0008-release-scope-1-0.md) exits and attach reviewed, exact-revision evidence for this member’s [Atlas qualification criteria](https://github.com/ryancinsight/atlas/blob/17b0124a7548ad81e817284afc5cb115c1d1bc78/docs/parity/repositories.json).
+- [ ] [patch] **0.6.1.** Feed the HDF5 reader identical value bytes under canonical and incompatible datatype descriptors. Check exact values on admission and the typed failure on rejection through the public API. [Source and baseline](gap_audit.md#incremental-release-baseline).
+- [ ] [minor] **0.7.0 if interop additions are needed.** Replay the same files through Helios. For the Parquet and Python lanes, qualify each owning package against its own version and record which format, codec and interpreter combination executed.
+- [ ] [major] **1.0.0-beta.1 → 1.0.0-rc.1 → 1.0.0.** Freeze the supported surface at beta. A registry reader and its downstream consumer agree on admitted files, decoded values and failure classification. Repeat the applicable exits on the exact RC before stable promotion. Run the [release scope](docs/adr/0008-release-scope-1-0.md) exits and attach reviewed, exact-revision evidence for this member’s [Atlas qualification criteria](https://github.com/ryancinsight/atlas/blob/17b0124a7548ad81e817284afc5cb115c1d1bc78/docs/parity/repositories.json).
 
 ## consus-hdf5 0.6.0 release [minor]
 
 - [x] Scope the new version to the HDF5 package approved for release.
 - [ ] Pass the provider, Atlas history, hosted ADR and release gates on the
   exact release revision.
-- [ ] Verify the crates.io archive, checksum and fresh registry-only consumer
+- [x] Verify the crates.io archive, checksum and fresh registry-only consumer
   before applying the Helios adoption patch.
 
 ## 0.5.0 release
@@ -252,12 +245,3 @@ Basis `d1319313201c`, representative manifest `consus-hdf5 0.6.0`. Target 1.0.0.
       passes223 checks but misses the executed nominal identity regression.
 - [ ] Complete exact-head hosted/default adoption and the corrected merged
       source/archive handoff. Initial-upload authentication remains separate.
-
-## CONSUS-ZARR-ZLIB-LEVEL
-
-- [x] Reproduce the level-0 failure through parsed v2 metadata and `write_array`;
-      keep the gzip level control passing on the baseline.
-- [x] Read the shared `level` key without widening the public gzip-only accessor.
-- [x] Verify level 0/9 and omitted/6 through real stored chunks; Python zlib/gzip
-      independently decode all four explicit-level outputs to 29,696 bytes.
-- [ ] Complete independent review and final delivery gates; preserve holds.
