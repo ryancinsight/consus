@@ -2,7 +2,15 @@
 
 ## [Unreleased]
 
+## [consus / consus-zarr 0.6.0]
+
 ### Breaking
+
+- [major] Zarr v2 writes apply filters in their declared order before the compressor.
+  Reads decompress first and undo the filters in reverse. The `shuffle` filter
+  now honors its `elementsize`. For stores written by an older Consus with both
+  filters and a compressor, read the data with the original version and rewrite
+  it with this version. The metadata does not distinguish the two byte layouts.
 
 - [major] Zarr `gzip` and `zlib` writes reject a declared `level` outside
   `0..=9` instead of clamping it to 9 or replacing it with 6. `-1`, zlib's
@@ -31,6 +39,16 @@
   and `ChunkError` is now `#[non_exhaustive]`: exhaustive downstream matches
   must add a wildcard arm. Reads never consult `level`. This reverses the
   0.5.0 entry below that oversized levels clamp to 9.
+
+- The umbrella crate's opt-in `zarr` feature now re-exports `consus-zarr`
+  0.6, including the non-exhaustive `ChunkError` contract.
+
+## [consus-hdf5 0.6.1]
+
+### Fixed
+
+- Batch variable-length HDF5 references that share a global heap collection
+  without changing result order or which invalid reference is reported first.
 
 ## [consus-hdf5 0.6.0] - 2026-11-21
 

@@ -74,7 +74,7 @@ checksum = "940b3a0ca603d1eade50a4846a2afffd5ef57a9feac2c0e2ec2e14f9ead76000"
 [[package]]
 name = "apollo-dctdst-core"
 version = "0.17.2"
-source = "git+https://github.com/ryancinsight/apollo#7a8b226fa352b994405b0ae73239e5e479688d28"
+source = "git+https://github.com/ryancinsight/apollo#5cc028dd3d27077c09e0efe92dc49f8f6a73a26f"
 dependencies = [
  "eunomia",
 ]
@@ -280,7 +280,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "consus"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "consus-arrow",
  "consus-compression",
@@ -339,7 +339,7 @@ dependencies = [
 
 [[package]]
 name = "consus-hdf5"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "byteorder",
  "consus-compression",
@@ -483,7 +483,7 @@ dependencies = [
 
 [[package]]
 name = "consus-zarr"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "consus-compression",
  "consus-core",
@@ -966,8 +966,8 @@ checksum = "aea7e15b946fc4131a113942783184c9a645f7a26e4418b118fc9bb39af33ae4"
 
 [[package]]
 name = "melinoe"
-version = "0.10.0"
-source = "git+https://github.com/ryancinsight/melinoe.git#a31356ed35cae7c980cb45b9ebefcd040f1b1041"
+version = "0.10.1"
+source = "git+https://github.com/ryancinsight/melinoe.git#3d0311446b7bcfb6cde5076448e368e28a8181c7"
 
 [[package]]
 name = "memchr"
@@ -1039,7 +1039,7 @@ version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e2e5729346946d80bf14523d707e3dc3f7e347b09895d6cfb98ba0174702406"
 dependencies = [
- "melinoe 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "melinoe 0.10.0",
  "mnemosyne-arena",
  "mnemosyne-backend",
  "mnemosyne-build-util",
@@ -1130,7 +1130,7 @@ version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf9fb6d6ef9fc6d497a5e414e8b02a12c37c18579f1b8bbe57233a8d4d7506c0"
 dependencies = [
- "melinoe 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "melinoe 0.10.0",
  "mnemosyne-memory",
  "moirai-core",
  "moirai-pal",
@@ -1167,7 +1167,7 @@ dependencies = [
  "js-sys",
  "libc",
  "loom",
- "melinoe 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "melinoe 0.10.0",
  "moirai-core",
  "socket2",
  "tracing",
@@ -1183,7 +1183,7 @@ version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aeca2e366ce19012893114385ca26f4868e22c07d1f5b5143938c4d83ba37d38"
 dependencies = [
- "melinoe 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "melinoe 0.10.0",
  "moirai-core",
  "moirai-executor",
  "themis-topology 0.11.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1209,7 +1209,7 @@ version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11422482b4f815c310c20807bd9b95a9c2f7bf18b9007a2ff510092baa2fc58e"
 dependencies = [
- "melinoe 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "melinoe 0.10.0",
  "mnemosyne-memory",
  "moirai-async",
  "moirai-core",
@@ -1870,16 +1870,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "53a355bea9ffa5f1f59a3a2306617833395b7a5a830a015b1722697c0c0451de"
 dependencies = [
  "libc",
- "melinoe 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "melinoe 0.10.0",
 ]
 
 [[package]]
 name = "themis-topology"
 version = "0.11.5"
-source = "git+https://github.com/ryancinsight/themis#4ec2fb99b1910a3bc1265f7a5386e99e7f84cdea"
+source = "git+https://github.com/ryancinsight/themis#ec424230050b25ae8150de200c169c28f14363d2"
 dependencies = [
  "libc",
- "melinoe 0.10.0 (git+https://github.com/ryancinsight/melinoe.git)",
+ "melinoe 0.10.1",
 ]
 
 [[package]]

@@ -305,23 +305,13 @@ impl ArrayMetadataV2 {
 
     /// Convert to the canonical `ArrayMetadata` representation.
     pub fn to_canonical(&self) -> ArrayMetadata {
-        let mut codecs = Vec::new();
-
-        // Compressor -> codec entry
-        if let Some(compressor) = &self.compressor
-            && let Some(codec) = compressor.to_codec()
-        {
-            codecs.push(codec);
-        }
-
-        // Filters (for completeness; most v2 files have no filters)
-        if let Some(filters) = &self.filters {
-            for f in filters {
-                if let Some(codec) = f.to_codec() {
-                    codecs.push(codec);
-                }
-            }
-        }
+        // The shared pipeline stores stages in encoding order (Zarr v2, "Filters").
+        let filters = self.filters.iter().flatten().map(FilterConfig::to_codec);
+        let compressor = self
+            .compressor
+            .as_ref()
+            .and_then(CompressorConfig::to_codec);
+        let codecs = filters.chain(compressor).collect();
 
         ArrayMetadata {
             version: ZarrVersion::V2,
@@ -384,17 +374,17 @@ impl FilterIdConfig {
 
 impl FilterConfig {
     /// Convert to a canonical `Codec`.
-    fn to_codec(&self) -> Option<Codec> {
+    fn to_codec(&self) -> Codec {
         let name = match &self.id {
             FilterId::Name(s) => s.clone(),
             FilterId::Number(n) => hdf5_filter_id_to_name(*n),
         };
         let mut configuration = codec_configuration_pairs(self.configuration.as_ref());
         configuration.extend(member_pairs(&self.members));
-        Some(Codec {
+        Codec {
             name,
             configuration,
-        })
+        }
     }
 }
 
@@ -793,7 +783,6 @@ mod tests {
         assert_eq!(
             codecs,
             [
-                codec("zstd", &[("level", "9"), ("level", "1")]),
                 codec("shuffle", &[("elementsize", "8")]),
                 codec(
                     "filter32008",
@@ -805,6 +794,7 @@ mod tests {
                         ("level", "2")
                     ]
                 ),
+                codec("zstd", &[("level", "9"), ("level", "1")]),
             ]
         );
         assert_eq!(
