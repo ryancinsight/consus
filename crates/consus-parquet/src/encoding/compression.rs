@@ -213,13 +213,19 @@ pub(crate) const ZSTD_OVERLENGTH: usize = 64;
 ///   `ResourceLimit` for UNCOMPRESSED (payload length), SNAPPY (the length
 ///   its stream states) and GZIP (decoded output); `CompressionError` for
 ///   ZSTD and LZ4_RAW, which decode into a limit equal to the declaration.
+/// - A GZIP declaration within the bound but above what the stored bytes can
+///   produce: the shared decoder is handed only the producible size, so the
+///   page reports `CompressionError` (decoded length against declared), not
+///   the decoder's `ResourceLimit`.
 /// - Any other decoded length that differs from the declaration:
 ///   `CompressionError`. A page is never returned truncated or padded.
 ///
 /// Allocation: UNCOMPRESSED reserves the payload length, SNAPPY the length
 /// its stream states, LZ4_RAW the declared size, each at most the bound.
-/// GZIP initially reserves the smaller of the declaration and the maximum
-/// output producible from the compressed bytes, then grows within the bound. ZSTD reserves the declared size plus
+/// GZIP reserves the smaller of the declaration and the output the stored
+/// bytes can produce (`MAX_DEFLATE_EXPANSION` times their length, 1032), so a
+/// declaration above that is a length mismatch, never a reservation, and it
+/// grows from there within the bound. ZSTD reserves the declared size plus
 /// `ZSTD_OVERLENGTH` (64) bytes, which must also be within the bound, and decodes
 /// with the declaration as its output limit. `zrip-decode` 0.8.13 then never
 /// grows that buffer: its only reservations are `lib.rs:279`,

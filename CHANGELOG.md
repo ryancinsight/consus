@@ -15,6 +15,12 @@
   `codec::flate::MAX_DEFLATE_EXPANSION`), so no stream of that length can
   meet the declaration. A declared size taken from an untrusted header
   therefore reserves at most 1032 bytes per byte present in the file.
+- [patch] The Parquet reader keeps its page-length errors for GZIP pages.
+  A declared page size above the shared allocation bound is still
+  `ResourceLimit`. A declaration within the bound but above what the stored
+  bytes can produce is `CompressionError` (decoded length against declared),
+  because the reader passes the decoder only the smaller of the declaration
+  and the producible size, and the decoder reserves no more than that.
 
 ## [consus / consus-zarr 0.6.0]
 
