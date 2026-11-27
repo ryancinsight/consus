@@ -474,11 +474,13 @@ dependencies = [
 
 [[package]]
 name = "consus-raster"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "apollo-dctdst-core",
  "jpeg-encoder",
  "proptest",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
