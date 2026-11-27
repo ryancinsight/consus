@@ -125,7 +125,7 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   starts `zlib`, `gzip` or `raw-deflate`, the framing that failed.
 - evidence: `FlateFraming::LABEL` is `deflate (zlib)` for zlib and `deflate` for raw DEFLATE
   (`flate.rs:51,81`), though the codec named `deflate` is the zlib-framed one; it prefixes decode and compress
-  errors (`flate.rs:159,182`) and `Display` renders `compression error: {message}` (`core/error.rs:189`).
+  errors (`flate.rs:162,185`) and `Display` renders `compression error: {message}` (`core/error.rs:189`).
 - acceptance: `cargo nextest run -p consus-compression --all-features framing_label_prefixes_error` passes (no
   such test today): the `message` of a malformed stream starts `zlib` for `ZlibCodec` and `DeflateCodec`,
   `gzip` for `GzipCodec` and `raw-deflate` for `RawDeflateCodec`; `git grep -c -E
@@ -202,7 +202,7 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 ## CONSUS-FLATE-SURFACE — Narrow the unused flate items [major] — todo
 - outcome: `zlib_compress`, `ZlibFraming` and `GzipFraming` are `pub(crate)`; the public surface of
   `codec::flate` is what `consus-zip` consumes.
-- evidence: `crates/consus-compression/src/codec/flate.rs:48,65,175` are `pub`; only sibling codec modules use
+- evidence: `crates/consus-compression/src/codec/flate.rs:48,65,178` are `pub`; only sibling codec modules use
   them, and `consus-zip` uses `RawDeflateFraming` and `flate2_decompress`
   (`crates/consus-zip/src/read.rs:21`). No other stack member's tracked `*.rs` names them.
 - acceptance: `cargo semver-checks -p consus-compression` against the 0.5.0 baseline reports exactly the three
