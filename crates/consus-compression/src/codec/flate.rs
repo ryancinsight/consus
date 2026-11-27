@@ -6,7 +6,7 @@
 //! uncatchable process. This module implements the bounded read once and
 //! selects the wire framing with a zero-sized [`FlateFraming`](crate::codec::flate::FlateFraming) marker type.
 //!
-//! The output of any stream is at most [`MAX_DEFLATE_EXPANSION`] times its
+//! The output of any stream is at most [`MAX_DEFLATE_EXPANSION`](crate::codec::flate::MAX_DEFLATE_EXPANSION) times its
 //! length, so that product bounds the decode and is the most the codec ever
 //! reserves up front. A caller that needs a smaller output limit passes it as
 //! the budget's byte ceiling.
