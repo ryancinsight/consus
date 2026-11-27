@@ -20,6 +20,7 @@
 //! | "crc32" | Both | CRC-32C (Castagnoli) checksum: appended on write, verified and stripped on read |
 //! | "gzip" | Both | Gzip compression (RFC 1952) |
 //! | "zlib" | Both | Zlib compression (RFC 1950), the Zarr v2 `zlib` compressor; a chunk that begins with the gzip magic `1f 8b` decodes as gzip |
+//! | "shuffle" | Both | Byte shuffle using the configured element width |
 //! | "zstd" | Both | Zstandard compression |
 //! | "lz4" | Both | LZ4 block compression |
 //! | "blosc" | Both | Blosc meta-compressor |
@@ -42,7 +43,7 @@ use alloc::vec::Vec;
 use consus_core::Result;
 
 #[cfg(feature = "alloc")]
-use consus_compression::checksum::Crc32c;
+use consus_compression::{Filter, FilterDirection, ShuffleFilter, checksum::Crc32c};
 
 #[cfg(feature = "alloc")]
 use crate::metadata::Codec;
@@ -118,6 +119,21 @@ fn byte_swap_elements(data: &[u8], element_size: usize) -> Result<Vec<u8>> {
         element.reverse();
     }
     Ok(out)
+}
+
+/// numcodecs Shuffle defaults to four-byte elements and treats widths <= 1 as identity.
+#[cfg(feature = "alloc")]
+fn apply_shuffle(codec: &Codec, direction: FilterDirection, data: &[u8]) -> Result<Vec<u8>> {
+    let declared = codec.config_value("elementsize").unwrap_or("4");
+    let width = declared
+        .parse::<isize>()
+        .map_err(|_| consus_core::Error::InvalidFormat {
+            message: alloc::format!("zarr shuffle: invalid elementsize {declared:?}"),
+        })?;
+    if width <= 1 {
+        return Ok(data.to_vec());
+    }
+    ShuffleFilter::new(width.unsigned_abs()).apply(direction, data)
 }
 
 // ---------------------------------------------------------------------------
@@ -340,6 +356,7 @@ impl CodecPipeline {
             // Bytes codec: applies endian byte-swapping when the configured
             // endianness differs from the host byte order.
             "bytes" => self.apply_bytes_codec(codec, data),
+            "shuffle" => apply_shuffle(codec, FilterDirection::Forward, data),
 
             // CRC32 checksum: not yet implemented as a full codec.
             // Returning pass-through is incorrect (silent corruption), so we
@@ -393,6 +410,7 @@ impl CodecPipeline {
         match codec.name.as_str() {
             // Bytes codec: reverse the byte-swap applied on compress (symmetric).
             "bytes" => self.apply_bytes_codec(codec, data),
+            "shuffle" => apply_shuffle(codec, FilterDirection::Reverse, data),
 
             // CRC32 checksum: not yet implemented.
             // Pass-through in either direction is incorrect (strips 4 bytes of

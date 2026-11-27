@@ -1,6 +1,8 @@
 //! High-level file-creation builder composing the low-level writer primitives.
 
 #[cfg(feature = "alloc")]
+use super::attribute_payloads::RootAttributePayloads;
+#[cfg(feature = "alloc")]
 use super::{
     ChildDatasetSpec, ChildGroupSpec, DatasetCreationProps, FileCreationProps, SubGroupBuilder,
     WriteState, dataset_filter_ids, encode_attribute, encode_dataspace, encode_datatype,
@@ -44,7 +46,7 @@ pub struct Hdf5FileBuilder {
     /// Encoded hard-link (name, address) pairs for the root group.
     root_links: Vec<(String, u64)>,
     /// Encoded attribute message payloads for the root group.
-    root_attr_bytes: Vec<Vec<u8>>,
+    root_attributes: RootAttributePayloads,
 }
 
 #[cfg(feature = "alloc")]
@@ -60,7 +62,7 @@ impl Hdf5FileBuilder {
             sink: consus_io::MemCursor::new(),
             state,
             root_links: Vec::new(),
-            root_attr_bytes: Vec::new(),
+            root_attributes: RootAttributePayloads::default(),
         }
     }
 
@@ -259,7 +261,7 @@ impl Hdf5FileBuilder {
         raw_data: &[u8],
     ) -> Result<()> {
         let bytes = encode_attribute(name, dt, shape, raw_data)?;
-        self.root_attr_bytes.push(bytes);
+        self.root_attributes.push(bytes);
         Ok(())
     }
 
@@ -284,11 +286,15 @@ impl Hdf5FileBuilder {
             msgs.push((message_types::LINK, link_bytes));
         }
 
-        for attr_bytes in &self.root_attr_bytes {
-            msgs.push((message_types::ATTRIBUTE, attr_bytes.clone()));
-        }
-
-        let msg_refs: Vec<(u16, &[u8])> = msgs.iter().map(|(t, d)| (*t, d.as_slice())).collect();
+        let mut msg_refs: Vec<(u16, &[u8])> = msgs
+            .iter()
+            .map(|(message_type, data)| (*message_type, data.as_slice()))
+            .collect();
+        msg_refs.extend(
+            self.root_attributes
+                .iter()
+                .map(|payload| (message_types::ATTRIBUTE, payload)),
+        );
         let root_addr = write_object_header_v2(&mut self.sink, &mut self.state, &msg_refs)?;
 
         write_superblock(&mut self.sink, &mut self.state, root_addr)?;
