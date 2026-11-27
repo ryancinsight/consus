@@ -796,3 +796,43 @@ fn v4_btree_v2_single_chunk_roundtrip() {
 
     assert_eq!(read_values, values);
 }
+
+/// `read_chunk_raw` hands every registry stage the final chunk size, a hint
+/// larger than the output of a stage that runs before another codec on write.
+#[cfg(feature = "deflate")]
+mod chunk_codec_hints {
+    use consus_compression::DefaultCodecRegistry;
+    use consus_hdf5::dataset::chunk::{read_chunk_raw, write_chunk_raw};
+    use consus_io::MemCursor;
+
+    fn round_trip(filters: &[u16], len: usize, element_size: usize) {
+        let registry = DefaultCodecRegistry::new();
+        let data = vec![0u8; len];
+        let mut cursor = MemCursor::from_bytes(Vec::new());
+        let location = write_chunk_raw(&mut cursor, 0, &data, filters, element_size, &registry)
+            .expect("chunk write");
+        assert_eq!(location.filter_mask, 0, "{filters:?}: every filter applied");
+        let decoded = read_chunk_raw(
+            &cursor,
+            &location,
+            len,
+            filters,
+            element_size,
+            &registry,
+            None,
+        )
+        .unwrap_or_else(|error| panic!("{filters:?}: {error:?}"));
+        assert_eq!(decoded.len(), len, "{filters:?}: length");
+        assert!(decoded == data, "{filters:?}: content");
+    }
+
+    /// The deflate stage decodes the inner codec's stream, far below the chunk size.
+    #[test]
+    fn deflate_after_another_codec_decodes_a_loose_hint() {
+        round_trip(&[1, 1], 1 << 20, 1);
+        #[cfg(feature = "zstd")]
+        round_trip(&[32015, 1], 1 << 20, 1);
+        #[cfg(feature = "lz4")]
+        round_trip(&[32004, 1], 1 << 20, 1);
+    }
+}

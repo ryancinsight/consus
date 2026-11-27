@@ -6,9 +6,10 @@
 //! uncatchable process. This module implements the bounded read once and
 //! selects the wire framing with a zero-sized [`FlateFraming`](crate::codec::flate::FlateFraming) marker type.
 //!
-//! Every framing keeps at least the shared [`ParseBudget`](consus_core::ParseBudget) byte ceiling and
-//! widens it to the caller's declared size, so a stream that expands past both is rejected with
-//! [`Error::ResourceLimit`](consus_core::Error::ResourceLimit) instead of exhausting memory.
+//! The output of any stream is at most [`MAX_DEFLATE_EXPANSION`] times its
+//! length, so that product bounds the decode and is the most the codec ever
+//! reserves up front. A caller that needs a smaller output limit passes it as
+//! the budget's byte ceiling.
 
 use std::io::Read;
 
@@ -30,13 +31,13 @@ pub trait FlateFraming {
     /// Wrap `input` in this framing's decoder.
     fn decoder(input: &[u8]) -> Self::Decoder<'_>;
 
-    /// Output ceiling, in bytes, for one decompression.
+    /// Output ceiling, in bytes, that a caller's budget and declaration allow.
     ///
     /// One rule serves every framing: the larger of the declared
-    /// `expected_size` and the shared [`ParseBudget`] byte ceiling. A caller
-    /// that declares a larger legitimate size therefore decodes it, whichever
-    /// framing carries the stream, and a stream that declares less is still
-    /// held to the budget.
+    /// `expected_size` and the budget's byte ceiling. [`flate2_decompress`]
+    /// takes the smaller of this and the size the compressed bytes can
+    /// produce, so it caps a caller's own limit and never exceeds what the
+    /// stream can carry.
     #[must_use]
     fn ceiling(expected_size: usize, budget: &ParseBudget) -> usize {
         expected_size.max(budget.max_alloc_bytes)
@@ -88,52 +89,71 @@ impl FlateFraming for RawDeflateFraming {
 
 /// Largest number of output bytes one input byte of DEFLATE can produce.
 ///
-/// Derivation: the longest match copies 258 bytes (RFC 1951 section 3.2.5,
-/// cited from memory) and costs at least one bit of length code plus one bit
-/// of distance code, so two bits yield at most 258 bytes and eight bits at
-/// most `4 * 258 = 1032`. Framing bytes and block headers produce no output,
-/// so the bound holds for a whole zlib, gzip or raw stream. The
-/// `all_zero_input_stays_within_the_expansion_bound` test measures the most
-/// compressible input against it.
+/// Derivation (RFC 1951 sections 3.2.5 and 3.2.7): a match copies at most 258
+/// bytes (length code 285, no extra bits). Every used symbol costs at least one
+/// bit, and a block with a single distance code still spends one bit on it, so
+/// a match costs at least two bits: eight bits yield at most `4 * 258 = 1032`
+/// bytes. A literal yields one byte for at least one bit, a stored block `LEN`
+/// bytes for `LEN + 4` bytes, and headers, end-of-block codes and zlib or gzip
+/// framing yield nothing, so the bound holds for a whole stream and for
+/// concatenated gzip members.
 pub const MAX_DEFLATE_EXPANSION: usize = 1032;
 
-/// Decompress `input` under framing `F`, bounding the output exactly once.
+/// Budget that leaves [`flate2_decompress`] bounded by the producible size alone.
 ///
-/// A declared `expected_size` is honoured at any size the compressed bytes
-/// can produce: it is the initial reservation and, when it exceeds the
-/// budget, the ceiling ([`FlateFraming::ceiling`]). A declaration above
-/// `input.len() * MAX_DEFLATE_EXPANSION` cannot be met by any stream of this
-/// length, so it is rejected before anything is reserved; an untrusted
-/// declaration therefore reserves at most 1032 bytes per byte actually
-/// present. A stream that expands past the ceiling is rejected, and every
-/// growth goes through the budget's fallible reservation.
+/// The codecs pass it: they have no output size to enforce beyond what the
+/// stream can produce, and the shared 64 MiB budget would refuse honest data.
+pub(crate) const PRODUCIBLE_ONLY: ParseBudget = ParseBudget::new(
+    usize::MAX,
+    ParseBudget::DEFAULT.max_elements,
+    ParseBudget::DEFAULT.max_depth,
+);
+
+/// Most output bytes any DEFLATE stream of `input_len` bytes can produce.
+///
+/// Saturates, so a length whose product overflows `usize` is bounded by
+/// `usize::MAX` instead of wrapping to a small ceiling.
+fn producible(input_len: usize) -> usize {
+    input_len.saturating_mul(MAX_DEFLATE_EXPANSION)
+}
+
+/// Decompress `input` under framing `F`.
+///
+/// The declared `expected_size` is a capacity hint, never a refusal: the initial
+/// reservation is the smaller of it and the output ceiling, so a hostile
+/// declaration reserves at most 1032 bytes per byte of input. The output grows
+/// only as decoded data arrives, through the budget's fallible reservation, and
+/// ends at the ceiling:
+/// `min(input.len() * MAX_DEFLATE_EXPANSION, F::ceiling(expected_size, budget))`.
+/// The first term is what no stream can exceed; the second is the caller's own
+/// limit, which is what a budget bounds:
+///
+/// - the codecs pass a budget with no byte cap, so only the first term applies
+///   and any honest stream decodes whatever it declares;
+/// - `consus-zip` passes the member's declared size, so a stream that expands
+///   past its directory entry is refused;
+/// - the Parquet reader passes the shared 64 MiB budget, which its own check
+///   already applies to the page's declaration.
 ///
 /// # Errors
 ///
 /// Returns [`Error::CompressionError`] when the stream is malformed and
-/// [`Error::ResourceLimit`] when the declaration exceeds what `input` can
-/// produce or the decompressed output would exceed the ceiling.
+/// [`Error::ResourceLimit`] when the decompressed output exceeds the
+/// ceiling or the reservation cannot be satisfied.
 pub fn flate2_decompress<F: FlateFraming>(
     input: &[u8],
     expected_size: usize,
     budget: &ParseBudget,
 ) -> Result<Vec<u8>> {
-    let producible = input.len().saturating_mul(MAX_DEFLATE_EXPANSION);
-    if expected_size > producible {
-        return Err(Error::ResourceLimit {
-            what: "decompressed output",
-            requested: u64::try_from(expected_size).map_err(|_| Error::Overflow)?,
-            limit: u64::try_from(producible).map_err(|_| Error::Overflow)?,
-        });
-    }
+    let ceiling = producible(input.len()).min(F::ceiling(expected_size, budget));
     let mut decoder = F::decoder(input);
-    let bounded = ParseBudget::new(
-        F::ceiling(expected_size, budget),
-        budget.max_elements,
-        budget.max_depth,
-    );
+    let bounded = ParseBudget::new(ceiling, budget.max_elements, budget.max_depth);
     bounded
-        .read_bounded(&mut decoder, expected_size, "decompressed output")
+        .read_bounded(
+            &mut decoder,
+            expected_size.min(ceiling),
+            "decompressed output",
+        )
         .map_err(|error| match error {
             Error::Io(error) => Error::CompressionError {
                 message: alloc::format!("{} decompress failed: {error}", F::LABEL),
@@ -168,43 +188,21 @@ pub fn zlib_compress(input: &[u8], level: CompressionLevel) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
 
-    /// A declared size one byte above the default budget gives the same
-    /// ceiling under zlib, gzip and raw DEFLATE framing.
-    ///
-    /// Derivation: the rule is `max(declared, budget)`, so a declaration of
-    /// `budget + 1` yields `budget + 1` for every framing; the capacity hint
-    /// does not enter it.
+    /// The expansion bound is eight bits of two-bit matches, 258 bytes each.
     #[test]
-    fn ceiling_above_default_budget_is_one_rule() {
-        let budget = ParseBudget::default();
-        let declared = budget.max_alloc_bytes + 1;
-
-        let zlib = ZlibFraming::ceiling(declared, &budget);
-        let gzip = GzipFraming::ceiling(declared, &budget);
-        let raw = RawDeflateFraming::ceiling(declared, &budget);
-
-        assert_eq!(zlib, declared);
-        assert_eq!(gzip, declared);
-        assert_eq!(raw, declared);
+    fn expansion_bound_is_four_maximal_matches_per_byte() {
+        assert_eq!(MAX_DEFLATE_EXPANSION, 4 * 258);
     }
 
-    /// A declaration at or below the budget keeps the budget ceiling.
+    /// The producible size is the exact product below overflow and saturates
+    /// above it, so a 32-bit length of 4,161,791 bytes or more never wraps.
     #[test]
-    fn ceiling_at_or_below_default_budget_is_the_budget() {
-        let budget = ParseBudget::default();
-        for declared in [0, 1, budget.max_alloc_bytes] {
-            assert_eq!(
-                ZlibFraming::ceiling(declared, &budget),
-                budget.max_alloc_bytes
-            );
-            assert_eq!(
-                GzipFraming::ceiling(declared, &budget),
-                budget.max_alloc_bytes
-            );
-            assert_eq!(
-                RawDeflateFraming::ceiling(declared, &budget),
-                budget.max_alloc_bytes
-            );
-        }
+    fn producible_size_saturates_instead_of_wrapping() {
+        assert_eq!(producible(0), 0);
+        assert_eq!(producible(1), 1032);
+        let last_exact = usize::MAX / MAX_DEFLATE_EXPANSION;
+        assert_eq!(producible(last_exact), last_exact * MAX_DEFLATE_EXPANSION);
+        assert_eq!(producible(last_exact.saturating_add(1)), usize::MAX);
+        assert_eq!(producible(usize::MAX), usize::MAX);
     }
 }

@@ -29,7 +29,13 @@ use alloc::string::String;
 use alloc::{format, vec::Vec};
 
 #[cfg(feature = "gzip")]
-use consus_compression::{Codec, CompressionLevel, codec::gzip::GzipCodec};
+use consus_compression::{
+    Codec, CompressionLevel,
+    codec::{
+        flate::{GzipFraming, flate2_decompress},
+        gzip::GzipCodec,
+    },
+};
 use consus_core::{Error, ParseBudget, Result};
 
 /// Parquet compression codec; [`Self::to_i32`] gives the thrift `CompressionCodec` number.
@@ -214,16 +220,16 @@ pub(crate) const ZSTD_OVERLENGTH: usize = 64;
 ///   its stream states) and GZIP (decoded output); `CompressionError` for
 ///   ZSTD and LZ4_RAW, which decode into a limit equal to the declaration.
 /// - A GZIP declaration within the bound but above what the stored bytes can
-///   produce: the shared decoder is handed only the producible size, so the
-///   page reports `CompressionError` (decoded length against declared), not
-///   the decoder's `ResourceLimit`.
+///   produce: the decoder treats the declaration as a reservation hint and
+///   reserves only the producible size, so the page reports
+///   `CompressionError` (decoded length against declared), not `ResourceLimit`.
 /// - Any other decoded length that differs from the declaration:
 ///   `CompressionError`. A page is never returned truncated or padded.
 ///
 /// Allocation: UNCOMPRESSED reserves the payload length, SNAPPY the length
 /// its stream states, LZ4_RAW the declared size, each at most the bound.
 /// GZIP reserves the smaller of the declaration and the output the stored
-/// bytes can produce (`MAX_DEFLATE_EXPANSION` times their length, 1032), so a
+/// bytes can produce (1032 times their length, `MAX_DEFLATE_EXPANSION`), so a
 /// declaration above that is a length mismatch, never a reservation, and it
 /// grows from there within the bound. ZSTD reserves the declared size plus
 /// `ZSTD_OVERLENGTH` (64) bytes, which must also be within the bound, and decodes
@@ -287,12 +293,10 @@ fn decode_page_bytes(
         CompressionCodec::Gzip => {
             #[cfg(feature = "gzip")]
             {
-                // The page declaration is checked against the decoded length below.
-                // Pass only a feasible reservation hint to the shared decoder.
-                let producible = data
-                    .len()
-                    .saturating_mul(consus_compression::codec::flate::MAX_DEFLATE_EXPANSION);
-                GzipCodec.decompress(data, uncompressed_size.min(producible))
+                // The declaration is a reservation hint, which the decoder clamps
+                // to what `data` can produce; the page length is checked below.
+                // The shared budget caps the decoded output.
+                flate2_decompress::<GzipFraming>(data, uncompressed_size, &ParseBudget::default())
             }
             #[cfg(not(feature = "gzip"))]
             {

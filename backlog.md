@@ -111,15 +111,16 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - outcome: the codec docs promise that `decompress` returns the input of `compress` only for a declared size
   within the decode ceiling; none promises exact inversion without that bound.
 - evidence: four statements say `decompress` inverts `compress` exactly
-  (`consus-compression/src/codec/traits.rs:5` and `:34`, `gzip.rs:47`, `zlib.rs:52`), while a declared size
-  above 64 MiB is rejected by some codecs.
+  (`consus-compression/src/codec/traits.rs:5` and `:34`, `gzip.rs:47`, `zlib.rs:52`), while a codec that sizes
+  its buffer from `expected_size` (`lz4.rs:40`, under the shared 64 MiB budget) rejects a larger declaration;
+  the four DEFLATE codecs no longer do (the declaration is a capacity hint).
 - acceptance: `git grep -n -E 'inverts? (it )?exactly' -- crates/consus-compression/src/codec` prints nothing
   (four lines today); `git grep -c 'within the decode ceiling' -- crates/consus-compression/src/codec` prints
   a line for each of `traits.rs`, `gzip.rs` and `zlib.rs` (none today).
-- priority: verification; milestone: M-core-formats; basis: 216bde10c66f0f85b7d084aef8b1f19296fb1ae2
+- priority: verification; milestone: M-core-formats; basis: 673e774cd89064060c515df8bfe7d732d232128e
 - scope: crates/consus-compression/src/codec
-- next step: after the ceiling rule lands, reword the four statements and state the ceiling once in the module
-  docs.
+- next step: reword the four statements for the codecs that still bound the declaration, and state that bound
+  once in the module docs.
 
 <a id="consus-zlib-doc-drift"></a>
 ## CONSUS-ZLIB-DOC-DRIFT — Correct two false statements about the zlib codec [patch] — todo
@@ -142,14 +143,14 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - outcome: a malformed zlib, gzip or raw-DEFLATE stream returns `CompressionError { message }` whose `message`
   starts `zlib`, `gzip` or `raw-deflate`, the framing that failed.
 - evidence: `FlateFraming::LABEL` is `deflate (zlib)` for zlib and `deflate` for raw DEFLATE
-  (`flate.rs:50,80`), though the codec named `deflate` is the zlib-framed one; it prefixes decode and compress
-  errors (`flate.rs:116,139`) and `Display` renders `compression error: {message}` (`core/error.rs:189`).
+  (`flate.rs:51,81`), though the codec named `deflate` is the zlib-framed one; it prefixes decode and compress
+  errors (`flate.rs:165,188`) and `Display` renders `compression error: {message}` (`core/error.rs:189`).
 - acceptance: `cargo nextest run -p consus-compression --all-features framing_label_prefixes_error` passes (no
   such test today): the `message` of a malformed stream starts `zlib` for `ZlibCodec` and `DeflateCodec`,
   `gzip` for `GzipCodec` and `raw-deflate` for `RawDeflateCodec`; `git grep -c -E
   'LABEL.*"(zlib|gzip|raw-deflate)";' -- '*/codec/flate.rs'` reports 3 matches (1 today) and
   `git grep -n 'LABEL.*"deflate' -- '*/codec/flate.rs'` prints nothing (two lines today).
-- priority: verification; milestone: M-core-formats; basis: 216bde10c66f0f85b7d084aef8b1f19296fb1ae2
+- priority: verification; milestone: M-core-formats; basis: 673e774cd89064060c515df8bfe7d732d232128e
 - scope: crates/consus-compression/src/codec/flate.rs, crates/consus-compression/tests
 - next step: set the three labels to `zlib`, `gzip` and `raw-deflate`; test the message prefix of each codec.
 
@@ -220,12 +221,12 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 ## CONSUS-FLATE-SURFACE — Narrow the unused flate items [major] — todo
 - outcome: `zlib_compress`, `ZlibFraming` and `GzipFraming` are `pub(crate)`; the public surface of
   `codec::flate` is what `consus-zip` consumes.
-- evidence: `crates/consus-compression/src/codec/flate.rs:47,64,132` are `pub`; only sibling codec modules use
+- evidence: `crates/consus-compression/src/codec/flate.rs:48,65,181` are `pub`; only sibling codec modules use
   them, and `consus-zip` uses `RawDeflateFraming` and `flate2_decompress`
   (`crates/consus-zip/src/read.rs:21`). No other stack member's tracked `*.rs` names them.
 - acceptance: `cargo semver-checks -p consus-compression` against the 0.5.0 baseline reports exactly the three
   removals under the declared [major] class, and `cargo check --workspace --locked --all-features` passes.
-- priority: tightening; milestone: M-interop-contracts; basis: 216bde10c66f0f85b7d084aef8b1f19296fb1ae2
+- priority: tightening; milestone: M-interop-contracts; basis: 673e774cd89064060c515df8bfe7d732d232128e
 - scope: crates/consus-compression/src/codec/flate.rs, CHANGELOG.md
 - next step: narrow the three items after the ceiling change lands; note the removal under `### Breaking`.
 

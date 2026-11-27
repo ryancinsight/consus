@@ -13,9 +13,9 @@
 
 use alloc::vec::Vec;
 
-use super::flate::{ZlibFraming, flate2_decompress, zlib_compress};
+use super::flate::{PRODUCIBLE_ONLY, ZlibFraming, flate2_decompress, zlib_compress};
 use super::traits::{Codec, CompressionLevel};
-use consus_core::{ParseBudget, Result};
+use consus_core::Result;
 
 /// Deflate codec using zlib framing (RFC 1950).
 ///
@@ -39,14 +39,14 @@ impl Codec for DeflateCodec {
     }
 
     fn decompress(&self, input: &[u8], expected_size: usize) -> Result<Vec<u8>> {
-        flate2_decompress::<ZlibFraming>(input, expected_size, &ParseBudget::default())
+        flate2_decompress::<ZlibFraming>(input, expected_size, &PRODUCIBLE_ONLY)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use consus_core::Error;
+    use crate::codec::flate::MAX_DEFLATE_EXPANSION;
 
     /// Round-trip invariant: decompress(compress(data)) == data.
     ///
@@ -78,9 +78,10 @@ mod tests {
         let compressed = codec
             .compress(&vec![7u8; 8192], CompressionLevel::default())
             .expect("compress must succeed");
-        let error = codec
+        let decoded = codec
             .decompress(&compressed, usize::MAX)
-            .expect_err("declared output above the shared bound must be rejected");
-        assert!(matches!(error, Error::ResourceLimit { .. }));
+            .expect("a hostile declaration is a hint and must not refuse the stream");
+        assert_eq!(decoded, vec![7u8; 8192]);
+        assert!(decoded.capacity() <= compressed.len() * MAX_DEFLATE_EXPANSION);
     }
 }

@@ -51,9 +51,15 @@ pub trait Codec: Send + Sync {
 
     /// Decompress `input` and return the decompressed bytes.
     ///
+    /// The DEFLATE codecs treat `expected_size` as a capacity hint that never
+    /// refuses a stream (see `codec::flate::MAX_DEFLATE_EXPANSION`).
+    ///
     /// # Errors
     ///
-    /// Returns `Error::CompressionError` on malformed input.
+    /// Returns `Error::CompressionError` on malformed input and
+    /// `Error::ResourceLimit` when the output would exceed a bound of the
+    /// codec: the size the format can produce, or the shared allocation budget
+    /// for codecs that size their output buffer from `expected_size`.
     #[cfg(feature = "alloc")]
     fn decompress(&self, input: &[u8], expected_size: usize) -> Result<Vec<u8>>;
 }

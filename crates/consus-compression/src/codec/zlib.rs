@@ -37,9 +37,9 @@
 
 use alloc::vec::Vec;
 
-use super::flate::{GzipFraming, ZlibFraming, flate2_decompress, zlib_compress};
+use super::flate::{GzipFraming, PRODUCIBLE_ONLY, ZlibFraming, flate2_decompress, zlib_compress};
 use super::traits::{Codec, CompressionLevel};
-use consus_core::{ParseBudget, Result};
+use consus_core::Result;
 
 /// First two bytes of every gzip member (RFC 1952 section 2.3.1, `ID1 ID2`).
 const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
@@ -74,11 +74,10 @@ impl Codec for ZlibCodec {
     }
 
     fn decompress(&self, input: &[u8], expected_size: usize) -> Result<Vec<u8>> {
-        let budget = ParseBudget::default();
         if input.starts_with(&GZIP_MAGIC) {
-            flate2_decompress::<GzipFraming>(input, expected_size, &budget)
+            flate2_decompress::<GzipFraming>(input, expected_size, &PRODUCIBLE_ONLY)
         } else {
-            flate2_decompress::<ZlibFraming>(input, expected_size, &budget)
+            flate2_decompress::<ZlibFraming>(input, expected_size, &PRODUCIBLE_ONLY)
         }
     }
 }
