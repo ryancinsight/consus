@@ -405,7 +405,7 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - acceptance: `cargo nextest run -p consus-zarr --all-features v2_string_level_is_rejected` passes (no such test today):
   for gzip, zlib and zstd in a `configuration` object and on a filter entry, and for zstd (id 32015) on a numeric-id
   compressor, `"5"`, `"+5"` and `"05"` return the typed error with the whole message and an empty store, and the
-  JSON integer 5 still writes level 5. `hdf5_filter_id_to_name` (v2.rs:433-447) maps no id to gzip or zlib.
+  JSON integer 5 still writes level 5. `hdf5_filter_id_to_name` (v2.rs:434-447) maps no id to gzip or zlib.
 - priority: correctness; needs: CONSUS-ZARR-V3-LEVEL-TEXT; milestone: M-core-formats; basis: 56a417b33afa
 - scope: crates/consus-zarr/src/metadata/v2.rs, crates/consus-zarr/src/metadata/codec.rs, crates/consus-zarr/tests
 - next step: reuse the typed level reader the v3 item settles on for the v2 member maps.
@@ -450,6 +450,7 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   `crate-consus-hdf5-v0.6.1`. ERROR-TYPES sits on M-interop-contracts, CLAMPS and ENTRY-PARITY on M-core-formats.
 - acceptance: `git grep -n -E '[*][*]M-[a-z0-9.-]+[*][*] [(]0[.][56][.]0[)]' -- backlog/milestones.md` prints nothing
   (two lines today) and `git grep -n 'workspace 0.4.0' -- docs/adr/0008-release-scope-1-0.md` prints nothing (one).
+  With no block at 0.5.0 or 0.6.0, each of the three [major] items sits in a milestone that admits its break.
 - priority: verification; needs: none; milestone: M-core-formats; basis: 673e774cd89064060c515df8bfe7d732d232128e
 - scope: backlog/milestones.md, docs/adr/0008-release-scope-1-0.md, backlog.md
 - next step: move the open blocks past 0.6.0 under an ADR 0008 revision note, then retarget the three items.
