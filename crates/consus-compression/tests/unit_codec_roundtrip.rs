@@ -652,7 +652,6 @@ fn all_enabled_codecs_roundtrip_same_input() {
 mod above_default_budget {
     use super::*;
     use consus_compression::codec::deflate::DeflateCodec;
-    use consus_compression::codec::flate::MAX_DEFLATE_EXPANSION;
     use consus_compression::codec::gzip::GzipCodec;
     use consus_compression::codec::raw_deflate::RawDeflateCodec;
     use consus_compression::codec::zlib::ZlibCodec;
