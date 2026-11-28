@@ -10,7 +10,7 @@ fn plausible_byte_length_passes_through() {
     assert_eq!(budget.checked_bytes(4096, "node").unwrap(), 4096);
     assert_eq!(
         budget
-            .checked_bytes(DEFAULT_MAX_ALLOC_BYTES as u64, "node")
+            .checked_bytes(u64::try_from(DEFAULT_MAX_ALLOC_BYTES).unwrap(), "node")
             .unwrap(),
         DEFAULT_MAX_ALLOC_BYTES
     );
