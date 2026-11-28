@@ -24,8 +24,8 @@
   so its errors are unchanged.
 - [patch] `ParseBudget::read_bounded` treats its initial-capacity argument as
   a hint: one above the budget is clamped to it, and one the allocator cannot
-  supply is dropped and the buffer grows from the data. Only a stream above
-  the budget is `ResourceLimit`.
+  supply is dropped and the buffer grows from the data. A stream above the
+  budget, or a growth the allocator refuses, is `ResourceLimit`.
 - [patch] The Parquet GZIP reader reserves the smaller of the declared page
   size and 1032 times the stored bytes, where it reserved the declared size.
   Its errors are unchanged.

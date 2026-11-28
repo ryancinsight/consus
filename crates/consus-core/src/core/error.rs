@@ -128,7 +128,12 @@ pub enum Error {
     ResourceLimit {
         /// The bounded quantity, named for the field it was read from.
         what: &'static str,
-        /// The value the input declared.
+        /// The value that crossed the limit: the size, count, or depth the
+        /// input declared. For a byte stream read under the budget
+        /// (`ParseBudget::read_bounded`) it is the length read when the
+        /// budget was first crossed or a growth was refused, exact only when
+        /// the stream ends inside that read and otherwise a lower bound on
+        /// the stream's length.
         requested: u64,
         /// The ceiling the budget permits.
         limit: u64,

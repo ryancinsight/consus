@@ -253,6 +253,12 @@ impl ParseBudget {
     /// Returns [`Error::ResourceLimit`] when the stream exceeds the byte
     /// ceiling or growth cannot be allocated, [`Error::Io`] when reading
     /// fails, or [`Error::Overflow`] when the accumulated length overflows.
+    ///
+    /// For a stream over the budget, `requested` is the length accumulated at
+    /// the read that first crosses `max_alloc_bytes`: exact only when the
+    /// stream ends inside that read, otherwise a lower bound on the stream's
+    /// length, at most `max_alloc_bytes` plus one read. For a refused growth
+    /// it is the length accumulated at that read, at most `max_alloc_bytes`.
     #[cfg(all(feature = "alloc", feature = "std"))]
     pub fn read_bounded<R: std::io::Read>(
         &self,
@@ -462,6 +468,82 @@ mod tests {
                 .unwrap();
             assert_eq!(decoded, [1, 2, 3, 4], "hint {hint}");
         }
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn read_bounded_decodes_a_stream_exactly_at_the_budget() {
+        let budget = ParseBudget::new(8, 4, 1);
+        for hint in [0, 3, 8, 1 << 20] {
+            let mut reader = std::io::Cursor::new([1u8, 2, 3, 4, 5, 6, 7, 8]);
+            let decoded = budget
+                .read_bounded(&mut reader, hint, "decompressed output")
+                .unwrap();
+            assert_eq!(decoded, [1, 2, 3, 4, 5, 6, 7, 8], "hint {hint}");
+        }
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn read_bounded_checks_growth_after_the_first_read() {
+        struct OneByteReads(std::vec::IntoIter<u8>);
+        impl std::io::Read for OneByteReads {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                match (self.0.next(), buf.first_mut()) {
+                    (Some(byte), Some(slot)) => {
+                        *slot = byte;
+                        Ok(1)
+                    }
+                    _ => Ok(0),
+                }
+            }
+        }
+        let budget = ParseBudget::new(4, 4, 1);
+        let mut reader = OneByteReads(vec![1u8, 2, 3, 4, 5, 6].into_iter());
+        let error = budget
+            .read_bounded(&mut reader, 0, "decompressed output")
+            .unwrap_err();
+        assert!(
+            matches!(
+                error,
+                Error::ResourceLimit {
+                    what: "decompressed output",
+                    requested: 5,
+                    limit: 4
+                }
+            ),
+            "{error:?}"
+        );
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn read_bounded_reports_the_length_read_when_the_budget_is_first_crossed() {
+        let budget = ParseBudget::new(4, 4, 1);
+        let mut reader = std::io::Cursor::new(vec![0u8; 1 << 20]);
+        let error = budget
+            .read_bounded(&mut reader, 0, "decompressed output")
+            .unwrap_err();
+        let Error::ResourceLimit {
+            requested, limit, ..
+        } = error
+        else {
+            panic!("expected ResourceLimit, got {error:?}");
+        };
+        assert_eq!(limit, 4);
+        assert!((5..=4 + 8192).contains(&requested), "requested {requested}");
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn read_bounded_reserves_the_budget_for_a_hint_above_it() {
+        let budget = ParseBudget::new(16, 4, 1);
+        let mut reader = std::io::Cursor::new([1u8, 2, 3]);
+        let decoded = budget
+            .read_bounded(&mut reader, 1 << 20, "decompressed output")
+            .unwrap();
+        assert_eq!(decoded, [1, 2, 3]);
+        assert_eq!(decoded.capacity(), 16);
     }
 
     #[cfg(feature = "std")]
