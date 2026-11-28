@@ -97,7 +97,8 @@ impl FlateFraming for RawDeflateFraming {
 /// bytes. A literal yields one byte for at least one bit, a stored block `LEN`
 /// bytes for `LEN + 4` bytes, and headers, end-of-block codes and zlib or gzip
 /// framing yield nothing, so the bound holds for a whole stream and for
-/// concatenated gzip members.
+/// concatenated gzip members. `densest_stream_decodes_in_full_under_a_zero_declaration`
+/// decodes a hand-built block at 1031.78 to one.
 pub const MAX_DEFLATE_EXPANSION: usize = 1032;
 
 /// Budget that leaves [`flate2_decompress`] bounded by the producible size alone.
@@ -189,6 +190,39 @@ pub fn zlib_compress(input: &[u8], level: CompressionLevel) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The `ceiling` of each framing, which share one rule.
+    const CEILINGS: [fn(usize, &ParseBudget) -> usize; 3] = [
+        ZlibFraming::ceiling,
+        GzipFraming::ceiling,
+        RawDeflateFraming::ceiling,
+    ];
+
+    /// A declared size one byte above the default budget gives the same
+    /// ceiling under zlib, gzip and raw DEFLATE framing.
+    ///
+    /// Derivation: the rule is `max(declared, budget)`, so a declaration of
+    /// `budget + 1` yields `budget + 1` for every framing; the capacity hint
+    /// does not enter it.
+    #[test]
+    fn ceiling_above_default_budget_is_one_rule() {
+        let budget = ParseBudget::default();
+        let declared = budget.max_alloc_bytes + 1;
+        for ceiling in CEILINGS {
+            assert_eq!(ceiling(declared, &budget), declared);
+        }
+    }
+
+    /// A declaration at or below the budget keeps the budget ceiling.
+    #[test]
+    fn ceiling_at_or_below_default_budget_is_the_budget() {
+        let budget = ParseBudget::default();
+        for ceiling in CEILINGS {
+            for declared in [0, 1, budget.max_alloc_bytes] {
+                assert_eq!(ceiling(declared, &budget), budget.max_alloc_bytes);
+            }
+        }
+    }
 
     /// The producible size is the exact product, four maximal two-bit matches
     /// per byte, below overflow and saturates above it, so a 32-bit length of

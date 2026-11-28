@@ -652,6 +652,7 @@ fn all_enabled_codecs_roundtrip_same_input() {
 mod above_default_budget {
     use super::*;
     use consus_compression::codec::deflate::DeflateCodec;
+    use consus_compression::codec::flate::MAX_DEFLATE_EXPANSION;
     use consus_compression::codec::gzip::GzipCodec;
     use consus_compression::codec::raw_deflate::RawDeflateCodec;
     use consus_compression::codec::zlib::ZlibCodec;
@@ -681,5 +682,151 @@ mod above_default_budget {
         assert_decodes_declared_size(&ZlibCodec, &input);
         assert_decodes_declared_size(&GzipCodec, &input);
         assert_decodes_declared_size(&RawDeflateCodec, &input);
+    }
+
+    /// Bits of a DEFLATE stream, least significant bit of each byte first.
+    struct BitWriter {
+        bytes: Vec<u8>,
+        used: u32,
+    }
+
+    impl BitWriter {
+        fn new() -> Self {
+            Self {
+                bytes: Vec::new(),
+                used: 0,
+            }
+        }
+
+        fn bit(&mut self, bit: u32) {
+            if self.used == 0 {
+                self.bytes.push(0);
+            }
+            let value = u8::try_from(bit & 1).expect("invariant: one bit fits a byte");
+            *self.bytes.last_mut().expect("invariant: a byte was pushed") |= value << self.used;
+            self.used = (self.used + 1) % 8;
+        }
+
+        /// A header field or extra bits: least significant bit first.
+        fn field(&mut self, value: u32, width: u32) {
+            for index in 0..width {
+                self.bit(value >> index);
+            }
+        }
+
+        /// A Huffman code: most significant bit first.
+        fn code(&mut self, value: u32, width: u32) {
+            for index in (0..width).rev() {
+                self.bit(value >> index);
+            }
+        }
+    }
+
+    /// One dynamic block whose output is `1 + 258 * matches` zero bytes.
+    ///
+    /// RFC 1951 section 3.2.7. Code-length code: symbol 18 has length 1
+    /// (code `0`), symbols 1 and 2 length 2 (codes `10`, `11`). Literal/length
+    /// code: symbol 285 (length 258, no extra bits) has length 1 (code `0`),
+    /// symbols 0 and 256 length 2 (codes `10`, `11`). One distance code of
+    /// length 1 (code `0`, distance 1). Data: literal 0, then `matches`
+    /// pairs of one length bit and one distance bit, then end-of-block: the
+    /// densest stream DEFLATE can carry, two bits per 258 bytes.
+    fn densest_deflate_stream(matches: usize) -> Vec<u8> {
+        let mut bits = BitWriter::new();
+        bits.field(1, 1); // BFINAL
+        bits.field(2, 2); // BTYPE: dynamic Huffman
+        bits.field(29, 5); // HLIT: 286 literal/length codes
+        bits.field(0, 5); // HDIST: 1 distance code
+        bits.field(14, 4); // HCLEN: 18 code length code lengths
+        // Order 16 17 18 0 8 7 9 6 10 5 11 4 12 3 13 2 14 1.
+        for length in [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2] {
+            bits.field(length, 3);
+        }
+        let zeros = |bits: &mut BitWriter, run: u32| {
+            bits.code(0, 1); // symbol 18
+            bits.field(run - 11, 7);
+        };
+        bits.code(0b11, 2); // literal 0: length 2 (symbol 2)
+        zeros(&mut bits, 138); // literals 1..=138
+        zeros(&mut bits, 117); // literals 139..=255
+        bits.code(0b11, 2); // end-of-block 256: length 2
+        zeros(&mut bits, 28); // 257..=284
+        bits.code(0b10, 2); // symbol 285: length 1 (symbol 1)
+        bits.code(0b10, 2); // distance code 0: length 1
+        bits.code(0b10, 2); // literal 0
+        for _ in 0..matches {
+            bits.code(0, 1); // length 258
+            bits.code(0, 1); // distance 1
+        }
+        bits.code(0b11, 2); // end-of-block
+        bits.bytes
+    }
+
+    fn zlib_framed(raw: &[u8], zeros: usize) -> Vec<u8> {
+        // Adler-32 of `zeros` zero bytes: a stays 1, b counts the bytes.
+        let b = u32::try_from(zeros % 65_521).expect("invariant: below 65521");
+        let mut stream = vec![0x78, 0x9c];
+        stream.extend_from_slice(raw);
+        stream.extend_from_slice(&((b << 16) | 1).to_be_bytes());
+        stream
+    }
+
+    fn gzip_framed(raw: &[u8], zeros: usize) -> Vec<u8> {
+        let mut crc = flate2::Crc::new();
+        let block = vec![0u8; 1 << 16];
+        let mut left = zeros;
+        while left > 0 {
+            let take = left.min(block.len());
+            crc.update(&block[..take]);
+            left -= take;
+        }
+        let size = u32::try_from(zeros % (1 << 32)).expect("invariant: reduced modulo 2^32");
+        let mut stream = vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff];
+        stream.extend_from_slice(raw);
+        stream.extend_from_slice(&crc.sum().to_le_bytes());
+        stream.extend_from_slice(&size.to_le_bytes());
+        stream
+    }
+
+    /// The densest honest stream decodes in full under a declaration of
+    /// zero, past the 64 MiB budget, whichever framing carries it.
+    ///
+    /// Derivation: `matches = 260_200` gives `1 + 258 * 260_200 = 67_131_601`
+    /// bytes, above `64 MiB = 67_108_864`, and the stream stays within
+    /// `MAX_DEFLATE_EXPANSION` times its length (asserted).
+    #[test]
+    fn densest_stream_decodes_in_full_under_a_zero_declaration() {
+        let matches = 260_200;
+        let zeros = 1 + 258 * matches;
+        assert!(zeros > ParseBudget::default().max_alloc_bytes);
+        let raw = densest_deflate_stream(matches);
+        assert!(zeros <= raw.len() * MAX_DEFLATE_EXPANSION);
+        let streams: [(&str, Vec<u8>, Vec<&dyn Codec>); 3] = [
+            ("raw", raw.clone(), vec![&RawDeflateCodec]),
+            (
+                "zlib",
+                zlib_framed(&raw, zeros),
+                vec![&DeflateCodec, &ZlibCodec],
+            ),
+            (
+                "gzip",
+                gzip_framed(&raw, zeros),
+                vec![&GzipCodec, &ZlibCodec],
+            ),
+        ];
+        for (framing, stream, codecs) in &streams {
+            for codec in codecs {
+                for declared in [0, zeros] {
+                    let decoded = codec.decompress(stream, declared).unwrap_or_else(|error| {
+                        panic!(
+                            "{framing} via {}: declared {declared}: {error:?}",
+                            codec.name()
+                        )
+                    });
+                    assert_eq!(decoded.len(), zeros, "{framing} via {}", codec.name());
+                    assert!(decoded.iter().all(|byte| *byte == 0), "{framing}: content");
+                }
+            }
+        }
     }
 }

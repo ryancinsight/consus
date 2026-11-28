@@ -142,7 +142,7 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   starts `zlib`, `gzip` or `raw-deflate`, the framing that failed.
 - evidence: `FlateFraming::LABEL` is `deflate (zlib)` for zlib and `deflate` for raw DEFLATE
   (`flate.rs:52,82`), though the codec named `deflate` is the zlib-framed one; it prefixes decode and compress
-  errors (`flate.rs:161,184`) and `Display` renders `compression error: {message}` (`core/error.rs:189`).
+  errors (`flate.rs:162,185`) and `Display` renders `compression error: {message}` (`core/error.rs:189`).
 - acceptance: `cargo nextest run -p consus-compression --all-features framing_label_prefixes_error` passes (no
   such test today): the `message` of a malformed stream starts `zlib` for `ZlibCodec` and `DeflateCodec`,
   `gzip` for `GzipCodec` and `raw-deflate` for `RawDeflateCodec`; `git grep -c -E
@@ -219,7 +219,7 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 ## CONSUS-FLATE-SURFACE — Narrow the unused flate items [major] — todo
 - outcome: `zlib_compress`, `ZlibFraming` and `GzipFraming` are `pub(crate)`; the public surface of
   `codec::flate` is what `consus-zip` consumes.
-- evidence: `crates/consus-compression/src/codec/flate.rs:49,66,177` are `pub`; only sibling codec modules use
+- evidence: `crates/consus-compression/src/codec/flate.rs:49,66,178` are `pub`; only sibling codec modules use
   them, and `consus-zip` uses `RawDeflateFraming` and `flate2_decompress`
   (`crates/consus-zip/src/read.rs:21`). No other stack member's tracked `*.rs` names them.
 - acceptance: `cargo semver-checks -p consus-compression` against the 0.5.0 baseline reports exactly the three
@@ -277,7 +277,7 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 ## CONSUS-ZARR-LEVEL-CLAMPS — Reject unusable levels for zstd, deflate, lz4 and fallthrough codecs [major] — todo
 - outcome: a `level` a codec cannot honor is a typed `InvalidCodecConfiguration`, not a silent clamp or default.
 - evidence: zstd clamps to -8..=4 and maps 0 to 1 (consus-compression zstd.rs:28-29); deflate clamps to 0..=9
-  (flate.rs:178, so -1 stores); `codec/mod.rs:360,366,378` fall back to 3, 0 and 6 when a level does not parse
+  (flate.rs:179, so -1 stores); `codec/mod.rs:360,366,378` fall back to 3, 0 and 6 when a level does not parse
   (`"abc"` becomes 6); `deflate` is reachable from numeric filter id 1 when its feature is on (v2.rs:436). The `crc32`
   arm comments (codec/mod.rs:344-346 and :398-400) say the codec is rejected; both arms apply CRC-32C.
 - acceptance: zstd and `deflate` document their accepted range as a constant with a source and a level outside it is
@@ -454,3 +454,27 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - priority: verification; needs: none; milestone: M-core-formats; basis: 673e774cd89064060c515df8bfe7d732d232128e
 - scope: backlog/milestones.md, docs/adr/0008-release-scope-1-0.md, backlog.md
 - next step: move the open blocks past 0.6.0 under an ADR 0008 revision note, then retarget the three items.
+
+<a id="consus-allocation-failure-variant"></a>
+## CONSUS-ALLOCATION-FAILURE-VARIANT — Report a refused allocation as its own error [major] — todo
+- outcome: a buffer growth the allocator refuses returns an `Error` variant naming allocation failure;
+  `ResourceLimit` is returned only when a size exceeds the budget.
+- evidence: `ParseBudget::read_bounded` maps a refused `try_reserve_exact` to `ResourceLimit` with
+  `requested == limit` (`consus-core/src/parse/budget.rs:299-304`). `Error` has no such variant (`core/error.rs:23`;
+  `CapacityExceeded`, :95, is for writes) and is not `#[non_exhaustive]`, so adding one is [major].
+- acceptance: `unit_hint_reservation.rs` gains a test whose refusing allocator forces a growth failure and asserts
+  the new variant (none today); `cargo semver-checks -p consus-core` reports the one added variant.
+- priority: tightening; milestone: M-interop-contracts; basis: 858ef0154d862d44dec739a4a016b69f054d0f1e
+- scope: crates/consus-core/src/core/error.rs, crates/consus-core/src/parse/budget.rs, crates/consus-compression/tests
+- next step: add the variant and return it from the growth path of `read_bounded`.
+
+<a id="consus-hdf5-chunk-read-cap"></a>
+## CONSUS-HDF5-CHUNK-READ-CAP — Read a stored chunk above 64 MiB [patch] — todo
+- outcome: `read_chunk_raw` returns a chunk above 64 MiB that the chunk record and file length support, not
+  `ResourceLimit`.
+- evidence: it reads `location.size` with the default budget (`consus-hdf5/src/dataset/chunk.rs:134-140`) and
+  `checked_bytes` refuses above 64 MiB (`consus-io/src/io/sync/bounded.rs:96`) (derived, not run).
+- acceptance: a `consus-hdf5` test reads back an unfiltered chunk of 64 MiB + 1 bytes byte for byte (none today).
+- priority: correctness; milestone: M-core-formats; basis: 858ef0154d862d44dec739a4a016b69f054d0f1e
+- scope: crates/consus-hdf5/src/dataset/chunk.rs, crates/consus-hdf5/tests
+- next step: size the read from the file length, not the shared budget.
