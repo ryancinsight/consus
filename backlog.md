@@ -24,6 +24,22 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   commands are obsolete. Prepare a new exact-source raster0.3.0 handoff only
   after verification; authentication/publisher registration stay separate.
 
+<a id="consus-release-cohort-raster"></a>
+## CONSUS-RELEASE-COHORT-RASTER — Align the release cohort with consus-raster 0.5.1 [patch] — todo
+- outcome: `Crates.io Release` on `main` is green and publishes nothing: the cohort names consus-raster at its manifest version.
+- evidence: `rust-release.yml:79` pins raster `0.5.0`; `crates/consus-raster/Cargo.toml:3` is `0.5.1` since a54a772 (from aeea084),
+  `version.workspace = true` before. Runs 46083471626 and 46086997468 fail "Plan version-change publish": `release cohort does
+  not match publishable manifest identity: consus-raster@0.5.0`. The index lists raster 0.5.1 and 0.5.0 for the other 13 entries.
+- acceptance: from the root the command below prints `['consus-raster'] 14 0.5.1` today and must print `[] 14 0.5.1`; deleting
+  the job, `continue-on-error`, `{}`, dropping a crate, a manifest rollback and a second stale value all fail it. Every cohort
+  `name@version` is in the sparse index, and the next `main` run skips `Publish pending versions` (plan `count` 0, as in run 46076544000).
+  ```sh
+python -I -c "import json,re,tomllib as T,pathlib as P;L=lambda p:T.loads(P.Path(p).read_text());W=L('Cargo.toml')['workspace']['package']['version'];c=json.loads(re.search(r'cohort-json: >-\n((?: {8}.*\n)+)',P.Path('.github/workflows/rust-release.yml').read_text())[1]);m={q['name']:W if q['version']=={'workspace':True} else q['version'] for q in(L(f)['package'] for f in P.Path('crates').glob('*/Cargo.toml'))};print([k for k in c if m.get(k)!=c[k]],len(c),m['consus-raster'])"
+  ```
+- priority: correctness; needs: none; milestone: M-core-formats; basis: 858ef0154d862d44dec739a4a016b69f054d0f1e
+- scope: .github/workflows/rust-release.yml
+- held act: release authority gates any change that could publish (a cohort version absent from the index, a new crate, a bump).
+
 <a id="consus-zarr-edge-chunk-padding"></a>
 ## CONSUS-ZARR-EDGE-CHUNK-PADDING — Write edge chunks at the full chunk shape [patch] — todo
 - outcome: `write_array` stores every chunk, edge chunks included, at the full `chunks` shape padded with the
