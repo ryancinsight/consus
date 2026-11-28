@@ -24,6 +24,22 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   commands are obsolete. Prepare a new exact-source raster0.3.0 handoff only
   after verification; authentication/publisher registration stay separate.
 
+<a id="consus-release-cohort-raster"></a>
+## CONSUS-RELEASE-COHORT-RASTER — Align the release cohort with consus-raster 0.5.1 [patch] — todo
+- outcome: `Crates.io Release` on `main` is green and publishes nothing: the cohort names consus-raster at its manifest version.
+- evidence: `rust-release.yml:79` pins raster `0.5.0`; `crates/consus-raster/Cargo.toml:3` is `0.5.1` since a54a772 (from aeea084). Runs
+  46083471626 and 46086997468 fail "Plan version-change publish": `release cohort does not match publishable manifest identity: consus-raster@0.5.0`.
+- acceptance: the command below (PyYAML, git history, network) exits 1 printing `REJECT` and the raster entry today, 0 printing `ok` after the fix. It rejects a parsed
+  workflow that differs from the 858ef01 one beyond raster `0.5.1` in the cohort (triggers, `uses:`, `permissions:`, `if:` count; formatting is free), a cohort crate with
+  `publish = false`, a version unlike its manifest, or absent from or not newest on the sparse index. The next `main` run then skips `Publish pending versions` (run 46076544000 did).
+  ```sh
+  python -I -c "import json,subprocess,sys,yaml,tomllib as T,pathlib as P,urllib.request as U;L=lambda p:T.loads(P.Path(p).read_text());W=L('Cargo.toml')['workspace']['package']['version'];q={p['name']:p for p in(L(f)['package'] for f in P.Path('crates').glob('*/Cargo.toml'))};m={k:W if p['version']=={'workspace':True} else p['version'] for k,p in q.items()};f='.github/workflows/rust-release.yml';w=yaml.safe_load(P.Path(f).read_text());b=yaml.safe_load(subprocess.check_output(['git','show','858ef0154d862d44dec739a4a016b69f054d0f1e:'+f],text=True));c=json.loads(w['jobs']['publish-pending']['with'].pop('cohort-json'));e=json.loads(b['jobs']['publish-pending']['with'].pop('cohort-json'));e['consus-raster']='0.5.1';ix=lambda n:[json.loads(l)['vers'] for l in U.urlopen(U.Request(f'https://index.crates.io/{n[:2]}/{n[2:4]}/{n}',headers={'User-Agent':'cohort-check'})).read().decode().splitlines()];v=lambda s:tuple(map(int,s.split('.')));bad=[k for k in c if q.get(k,{}).get('publish') is False or m.get(k)!=c[k] or c[k] not in(x:=ix(k)) or max((y for y in x if y.replace('.','').isdigit()),key=v)!=c[k]];(c!=e or w!=b or bad) and sys.exit(f'REJECT {sorted(set(c.items())^set(e.items()))} {bad}');print('ok')"
+  ```
+- priority: correctness; needs: none; milestone: M-core-formats; basis: 858ef0154d862d44dec739a4a016b69f054d0f1e
+- scope: .github/workflows/rust-release.yml
+- held act: release authority gates any change that could publish (a cohort version absent from the index, a new crate, a bump).
+- next step: set the raster entry at `rust-release.yml:79` to `0.5.1`, run the command, then read the next `main` push run.
+
 <a id="consus-zarr-edge-chunk-padding"></a>
 ## CONSUS-ZARR-EDGE-CHUNK-PADDING — Write edge chunks at the full chunk shape [patch] — todo
 - outcome: `write_array` stores every chunk, edge chunks included, at the full `chunks` shape padded with the
