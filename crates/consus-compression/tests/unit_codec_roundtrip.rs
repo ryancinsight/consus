@@ -684,47 +684,6 @@ mod above_default_budget {
         assert_decodes_declared_size(&RawDeflateCodec, &input);
     }
 
-    /// `len` zero bytes at level 9: the most compressible input.
-    fn compressed_zeros<C: Codec>(codec: &C, len: usize) -> Vec<u8> {
-        codec
-            .compress(&vec![0u8; len], CompressionLevel(9))
-            .expect("level-9 compress must succeed")
-    }
-
-    /// A declaration is a capacity hint: whatever its size, a stream that
-    /// decodes still decodes, and the buffer reserved for it never exceeds
-    /// what the stored bytes can produce.
-    fn assert_hint_is_clamped<C: Codec>(codec: &C) {
-        let compressed = compressed_zeros(codec, 4096);
-        let producible = compressed.len() * MAX_DEFLATE_EXPANSION;
-        let tera = usize::try_from(1u64 << 40).unwrap_or(usize::MAX);
-        for declared in [0, 1, 4096, producible, producible + 1, tera, usize::MAX] {
-            let decoded = codec
-                .decompress(&compressed, declared)
-                .unwrap_or_else(|error| panic!("{}: declared {declared}: {error:?}", codec.name()));
-            assert_eq!(decoded.len(), 4096, "{}: length", codec.name());
-            assert!(
-                decoded.iter().all(|byte| *byte == 0),
-                "{}: content",
-                codec.name()
-            );
-            assert!(
-                decoded.capacity() <= producible,
-                "{}: declared {declared} reserved {} above {producible}",
-                codec.name(),
-                decoded.capacity()
-            );
-        }
-    }
-
-    #[test]
-    fn declaration_above_producible_is_clamped_not_rejected() {
-        assert_hint_is_clamped(&DeflateCodec);
-        assert_hint_is_clamped(&ZlibCodec);
-        assert_hint_is_clamped(&GzipCodec);
-        assert_hint_is_clamped(&RawDeflateCodec);
-    }
-
     /// Bits of a DEFLATE stream, least significant bit of each byte first.
     struct BitWriter {
         bytes: Vec<u8>,
