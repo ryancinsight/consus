@@ -459,8 +459,9 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 ## CONSUS-ALLOCATION-FAILURE-VARIANT — Report a refused allocation as its own error [major] — todo
 - outcome: a buffer growth the allocator refuses returns an `Error` variant naming allocation failure;
   `ResourceLimit` is returned only when a size exceeds the budget.
-- evidence: `ParseBudget::read_bounded` maps a refused `try_reserve_exact` to `ResourceLimit` with
-  `requested == limit` (`consus-core/src/parse/budget.rs:299-304`). `Error` has no such variant (`core/error.rs:23`;
+- evidence: `ParseBudget::read_bounded` maps a refused growth `try_reserve_exact` to `ResourceLimit` with
+  `requested` the length the stream needs (at most `limit`) and `limit` the budget, so a refusal reads as a size over
+  the budget (`consus-core/src/parse/budget.rs:295-301`). `Error` has no such variant (`core/error.rs:23`;
   `CapacityExceeded`, :95, is for writes) and is not `#[non_exhaustive]`, so adding one is [major].
 - acceptance: `unit_hint_reservation.rs` gains a test whose refusing allocator forces a growth failure and asserts
   the new variant (none today); `cargo semver-checks -p consus-core` reports the one added variant.
