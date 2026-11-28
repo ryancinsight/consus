@@ -148,11 +148,7 @@ pub fn flate2_decompress<F: FlateFraming>(
     let mut decoder = F::decoder(input);
     let bounded = ParseBudget::new(ceiling, budget.max_elements, budget.max_depth);
     bounded
-        .read_bounded(
-            &mut decoder,
-            expected_size.min(ceiling),
-            "decompressed output",
-        )
+        .read_bounded(&mut decoder, expected_size, "decompressed output")
         .map(|mut output| {
             output.shrink_to_fit();
             output
