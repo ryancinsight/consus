@@ -94,8 +94,8 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - evidence: four statements say `decompress` inverts `compress` exactly
   (`consus-compression/src/codec/traits.rs:5` and `:34`, `gzip.rs:47`, `zlib.rs:52`), while `szip` rejects an
   `expected_size` that differs from its header (`szip.rs:259`, `:357`) and `zstd` decodes at most 64 MiB
-  whatever it is given (`zstd.rs:37`); the DEFLATE codecs, lz4 and blosc ignore a wrong `expected_size`
-  (`lz4.rs:34`, `blosc.rs:208`) or take it as a capacity hint.
+  whatever it is given (`zstd.rs:36,38`); the DEFLATE codecs, lz4 and blosc ignore a wrong `expected_size`
+  (`lz4.rs:35`, `blosc.rs:208`) or take it as a capacity hint.
 - acceptance: `git grep -n -E 'inverts? (it )?exactly' -- crates/consus-compression/src/codec` prints nothing
   (four lines today); `git grep -c 'a declared size the codec accepts' -- crates/consus-compression/src/codec`
   prints a line for each of `traits.rs`, `gzip.rs` and `zlib.rs` (none today).
