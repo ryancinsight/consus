@@ -963,13 +963,13 @@ dependencies = [
 [[package]]
 name = "melinoe"
 version = "0.10.2"
-source = "git+https://github.com/ryancinsight/melinoe.git#002c7b841440120e21c447cc3435b200aa21a0ac"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a822d2dbfdeb5ccfeee9e7ee96eee706d9228721804355557c4b7f8e0b29a788"
 
 [[package]]
 name = "melinoe"
 version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a822d2dbfdeb5ccfeee9e7ee96eee706d9228721804355557c4b7f8e0b29a788"
+source = "git+https://github.com/ryancinsight/melinoe.git#002c7b841440120e21c447cc3435b200aa21a0ac"
 
 [[package]]
 name = "memchr"
