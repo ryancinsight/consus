@@ -1,6 +1,6 @@
 [package]
 name = "consus-raster"
-version.workspace = true
+version = "0.5.1"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -18,6 +18,8 @@ jpeg-encoder.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }
 
 [lints]
 workspace = true

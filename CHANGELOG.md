@@ -32,6 +32,11 @@
   size and 1032 times the stored bytes, where it reserved the declared size.
   Its errors are unchanged.
 
+## [consus-raster 0.5.1]
+
+- The lossless JPEG decoder accepts version 1 grayscale LJIF metadata with
+  zero flags and mode and preserves the decoded samples.
+
 ## [consus / consus-zarr 0.6.0]
 
 ### Breaking
