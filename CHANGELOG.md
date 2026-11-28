@@ -6,28 +6,31 @@
 
 - [minor] `codec::flate::MAX_DEFLATE_EXPANSION` (1032): the most output one
   byte of DEFLATE can decode to (RFC 1951 sections 3.2.5 and 3.2.7).
-- [minor] `FlateFraming::ceiling` has a default implementation, the larger of
-  the declared size and the budget's byte ceiling, so the three framings no
-  longer implement it. An implementation of `FlateFraming` that supplies its
-  own `ceiling` still compiles.
+- [minor] `FlateFraming::ceiling` has a default body, `max(expected_size,
+  budget.max_alloc_bytes)`, and is `#[must_use]`; the three framings no longer
+  implement it, and an implementation that supplies its own still compiles.
+  `flate2_decompress::<ZlibFraming>` under a caller budget now admits a
+  declaration above that budget, as the gzip and raw framings already did.
 
 ### Fixed
 
 - [patch] `DeflateCodec`, `ZlibCodec`, `GzipCodec` and `RawDeflateCodec`
   decode a stream of any size its bytes can carry, under any `expected_size`
-  including 0, which is a capacity hint and never refuses a stream. Zlib held
-  the output to 64 MiB and gzip and raw DEFLATE to `max(declared, 64 MiB)`;
-  all four now stop at 1032 times the compressed length. The initial
-  reservation is the smaller of the declaration and that product, so an
-  untrusted header reserves at most 1032 bytes per byte present in the file
-  (before, the whole declaration, or `ResourceLimit`). `consus-zip` still passes
-  the member's declared size as its byte ceiling, so its errors are unchanged.
-- [patch] The Parquet reader keeps its page-length errors for GZIP pages. A
-  declared page size above the 64 MiB allocation bound is `ResourceLimit`,
-  and so is a stream that decodes to more than that bound. A declaration
-  within the bound but above what the stored bytes can produce is
-  `CompressionError` (decoded length against declared), because the decoder
-  reserves no more than the producible size.
+  including 0 and `usize::MAX`. `expected_size` is a capacity hint: the
+  reservation for it is the smaller of the declaration and 1032 times the
+  compressed length, so an untrusted header reserves at most 1032 bytes per
+  byte present in the file, and one the allocator cannot supply is dropped
+  and the buffer grows from the data. Zlib held the output to 64 MiB and gzip
+  and raw DEFLATE to `max(declared, 64 MiB)`; all four now stop at 1032 times
+  the compressed length. The returned buffer is shrunk to its length.
+  `consus-zip` still passes the member's declared size as its byte ceiling,
+  so its errors are unchanged.
+- [patch] `ParseBudget::read_bounded` no longer fails when the allocator
+  cannot supply its initial-capacity hint; it grows from the data, and a hint
+  above the budget is still `ResourceLimit`.
+- [patch] The Parquet GZIP reader reserves the smaller of the declared page
+  size and 1032 times the stored bytes, where it reserved the declared size.
+  Its errors are unchanged.
 
 ## [consus / consus-zarr 0.6.0]
 

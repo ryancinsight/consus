@@ -8,8 +8,8 @@
 //!
 //! The output of any stream is at most [`MAX_DEFLATE_EXPANSION`](crate::codec::flate::MAX_DEFLATE_EXPANSION) times its
 //! length, so that product bounds the decode and is the most the codec ever
-//! reserves up front. A caller that needs a smaller output limit passes it as
-//! the budget's byte ceiling.
+//! reserves up front. [`ceiling`](crate::codec::flate::FlateFraming::ceiling) states the rule for a
+//! caller's own limit.
 
 use std::io::Read;
 
@@ -34,10 +34,11 @@ pub trait FlateFraming {
     /// Output ceiling, in bytes, that a caller's budget and declaration allow.
     ///
     /// One rule serves every framing: the larger of the declared
-    /// `expected_size` and the budget's byte ceiling. [`flate2_decompress`]
-    /// takes the smaller of this and the size the compressed bytes can
-    /// produce, so it caps a caller's own limit and never exceeds what the
-    /// stream can carry.
+    /// `expected_size` and the budget's byte ceiling, so a declaration above
+    /// the budget raises the limit and never lowers it or refuses a stream.
+    /// [`flate2_decompress`] takes the smaller of this and the size the
+    /// compressed bytes can produce. A caller's budget is therefore its limit
+    /// when its declaration is at or below it, as for `consus-zip` and Parquet.
     #[must_use]
     fn ceiling(expected_size: usize, budget: &ParseBudget) -> usize {
         expected_size.max(budget.max_alloc_bytes)
@@ -119,27 +120,26 @@ fn producible(input_len: usize) -> usize {
 
 /// Decompress `input` under framing `F`.
 ///
-/// The declared `expected_size` is a capacity hint, never a refusal: the initial
-/// reservation is the smaller of it and the output ceiling, so a hostile
-/// declaration reserves at most 1032 bytes per byte of input. The output grows
-/// only as decoded data arrives, through the budget's fallible reservation, and
-/// ends at the ceiling:
-/// `min(input.len() * MAX_DEFLATE_EXPANSION, F::ceiling(expected_size, budget))`.
-/// The first term is what no stream can exceed; the second is the caller's own
-/// limit, which is what a budget bounds:
+/// `expected_size` is a capacity hint, never a refusal. The initial reservation
+/// is the smaller of it and the output ceiling, so a hostile declaration
+/// reserves at most 1032 bytes per byte of input; when the allocator cannot
+/// supply it the buffer grows from the decoded data instead. The output ends at
+/// `min(input.len() * MAX_DEFLATE_EXPANSION, F::ceiling(expected_size, budget))`:
+/// the first term is what no stream can exceed, the second is the caller's limit
+/// ([`FlateFraming::ceiling`]). The result is shrunk to its length, so a hint far
+/// above the output is not retained.
 ///
-/// - the codecs pass a budget with no byte cap, so only the first term applies
-///   and any honest stream decodes whatever it declares;
+/// - The codecs pass a budget with no byte cap, so only the first term applies.
 /// - `consus-zip` passes the member's declared size, so a stream that expands
-///   past its directory entry is refused;
-/// - the Parquet reader passes the shared 64 MiB budget, which its own check
+///   past its directory entry is refused.
+/// - The Parquet reader passes the shared 64 MiB budget, which its own check
 ///   already applies to the page's declaration.
 ///
 /// # Errors
 ///
 /// Returns [`Error::CompressionError`] when the stream is malformed and
-/// [`Error::ResourceLimit`] when the decompressed output exceeds the
-/// ceiling or the reservation cannot be satisfied.
+/// [`Error::ResourceLimit`] when the decompressed output exceeds the ceiling
+/// or growing the buffer for it cannot be allocated.
 pub fn flate2_decompress<F: FlateFraming>(
     input: &[u8],
     expected_size: usize,
@@ -154,6 +154,10 @@ pub fn flate2_decompress<F: FlateFraming>(
             expected_size.min(ceiling),
             "decompressed output",
         )
+        .map(|mut output| {
+            output.shrink_to_fit();
+            output
+        })
         .map_err(|error| match error {
             Error::Io(error) => Error::CompressionError {
                 message: alloc::format!("{} decompress failed: {error}", F::LABEL),
