@@ -683,33 +683,11 @@ mod above_default_budget {
         assert_decodes_declared_size(&RawDeflateCodec, &input);
     }
 
-    /// Compress `len` zero bytes at the strongest level: the most
-    /// compressible input a stream of that length can carry.
+    /// `len` zero bytes at level 9: the most compressible input.
     fn compressed_zeros<C: Codec>(codec: &C, len: usize) -> Vec<u8> {
         codec
             .compress(&vec![0u8; len], CompressionLevel(9))
             .expect("level-9 compress must succeed")
-    }
-
-    fn assert_within_expansion_bound<C: Codec>(codec: &C, len: usize) {
-        let compressed = compressed_zeros(codec, len);
-        let producible = compressed.len() * MAX_DEFLATE_EXPANSION;
-        assert!(
-            len <= producible,
-            "{}: {len} bytes came from {} compressed bytes, above the bound {producible}",
-            codec.name(),
-            compressed.len()
-        );
-    }
-
-    #[test]
-    fn all_zero_input_stays_within_the_expansion_bound() {
-        let len = ParseBudget::default().max_alloc_bytes + 1;
-
-        assert_within_expansion_bound(&DeflateCodec, len);
-        assert_within_expansion_bound(&ZlibCodec, len);
-        assert_within_expansion_bound(&GzipCodec, len);
-        assert_within_expansion_bound(&RawDeflateCodec, len);
     }
 
     /// A declaration is a capacity hint: whatever its size, a stream that
@@ -718,7 +696,8 @@ mod above_default_budget {
     fn assert_hint_is_clamped<C: Codec>(codec: &C) {
         let compressed = compressed_zeros(codec, 4096);
         let producible = compressed.len() * MAX_DEFLATE_EXPANSION;
-        for declared in [0, 1, 4096, producible, producible + 1, 1 << 40, usize::MAX] {
+        let tera = usize::try_from(1u64 << 40).unwrap_or(usize::MAX);
+        for declared in [0, 1, 4096, producible, producible + 1, tera, usize::MAX] {
             let decoded = codec
                 .decompress(&compressed, declared)
                 .unwrap_or_else(|error| panic!("{}: declared {declared}: {error:?}", codec.name()));

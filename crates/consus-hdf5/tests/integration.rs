@@ -857,7 +857,8 @@ mod chunk_codec_hints {
         let location =
             write_chunk_raw(&mut cursor, 0, &data, &[1], 1, &registry).expect("chunk write");
         let stored = usize::try_from(location.size).expect("stored size fits");
-        for declared in [stored * expansion + 1, 1 << 40, usize::MAX] {
+        let tera = usize::try_from(1u64 << 40).unwrap_or(usize::MAX);
+        for declared in [stored * expansion + 1, tera, usize::MAX] {
             let decoded = read_chunk_raw(&cursor, &location, declared, &[1], 1, &registry, None)
                 .unwrap_or_else(|error| panic!("declared {declared}: {error:?}"));
             assert!(decoded == data, "declared {declared}: content");
