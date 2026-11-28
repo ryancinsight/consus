@@ -240,13 +240,13 @@ impl ParseBudget {
     }
     /// Read a stream into a bounded buffer without trusting its declared size.
     ///
-    /// The initial capacity is only a hint from the format metadata: a hint
-    /// above `max_alloc_bytes` is refused, but one the allocator cannot supply
-    /// is dropped and the buffer grows from the data. Every growth is checked
-    /// against `max_alloc_bytes` and uses fallible reservation, so a
-    /// compressed stream cannot turn expansion or allocator exhaustion into a
-    /// process abort. The buffer doubles as it grows but its capacity never
-    /// exceeds `max_alloc_bytes`.
+    /// The initial capacity is only a hint from the format metadata: one above
+    /// `max_alloc_bytes` is refused, one the allocator cannot supply is dropped
+    /// and the buffer grows from the data. Every
+    /// subsequent growth is checked against `max_alloc_bytes` and uses
+    /// fallible reservation, so a compressed stream cannot turn expansion or
+    /// allocator exhaustion into a process abort. The buffer doubles as it
+    /// grows but its capacity never exceeds `max_alloc_bytes`.
     ///
     /// # Errors
     ///

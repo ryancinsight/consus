@@ -110,10 +110,8 @@ pub(crate) const PRODUCIBLE_ONLY: ParseBudget = ParseBudget::new(
     ParseBudget::DEFAULT.max_depth,
 );
 
-/// Most output bytes any DEFLATE stream of `input_len` bytes can produce.
-///
-/// Saturates, so a length whose product overflows `usize` is bounded by
-/// `usize::MAX` instead of wrapping to a small ceiling.
+/// Most output bytes any DEFLATE stream of `input_len` bytes can produce; it
+/// saturates instead of wrapping to a small ceiling.
 fn producible(input_len: usize) -> usize {
     input_len.saturating_mul(MAX_DEFLATE_EXPANSION)
 }
@@ -192,16 +190,12 @@ pub fn zlib_compress(input: &[u8], level: CompressionLevel) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
 
-    /// The expansion bound is eight bits of two-bit matches, 258 bytes each.
-    #[test]
-    fn expansion_bound_is_four_maximal_matches_per_byte() {
-        assert_eq!(MAX_DEFLATE_EXPANSION, 4 * 258);
-    }
-
-    /// The producible size is the exact product below overflow and saturates
-    /// above it, so a 32-bit length of 4,161,791 bytes or more never wraps.
+    /// The producible size is the exact product, four maximal two-bit matches
+    /// per byte, below overflow and saturates above it, so a 32-bit length of
+    /// 4,161,791 bytes or more never wraps.
     #[test]
     fn producible_size_saturates_instead_of_wrapping() {
+        assert_eq!(MAX_DEFLATE_EXPANSION, 4 * 258);
         assert_eq!(producible(0), 0);
         assert_eq!(producible(1), 1032);
         let last_exact = usize::MAX / MAX_DEFLATE_EXPANSION;

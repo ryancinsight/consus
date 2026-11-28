@@ -126,7 +126,7 @@ Risks that no item fixes are recorded in `gap_audit.md`.
   starts `zlib`, `gzip` or `raw-deflate`, the framing that failed.
 - evidence: `FlateFraming::LABEL` is `deflate (zlib)` for zlib and `deflate` for raw DEFLATE
   (`flate.rs:52,82`), though the codec named `deflate` is the zlib-framed one; it prefixes decode and compress
-  errors (`flate.rs:163,186`) and `Display` renders `compression error: {message}` (`core/error.rs:189`).
+  errors (`flate.rs:161,184`) and `Display` renders `compression error: {message}` (`core/error.rs:189`).
 - acceptance: `cargo nextest run -p consus-compression --all-features framing_label_prefixes_error` passes (no
   such test today): the `message` of a malformed stream starts `zlib` for `ZlibCodec` and `DeflateCodec`,
   `gzip` for `GzipCodec` and `raw-deflate` for `RawDeflateCodec`; `git grep -c -E
@@ -203,7 +203,7 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 ## CONSUS-FLATE-SURFACE — Narrow the unused flate items [major] — todo
 - outcome: `zlib_compress`, `ZlibFraming` and `GzipFraming` are `pub(crate)`; the public surface of
   `codec::flate` is what `consus-zip` consumes.
-- evidence: `crates/consus-compression/src/codec/flate.rs:49,66,179` are `pub`; only sibling codec modules use
+- evidence: `crates/consus-compression/src/codec/flate.rs:49,66,177` are `pub`; only sibling codec modules use
   them, and `consus-zip` uses `RawDeflateFraming` and `flate2_decompress`
   (`crates/consus-zip/src/read.rs:21`). No other stack member's tracked `*.rs` names them.
 - acceptance: `cargo semver-checks -p consus-compression` against the 0.5.0 baseline reports exactly the three
@@ -261,7 +261,7 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 ## CONSUS-ZARR-LEVEL-CLAMPS — Reject unusable levels for zstd, deflate, lz4 and fallthrough codecs [major] — todo
 - outcome: a `level` a codec cannot honor is a typed `InvalidCodecConfiguration`, not a silent clamp or default.
 - evidence: zstd clamps to -8..=4 and maps 0 to 1 (consus-compression zstd.rs:28-29); deflate clamps to 0..=9
-  (flate.rs:180, so -1 stores); `codec/mod.rs:360,366,378` fall back to 3, 0 and 6 when a level does not parse
+  (flate.rs:178, so -1 stores); `codec/mod.rs:360,366,378` fall back to 3, 0 and 6 when a level does not parse
   (`"abc"` becomes 6); `deflate` is reachable from numeric filter id 1 when its feature is on (v2.rs:436). The `crc32`
   arm comments (codec/mod.rs:344-346 and :398-400) say the codec is rejected; both arms apply CRC-32C.
 - acceptance: zstd and `deflate` document their accepted range as a constant with a source and a level outside it is

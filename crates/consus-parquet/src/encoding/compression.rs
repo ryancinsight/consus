@@ -220,9 +220,8 @@ pub(crate) const ZSTD_OVERLENGTH: usize = 64;
 ///   its stream states) and GZIP (decoded output); `CompressionError` for
 ///   ZSTD and LZ4_RAW, which decode into a limit equal to the declaration.
 /// - A GZIP declaration within the bound but above what the stored bytes can
-///   produce: the decoder treats the declaration as a reservation hint and
-///   reserves only the producible size, so the page reports
-///   `CompressionError` (decoded length against declared), not `ResourceLimit`.
+///   produce: the decoded length is shorter than declared, so the page reports
+///   `CompressionError`.
 /// - Any other decoded length that differs from the declaration:
 ///   `CompressionError`. A page is never returned truncated or padded.
 ///
@@ -293,9 +292,8 @@ fn decode_page_bytes(
         CompressionCodec::Gzip => {
             #[cfg(feature = "gzip")]
             {
-                // The declaration is a reservation hint, which the decoder clamps
-                // to what `data` can produce; the page length is checked below.
-                // The shared budget caps the decoded output.
+                // The declaration is a reservation hint clamped to what `data`
+                // can produce; the page length is checked below.
                 flate2_decompress::<GzipFraming>(data, uncompressed_size, &ParseBudget::default())
             }
             #[cfg(not(feature = "gzip"))]

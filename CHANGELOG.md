@@ -8,25 +8,22 @@
   byte of DEFLATE can decode to (RFC 1951 sections 3.2.5 and 3.2.7).
 - [minor] `FlateFraming::ceiling` has a default body, `max(expected_size,
   budget.max_alloc_bytes)`, and is `#[must_use]`; the three framings no longer
-  implement it, and an implementation that supplies its own still compiles.
-  `flate2_decompress::<ZlibFraming>` under a caller budget now admits a
-  declaration above that budget, as the gzip and raw framings already did.
+  implement it. `flate2_decompress::<ZlibFraming>` under a caller budget now
+  admits a declaration above it, as the gzip and raw framings already did.
 
 ### Fixed
 
 - [patch] `DeflateCodec`, `ZlibCodec`, `GzipCodec` and `RawDeflateCodec`
-  decode a stream of any size its bytes can carry, under any `expected_size`
-  including 0 and `usize::MAX`. `expected_size` is a capacity hint: the
-  reservation for it is the smaller of the declaration and 1032 times the
-  compressed length, so an untrusted header reserves at most 1032 bytes per
-  byte present in the file, and one the allocator cannot supply is dropped
-  and the buffer grows from the data. Zlib held the output to 64 MiB and gzip
-  and raw DEFLATE to `max(declared, 64 MiB)`; all four now stop at 1032 times
-  the compressed length. The returned buffer is shrunk to its length.
+  decode any stream its bytes can carry under any `expected_size`, 0 and
+  `usize::MAX` included. `expected_size` is a capacity hint: the reservation
+  is the smaller of it and 1032 times the compressed length, one the
+  allocator cannot supply is dropped, and the result is shrunk to its length.
+  Zlib held the output to 64 MiB and gzip and raw DEFLATE to `max(declared,
+  64 MiB)`; all four now stop at 1032 times the compressed length.
   `consus-zip` still passes the member's declared size as its byte ceiling,
   so its errors are unchanged.
 - [patch] `ParseBudget::read_bounded` no longer fails when the allocator
-  cannot supply its initial-capacity hint; it grows from the data, and a hint
+  cannot supply its initial-capacity hint; it grows from the data. A hint
   above the budget is still `ResourceLimit`.
 - [patch] The Parquet GZIP reader reserves the smaller of the declared page
   size and 1032 times the stored bytes, where it reserved the declared size.
