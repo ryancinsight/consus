@@ -835,4 +835,38 @@ mod chunk_codec_hints {
         #[cfg(feature = "lz4")]
         round_trip(&[32004, 1], 1 << 20, 1);
     }
+
+    /// Fletcher-32 before deflate, the order the file writer emits, adds four
+    /// bytes to the deflate output, so a chunk of 64 MiB + 1 bytes decodes
+    /// 64 MiB + 5 bytes under a hint of 64 MiB + 1.
+    #[test]
+    fn fletcher32_then_deflate_decodes_a_chunk_above_the_default_budget() {
+        let budget = consus_core::ParseBudget::DEFAULT.max_alloc_bytes;
+        round_trip(&[3, 1], budget + 1, 1);
+    }
+
+    /// A declared size taken from a hostile header reserves at most what the
+    /// stored bytes can produce and decodes the real chunk; the chunk reader
+    /// does not compare lengths, `copy_chunk_into_dataset` does.
+    #[test]
+    fn hostile_declared_size_reserves_only_the_producible_size() {
+        let expansion = consus_compression::codec::flate::MAX_DEFLATE_EXPANSION;
+        let registry = DefaultCodecRegistry::new();
+        let data = vec![0u8; 4096];
+        let mut cursor = MemCursor::from_bytes(Vec::new());
+        let location =
+            write_chunk_raw(&mut cursor, 0, &data, &[1], 1, &registry).expect("chunk write");
+        let stored = usize::try_from(location.size).expect("stored size fits");
+        let tera = usize::try_from(1u64 << 40).unwrap_or(usize::MAX);
+        for declared in [stored * expansion + 1, tera, usize::MAX] {
+            let decoded = read_chunk_raw(&cursor, &location, declared, &[1], 1, &registry, None)
+                .unwrap_or_else(|error| panic!("declared {declared}: {error:?}"));
+            assert!(decoded == data, "declared {declared}: content");
+            assert!(
+                decoded.capacity() <= stored * expansion,
+                "declared {declared}: capacity {} above {stored} stored bytes times {expansion}",
+                decoded.capacity()
+            );
+        }
+    }
 }
