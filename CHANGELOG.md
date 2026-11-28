@@ -22,9 +22,10 @@
   64 MiB)`; all four now stop at 1032 times the compressed length.
   `consus-zip` still passes the member's declared size as its byte ceiling,
   so its errors are unchanged.
-- [patch] `ParseBudget::read_bounded` no longer fails when the allocator
-  cannot supply its initial-capacity hint; it grows from the data. A hint
-  above the budget is still `ResourceLimit`.
+- [patch] `ParseBudget::read_bounded` treats its initial-capacity argument as
+  a hint: one above the budget is clamped to it, and one the allocator cannot
+  supply is dropped and the buffer grows from the data. Only a stream above
+  the budget is `ResourceLimit`.
 - [patch] The Parquet GZIP reader reserves the smaller of the declared page
   size and 1032 times the stored bytes, where it reserved the declared size.
   Its errors are unchanged.

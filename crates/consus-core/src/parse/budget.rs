@@ -240,9 +240,9 @@ impl ParseBudget {
     }
     /// Read a stream into a bounded buffer without trusting its declared size.
     ///
-    /// The initial capacity is only a hint from the format metadata: one above
-    /// `max_alloc_bytes` is refused, one the allocator cannot supply is dropped
-    /// and the buffer grows from the data. Every
+    /// The initial capacity is only a hint from the format metadata, never a
+    /// size: it is clamped to `max_alloc_bytes`, and one the allocator cannot
+    /// supply is dropped and the buffer grows from the data. Every
     /// subsequent growth is checked against `max_alloc_bytes` and uses
     /// fallible reservation, so a compressed stream cannot turn expansion or
     /// allocator exhaustion into a process abort. The buffer doubles as it
@@ -250,8 +250,8 @@ impl ParseBudget {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ResourceLimit`] when the hint or the stream exceeds
-    /// the byte ceiling or growth cannot be allocated, [`Error::Io`] when reading
+    /// Returns [`Error::ResourceLimit`] when the stream exceeds the byte
+    /// ceiling or growth cannot be allocated, [`Error::Io`] when reading
     /// fails, or [`Error::Overflow`] when the accumulated length overflows.
     #[cfg(all(feature = "alloc", feature = "std"))]
     pub fn read_bounded<R: std::io::Read>(
@@ -260,10 +260,7 @@ impl ParseBudget {
         initial_capacity: usize,
         what: &'static str,
     ) -> Result<Vec<u8>> {
-        let initial_capacity = self.checked_bytes(
-            u64::try_from(initial_capacity).map_err(|_| Error::Overflow)?,
-            what,
-        )?;
+        let initial_capacity = initial_capacity.min(self.max_alloc_bytes);
         let mut output = Vec::new();
         if output.try_reserve_exact(initial_capacity).is_err() {
             // A failed reservation leaves the buffer empty: the hint is unmet,
@@ -417,6 +414,54 @@ mod tests {
             .read_bounded(&mut reader, 0, "decompressed output")
             .unwrap_err();
         assert!(matches!(error, Error::ResourceLimit { .. }));
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn read_bounded_clamps_a_hint_above_the_budget() {
+        let budget = ParseBudget::new(16, 4, 1);
+        let mut reader = std::io::Cursor::new([1u8, 2, 3, 4, 5]);
+        let decoded = budget
+            .read_bounded(&mut reader, 1 << 20, "decompressed output")
+            .unwrap();
+        assert_eq!(decoded, [1, 2, 3, 4, 5]);
+        assert!(decoded.capacity() <= 16);
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn read_bounded_refuses_data_above_the_budget_whatever_the_hint() {
+        let budget = ParseBudget::new(4, 4, 1);
+        for hint in [0, 4, 1 << 20, usize::MAX] {
+            let mut reader = std::io::Cursor::new([1u8, 2, 3, 4, 5]);
+            let error = budget
+                .read_bounded(&mut reader, hint, "decompressed output")
+                .unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    Error::ResourceLimit {
+                        what: "decompressed output",
+                        requested: 5,
+                        limit: 4
+                    }
+                ),
+                "hint {hint}: {error:?}"
+            );
+        }
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn read_bounded_decodes_under_a_zero_hint_and_one_equal_to_the_budget() {
+        let budget = ParseBudget::new(8, 4, 1);
+        for hint in [0, 8] {
+            let mut reader = std::io::Cursor::new([1u8, 2, 3, 4]);
+            let decoded = budget
+                .read_bounded(&mut reader, hint, "decompressed output")
+                .unwrap();
+            assert_eq!(decoded, [1, 2, 3, 4], "hint {hint}");
+        }
     }
 
     #[cfg(feature = "std")]
