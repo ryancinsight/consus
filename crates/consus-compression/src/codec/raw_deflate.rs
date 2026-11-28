@@ -10,9 +10,9 @@ use alloc::vec::Vec;
 use flate2::read::DeflateEncoder;
 use std::io::Read;
 
-use super::flate::{RawDeflateFraming, flate2_decompress};
+use super::flate::{PRODUCIBLE_ONLY, RawDeflateFraming, flate2_decompress};
 use super::traits::{Codec, CompressionLevel};
-use consus_core::{Error, ParseBudget, Result};
+use consus_core::{Error, Result};
 
 /// DEFLATE codec without framing (RFC 1951).
 ///
@@ -43,7 +43,7 @@ impl Codec for RawDeflateCodec {
     }
 
     fn decompress(&self, input: &[u8], expected_size: usize) -> Result<Vec<u8>> {
-        flate2_decompress::<RawDeflateFraming>(input, expected_size, &ParseBudget::default())
+        flate2_decompress::<RawDeflateFraming>(input, expected_size, &PRODUCIBLE_ONLY)
     }
 }
 

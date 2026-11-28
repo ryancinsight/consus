@@ -53,22 +53,6 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - scope: crates/consus-zarr/src/chunk/ops/arrays.rs, crates/consus-zarr/tests, docs/book/formats.md
 - next step: pad in `write_array` to the full chunk shape, as `write_array_selection` does.
 
-<a id="consus-zlib-decode-ceiling"></a>
-## CONSUS-ZLIB-DECODE-CEILING — One rule for a declared size above 64 MiB [patch] — todo
-- outcome: `DeflateCodec`, `ZlibCodec`, `GzipCodec` and `RawDeflateCodec` give one result for a declared
-  `expected_size` above 64 MiB: all decode the stream, or all return `ResourceLimit`.
-- evidence: `ZlibFraming::ceiling` ignores `expected_size` (`consus-compression/src/codec/flate.rs:53-55`);
-  gzip and raw DEFLATE take `expected_size.max(64 MiB)` (`flate.rs:74-76`, `91-93`); `DeflateCodec`
-  (`deflate.rs:42`) and `ZlibCodec` use zlib framing, so 64 MiB + 1 fails there only (derived from
-  `consus-core` `parse/budget.rs:98-105`; not run).
-- acceptance: `cargo nextest run -p consus-compression --all-features above_default_budget` passes two tests
-  (none today): the three framings' `ceiling(64 MiB + 1, ..)` are equal (clamping the capacity hint,
-  `flate.rs:98`, moves no ceiling), and each codec decodes its own level-1 `compress` output of 64 MiB + 1
-  zero bytes with four equal results (its run time against the 30 s test budget is unverified).
-- priority: correctness; milestone: M-core-formats; basis: 216bde10c66f0f85b7d084aef8b1f19296fb1ae2
-- scope: crates/consus-compression/src/codec, crates/consus-compression/tests
-- next step: widen the zlib ceiling to the declaration, or hold 64 MiB for all four (a judgment call).
-
 <a id="consus-py-zarr-compressor-name"></a>
 ## CONSUS-PY-ZARR-COMPRESSOR-NAME — Reject compressor names the binding cannot honor [patch] — todo
 - outcome: `consus.ZarrArray(.., compressor=name)` raises `ValueError` for any name but `none`, `None` and
@@ -122,18 +106,19 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 <a id="consus-codec-contract-doc"></a>
 ## CONSUS-CODEC-CONTRACT-DOC — Qualify the exact-inversion claim of the codecs [patch] — todo
 - outcome: the codec docs promise that `decompress` returns the input of `compress` only for a declared size
-  within the decode ceiling; none promises exact inversion without that bound.
+  the codec accepts; none promises exact inversion without that bound.
 - evidence: four statements say `decompress` inverts `compress` exactly
-  (`consus-compression/src/codec/traits.rs:5` and `:34`, `gzip.rs:47`, `zlib.rs:52`), while a declared size
-  above 64 MiB is rejected by some codecs.
+  (`consus-compression/src/codec/traits.rs:5` and `:34`, `gzip.rs:47`, `zlib.rs:52`), while `szip` rejects an
+  `expected_size` that differs from its header (`szip.rs:259`, `:357`) and `zstd` decodes at most 64 MiB
+  whatever it is given (`zstd.rs:36,38`); the DEFLATE codecs, lz4 and blosc ignore a wrong `expected_size`
+  (`lz4.rs:35`, `blosc.rs:208`) or take it as a capacity hint.
 - acceptance: `git grep -n -E 'inverts? (it )?exactly' -- crates/consus-compression/src/codec` prints nothing
-  (four lines today); `git grep -c 'within the decode ceiling' -- crates/consus-compression/src/codec` prints
-  a line for each of `traits.rs`, `gzip.rs` and `zlib.rs` (none today).
-- priority: verification; milestone: M-core-formats; basis: 216bde10c66f0f85b7d084aef8b1f19296fb1ae2
-- needs: CONSUS-ZLIB-DECODE-CEILING
+  (four lines today); `git grep -c 'a declared size the codec accepts' -- crates/consus-compression/src/codec`
+  prints a line for each of `traits.rs`, `gzip.rs` and `zlib.rs` (none today).
+- priority: verification; milestone: M-core-formats; basis: 673e774cd89064060c515df8bfe7d732d232128e
 - scope: crates/consus-compression/src/codec
-- next step: after the ceiling rule lands, reword the four statements and state the ceiling once in the module
-  docs.
+- next step: reword the four statements for `szip` and `zstd`, and state the declaration rule once in the
+  module docs.
 
 <a id="consus-zlib-doc-drift"></a>
 ## CONSUS-ZLIB-DOC-DRIFT — Correct two false statements about the zlib codec [patch] — todo
@@ -156,14 +141,14 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 - outcome: a malformed zlib, gzip or raw-DEFLATE stream returns `CompressionError { message }` whose `message`
   starts `zlib`, `gzip` or `raw-deflate`, the framing that failed.
 - evidence: `FlateFraming::LABEL` is `deflate (zlib)` for zlib and `deflate` for raw DEFLATE
-  (`flate.rs:45,83`), though the codec named `deflate` is the zlib-framed one; it prefixes decode and compress
-  errors (`flate.rs:123,146`) and `Display` renders `compression error: {message}` (`core/error.rs:189`).
+  (`flate.rs:52,82`), though the codec named `deflate` is the zlib-framed one; it prefixes decode and compress
+  errors (`flate.rs:161,184`) and `Display` renders `compression error: {message}` (`core/error.rs:189`).
 - acceptance: `cargo nextest run -p consus-compression --all-features framing_label_prefixes_error` passes (no
   such test today): the `message` of a malformed stream starts `zlib` for `ZlibCodec` and `DeflateCodec`,
   `gzip` for `GzipCodec` and `raw-deflate` for `RawDeflateCodec`; `git grep -c -E
   'LABEL.*"(zlib|gzip|raw-deflate)";' -- '*/codec/flate.rs'` reports 3 matches (1 today) and
   `git grep -n 'LABEL.*"deflate' -- '*/codec/flate.rs'` prints nothing (two lines today).
-- priority: verification; milestone: M-core-formats; basis: 216bde10c66f0f85b7d084aef8b1f19296fb1ae2
+- priority: verification; milestone: M-core-formats; basis: 673e774cd89064060c515df8bfe7d732d232128e
 - scope: crates/consus-compression/src/codec/flate.rs, crates/consus-compression/tests
 - next step: set the three labels to `zlib`, `gzip` and `raw-deflate`; test the message prefix of each codec.
 
@@ -234,13 +219,12 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 ## CONSUS-FLATE-SURFACE — Narrow the unused flate items [major] — todo
 - outcome: `zlib_compress`, `ZlibFraming` and `GzipFraming` are `pub(crate)`; the public surface of
   `codec::flate` is what `consus-zip` consumes.
-- evidence: `crates/consus-compression/src/codec/flate.rs:42,63,139` are `pub`; only sibling codec modules use
+- evidence: `crates/consus-compression/src/codec/flate.rs:49,66,177` are `pub`; only sibling codec modules use
   them, and `consus-zip` uses `RawDeflateFraming` and `flate2_decompress`
   (`crates/consus-zip/src/read.rs:21`). No other stack member's tracked `*.rs` names them.
 - acceptance: `cargo semver-checks -p consus-compression` against the 0.5.0 baseline reports exactly the three
   removals under the declared [major] class, and `cargo check --workspace --locked --all-features` passes.
-- priority: tightening; milestone: M-interop-contracts; basis: 216bde10c66f0f85b7d084aef8b1f19296fb1ae2
-- needs: CONSUS-ZLIB-DECODE-CEILING
+- priority: tightening; milestone: M-interop-contracts; basis: 673e774cd89064060c515df8bfe7d732d232128e
 - scope: crates/consus-compression/src/codec/flate.rs, CHANGELOG.md
 - next step: narrow the three items after the ceiling change lands; note the removal under `### Breaking`.
 
@@ -293,7 +277,7 @@ Risks that no item fixes are recorded in `gap_audit.md`.
 ## CONSUS-ZARR-LEVEL-CLAMPS — Reject unusable levels for zstd, deflate, lz4 and fallthrough codecs [major] — todo
 - outcome: a `level` a codec cannot honor is a typed `InvalidCodecConfiguration`, not a silent clamp or default.
 - evidence: zstd clamps to -8..=4 and maps 0 to 1 (consus-compression zstd.rs:28-29); deflate clamps to 0..=9
-  (flate.rs:140, so -1 stores); `codec/mod.rs:360,366,378` fall back to 3, 0 and 6 when a level does not parse
+  (flate.rs:178, so -1 stores); `codec/mod.rs:360,366,378` fall back to 3, 0 and 6 when a level does not parse
   (`"abc"` becomes 6); `deflate` is reachable from numeric filter id 1 when its feature is on (v2.rs:436). The `crc32`
   arm comments (codec/mod.rs:344-346 and :398-400) say the codec is rejected; both arms apply CRC-32C.
 - acceptance: zstd and `deflate` document their accepted range as a constant with a source and a level outside it is

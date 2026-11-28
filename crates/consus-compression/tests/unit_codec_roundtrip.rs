@@ -636,3 +636,50 @@ fn all_enabled_codecs_roundtrip_same_input() {
         assert_eq!(decompressed, input, "lz4 round-trip failed");
     }
 }
+
+// =============================================================================
+// Declared size above the default budget
+// =============================================================================
+
+/// Every zlib-, gzip- and raw-DEFLATE-framed codec decodes a stream whose
+/// declared size exceeds the default 64 MiB budget.
+///
+/// Derivation: the ceiling is the size the compressed bytes can produce, not
+/// the budget, so a declaration of `budget + 1` admits `budget + 1` bytes. The
+/// input is all zeros so level-1 output stays small and every codec must
+/// return the same `budget + 1` zero bytes.
+#[cfg(all(feature = "deflate", feature = "gzip"))]
+mod above_default_budget {
+    use super::*;
+    use consus_compression::codec::deflate::DeflateCodec;
+    use consus_compression::codec::gzip::GzipCodec;
+    use consus_compression::codec::raw_deflate::RawDeflateCodec;
+    use consus_compression::codec::zlib::ZlibCodec;
+    use consus_core::ParseBudget;
+
+    fn assert_decodes_declared_size<C: Codec>(codec: &C, input: &[u8]) {
+        let compressed = codec
+            .compress(input, CompressionLevel(1))
+            .expect("level-1 compress must succeed");
+        let decoded = codec
+            .decompress(&compressed, input.len())
+            .unwrap_or_else(|error| {
+                panic!(
+                    "{}: a declared size above the default budget must decode: {error:?}",
+                    codec.name()
+                )
+            });
+        assert_eq!(decoded.len(), input.len(), "{}: length", codec.name());
+        assert!(decoded == input, "{}: content", codec.name());
+    }
+
+    #[test]
+    fn every_flate_codec_decodes_above_default_budget() {
+        let input = vec![0u8; ParseBudget::default().max_alloc_bytes + 1];
+
+        assert_decodes_declared_size(&DeflateCodec, &input);
+        assert_decodes_declared_size(&ZlibCodec, &input);
+        assert_decodes_declared_size(&GzipCodec, &input);
+        assert_decodes_declared_size(&RawDeflateCodec, &input);
+    }
+}

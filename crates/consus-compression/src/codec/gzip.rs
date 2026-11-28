@@ -32,9 +32,9 @@ use alloc::vec::Vec;
 use flate2::read::GzEncoder;
 use std::io::Read;
 
-use super::flate::{GzipFraming, flate2_decompress};
+use super::flate::{GzipFraming, PRODUCIBLE_ONLY, flate2_decompress};
 use super::traits::{Codec, CompressionLevel};
-use consus_core::{Error, ParseBudget, Result};
+use consus_core::{Error, Result};
 
 /// Gzip codec using RFC 1952 framing.
 ///
@@ -77,13 +77,15 @@ impl Codec for GzipCodec {
     }
 
     fn decompress(&self, input: &[u8], expected_size: usize) -> Result<Vec<u8>> {
-        flate2_decompress::<GzipFraming>(input, expected_size, &ParseBudget::default())
+        flate2_decompress::<GzipFraming>(input, expected_size, &PRODUCIBLE_ONLY)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::codec::flate::MAX_DEFLATE_EXPANSION;
+    use consus_core::ParseBudget;
 
     /// Round-trip invariant: `decompress(compress(data, 6)?) == data`.
     ///
@@ -241,8 +243,8 @@ mod tests {
         assert_eq!(decompressed, input, "round-trip must be lossless");
     }
 
-    /// A declared output above the shared bound must be rejected, not
-    /// allocated.
+    /// A hostile declared output is a capacity hint: the stream decodes and
+    /// the reservation stays within what its bytes can produce.
     ///
     /// Mirrors `deflate`'s `decompression_output_is_bounded`. The previous
     /// `Vec::with_capacity(expected_size)` + `read_to_end` scaffold had no
@@ -254,10 +256,11 @@ mod tests {
         let compressed = codec
             .compress(&vec![7u8; 8192], CompressionLevel::default())
             .expect("compress must succeed");
-        let error = codec
+        let decoded = codec
             .decompress(&compressed, usize::MAX)
-            .expect_err("declared output above the shared bound must be rejected");
-        assert!(matches!(error, Error::ResourceLimit { .. }));
+            .expect("a hostile declaration is a hint and must not refuse the stream");
+        assert_eq!(decoded, vec![7u8; 8192]);
+        assert!(decoded.capacity() <= compressed.len() * MAX_DEFLATE_EXPANSION);
     }
 
     /// RFC 1952 section 2.2: a gzip file is a series of members that appear
